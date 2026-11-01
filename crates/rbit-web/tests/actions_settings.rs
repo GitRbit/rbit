@@ -89,7 +89,8 @@ impl Fixture {
             let markup = String::from_utf8_lossy(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).into_owned();
             let action_markup = markup.split(&format!("action=\"{base}\"")).nth(1).unwrap_or_default();
             if let Some(proof) = action_markup.split("name=\"_csrf\" value=\"").nth(1).and_then(|s| s.split('"').next()) {
-                body.push_str(&format!("&_csrf={proof}"));
+                body.push_str("&_csrf=");
+                body.push_str(proof);
             }
             if path.contains("owner=acme") {
                 body.push_str("&owner=acme");

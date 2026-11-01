@@ -174,3 +174,20 @@ async fn mutation_success_uses_declared_document_budget_and_retains_large_permit
     registry.wait_for_idle().await;
     assert_eq!(scope.in_flight(), 0);
 }
+
+#[test]
+fn document_appearance_is_bounded_validated_and_preserved_in_owned_form_metadata() {
+    assert!(FormActions::default().appearance().is_none());
+    for theme in ["dark", "light-2", &"a".repeat(128)] {
+        let appearance = PageAppearance::new(theme, true).unwrap();
+        let mut forms = FormActions::default();
+        forms.set_appearance(appearance);
+        let owned = forms.clone();
+        assert_eq!(owned.appearance().unwrap().theme(), theme);
+        assert!(owned.appearance().unwrap().has_unread_notifications());
+    }
+    for theme in ["", "Dark", "dark mode", "dark\n", "<script>", "é", &"a".repeat(129)] {
+        assert!(PageAppearance::new(theme, false).is_err(), "{theme:?}");
+    }
+    assert!(!PageAppearance::new("dark", false).unwrap().has_unread_notifications());
+}

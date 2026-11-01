@@ -174,7 +174,7 @@ pub(crate) async fn runs_page(
     Ok(RunsPage {
         workflow_file: selected.as_ref().map_or_else(String::new, |(path, _)| workflow_file(path).to_owned()),
         page: page.titled(title),
-        header: loaded.header(state, "actions"),
+        header: loaded.header(state, "rbit.actions:actions-repository-tab"),
         runs: listing.runs.iter().map(|run| RunRow::new(run, &listing.people, &urls)).collect(),
         workflows,
         all_url: urls.runs(),
@@ -433,7 +433,7 @@ pub async fn show(
         jobs_pagination,
         artifacts_pagination,
         page: page.titled(format!("{} #{} · Actions · {}", run.workflow_name, run.number, loaded.ctx.repo.full_name())),
-        header: loaded.header(&state, "actions"),
+        header: loaded.header(&state, "rbit.actions:actions-repository-tab"),
         run: RunSummary::new(run, &detail.people, &urls, loaded.urls.commit(&run.sha)),
         jobs,
         active: !finished,
@@ -538,7 +538,7 @@ pub(crate) async fn summary_page(
     });
     Ok(crate::views::actions::SummaryPage {
         page: page.titled(title),
-        header: loaded.header(state, "actions"),
+        header: loaded.header(state, "rbit.actions:actions-repository-tab"),
         run_url: urls.run(run),
         job: detail.job.name,
         number: summary.number,

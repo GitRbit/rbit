@@ -378,17 +378,48 @@ impl fmt::Debug for FormAction {
         f.debug_struct("FormAction").field("name", &self.name).field("action", &self.action).finish_non_exhaustive()
     }
 }
+/// Host-approved presentation metadata for a complete compiled document.
+/// Contains no raw cookies, headers, or session state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PageAppearance {
+    theme: String,
+    has_unread_notifications: bool,
+}
+impl PageAppearance {
+    pub fn new(theme: &str, has_unread_notifications: bool) -> Result<Self, crate::PageError> {
+        if theme.is_empty()
+            || theme.len() > 128
+            || !theme.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+        {
+            return Err(crate::PageError::Invalid("page appearance theme"));
+        }
+        Ok(Self { theme: theme.into(), has_unread_notifications })
+    }
+    pub fn theme(&self) -> &str {
+        &self.theme
+    }
+    pub const fn has_unread_notifications(&self) -> bool {
+        self.has_unread_notifications
+    }
+}
 #[derive(Debug, Clone, Default)]
 pub struct FormActions {
     actions: Vec<FormAction>,
     locale_preference: Option<crate::LocaleChoice>,
+    appearance: Option<PageAppearance>,
 }
 impl FormActions {
     pub fn new(actions: Vec<FormAction>) -> Result<Self, crate::PageError> {
         if actions.len() > 32 || actions.iter().enumerate().any(|(i, a)| actions[..i].iter().any(|old| old.name == a.name)) {
             return Err(crate::PageError::Invalid("form action count or duplicates"));
         }
-        Ok(Self { actions, locale_preference: None })
+        Ok(Self { actions, locale_preference: None, appearance: None })
+    }
+    pub fn set_appearance(&mut self, appearance: PageAppearance) {
+        self.appearance = Some(appearance);
+    }
+    pub fn appearance(&self) -> Option<&PageAppearance> {
+        self.appearance.as_ref()
     }
     pub fn set_locale_preference(&mut self, choice: crate::LocaleChoice) {
         self.locale_preference = Some(choice);

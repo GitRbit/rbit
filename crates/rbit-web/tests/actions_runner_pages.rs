@@ -50,7 +50,7 @@ fn proof(html: &str, action: &str) -> String {
     let target = format!("action=\"{action}\"");
     let form = html.split("<form ").find(|form| form.split("</form>").next().unwrap().contains(&target)).expect("authorized action");
     let proof = form.split("name=\"_csrf\" value=\"").nth(1).unwrap().split('"').next().unwrap();
-    assert!(!proof.is_empty());
+    assert_ne!(proof, "");
     proof.to_owned()
 }
 

@@ -76,6 +76,9 @@ render against the captured immutable catalog even in independently owned mutati
 Responses retain plugin admission and rendering capacity through body consumption or
 cancellation, use `no-store`, decline preloads and keep the normal host security stack.
 Native documents disable boosted form/history storage; explicit job polling continues.
+Host-approved appearance metadata preserves the selected theme and unread indicator
+across ordinary/no-form GET pages and owned success/validation responses, without
+passing cookies or headers into native callbacks.
 
 The ordinary response budget remains 256 KiB. Configuration documents explicitly
 allow at most 2 MiB to preserve complete editable variable values. Each registry

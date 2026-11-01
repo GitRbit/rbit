@@ -254,7 +254,14 @@ async fn submit(
     let (viewer, repository) = reauthorize(&state, session.as_ref(), actor_id, repository, &route).await?;
     let form = FormAction::new("submitted", &action, &parsed.proof).map_err(WebError::internal)?;
     let mut context = mutation_context(&route, &viewer, repository.as_ref(), &page, form)?;
-    context.set_forms(sibling_actions(&route, &viewer, session.as_ref(), repository.as_ref(), &state, &mut browser));
+    let mut forms = sibling_actions(&route, &viewer, session.as_ref(), repository.as_ref(), &state, &mut browser);
+    if route.descriptor().presentation() == rbit_services::plugin_pages::PagePresentation::Document {
+        forms.set_appearance(
+            rbit_services::plugin_pages::PageAppearance::new(page.theme.slug(), page.has_unread_notifications)
+                .map_err(WebError::internal)?,
+        );
+    }
+    context.set_forms(forms);
     let executed = match parsed.input {
         PendingInput::Fields(fields) => {
             let Ok(input) = FormData::for_schema(fields, route.descriptor().form()) else {

@@ -152,7 +152,8 @@ impl Page {
 
     fn extension_link(&self, link: &UiLink, context: &Context<'_>) -> Option<ExtensionLink> {
         let url = link.target.render(context.owner, context.repo).ok()?;
-        let active = self.path == url || self.path.strip_prefix(&url).is_some_and(|rest| rest.starts_with('/'));
+        let path = self.path.split(['?', '#']).next().unwrap_or_default();
+        let active = path == url || path.strip_prefix(&url).is_some_and(|rest| rest.starts_with('/'));
         Some(ExtensionLink { label: self.extension_message(&link.label), url, icon: link.icon.as_str(), active })
     }
 }
@@ -245,6 +246,16 @@ mod tests {
         assert!(!page.global_extensions()[0].links[0].active);
         page.path = "/example/details".into();
         assert!(page.global_extensions()[0].links[0].active);
+        for (path, active) in [
+            ("/example?run=1", true),
+            ("/example#details", true),
+            ("/example/details?run=1#section", true),
+            ("/example-other?next=/example", false),
+            ("/elsewhere#example", false),
+        ] {
+            page.path = path.into();
+            assert_eq!(page.global_extensions()[0].links[0].active, active, "{path}");
+        }
     }
 
     #[test]

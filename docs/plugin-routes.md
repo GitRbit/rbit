@@ -328,3 +328,10 @@ Rust 1.99.1, release optimization with LTO disabled and 16 code-generation units
 These are local samples, not a deployment latency guarantee. Keep the measured
 scope and compiler settings with any comparison; the HTTP pipeline and final-body
 supervisor are deliberately outside this microbenchmark.
+
+Full document factories can read `FormActions::appearance()` for the host-validated
+theme slug and unread-notification indicator. The host projects these from its
+already-extracted page state on both GET and owned mutation responses. No cookie
+jar, session credential, notification content or raw header is exposed. Built-in
+Actions documents reconstruct their chrome from this snapshot, including pages
+with no forms and successful/invalid mutation replies.

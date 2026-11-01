@@ -20,7 +20,7 @@ fn csrf(html: &str, action: &str) -> String {
     let form =
         html.split("<form ").map(|form| form.split("</form>").next().unwrap()).find(|form| form.contains(&target)).expect("form action");
     let token = form.split("name=\"_csrf\" value=\"").nth(1).unwrap().split('"').next().unwrap();
-    assert!(!token.is_empty());
+    assert_ne!(token, "");
     token.to_owned()
 }
 
@@ -213,7 +213,7 @@ async fn native_actions_routes_designated_read_only_reviewer_can_approve_a_deplo
     let response = fixture.router.clone().oneshot(request(Method::POST, action.to_owned(), body)).await.unwrap();
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
     let _ = to_bytes(response.into_body(), 2 * 1024 * 1024).await.unwrap();
-    assert!(fixture.actions().pending_deployments(Some(&reviewer), &reviewer_repo, &run).await.unwrap().is_empty());
+    assert_eq!(fixture.actions().pending_deployments(Some(&reviewer), &reviewer_repo, &run).await.unwrap().len(), 0);
     fixture.services.shutdown().await;
 }
 

@@ -125,7 +125,7 @@ async fn native_actions_limits_reject_query_aliases_and_scalar_duplicates_withou
         request(&fixture, &cookie, Method::POST, &variables, format!("_csrf={token}&%5Fcsrf={token}&name=ONE&value=x")).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     let repo = fixture.repo().await;
-    assert!(fixture.database.actions_secrets().variables(SecretScope::Repository(repo.repo.repo.id)).await.unwrap().is_empty());
+    assert_eq!(fixture.database.actions_secrets().variables(SecretScope::Repository(repo.repo.repo.id)).await.unwrap().len(), 0);
     fixture.services.shutdown().await;
 }
 #[tokio::test]
@@ -146,7 +146,107 @@ async fn native_actions_limits_scope_form_proofs_to_the_exact_repository_without
     assert_eq!(headers[header::CACHE_CONTROL], "no-store");
     for name in ["rocket", "other"] {
         let repo = fixture.services.repositories.open(Some(&fixture.alice), "alice", name).await.unwrap();
-        assert!(fixture.database.actions_secrets().variables(SecretScope::Repository(repo.repo.repo.id)).await.unwrap().is_empty());
+        assert_eq!(fixture.database.actions_secrets().variables(SecretScope::Repository(repo.repo.repo.id)).await.unwrap().len(), 0);
+    }
+    fixture.services.shutdown().await;
+}
+
+async fn unread_notification(fixture: &Fixture) {
+    let repo = fixture.repo().await.repo.repo.id;
+    let now = rbit_core::Timestamp::now();
+    let issue = fixture
+        .database
+        .issues()
+        .create(&rbit_storage::sqlite::issues::NewIssue {
+            repo,
+            kind: rbit_core::IssueKind::Issue,
+            title: rbit_core::IssueTitle::parse("Unread activity").unwrap(),
+            body: rbit_core::IssueText::default(),
+            author: fixture.alice.id(),
+            at: now,
+        })
+        .await
+        .unwrap();
+    fixture
+        .database
+        .notifications()
+        .notify(fixture.alice.id(), issue.id, repo, rbit_storage::sqlite::notifications::NotificationReason::Mention, None, now)
+        .await
+        .unwrap();
+}
+
+fn assert_document_appearance(html: &str, theme: &str, scheme: &str) {
+    let document = html.split("<html").nth(1).expect("full native document").split('>').next().unwrap();
+    assert!(document.contains(&format!("data-theme=\"{theme}\"")), "the document retains the host-selected theme");
+    assert!(document.contains(&format!("data-scheme=\"{scheme}\"")), "the document retains the host-selected scheme");
+    assert!(
+        html.contains("<span class=\"notification-dot\" aria-hidden=\"true\"></span>"),
+        "the resolved unread indicator survives native rendering"
+    );
+}
+
+#[tokio::test]
+async fn native_actions_documents_preserve_host_theme_and_unread_state_including_no_form_summaries() {
+    use crate::actions_runner_tasks::{payload, poll, seed, spec, state, template};
+    let fixture = Fixture::new().await;
+    unread_notification(&fixture).await;
+    let credential = fixture.runner(&["linux"]).await;
+    let run = seed(&fixture, &[payload(&template("build", &["linux"], &[]))]).await;
+    let job = fixture.database.actions_runs().jobs(run.id).await.unwrap().remove(0);
+    let task = spec(&poll(&fixture, &credential, Some("appearance")).await.1).task_id.0;
+    let body = serde_json::json!({"steps": [], "outputs": {}, "result": "success", "summaries": {"0": "## Theme-aware summary"}});
+    assert_eq!(state(&fixture, &credential, task, &body).await.0, StatusCode::OK);
+    let session = cookie(&fixture).await;
+    for (theme, scheme) in [("dna-day", "light"), ("base24-berlin", "dark")] {
+        let cookie = format!("{session}; rbit-theme={theme}");
+        for path in [
+            "/settings/account".to_owned(),
+            SETTINGS.to_owned(),
+            format!("/alice/rocket/-/plugins/rbit.actions/run?run={}", run.number),
+            format!("/alice/rocket/-/plugins/rbit.actions/summary?run={}&job={}&step=0", run.number, job.id.0),
+        ] {
+            let (status, _, html) = request(&fixture, &cookie, Method::GET, &path, String::new()).await;
+            assert_eq!(status, StatusCode::OK, "{path}");
+            assert_document_appearance(&html, theme, scheme);
+            if path.starts_with("/alice/rocket/") {
+                let active: Vec<_> = html
+                    .split("<a ")
+                    .filter_map(|element| {
+                        let tag = element.split('>').next()?;
+                        if !tag.contains("aria-current=\"page\"") {
+                            return None;
+                        }
+                        tag.split("data-repo-tab=\"").nth(1)?.split('"').next()
+                    })
+                    .collect();
+                let expected = if path == SETTINGS { "settings" } else { "rbit.actions:actions-repository-tab" };
+                assert_eq!(active, [expected], "the native document has exactly the correct active repository tab: {path}");
+            }
+        }
+    }
+    fixture.services.shutdown().await;
+}
+
+#[tokio::test]
+async fn native_actions_owned_success_and_validation_documents_preserve_host_theme_and_unread_state() {
+    let fixture = Fixture::new().await;
+    unread_notification(&fixture).await;
+    let session = cookie(&fixture).await;
+    let runners = "/-/plugins/rbit.actions/settings/runners";
+    for (theme, scheme) in [("dna-day", "light"), ("base24-berlin", "dark")] {
+        let cookie = format!("{session}; rbit-theme={theme}");
+        for (fields, expected) in [
+            ("action=create&lifetime=3600&labels=linux", StatusCode::OK),
+            ("action=create&labels=not%20a%20label", StatusCode::UNPROCESSABLE_ENTITY),
+        ] {
+            let token = proof(&fixture, &cookie, runners, runners).await;
+            let (status, _, html) = request(&fixture, &cookie, Method::POST, runners, format!("_csrf={token}&{fields}")).await;
+            assert_eq!(status, expected);
+            assert_document_appearance(&html, theme, scheme);
+            if expected == StatusCode::OK {
+                assert!(html.contains("id=\"issued-token\""));
+            }
+        }
     }
     fixture.services.shutdown().await;
 }

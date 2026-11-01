@@ -211,7 +211,13 @@ async fn render(
         locale: page.locale.clone(),
     };
     let native_forms = !route.descriptor().forms().is_empty();
-    let actions = forms::actions(&route, viewer, session, repository.as_ref(), state, &mut browser);
+    let mut actions = forms::actions(&route, viewer, session, repository.as_ref(), state, &mut browser);
+    if route.descriptor().presentation() == rbit_services::plugin_pages::PagePresentation::Document {
+        actions.set_appearance(
+            rbit_services::plugin_pages::PageAppearance::new(page.theme.slug(), page.has_unread_notifications)
+                .map_err(WebError::internal)?,
+        );
+    }
     let Ok(mut lease) = route.admit() else { return Ok(unavailable()) };
     let body = match lease.render_with_request(context, actions, query).await {
         Ok(body) => body,

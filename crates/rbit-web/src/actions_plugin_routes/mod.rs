@@ -58,6 +58,10 @@ async fn principal(state: &AppState, context: &PageContext) -> Result<Viewer, Pa
 fn page(state: &AppState, viewer: &Viewer, locale: LocaleSnapshot, forms: FormActions, path: &str) -> Page {
     let mut page = Page::new(state, viewer.user(), path);
     page.locale = locale;
+    if let Some(appearance) = forms.appearance() {
+        page.theme = crate::themes::Theme::parse(appearance.theme()).unwrap_or_default();
+        page.has_unread_notifications = viewer.user().is_some() && appearance.has_unread_notifications();
+    }
     page.plugin_forms = forms;
     page
 }

@@ -121,7 +121,7 @@ pub async fn show(
             number,
             loaded.ctx.repo.full_name()
         )),
-        header: loaded.header(&state, "actions"),
+        header: loaded.header(&state, "rbit.actions:actions-repository-tab"),
         run: RunSummary::new(&detail.run, &people, &urls, loaded.urls.commit(&detail.run.sha)),
         run_url: urls.run(number),
         name: crate::views::actions::preview_label(&detail.job.name),
@@ -167,7 +167,7 @@ pub(crate) async fn step_page(
             crate::views::actions::preview_label(&detail.job.name),
             loaded.ctx.repo.full_name()
         )),
-        header: loaded.header(state, "actions"),
+        header: loaded.header(state, "rbit.actions:actions-repository-tab"),
         job_name: crate::views::actions::preview_label(&detail.job.name),
         active: !step.status.is_done(),
         self_url: format!("/{owner}/{repo}/-/plugins/rbit.actions/logs?run={number}&job={}&step={wanted}", job.0),

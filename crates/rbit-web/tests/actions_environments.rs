@@ -52,7 +52,8 @@ impl Web<'_> {
                 if !form.is_empty() {
                     form.push('&');
                 }
-                form.push_str(&format!("_csrf={proof}"));
+                form.push_str("_csrf=");
+                form.push_str(proof);
             }
             if !query.is_empty() {
                 if !form.is_empty() {
