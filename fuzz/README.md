@@ -33,11 +33,22 @@ content, metadata, raw paths, numeric fields, padding and termination. Its accep
 oracle and reader-equivalence checks must agree. Seeds include USTAR prefix paths,
 zero-length data and 512-byte/64-KiB payload boundaries.
 
+Selectors 20–23 additionally declare three payloads, including an empty file.
+They cover valid permutations, a duplicate replacing the second expected file,
+an omitted file, and a valid but undeclared payload name with a repaired header
+checksum. Their acceptance oracle distinguishes expected-file validation from
+extra-entry rejection after the declared count. Ordinary harness tests pin the
+specific rejection categories across data, native and Wasm packages.
+
 The input cap is 2 MiB; generated structured payloads reach 65,537 bytes. These are
 focused parser campaigns, not exhaustive tests of the maximum 1 GiB package size,
 transport deadlines, installation, filesystem publication or worker execution.
 
 ## Recorded local campaign
+
+The first measurements below describe the earlier single-payload harness at
+`5950dbe`. A separate multi-file campaign follows; deterministic harness tests
+are recorded separately from actual fuzz execution.
 
 On 2026-11-01 UTC, the parser source at `f11c362` ran under installed Rust
 `1.95.0-nightly (859951e3c 2026-02-24)`, cargo-fuzz 0.13.2 and libfuzzer-sys 0.4.13,
@@ -58,3 +69,32 @@ Ignored `target/fuzz-evidence/` retains build logs, complete campaign logs, comm
 compiler and tool versions, source/binary hashes and corpus counts. See the
 [Rust Fuzz Book](https://rust-fuzz.github.io/book/cargo-fuzz/tutorial.html) for tooling
 and [structure-aware fuzzing](https://rust-fuzz.github.io/book/cargo-fuzz/structure-aware-fuzzing.html).
+
+## Multi-file campaign
+
+On 2026-11-01 UTC, the extended harness ran with the same nightly, tool versions,
+AddressSanitizer and limits shown above, including seed `20261101`. Each target
+completed in 61 seconds with exit status zero and no finding:
+
+| Target | Executions | Coverage counters, initial → final | Feature counters, initial → final | Peak RSS |
+| --- | ---: | ---: | ---: | ---: |
+| `archive_bytes` | 5,487,292 | 2,885 → 2,939 | 5,403 → 5,634 | 571 MiB |
+| `archive_structured` | 291,249 | 1,875 → 1,875 | 3,276 → 3,285 | 414 MiB |
+
+The raw on-disk corpus grew from 1,760 to 2,150 files and the structured corpus
+from 818 to 844, starting with retained discoveries and regenerated curated seeds.
+These counters are not source-coverage percentages. The multi-file acceptance
+oracle tests, formatting and strict all-target Clippy also passed.
+
+The path dependency now includes the package store module, but both fuzz targets
+still call only archive validation; this campaign does not fuzz filesystem staging
+or publication. The production archive parsing algorithm was unchanged. Shared
+dependency versions and edges match the root lockfile, including
+`tempfile` → `getrandom 0.3.4`; omitted optional/dev edges reflect the narrower
+standalone feature graph. New fuzz-only packages remain `libfuzzer-sys` and
+`arbitrary`.
+
+Ignored `target/fuzz-evidence/multifile*` records commands, compiler versions,
+source and binary hashes, complete logs, corpus counts, statistics and the lock
+audit for this working-tree increment. These bounded campaigns do not establish
+exhaustive parser safety or validate installation, trust or execution policy.

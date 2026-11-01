@@ -62,7 +62,7 @@ fn repair(bytes: &mut [u8]) {
 /// Input controls select a bounded valid archive or one deliberately invalid mutation.
 /// All generation bounds are independent of declared attacker-controlled sizes.
 pub fn structured(data: &[u8]) -> (Vec<u8>, bool) {
-    let selector = data.first().copied().unwrap_or(0) % 20;
+    let selector = data.first().copied().unwrap_or(0) % 24;
     let adapter = data.get(3).copied().unwrap_or(0) % 3;
     let length = [0, 1, 511, 512, 513, 65535, 65536, 65537][usize::from(data.get(1).copied().unwrap_or(0) % 8)];
     let length = if adapter == 0 { length } else { length.max(1) };
@@ -77,12 +77,36 @@ pub fn structured(data: &[u8]) -> (Vec<u8>, bool) {
         1 => json!({"type":"native","target":"aarch64-apple-darwin","entrypoint":path}),
         _ => json!({"type":"wasm","entrypoint":path}),
     };
-    let manifest = json!({"schema_version":1,"plugin":{"id":"example.fuzz","version":"1.0.0","host_api":"^1"},"kind":kind,"files":[{"path":path,"size":body.len(),"sha256":digest}],"budgets":{"memory_bytes":1024,"concurrent_calls":1,"call_timeout_ms":1000,"storage_bytes":0,"event_queue_capacity":0}});
+    let mut files = vec![json!({"path":path,"size":body.len(),"sha256":digest})];
+    if selector >= 20 {
+        for (name, bytes) in [("data/second", b"second".as_slice()), ("data/third", b"".as_slice())] {
+            let mut digest = String::with_capacity(64);
+            for byte in Sha256::digest(bytes) {
+                write!(digest, "{byte:02x}").unwrap();
+            }
+            files.push(json!({"path":name,"size":bytes.len(),"sha256":digest}));
+        }
+    }
+    let manifest = json!({"schema_version":1,"plugin":{"id":"example.fuzz","version":"1.0.0","host_api":"^1"},"kind":kind,"files":files,"budgets":{"memory_bytes":1024,"concurrent_calls":1,"call_timeout_ms":1000,"storage_bytes":0,"event_queue_capacity":0}});
     let descriptor = serde_json::to_vec(&manifest).unwrap();
     let mut out = Vec::new();
     entry(&mut out, "package.json", &descriptor);
     let payload = out.len();
-    entry(&mut out, &path, &body);
+    let payloads = [(path.as_str(), body.as_slice()), ("data/second", b"second".as_slice()), ("data/third", b"".as_slice())];
+    let order: &[usize] = match selector {
+        20 if data.get(4).copied().unwrap_or(0) & 1 == 0 => &[2, 0, 1],
+        20 => &[1, 2, 0],
+        21 => &[0, 0, 2],
+        22 => &[0, 2],
+        23 => &[0, 1, 2],
+        _ => &[0],
+    };
+    for index in order {
+        let (name, bytes) = payloads[*index];
+        let name = if selector == 23 && *index == 0 { "data/undeclared" } else { name };
+        // Header construction repairs the checksum even for the undeclared name.
+        entry(&mut out, name, bytes);
+    }
     out.resize(out.len() + 1024, 0);
     match selector {
         0 => {}
@@ -143,7 +167,38 @@ pub fn structured(data: &[u8]) -> (Vec<u8>, bool) {
             out[..5].copy_from_slice(b"other");
             repair(&mut out[..512]);
         }
+        20..=23 => {}
         _ => unreachable!(),
     }
-    (out, selector == 0)
+    (out, matches!(selector, 0 | 20))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rbit_plugin_packages::ArchiveError;
+
+    #[test]
+    fn multi_file_oracles_reach_expected_file_validation_across_adapter_kinds() {
+        for adapter in 0..3 {
+            for long_path in 0..2 {
+                for permutation in 0..2 {
+                    for (selector, error) in [
+                        (20, None),
+                        (21, Some(ArchiveError::UnexpectedFile)),
+                        (22, Some(ArchiveError::MissingFile)),
+                        (23, Some(ArchiveError::UnexpectedFile)),
+                    ] {
+                        let (archive, expected) = structured(&[selector, 1, long_path, adapter, permutation]);
+                        let result = validate_archive(Cursor::new(&archive));
+                        assert_eq!(result.as_ref().err().copied(), error);
+                        assert_eq!(check(&archive), expected);
+                        if let Ok(result) = result {
+                            assert_eq!(result.manifest().files.len(), 3);
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
