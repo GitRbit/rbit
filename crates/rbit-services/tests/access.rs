@@ -434,3 +434,28 @@ async fn personal_dashboards_drop_private_threads_after_membership_revocation() 
     assert_eq!(results.issues.len(), 0);
     assert!(!results.repositories.contains_key(&repo));
 }
+
+#[tokio::test]
+async fn stopped_collaborator_writer_is_not_misreported_as_a_duplicate() {
+    let fixture = Fixture::new().await;
+    let alice = fixture.user("alice", true).await;
+    let fresh = fixture.user("fresh", false).await;
+    let repo = fixture.repo(&alice, "", "project", Visibility::Private).await;
+    // Resolve authorization and the target before stop; read-only service lookup
+    // remains available after the synchronous stop of enrolled writers.
+    let context = fixture.open_as(&alice, "alice", "project").await;
+    let before = fixture.services.audit.list(&alice, None, &rbit_services::admin::ListQuery::default()).await.unwrap().items;
+    let mut events = fixture.services.events.subscribe();
+    let database = fixture.database.clone();
+    drop(database.close()); // Unpolled: stop occurs now, pool closure does not.
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        fixture.services.collaborators.add(&alice, &context, fresh.name().as_str(), Permission::Read),
+    )
+    .await
+    .unwrap();
+    assert!(matches!(result, Err(ServiceError::Conflict("collaborator writers stopped"))));
+    assert_eq!(fixture.database.collaborators().permission(repo, fresh.id()).await.unwrap(), None);
+    assert_eq!(fixture.services.audit.list(&alice, None, &rbit_services::admin::ListQuery::default()).await.unwrap().items, before);
+    assert!(matches!(events.try_recv(), Err(tokio::sync::broadcast::error::TryRecvError::Empty)));
+}

@@ -3,7 +3,7 @@
 The authority fence coordinates policy mutations, user account creation, external
 identity bindings, personal access tokens, SSH keys, SQL recovery, authentication
 factors, profile credentials, account renames and administrator role changes,
-suspension, account deletion and bound session mutations
+suspension, account deletion, direct collaborator assignments and bound session mutations
 within one `Database` and its clones. It stays closed: it cannot issue a generation,
 authorize execution, reopen admission or activate a package. Managed execution remains
 **Unavailable**.
@@ -17,7 +17,7 @@ work. An unused domain starts no task, timer or database query.
 Policy initialization, epoch renewal, review/selection/clear, user account creation,
 identity linking/unlinking, token and key creation/deletion and the three moderation
 mutations, together with SQL recovery, factor and profile credential mutations,
-and account renames, acquire that permit
+account renames and direct collaborator assignments, acquire that permit
 before their first database operation. The wrapper records settlement only after the complete storage result
 succeeds, including historical
 replays and committed policy seals. Cancellation while queued is clean because the
@@ -196,6 +196,20 @@ already-owned finalizers remain eligible; shutdown waits service/audit and stora
 leases. Forgotten direct guards can prolong that wait. This does not add durable
 reconciliation, cookie enforcement after partial failure or physical-worker proof.
 
+The four direct collaborator assignment APIs also enroll once: collaborator add,
+permission update and removal, plus the repository store's collaborator upsert.
+Each awaits an outer SQL commit, including false/no-op results. The private upsert
+keeps its original actor and creation date on conflict; only permission changes.
+Read-only grants remain outside serialization. Added transaction control has a
+cost; timestamp expressions now run after transaction acquisition, without a
+wall-clock equivalence or performance-parity claim. Existing service authorization
+and audit/event order remain unchanged. The host translates only the duplicate
+`collaborator` conflict into an already-present message; stopped/capacity conflicts
+retain their original service classification. Repository transfer, organization-member
+triggers and deletion cascades can also revoke collaborator rows and are separate
+writer categories. This is neither complete collaborator-table coverage nor fresh
+request-time authorization.
+
 A snapshot describes enrolled work at one instant. It grants no authority. A
 successful drain retains the shared permit in an owned guard, preventing enrolled
 writers from starting until that guard is dropped. It cannot certify an uncertain
@@ -229,7 +243,7 @@ new authority changes. Queue counters are retained until their tickets are dropp
 
 Calling `Database::close()` stops its enrolled writers synchronously, even
 if the returned future is dropped without being polled. Awaiting that future closes
-the pools after draining retained forced-password command leases. Unknown outcomes
+the pools after draining retained forced and self-password command leases. Unknown outcomes
 are logged as unresolved. Bound session workers share this stop; unrelated domains
 remain independent. This does not prove that SQLite or redb resources have exited.
 
@@ -238,11 +252,13 @@ remain independent. This does not prove that SQLite or redb resources have exite
 This increment covers policy writes, the four user-creation methods, external
 identity linking/unlinking, the three token methods, four direct key methods and
 five SQL recovery methods, ten factor methods, four profile credential methods,
-two account rename methods, the three moderation methods and bound session workers
+two account rename methods, four direct collaborator assignments, the three moderation
+methods and bound session workers
 obtained from the same database handle or its clones. It also covers the narrow
-forced administrator and email-reset commands described above. It does not coordinate
+forced administrator, email-reset and response-deferred self-service commands
+described above. It does not coordinate
 independently opened SQLite
-pools, another process, the remaining SQL-plus-KV credential changes, constructor writes
+pools, another process, other cross-store operations, constructor writes
 or other authority writers. It does not prove SQLite worker termination or physical store
 ownership. No runtime may use this
 partial coverage to issue execution authority.

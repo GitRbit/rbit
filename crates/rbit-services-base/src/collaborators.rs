@@ -73,7 +73,9 @@ impl CollaboratorService {
         }
         match self.store().add(repo.repo.repo.id, user.id, permission, actor.id()).await {
             Ok(()) => {}
-            Err(StorageError::Conflict(_)) => return Err(ServiceError::Invalid(format!("{} is already a collaborator", user.name))),
+            Err(StorageError::Conflict("collaborator")) => {
+                return Err(ServiceError::Invalid(format!("{} is already a collaborator", user.name)));
+            }
             Err(other) => return Err(other.into()),
         }
         tracing::info!(repo = %repo.repo.full_name(), collaborator = %user.name, permission = permission.as_str(), by = %actor.name(), "collaborator added");

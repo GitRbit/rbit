@@ -83,7 +83,8 @@ pub struct Database {
     // Enrolled package policy, three account moderation, four principal creation,
     // two external identity linking, three personal access token, four SSH key,
     // five recovery SQL, ten two-factor, four profile credential and two account rename methods,
-    // plus bound session write workers (purge certification is per write batch).
+    // plus bound session write workers (purge certification is per write batch),
+    // and four direct collaborator assignment APIs (not transfers/cascades).
     // No duplicate-open, all-writer or physical ownership claim.
     authority_domain: rbit_authority_fence::Domain,
     forced_passwords: credential_changes::Coordinator,
@@ -240,7 +241,7 @@ impl Database {
     }
 
     pub fn repositories(&self) -> RepositoryStore {
-        RepositoryStore::new(self.store("repositories"))
+        RepositoryStore::new(self.store("repositories"), self.authority_domain.writer())
     }
 
     pub fn access_tokens(&self) -> AccessTokenStore {
@@ -290,7 +291,7 @@ impl Database {
     // Milestone 2 wave A.
 
     pub fn collaborators(&self) -> collaborators::CollaboratorStore {
-        collaborators::CollaboratorStore::new(self.store("collaborators"))
+        collaborators::CollaboratorStore::new(self.store("collaborators"), self.authority_domain.writer())
     }
 
     pub fn teams(&self) -> teams::TeamStore {

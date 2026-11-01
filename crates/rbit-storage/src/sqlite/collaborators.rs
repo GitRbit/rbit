@@ -72,11 +72,12 @@ pub(crate) async fn upsert<'e>(
 #[derive(Debug, Clone)]
 pub struct CollaboratorStore {
     pool: Pool,
+    writer: rbit_authority_fence::WriterRegistration,
 }
 
 impl CollaboratorStore {
-    pub(crate) fn new(pool: Pool) -> Self {
-        Self { pool }
+    pub(crate) fn new(pool: Pool, writer: rbit_authority_fence::WriterRegistration) -> Self {
+        Self { pool, writer }
     }
 
     /// Collaborators of `repo`, by name.
@@ -105,36 +106,78 @@ impl CollaboratorStore {
     /// Adds `user` with `permission`. [`StorageError::Conflict`] (`"collaborator"`) if
     /// they already are one.
     pub async fn add(&self, repo: RepoId, user: AccountId, permission: Permission, added_by: AccountId) -> Result<(), StorageError> {
+        let mutation = self.writer.begin().await.map_err(collaborator_mutation_error)?;
+        let result = self.add_raw(repo, user, permission, added_by).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+
+    async fn add_raw(&self, repo: RepoId, user: AccountId, permission: Permission, added_by: AccountId) -> Result<(), StorageError> {
+        let mut tx = self.pool.begin().await?;
         sqlx::query("INSERT INTO collaborators (repo_id, user_id, permission, added_by, created_at) VALUES (?, ?, ?, ?, ?)")
             .bind(repo.0)
             .bind(user.0)
             .bind(permission.as_str())
             .bind(added_by.0)
             .bind(Timestamp::now().seconds())
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await
             .map_err(|e| StorageError::from_insert(e, "collaborator"))?;
+        tx.commit().await?;
         Ok(())
     }
 
     /// Changes an existing collaborator's permission. Returns whether they were one.
     pub async fn set_permission(&self, repo: RepoId, user: AccountId, permission: Permission) -> Result<bool, StorageError> {
+        let mutation = self.writer.begin().await.map_err(collaborator_mutation_error)?;
+        let result = self.set_permission_raw(repo, user, permission).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+
+    async fn set_permission_raw(&self, repo: RepoId, user: AccountId, permission: Permission) -> Result<bool, StorageError> {
+        let mut tx = self.pool.begin().await?;
         let result = sqlx::query("UPDATE collaborators SET permission = ? WHERE repo_id = ? AND user_id = ?")
             .bind(permission.as_str())
             .bind(repo.0)
             .bind(user.0)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
+        tx.commit().await?;
         Ok(result.rows_affected() > 0)
     }
 
     /// Removes a collaborator. Returns whether they were one.
     pub async fn remove(&self, repo: RepoId, user: AccountId) -> Result<bool, StorageError> {
-        let result = sqlx::query("DELETE FROM collaborators WHERE repo_id = ? AND user_id = ?")
-            .bind(repo.0)
-            .bind(user.0)
-            .execute(&self.pool)
-            .await?;
+        let mutation = self.writer.begin().await.map_err(collaborator_mutation_error)?;
+        let result = self.remove_raw(repo, user).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+
+    async fn remove_raw(&self, repo: RepoId, user: AccountId) -> Result<bool, StorageError> {
+        let mut tx = self.pool.begin().await?;
+        let result =
+            sqlx::query("DELETE FROM collaborators WHERE repo_id = ? AND user_id = ?").bind(repo.0).bind(user.0).execute(&mut *tx).await?;
+        tx.commit().await?;
         Ok(result.rows_affected() > 0)
     }
 }
+
+// Shared only by the four selected direct assignment entries. Other repository
+// mutations/triggers/cascades remain separate categories, not covered implicitly.
+pub(super) fn collaborator_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
+    StorageError::Conflict(match error {
+        rbit_authority_fence::BeginError::Capacity => "collaborator mutation capacity",
+        rbit_authority_fence::BeginError::Stopped => "collaborator writers stopped",
+    })
+}
+
+#[cfg(test)]
+mod fence_tests;

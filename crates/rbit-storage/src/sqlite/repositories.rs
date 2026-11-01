@@ -396,11 +396,13 @@ pub struct NewRepository {
 #[derive(Debug, Clone)]
 pub struct RepositoryStore {
     pool: Pool,
+    // Only grant_collaborator is enrolled here; no other repository writer claim.
+    writer: rbit_authority_fence::WriterRegistration,
 }
 
 impl RepositoryStore {
-    pub(crate) fn new(pool: Pool) -> Self {
-        Self { pool }
+    pub(crate) fn new(pool: Pool, writer: rbit_authority_fence::WriterRegistration) -> Self {
+        Self { pool, writer }
     }
 
     pub async fn create(&self, new: NewRepository) -> Result<Repository, StorageError> {
@@ -674,7 +676,19 @@ impl RepositoryStore {
     /// Makes `user` a collaborator on `repo` with `permission` (or changes their
     /// permission): used to give the creator of an organisation repository admin access.
     pub async fn grant_collaborator(&self, repo: RepoId, user: AccountId, permission: Permission) -> Result<(), StorageError> {
-        super::collaborators::upsert(&self.pool, repo, user, permission, Some(user)).await
+        let mutation = self.writer.begin().await.map_err(super::collaborators::collaborator_mutation_error)?;
+        let result = self.grant_collaborator_raw(repo, user, permission).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+
+    async fn grant_collaborator_raw(&self, repo: RepoId, user: AccountId, permission: Permission) -> Result<(), StorageError> {
+        let mut tx = self.pool.begin().await?;
+        super::collaborators::upsert(&mut *tx, repo, user, permission, Some(user)).await?;
+        tx.commit().await?;
+        Ok(())
     }
 
     /// One page of public repositories whose name or description contains `text`
