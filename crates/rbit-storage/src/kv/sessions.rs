@@ -88,6 +88,11 @@ impl SessionStore {
         self.writer.same_domain(writer)
     }
 
+    // Exact immutable redb instance, stronger than sharing an authority domain.
+    pub(crate) fn same_instance(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.db, &other.db)
+    }
+
     /// Creates the tables so read transactions never fail on a fresh database, and drops
     /// the pre-index table.
     pub(crate) fn ensure_table(&self) -> Result<(), StorageError> {
@@ -246,6 +251,35 @@ impl SessionStore {
         tokio::task::spawn_blocking(move || {
             let result = operation(&db, account);
             command.acknowledge(mutation, result.is_ok());
+            result
+        })
+        .await?
+    }
+
+    // No fresh begin: the private typed batch already owns all enrollments.
+    pub(crate) async fn finish_self_password(
+        &self,
+        worker: crate::sqlite::credential_changes::SelfPasswordWorker,
+    ) -> Result<usize, StorageError> {
+        self.finish_self_password_with(worker, delete_account_sessions).await
+    }
+
+    // Private monomorphized fault seam; production always uses the fixed helper.
+    pub(crate) async fn finish_self_password_with<F>(
+        &self,
+        mut worker: crate::sqlite::credential_changes::SelfPasswordWorker,
+        operation: F,
+    ) -> Result<usize, StorageError>
+    where
+        F: FnOnce(&redb::Database, AccountId, Option<[u8; 32]>) -> Result<usize, StorageError> + Send + 'static,
+    {
+        let db = self.db.clone();
+        tokio::task::spawn_blocking(move || {
+            let result = operation(&db, worker.account, worker.keep);
+            let acknowledged = worker.acknowledge(result.is_ok());
+            if result.is_ok() && !acknowledged {
+                return Err(StorageError::Conflict("self password command settlement uncertain"));
+            }
             result
         })
         .await?

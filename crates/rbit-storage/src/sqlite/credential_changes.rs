@@ -321,3 +321,11 @@ mod tests;
 
 #[cfg(test)]
 mod reset_tests;
+
+mod self_service;
+pub(super) use self_service::SelfCoordinator;
+pub(crate) use self_service::SelfPasswordWorker;
+pub use self_service::{
+    PendingSelfPasswordChange, SelfPasswordAction, SelfPasswordBatch, SelfPasswordBatchResult, SelfPasswordChanges, SelfPasswordDrainError,
+    SelfPasswordReservation, SelfPasswordResult,
+};

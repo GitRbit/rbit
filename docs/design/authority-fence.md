@@ -162,6 +162,19 @@ Self-service response attribution and deferred password-change guards remain out
 this coverage. Existing reset preflight and captured-time freshness semantics are
 preserved, rather than promising a wall-clock check at commit time.
 
+Storage also offers a typed self-password continuation API, without adoption by
+existing service flows. Its separate two-command admission retains an acquired
+enrollment from conditional password SQL commit into an opaque pending value.
+A prepared session batch checks every value against its receiving factory's SQL
+domain, coordinator, exact KV instance and derived account before IO. The actual
+KV worker owns all slots and tokens through one revocation transaction, completing
+followers while its resumed leader holds serialization and the leader last.
+Lost SQL-result delivery, dropped pending values and async-owner loss are uncertain;
+a late worker success cannot clear an earlier unknown outcome. Database close
+waits these retained leases, including pending values held by callers. This API
+adds no service audit/event or response-guard ownership guarantee; those existing
+paths remain unchanged until a separate adoption increment.
+
 A snapshot describes enrolled work at one instant. It grants no authority. A
 successful drain retains the shared permit in an owned guard, preventing enrolled
 writers from starting until that guard is dropped. It cannot certify an uncertain
@@ -173,7 +186,7 @@ its active enrollment in an opaque suspended token. Other writers can proceed,
 but both drains continue waiting for that unfinished operation. Resuming retains
 the same capacity slot and is allowed after writer stop; dropping the token or
 its resume future records uncertainty. Active counts include suspended work,
-while at most one operation holds serialization. Current production callers do
+while at most one operation holds serialization. Existing service flows do
 not use this primitive yet; self-service response finalization remains uncovered.
 
 Suspended follower completion is a trusted application acknowledgement for a

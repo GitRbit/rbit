@@ -87,6 +87,7 @@ pub struct Database {
     // No duplicate-open, all-writer or physical ownership claim.
     authority_domain: rbit_authority_fence::Domain,
     forced_passwords: credential_changes::Coordinator,
+    self_passwords: credential_changes::SelfCoordinator,
     /// Seals the credentials stores keep (see [`crate::sealing`]).
     key: SealingKey,
 }
@@ -142,6 +143,7 @@ impl Database {
             key,
             authority_domain: rbit_authority_fence::Domain::new(),
             forced_passwords: credential_changes::Coordinator::default(),
+            self_passwords: credential_changes::SelfCoordinator::default(),
         };
         database.optimize().await?;
         Ok(database)
@@ -210,6 +212,27 @@ impl Database {
     ) -> impl std::future::Future<Output = Result<(), credential_changes::ForcedPasswordDrainError>> + Send + '_ {
         self.prepare_forced_password_changes_shutdown();
         self.forced_passwords.drain()
+    }
+
+    /// Typed self-service SQL/session continuations with a separate two-command quota.
+    /// No Services response-ledger adoption or physical-store ownership certificate.
+    pub fn self_password_changes(&self, kv: &crate::KvStore) -> Result<credential_changes::SelfPasswordChanges, StorageError> {
+        self.validate_kv_session_binding(kv)?;
+        Ok(self.self_passwords.bind(self.profiles(), kv.sessions(), self.authority_domain.writer()))
+    }
+
+    /// Stops only NEW self-service commands; acquired continuations may still finish.
+    pub fn prepare_self_password_changes_shutdown(&self) {
+        self.self_passwords.stop();
+    }
+
+    /// Retains pending commitments and actual worker leases. Uncertainty is sticky;
+    /// no task/resource or physical worker shutdown certificate is returned.
+    pub fn drain_self_password_changes(
+        &self,
+    ) -> impl std::future::Future<Output = Result<(), credential_changes::SelfPasswordDrainError>> + Send + '_ {
+        self.prepare_self_password_changes_shutdown();
+        self.self_passwords.drain()
     }
 
     pub fn accounts(&self) -> AccountStore {
@@ -431,12 +454,16 @@ impl Database {
     /// Awaiting does not certify individual close errors or all SQL worker termination.
     pub fn close(&self) -> impl std::future::Future<Output = ()> + Send + '_ {
         self.prepare_forced_password_changes_shutdown();
+        self.prepare_self_password_changes_shutdown();
         // This executes when close() is CALLED, even if its future is never polled.
         // It stops enrolled writers, not every authority writer.
         drop(self.authority_domain.stop_writers());
         async move {
             if let Err(error) = self.drain_forced_password_changes().await {
                 tracing::error!(%error, "closing pools after uncertain forced password command; no clean ownership release");
+            }
+            if let Err(error) = self.drain_self_password_changes().await {
+                tracing::error!(%error, "closing pools after uncertain self password command; no clean ownership release");
             }
             self.package_pool.close().await;
             self.pool.close().await;
