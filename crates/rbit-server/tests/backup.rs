@@ -315,6 +315,23 @@ async fn package_sql(data: &Path, sql: &'static str) {
     connection.close().await.unwrap();
 }
 
+/// Historical fixtures start with virgin policy, so the new cyclic epoch/renewal
+/// graph is empty. Drop children before parents with foreign keys still enabled.
+async fn drop_policy_graph(data: &Path) {
+    use sqlx::{ConnectOptions, Connection};
+    let mut connection =
+        sqlx::sqlite::SqliteConnectOptions::new().filename(data.join("rbit.db")).foreign_keys(true).connect().await.unwrap();
+    sqlx::raw_sql(
+        "DROP TABLE plugin_policy_receipts; DROP TABLE plugin_selection_heads; \
+         DROP TABLE plugin_review_heads; DROP TABLE plugin_review_history; DROP TABLE plugin_policy_gate; \
+         DROP TABLE plugin_policy_renewals; DROP TABLE plugin_policy_epochs",
+    )
+    .execute(&mut connection)
+    .await
+    .unwrap();
+    connection.close().await.unwrap();
+}
+
 #[tokio::test]
 async fn backup_restores_retained_package_pins_and_copies_shared_objects_once() {
     let dir = tempfile::tempdir().unwrap();
@@ -461,6 +478,173 @@ async fn backup_restores_exact_review_selection_and_policy_epoch() {
     assert_eq!(after.gate.seal.as_ref().unwrap().operation.as_str(), "backup-seal");
     assert_eq!(after.selection.as_ref().unwrap().revision, before.selection.as_ref().unwrap().revision);
     restored.close().await;
+    assert_renewed_policy_backup(dir.path(), &data, &path, &bytes, actor.id(), &before).await;
+}
+
+#[derive(Debug)]
+struct RenewedPolicyBackup {
+    source: rbit_storage::sqlite::plugin_policy::PolicyGate,
+    renewal: rbit_storage::sqlite::plugin_policy::PolicyRenewalReceipt,
+    current: rbit_storage::sqlite::plugin_policy::PolicyPackageSnapshot,
+    candidate: rbit_storage::sqlite::plugin_policy::PolicySnapshot,
+    ordinary: Vec<rbit_storage::sqlite::plugin_policy::PolicyReceipt>,
+}
+
+/// The preceding fixture asserts an already-sealed state; this tests retention
+/// and backup, while storage renewal tests exercise real capacity exhaustion.
+async fn renew_with_fresh_deny(
+    data: &Path,
+    actor: rbit_core::AccountId,
+    before: &rbit_storage::sqlite::plugin_policy::PolicySnapshot,
+) -> RenewedPolicyBackup {
+    use rbit_core::Timestamp;
+    use rbit_plugin_api::{
+        ExpectedPolicyRevision, PackagePolicyRenewalRequest, PackageReviewIntent, PackageReviewRequest, PolicyGrantRequests,
+    };
+    use rbit_storage::sqlite::{
+        plugin_installations::OperationId,
+        plugin_policy::{ApplyOutcome, PolicyRenewalOutcome},
+    };
+    let database = Database::open(&data.join("rbit.db")).await.unwrap();
+    let store = database.plugin_policy();
+    let source = store.gate(actor).await.unwrap();
+    let package = before.selection.as_ref().unwrap().package.as_ref().unwrap();
+    let mut ordinary = Vec::new();
+    for id in ["backup-review", "backup-select"] {
+        ordinary.push(store.operation(actor, &OperationId::new(id).unwrap()).await.unwrap().unwrap());
+    }
+    let request =
+        PackagePolicyRenewalRequest::new(source.fingerprint.clone().unwrap(), source.seal.as_ref().unwrap().operation.as_str()).unwrap();
+    let PolicyRenewalOutcome::Applied { receipt: renewal, gate } =
+        store.renew(actor, &OperationId::new("backup-renewal").unwrap(), &request, Timestamp::now()).await.unwrap()
+    else {
+        panic!("sealed fixture must renew once");
+    };
+    assert_ne!(gate.epoch, source.epoch);
+    assert_ne!(gate.fingerprint, source.fingerprint);
+    let empty = store.inspect(actor, package.plugin_id()).await.unwrap();
+    assert_eq!(empty.gate, gate);
+    assert!(empty.selection.is_none());
+    assert!(empty.review.is_none());
+    assert!(store.inspect_package(actor, package).await.unwrap().review.is_none(), "old allow cannot become a new-epoch review");
+    let deny = PackageReviewRequest::new(
+        package.clone(),
+        ExpectedPolicyRevision::Absent {},
+        gate.fingerprint.clone().unwrap(),
+        PackageReviewIntent::Deny {},
+        PolicyGrantRequests::new(Vec::new()).unwrap(),
+    )
+    .unwrap();
+    assert!(matches!(
+        store.apply_review(actor, &OperationId::new("backup-current-deny").unwrap(), &deny, Timestamp::now()).await.unwrap(),
+        ApplyOutcome::Applied { .. }
+    ));
+    let current = store.inspect_package(actor, package).await.unwrap();
+    let candidate = store.inspect(actor, package.plugin_id()).await.unwrap();
+    assert_eq!(current.review.as_ref().unwrap().request.intent, PackageReviewIntent::Deny {});
+    assert_eq!(current.review.as_ref().unwrap().revision.get(), 1);
+    assert!(candidate.selection.is_none());
+    assert!(candidate.review.is_none());
+    assert_eq!(database.plugin_settings().desired_enabled(package.plugin_id().as_str()).await.unwrap(), None);
+    database.close().await;
+    RenewedPolicyBackup { source, renewal, current, candidate, ordinary }
+}
+
+async fn assert_renewed_policy_backup(
+    root: &Path,
+    data: &Path,
+    archive: &Path,
+    bytes: &[u8],
+    actor: rbit_core::AccountId,
+    before: &rbit_storage::sqlite::plugin_policy::PolicySnapshot,
+) {
+    use rbit_core::Timestamp;
+    use rbit_storage::sqlite::{plugin_installations::OperationId, plugin_policy::ApplyOutcome};
+    let expected = renew_with_fresh_deny(data, actor, before).await;
+    let backup = root.join("renewed-backup");
+    let output = rbit(data, &["backup", "--output", backup.to_str().unwrap()]);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(backup.join("manifest.json")).unwrap()).unwrap();
+    assert_eq!(manifest["format"], 5);
+    assert_eq!(manifest["plugin_packages"], 1);
+    let copied = backup.join(archive.strip_prefix(data).unwrap());
+    assert_eq!(std::fs::read(&copied).unwrap(), bytes);
+    assert_eq!(std::fs::read_dir(copied.parent().unwrap()).unwrap().count(), 1);
+    let restored = Database::open(&backup.join("rbit.db")).await.unwrap();
+    let store = restored.plugin_policy();
+    let package = &expected.current.package;
+    assert_eq!(store.inspect(actor, package.plugin_id()).await.unwrap(), expected.candidate);
+    assert_eq!(store.inspect_package(actor, package).await.unwrap(), expected.current);
+    assert_eq!(store.renewal_operation(actor, &expected.renewal.id).await.unwrap(), Some(expected.renewal.clone()));
+    for receipt in &expected.ordinary {
+        assert_eq!(store.operation(actor, &receipt.id).await.unwrap(), Some(receipt.clone()));
+    }
+    assert!(matches!(
+        store
+            .apply_review(actor, &OperationId::new("backup-review").unwrap(), &before.review.as_ref().unwrap().request, Timestamp::now())
+            .await
+            .unwrap(),
+        ApplyOutcome::HistoricalReceipt { .. }
+    ));
+    assert_eq!(store.inspect_package(actor, package).await.unwrap(), expected.current, "replayed old allow cannot replace current deny");
+    assert_eq!(restored.plugin_settings().desired_enabled(package.plugin_id().as_str()).await.unwrap(), None);
+    assert_retired_policy_metadata(&backup.join("rbit.db"), before, &expected).await;
+    restored.close().await;
+}
+
+async fn assert_retired_policy_metadata(
+    path: &Path,
+    before: &rbit_storage::sqlite::plugin_policy::PolicySnapshot,
+    expected: &RenewedPolicyBackup,
+) {
+    use sqlx::{ConnectOptions, Connection, Row};
+    let mut connection = sqlx::sqlite::SqliteConnectOptions::new().filename(path).read_only(true).connect().await.unwrap();
+    let epoch = expected.source.epoch.as_ref().unwrap();
+    let package = before.selection.as_ref().unwrap().package.as_ref().unwrap();
+    let registry = sqlx::query("SELECT ordinal,retired,fingerprint,retirement_operation,retired_by,retired_at,seal_operation,seal_request,seal_reason,seal_actor,sealed_at FROM plugin_policy_epochs WHERE epoch=? AND length(CAST(fingerprint AS BLOB))=64 AND length(CAST(retirement_operation AS BLOB)) BETWEEN 1 AND 64 AND length(CAST(seal_operation AS BLOB)) BETWEEN 1 AND 64 AND length(CAST(seal_request AS BLOB)) BETWEEN 1 AND 65536 LIMIT 1")
+        .bind(epoch.as_str()).fetch_one(&mut connection).await.unwrap();
+    assert_eq!(registry.get::<i64, _>("ordinal"), 0);
+    assert_eq!(registry.get::<i64, _>("retired"), 1);
+    assert_eq!(registry.get::<String, _>("fingerprint"), expected.source.fingerprint.as_ref().unwrap().as_str());
+    assert_eq!(registry.get::<String, _>("retirement_operation"), "backup-renewal");
+    assert_eq!(registry.get::<Option<i64>, _>("retired_by"), expected.renewal.actor.map(|a| a.0));
+    assert_eq!(registry.get::<i64, _>("retired_at"), expected.renewal.created_at.0);
+    assert_eq!(registry.get::<String, _>("seal_operation"), "backup-seal");
+    assert_eq!(registry.get::<String, _>("seal_request"), expected.source.seal.as_ref().unwrap().request);
+    let seal = expected.source.seal.as_ref().unwrap();
+    assert_eq!(registry.get::<i64, _>("seal_reason"), 0); // Synthetic HistoryCapacity fixture.
+    assert_eq!(registry.get::<Option<i64>, _>("seal_actor"), seal.actor.map(|a| a.0));
+    assert_eq!(registry.get::<i64, _>("sealed_at"), seal.at.0);
+    let current = sqlx::query("SELECT ordinal,retired,predecessor,created_by_renewal FROM plugin_policy_epochs WHERE epoch=? AND length(CAST(predecessor AS BLOB))=64 AND length(CAST(created_by_renewal AS BLOB)) BETWEEN 1 AND 64 LIMIT 1")
+        .bind(expected.renewal.destination_epoch.as_str()).fetch_one(&mut connection).await.unwrap();
+    assert_eq!(current.get::<i64, _>("ordinal"), 1);
+    assert_eq!(current.get::<i64, _>("retired"), 0);
+    assert_eq!(current.get::<String, _>("predecessor"), epoch.as_str());
+    assert_eq!(current.get::<String, _>("created_by_renewal"), "backup-renewal");
+    let selected = sqlx::query("SELECT revision,version,digest,review_revision,actor,updated_at FROM plugin_selection_heads WHERE epoch=? AND plugin_id=? AND length(CAST(version AS BLOB)) BETWEEN 1 AND 128 AND length(CAST(digest AS BLOB))=64 LIMIT 1")
+        .bind(epoch.as_str()).bind(package.plugin_id().as_str()).fetch_one(&mut connection).await.unwrap();
+    let previous = before.selection.as_ref().unwrap();
+    assert_eq!(selected.get::<i64, _>("revision"), i64::try_from(previous.revision.get()).unwrap());
+    assert_eq!(selected.get::<String, _>("version"), package.version().to_string());
+    assert_eq!(selected.get::<String, _>("digest"), package.archive_digest().as_str());
+    assert_eq!(selected.get::<i64, _>("review_revision"), i64::try_from(previous.review_revision.unwrap().get()).unwrap());
+    assert_eq!(selected.get::<Option<i64>, _>("actor"), previous.actor.map(|a| a.0));
+    assert_eq!(selected.get::<i64, _>("updated_at"), previous.updated_at.0);
+    let reviewed = sqlx::query("SELECT h.request,h.revision,h.actor,h.created_at FROM plugin_review_heads c JOIN plugin_review_history h ON h.epoch=c.epoch AND h.digest=c.digest AND h.revision=c.revision WHERE c.epoch=? AND c.digest=? AND length(CAST(h.request AS BLOB)) BETWEEN 1 AND 65536 LIMIT 1")
+        .bind(epoch.as_str()).bind(package.archive_digest().as_str()).fetch_one(&mut connection).await.unwrap();
+    let old = before.review.as_ref().unwrap();
+    let canonical = rbit_storage::sqlite::plugin_policy::PolicyCommand::Review(old.request.clone()).canonical_request().unwrap();
+    assert_eq!(reviewed.get::<String, _>("request"), canonical);
+    assert_eq!(reviewed.get::<i64, _>("revision"), i64::try_from(old.revision.get()).unwrap());
+    assert_eq!(reviewed.get::<Option<i64>, _>("actor"), old.actor.map(|a| a.0));
+    assert_eq!(reviewed.get::<i64, _>("created_at"), old.created_at.0);
+    let (epochs, renewals): (i64, i64) =
+        sqlx::query_as("SELECT (SELECT COUNT(*) FROM plugin_policy_epochs), (SELECT COUNT(*) FROM plugin_policy_renewals)")
+            .fetch_one(&mut connection)
+            .await
+            .unwrap();
+    assert_eq!((epochs, renewals), (2, 1));
+    connection.close().await.unwrap();
 }
 
 #[tokio::test]
@@ -532,18 +716,13 @@ async fn backup_accepts_pre_package_databases_but_rejects_partial_or_missing_cur
         let dir = tempfile::tempdir().unwrap();
         let data = dir.path().join("data");
         seed_package(&data).await;
+        if damage == "legacy" {
+            drop_policy_graph(&data).await;
+            package_sql(&data, "DELETE FROM _sqlx_migrations WHERE version >= 63").await;
+        }
         package_sql(&data, "DROP TABLE plugin_package_operations").await;
         if damage != "partial" {
             package_sql(&data, "DROP TABLE plugin_installations; DROP TABLE plugin_objects").await;
-        }
-        if damage == "legacy" {
-            package_sql(
-                &data,
-                "DROP TABLE plugin_policy_receipts; DROP TABLE plugin_selection_heads; \
-                 DROP TABLE plugin_review_heads; DROP TABLE plugin_review_history; DROP TABLE plugin_policy_gate",
-            )
-            .await;
-            package_sql(&data, "DELETE FROM _sqlx_migrations WHERE version >= 63").await;
         }
         let backup = dir.path().join("backup");
         let output = rbit(&data, &["backup", "--output", backup.to_str().unwrap()]);
@@ -561,12 +740,7 @@ async fn backup_accepts_pre_policy_schema_but_rejects_partial_or_missing_current
         if damage == "partial" {
             package_sql(&data, "DROP TABLE plugin_policy_receipts").await;
         } else {
-            package_sql(
-                &data,
-                "DROP TABLE plugin_policy_receipts; DROP TABLE plugin_selection_heads; \
-                 DROP TABLE plugin_review_heads; DROP TABLE plugin_review_history; DROP TABLE plugin_policy_gate",
-            )
-            .await;
+            drop_policy_graph(&data).await;
         }
         if damage == "legacy" {
             package_sql(&data, "DROP INDEX plugin_installations_exact; DELETE FROM _sqlx_migrations WHERE version >= 64").await;
@@ -577,6 +751,51 @@ async fn backup_accepts_pre_policy_schema_but_rejects_partial_or_missing_current
         assert_eq!(backup.join("manifest.json").exists(), damage == "legacy");
         if damage == "legacy" {
             assert_eq!(std::fs::read(backup.join(path.strip_prefix(&data).unwrap())).unwrap(), bytes);
+            let restored = Database::open(&backup.join("rbit.db")).await.unwrap();
+            restored.close().await;
+        }
+    }
+}
+
+#[tokio::test]
+async fn backup_accepts_complete_0064_but_rejects_incomplete_0065_even_without_migration_markers() {
+    for damage in ["legacy-64", "missing-epochs", "missing-renewals", "missing-both", "orphan-epochs", "orphan-renewals"] {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        let (path, bytes) = seed_package(&data).await;
+        if damage == "legacy-64" {
+            drop_policy_graph(&data).await;
+            package_sql(&data, "DROP INDEX plugin_installations_exact; DELETE FROM _sqlx_migrations WHERE version >= 65").await;
+            package_sql(&data, include_str!("../../rbit-storage/migrations/0064_plugin_policy.sql")).await;
+        } else {
+            // Deliberate corrupt-schema fixtures use the existing FK-disabled
+            // mutation helper, rather than pretending these are legal migrations.
+            let sql = match damage {
+                "missing-epochs" => "DROP TABLE plugin_policy_epochs",
+                "missing-renewals" => "DROP TABLE plugin_policy_renewals",
+                "missing-both" => "DROP TABLE plugin_policy_renewals; DROP TABLE plugin_policy_epochs",
+                "orphan-epochs" => {
+                    "DROP TABLE plugin_policy_receipts; DROP TABLE plugin_selection_heads; \
+                     DROP TABLE plugin_review_heads; DROP TABLE plugin_review_history; DROP TABLE plugin_policy_gate; \
+                     DROP TABLE plugin_policy_renewals; DELETE FROM _sqlx_migrations WHERE version >= 64"
+                }
+                "orphan-renewals" => {
+                    "DROP TABLE plugin_policy_receipts; DROP TABLE plugin_selection_heads; \
+                     DROP TABLE plugin_review_heads; DROP TABLE plugin_review_history; DROP TABLE plugin_policy_gate; \
+                     DROP TABLE plugin_policy_epochs; DELETE FROM _sqlx_migrations WHERE version >= 64"
+                }
+                _ => unreachable!(),
+            };
+            package_sql(&data, sql).await;
+        }
+        let backup = dir.path().join("backup");
+        let output = rbit(&data, &["backup", "--output", backup.to_str().unwrap()]);
+        let accepted = damage == "legacy-64";
+        assert_eq!(output.status.success(), accepted, "{damage}: {}", String::from_utf8_lossy(&output.stderr));
+        assert_eq!(backup.join("manifest.json").exists(), accepted, "{damage}");
+        if accepted {
+            assert_eq!(std::fs::read(backup.join(path.strip_prefix(&data).unwrap())).unwrap(), bytes);
+            // Real restore migrates the validated old five-table snapshot to0065.
             let restored = Database::open(&backup.join("rbit.db")).await.unwrap();
             restored.close().await;
         }

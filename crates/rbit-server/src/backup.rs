@@ -338,25 +338,38 @@ async fn read_package_inventory(connection: &mut sqlx::SqliteConnection) -> anyh
 /// A missing pre-policy schema is supported; a partial/current missing ledger must
 /// never be silently restored as unreviewed or open state.
 async fn validate_package_policy_snapshot(connection: &mut sqlx::SqliteConnection) -> anyhow::Result<()> {
-    let tables: i64 = sqlx::query_scalar(
+    let legacy: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name IN \
          ('plugin_policy_gate', 'plugin_review_history', 'plugin_review_heads', \
           'plugin_selection_heads', 'plugin_policy_receipts')",
     )
     .fetch_one(&mut *connection)
     .await?;
-    if tables != 5 {
-        let migrations: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = '_sqlx_migrations'")
-            .fetch_one(&mut *connection)
-            .await?;
-        let current: bool = if migrations == 0 {
-            false
-        } else {
-            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM _sqlx_migrations WHERE version >= 64)").fetch_one(&mut *connection).await?
-        };
-        anyhow::ensure!(tables == 0 && !current, "incomplete generic plugin policy ledger in backup snapshot");
+    let epochs: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name IN \
+         ('plugin_policy_epochs', 'plugin_policy_renewals')",
+    )
+    .fetch_one(&mut *connection)
+    .await?;
+    let migrations: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = '_sqlx_migrations'")
+        .fetch_one(&mut *connection)
+        .await?;
+    let (policy_marker, epoch_marker): (bool, bool) = if migrations == 0 {
+        (false, false)
+    } else {
+        sqlx::query_as(
+            "SELECT EXISTS(SELECT 1 FROM _sqlx_migrations WHERE version >= 64), EXISTS(SELECT 1 FROM _sqlx_migrations WHERE version >= 65)",
+        )
+        .fetch_one(&mut *connection)
+        .await?
+    };
+    if legacy == 0 && epochs == 0 && !policy_marker {
         return Ok(());
     }
+    let complete_legacy = legacy == 5 && epochs == 0 && !epoch_marker;
+    let complete_epochs = legacy == 5 && epochs == 2;
+    anyhow::ensure!(complete_legacy || complete_epochs, "incomplete generic plugin policy ledger in backup snapshot");
+    // Storage owns old0064/new0065 decoding and all bounded graph validation.
     rbit_storage::sqlite::plugin_policy::validate_snapshot(connection)
         .await
         .map_err(|_| anyhow::anyhow!("invalid generic plugin policy ledger in backup snapshot"))
