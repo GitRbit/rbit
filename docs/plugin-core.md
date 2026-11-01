@@ -222,5 +222,7 @@ It exercises validation only; it does not install or execute packages.
 
 The host [package installation coordinator and journal](plugin-packages.md) retain
 validated archive objects with durable version pins and backup coverage. These
-records remain disabled and unreviewed; administrative transport, trust and worker
-execution are subsequent stages.
+records remain disabled and unreviewed. Administrator HTTP/CLI transport and explicit
+Unix root provisioning are available; publisher review/grants, managed workers and
+complete recovery remain subsequent stages. Windows HTTP uploads await supported
+host root verification.

@@ -1,5 +1,40 @@
 # Plugin core handoff
 
+## Administrator package transport and setup — 2026-11-01
+
+Published package head: `c9469e7`. Admin-scoped PAT endpoints now stream canonical
+archives through owned bounded work and inspect known operation keys. Authentication
+and live administrator checks precede body polling. Absolute deadlines, cooperative
+frame yielding and waiter cancellation wake stalled readers. Installation grants neither trust nor execution authority; runtime selection
+remains unavailable.
+
+The CLI prints its recovery key before upload, streams file bytes, rejects redirects
+and retries, and caps responses at 64 KiB with exact-key checks before success. Pending
+durability exits 8. Local Unix `package-store provision/check` resolves deployment
+storage without opening SQLite/redb, creates only missing private synchronized roots,
+and refuses unsafe existing paths. Trusted ownership/stable ancestors remain host
+prerequisites. Windows HTTP uploads fail 503 before body reads until supported ACL
+verification exists; GET inspection and lower-level trusted-host primitives remain.
+
+The final local Web suite passed 635 tests with one manual benchmark ignored; the
+final server suite passed 32 tests across binary, backup and real restart suites.
+Strict Rust 1.99 workspace/all-target Clippy, formatting, whitespace and all four
+dependency guards passed. A built-binary provision/check test preserved an invalid
+SQLite sentinel and created no key or redb file. These package checks supplement the
+older full-workspace evidence below; they are not a new full-workspace total.
+
+[Exact-head CI](https://github.com/GitRbit/rbit/actions/runs/41280718047) remains required.
+The preceding `72841fd` Linux run passed 2,419/2,421 tests; two established fixtures
+failed with explicit disk-full errors. CI now retains its temporary 8 GiB compilation
+swap through `nextest --no-run`, then releases only that swap before the unchanged
+runtime test command. Hosted resource validation and native Windows tests remain
+pending on the published head.
+
+The goal remains active: complete recovery, publisher review/grants, managed native
+workers, first-party service/Web separation, optional Wasm and final performance/release
+gates are still required. PR #47 remains open and unmerged. Earlier dated sections
+retain their validation provenance.
+
 ## Durable package records and backup integration — 2026-11-01
 
 The host coordinator now retains validated archives without activation or trust
@@ -23,7 +58,7 @@ durable object and their private files are omitted. Objects remain append-only;
 full reconciliation and garbage collection require further coordination.
 
 See [package contracts and remaining boundaries](plugin-packages.md). The full
-local workspace passes 2,423 tests, zero failures and five ignored manual benchmarks
+local workspace at `4384603` passed 2,423 tests, zero failures and five ignored manual benchmarks
 across 74 suites. Strict Rust 1.99 workspace/all-target Clippy, formatting and all
 four core/UI dependency profiles pass. Focused evidence includes nine core-only
 coordinator tests, eleven backup integration tests, two backup helpers, seven ledger
@@ -35,7 +70,7 @@ store tests. Its only reported failure was newer diagnostic-assertion lint rules
 `0caf4c1` fixes those, and the complete local 1.99 lint now passes. That earlier CI
 result does not certify the installation coordinator/backup increment or Windows.
 
-The broader goal remains active: administrator HTTP/CLI transport, complete package
+The broader goal remains active: complete package
 recovery, publisher policy/grants, independently installed native workers, first-party
 service/Web ports, the Wasm adapter and unresolved performance/release gates remain
 required. PR #47 stays open and unmerged.
