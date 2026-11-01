@@ -5,6 +5,17 @@ The earlier [frontend baseline](../scripts/perf/BASELINE.md) used a debug build 
 heavy competing load; its browser sweep was explicitly invalid because CSS failed to
 load and the pane was hidden. It is not a before/after performance baseline.
 
+## Isolated i18n presentation result — 2026-11-01
+
+The separate [isolated i18n report](performance-i18n-extraction.md) records the
+prospectively registered A `d3dc898` versus B `b951eed` comparison. All ten warm
+HTTP p95 family-corrected upper bounds meet +2% (maximum +1.507087%); the descriptive
+within-process sensitivity maximum is +1.910273%. It retains all 417,600 confirmation
+records, the pilot-only N freeze and all thirty control-cell intervals. Shared-desktop
+activity and snapshot-only conditions remain explicit. This result does not resolve
+the older shared-UI experiment or certify later Icon/Actions source, other platforms,
+allocations or startup. The older follow-up evidence below describes its own revisions.
+
 ## Reproduction protocol
 
 Use the [paired harness instructions](../scripts/perf/README.md#paired-http-measurements).

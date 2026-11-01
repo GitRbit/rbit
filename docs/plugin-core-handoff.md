@@ -1,5 +1,22 @@
 # Plugin core handoff
 
+## Isolated i18n warm HTTP criterion met — 2026-11-01
+
+The [isolated i18n report](performance-i18n-extraction.md) closes the registered
+ten-cell warm HTTP p95 criterion for exactly A `d3dc898` and B `b951eed`.
+Frozen tooling `274f598` retained all 417,600 confirmation records; 348,000 measured
+records and 69,600 predefined warmups cover 490 process pairs. All ten corrected
+upper changes are ≤+2% (maximum +1.507087%); the descriptive sensitivity maximum is
++1.910273%. The report includes all thirty separate control-cell intervals,
+prospective pilot/N freeze, complete source/binary/evidence hashes and shared-desktop
+limitations. Hosted checks at the frozen tooling head were 11/11 green, with 2,523
+Linux and 2,504 native Windows tests; those are functional counts, not timing data.
+
+The previous shared-UI result remains inconclusive. This acceptance does not certify
+later Icon/Actions changes, allocations, startup or another platform, and does not
+make native package execution available. PR #47 and the wider modularization goal
+remain active.
+
 ## Shared fixed SVG Icon — 2026-11-01
 
 `rbit-ui::Icon` now owns the fixed 76-name SVG catalog. Its inline const constructor
@@ -245,14 +262,12 @@ of each arm returned the expected 422 validation document; after clean shutdown,
 pack column and archive BLOB remained identical to the original seed. No SQL privilege
 injection, synthetic signed cookie or package execution is involved. Those checks and
 the registered smoke are functional only and record concurrent compilation honestly.
-All required feature-profile artifacts and idle-machine conditions must be established
-before the same-binary pilot, frozen sample-size choice and confirmatory measurements.
-No pilot, warmup or measured latency rounds have been collected at this checkpoint.
-
-No new performance result is established here. The earlier 0075cec-to-3b9 shared-UI
-comparison remains inconclusive at the 2% repository-page bound and does not isolate
-this change. Any subsequent paired comparison must retain fresh-process replication,
-A/A controls and identical feature profiles/data/toolchain. Native package execution,
+That functional-only checkpoint was followed by the completed registered pilot and
+confirmation documented in the [isolated i18n report](performance-i18n-extraction.md).
+The scoped ten-cell p95 criterion was met; the separate earlier 0075cec-to-3b9
+shared-UI comparison remains inconclusive and does not isolate this change.
+Future comparisons still require independent process replication, controls and
+identical feature profiles/data/toolchain. Native package execution,
 broker grants and runtime sandbox/worker admission remain unavailable; this compiled
 first-party extraction changes none of those policy boundaries. PR #47 and the
 modularization goal remain active.
