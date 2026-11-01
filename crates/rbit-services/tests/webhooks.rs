@@ -702,18 +702,22 @@ async fn member_payloads_follow_collaborator_changes() {
     let requests = receiver.wait_for(4).await;
     let members: Vec<Value> =
         requests.iter().filter(|request| request.header("X-GitHub-Event") == Some("member")).map(Received::json).collect();
-    let actions: Vec<_> = members.iter().map(|payload| payload["action"].as_str().unwrap_or_default().to_owned()).collect();
+    assert_eq!(members.len(), 3);
+    // Deliveries run concurrently; assert exact actions without assuming HTTP arrival order.
+    let mut actions: Vec<_> = members.iter().map(|payload| payload["action"].as_str().unwrap_or_default().to_owned()).collect();
+    actions.sort();
     assert_eq!(actions, ["added", "edited", "removed"]);
-    assert_eq!((members[0]["member"]["login"].as_str(), members[0]["sender"]["login"].as_str()), (Some("bob"), Some("olga")));
-    assert_eq!(members[0]["changes"]["permission"]["to"], "read");
+    let added = members.iter().find(|payload| payload["action"] == "added").unwrap();
+    let edited = members.iter().find(|payload| payload["action"] == "edited").unwrap();
+    let removed = members.iter().find(|payload| payload["action"] == "removed").unwrap();
+    assert!(members.iter().all(|payload| payload["member"]["login"] == "bob"));
+    assert_eq!((added["member"]["login"].as_str(), added["sender"]["login"].as_str()), (Some("bob"), Some("olga")));
+    assert_eq!(added["changes"]["permission"]["to"], "read");
     assert_eq!(
-        (members[1]["changes"]["permission"]["from"].as_str(), members[1]["changes"]["permission"]["to"].as_str()),
+        (edited["changes"]["permission"]["from"].as_str(), edited["changes"]["permission"]["to"].as_str()),
         (Some("read"), Some("write"))
     );
-    assert_eq!(
-        (members[2]["sender"]["login"].as_str(), members[2]["repository"]["full_name"].as_str()),
-        (Some("bob"), Some("acme/rocket"))
-    );
-    assert_eq!(members[2]["organization"]["login"], "acme");
+    assert_eq!((removed["sender"]["login"].as_str(), removed["repository"]["full_name"].as_str()), (Some("bob"), Some("acme/rocket")));
+    assert_eq!(removed["organization"]["login"], "acme");
     assert!(members.iter().all(|payload| !payload.to_string().contains("@example.com")), "no email addresses");
 }
