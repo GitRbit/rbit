@@ -680,6 +680,7 @@ async fn assert_policy_recovery_reachable(fixture: &Fixture) {
         "/api/v1/admin/plugin-policy",
         "/api/v1/admin/plugin-policy-operations/known-key",
         "/api/v1/admin/plugin-package-operations/known-key",
+        "/api/v1/admin/plugin-policy-renewals/known-key",
     ] {
         assert_eq!(fixture.get(path).await.0, StatusCode::UNAUTHORIZED, "host PAT guard remains active at {path}");
     }
@@ -697,6 +698,7 @@ async fn assert_policy_recovery_reachable(fixture: &Fixture) {
         ("/api/v1/admin/plugin-policy", StatusCode::OK),
         ("/api/v1/admin/plugin-policy-operations/known-key", StatusCode::NOT_FOUND),
         ("/api/v1/admin/plugin-package-operations/known-key", StatusCode::NOT_FOUND),
+        ("/api/v1/admin/plugin-policy-renewals/known-key", StatusCode::NOT_FOUND),
     ] {
         let response = fixture
             .router

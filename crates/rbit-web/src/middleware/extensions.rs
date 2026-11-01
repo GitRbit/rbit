@@ -65,6 +65,7 @@ fn reserved_host_route(route: &str) -> bool {
             | "/api/v1/admin/plugin-policy/candidates/{plugin_id}"
             | "/api/v1/admin/plugin-policy/packages/{plugin_id}/versions/{full_version}/archives/{digest}"
             | "/api/v1/admin/plugin-policy-operations/{operation_id}"
+            | "/api/v1/admin/plugin-policy-renewals/{operation_id}"
             | "/api/v1/admin/plugin-package-operations/{operation_id}"
             | "/admin/restart"
             | "/admin/restart/status"
@@ -318,6 +319,10 @@ mod tests {
                 "/api/v1/admin/plugin-package-operations/{operation_id}",
                 get(|| async { StatusCode::UNAUTHORIZED }).put(|| async { StatusCode::UNAUTHORIZED }),
             )
+            .route(
+                "/api/v1/admin/plugin-policy-renewals/{operation_id}",
+                get(|| async { StatusCode::UNAUTHORIZED }).put(|| async { StatusCode::UNAUTHORIZED }),
+            )
             .route("/admin", get(|| async { "must not run" }))
             .route("/api/v1/admin/unrelated", get(|| async { "must not run" }))
             .layer(from_fn_with_state(registry, layer))
@@ -341,6 +346,8 @@ mod tests {
             ),
             ("GET", "/api/v1/admin/plugin-policy-operations/known-key", StatusCode::UNAUTHORIZED),
             ("PUT", "/api/v1/admin/plugin-policy-operations/known-key", StatusCode::UNAUTHORIZED),
+            ("GET", "/api/v1/admin/plugin-policy-renewals/known-key", StatusCode::UNAUTHORIZED),
+            ("PUT", "/api/v1/admin/plugin-policy-renewals/known-key", StatusCode::UNAUTHORIZED),
             ("GET", "/api/v1/admin/plugin-package-operations/known-key", StatusCode::UNAUTHORIZED),
             ("PUT", "/api/v1/admin/plugin-package-operations/known-key", StatusCode::UNAUTHORIZED),
         ] {
