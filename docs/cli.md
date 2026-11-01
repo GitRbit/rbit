@@ -108,6 +108,52 @@ result is pending and exits 8; complete exits 0, a recorded error exits
 Windows servers currently refuse uploads until supported host root verification is
 available; operation inspection remains available.
 
+## Passive plugin policy administration
+
+`rbit plugin policy` uses an active administrator's Admin-scoped PAT against the
+selected instance. These commands record policy metadata only. Successful policy
+results report execution unavailable; approving native full service-user trust or selecting
+an archive never starts a worker, enables a plugin or issues a broker grant.
+
+| Command | Purpose |
+| --- | --- |
+| `rbit plugin policy status` | Inspect the gate; never initialize it. |
+| `rbit plugin policy prepare` | Explicitly initialize a virgin policy ledger. |
+| `rbit plugin policy inspect PLUGIN_ID` | Inspect current candidate and review state. |
+| `rbit plugin policy inspect-package PLUGIN_ID FULL_VERSION ARCHIVE_DIGEST` | Read authoritative declarations for one installed archive. |
+| `rbit plugin policy review --request FILE [--operation-id ID]` | Record an explicit review decision. |
+| `rbit plugin policy select --request FILE [--operation-id ID]` | Select the exact candidate under the current allowed review. |
+| `rbit plugin policy clear --request FILE [--operation-id ID]` | Clear selection while retaining its revision; does not revoke review. |
+| `rbit plugin policy operation ID` | Recover an immutable receipt. |
+
+Use `--hostname URL` (or `RBIT_HOST`) consistently for all commands in an operation.
+Prepare is an explicit change, not a prerequisite automatically performed by reads
+or mutations. It cannot reopen a sealed gate. Before constructing a request file,
+inspect the exact installed package and gate and choose the decision explicitly.
+Request files contain strict SDK request JSON, without the HTTP command envelope;
+unknown fields, invalid identities and noncanonical revision values are rejected.
+Files and the resulting command envelope are each limited to 64 KiB. Current host
+policy rejects all nonempty grants. Full version strings include SemVer build
+metadata; digest changes never inherit approval.
+
+Review/select/clear print a supplied or randomly generated operation key before
+sending. Retain it and recover with `rbit plugin policy operation ID` on the same
+instance, plus `rbit plugin policy status` and candidate inspection. A lost prepare
+response instead recovers through status because prepare has no receipt. A 404
+receipt does not prove rollback: a permanent capacity seal can commit without a
+receipt. Timeouts/errors can also leave an owned transaction completing after the
+HTTP waiter has gone away. There is no automatic retry, redirect replay or
+server-provided URL follow.
+
+Applied and historical-receipt outcomes exit 0, but historical output explicitly
+states no new approval or selection was applied. Its summary retains the original
+review intent or selected review revision, which may differ from current policy.
+Structured capacity/already-sealed outcomes preserve their JSON evidence and exit
+1. Other non-success responses also exit nonzero without claiming rollback.
+Responses are bounded to 64 KiB. Native intent acknowledges full service-user OS
+access; it does not create a broker sandbox. Wasm intent never permits native
+fallback. Runtime admission and worker enforcement remain subsequent stages.
+
 ## Local package store setup
 
 On Unix, stop the server before provisioning a new store. Run as the service

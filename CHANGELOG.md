@@ -20,6 +20,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Admin-PAT HTTP policy endpoints and `rbit plugin policy` commands for explicit
+  prepare, exact-package inspection, review, selection, clearing and retained-key
+  receipt recovery. Strict bounded requests, compact historical decision summaries
+  and committed-seal outcomes preserve recovery evidence without enabling code,
+  issuing broker grants or automatically approving/retrying a mutation.
+
 - Durable digest-bound administrator reviews, candidate selections with retained
   clearing revisions, exact operation receipts and a persistent fail-closed policy
   seal. Candidates remain unavailable for execution; no broker grant is issued.

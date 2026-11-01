@@ -1,7 +1,9 @@
 # Plugin package storage and installation records
 
-Authenticated host APIs and the `rbit plugin` CLI retain packages. Publisher
-review, native workers and the sandbox adapter are subsequent stages. Installing an archive here never executes it or enables it.
+Authenticated host APIs and the `rbit plugin` CLI retain packages and record
+explicit administrator review and candidate selection. Native workers and the
+sandbox adapter are subsequent stages. Installing or reviewing an archive here
+never executes it or enables it.
 
 `rbit-plugin-api` defines bounded declarations for data, native and Wasm packages.
 Requested capabilities and resource budgets grant no authority. Portable payload
@@ -109,8 +111,9 @@ live resource incarnation before any mutation or admission.
 Migration `0064` retains administrator review history, current review heads,
 candidate-selection heads, operation receipts and a persistent policy gate. The
 `Services.package_policy` facade exposes explicit initialization, inspection, review,
-selection, clearing and operation recovery. HTTP/CLI adapters for these policy
-operations are a subsequent increment; existing upload commands only install bytes.
+selection, clearing and operation recovery through bounded administrator HTTP
+routes and `rbit plugin policy` commands. Upload commands only install bytes;
+review and selection are separate explicit requests.
 
 Initialization requires a current active administrator and a virgin empty policy
 ledger. It generates a persistent random epoch and host-owned fingerprint. Reads
@@ -207,3 +210,65 @@ cannot establish the private-root prerequisite. GET journal inspection remains
 available. The low-level Windows store/coordinator APIs still require a trusted
 host to establish their documented root preconditions; a marker file or matching
 archive bytes do not prove private ACLs or durable provisioning.
+
+
+## Administrator policy transport
+
+Every policy route requires an Admin-scoped PAT belonging to a current active site
+administrator. Mutating handlers reload live administrator authority before polling
+JSON bodies; the owned transaction rechecks it with identity and revision fences.
+Session cookies, runner credentials and workflow task tokens do not authorize these
+routes. Successful and structured seal results report `execution: "unavailable"`, including
+native full service-user trust reviews and selected candidates. No broker grant,
+enabled intent or executable activation is issued.
+
+The exact policy and package-operation route patterns bypass optional request
+hooks so an extension cannot hide recovery receipts or block host policy changes.
+Host authentication and transport guards still apply; unrelated API routes remain
+subject to hooks.
+
+Paths below are relative to `/api/v1`:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/admin/plugin-policy` | Inspect the gate without initializing it. |
+| POST | `/admin/plugin-policy/prepare` | Explicit bootstrap with `{"schema_version":1}`. |
+| GET | `/admin/plugin-policy/candidates/{plugin_id}` | Inspect selected/cleared state and its current review. |
+| GET | `/admin/plugin-policy/packages/{plugin_id}/versions/{full_version}/archives/{digest}` | Inspect declarations of an exact installed archive. |
+| PUT | `/admin/plugin-policy-operations/{operation_id}` | Apply a strict review, select or clear request. |
+| GET | `/admin/plugin-policy-operations/{operation_id}` | Recover an immutable receipt for a retained key. |
+
+PUT accepts `{"command":"review|select|clear","request":...}`, where `command` is
+one of those three strings and `request` is the corresponding strict SDK request.
+Choose the 1–64 character lowercase ASCII/digit/hyphen operation key before PUT.
+Each request carries the expected host fingerprint and exact revision expectations;
+review/select also name the exact installed full version and archive digest. The
+current host accepts only empty grants. Native approval requires the explicit
+`native_full_service_user_trust` intent; Wasm approval requires
+`wasm_sandbox_required` and never permits native fallback. These decisions record
+metadata, not a sandbox or permission to run.
+
+Use exactly `application/json` with absent or `identity` content encoding. Complete
+JSON bodies, including unknown-length/chunked input, are capped at 64 KiB before
+parsing, with a 10-second body deadline inside the 25-second mutating-handler
+deadline. Empty ready frames yield cooperatively. Compact responses are capped at
+64 KiB. They exclude canonical requests, complete archive file inventories and
+internal storage errors. Exact-package inspection exposes declared kind, host API,
+capabilities and budgets, with an empty recognized-capability catalog. Candidate inspection echoes
+`plugin_id` even when no selection exists.
+
+An `applied` 200 records the requested metadata. A `historical_receipt` 200 acknowledges
+the original receipt without applying it again or restoring an old allow. Receipt
+summaries retain the original review intent or selection's expected review revision;
+operation GET labels receipts historical. Query current candidate/gate state
+separately: an old native allow receipt does not override a later deny. Separate
+receipt and gate queries are not one atomic snapshot.
+
+A structured `capacity_sealed` 409 means the permanent seal committed while the
+requested review/selection/clear was rejected; no ordinary receipt was created.
+`gate_sealed` 409 reports an already closed gate. Neither outcome reopens policy.
+Missing receipts, errors and lost responses never establish rollback. Retain the
+same key and inspect both operation and gate before an explicit retry; the CLI
+never retries automatically or follows a returned URL. Prepare has no receipt:
+recover its outcome through gate inspection. Dropping a policy HTTP waiter does not
+cancel its admitted transaction owner, which remains tracked through commit.

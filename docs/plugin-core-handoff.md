@@ -1,5 +1,34 @@
 # Plugin core handoff
 
+## Bounded policy administration adapters — 2026-11-01
+
+Admin-PAT HTTP routes and `rbit plugin policy` commands now expose explicit
+preparation, exact installed-package inspection, review, selection, clearing and
+known-key receipt recovery. JSON commands and responses are bounded to 64 KiB;
+mutating handlers enforce body and command deadlines. Live administrator checks
+precede body polling, and the owned FULL transaction repeats authority and CAS.
+Exact policy and package-operation routes bypass optional hooks while retaining
+host guards. Other administrator API routes remain subject to hooks.
+
+The CLI prints its operation key before mutation, uses fixed instance-relative
+destinations and never retries or follows returned URLs. It checks exact receipt
+identity and decision summaries before success. Historical receipts never imply a
+new approval. A committed capacity seal is preserved as structured non-success;
+a missing receipt or lost response never establishes rollback. Prepare has no
+receipt and recovers through gate inspection. Every view remains execution
+unavailable; no worker, enabled intent or broker grant is created.
+
+Focused HTTP tests passed all six cases, including real-router waiter loss behind
+an independent SQLite writer, native review/select/deny/historical replay across
+fresh Services composition, and clear/stale-clear tombstone behavior. Full adapter
+validation passed: the complete Web suite passed 641 tests with four expected
+ignores, and the complete server suite passed 40 tests. Strict Rust 1.99
+workspace/all-target Clippy, formatting, whitespace and dependency guards passed.
+After extracting two long test scenarios into helpers, all six HTTP policy cases
+and the hook-recovery integration scenario passed again. Functional tests used
+unchanged Rust 1.95. Exact-head hosted CI remains required after publication.
+The broader modularization goal and PR #47 remain active.
+
 ## Durable review and candidate policy — 2026-11-01
 
 Policy storage is committed as `a38cf3e`, owned Services as `808e363` and backup
