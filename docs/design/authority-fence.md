@@ -145,8 +145,8 @@ and normally returned service failures are distinguished from unknown settlement
 The existing missing-account behavior, reset-link invalidation, session index and
 post-revocation audit wording remain intact. SQL and KV commits are sequential:
 a failure after SQL can leave a changed password and old sessions. This is not
-crash-safe revocation or a certificate for self-service or deferred
-password-change guards, independently opened stores or physical ownership.
+crash-safe revocation or a certificate for independently opened stores or
+physical ownership. Self-service continuation ownership is described below.
 
 Email-link reset redemption uses that same coordinator, reservation limit and
 Recovery task owner. Its private SQL transaction and captured-time expiry policy
@@ -158,12 +158,11 @@ loss. Admin/reset commands share capacity and shutdown, with no second owner poo
 A reset committed before KV failure can consume the link and change the password
 without ending sessions; retrying that consumed link cannot finish revocation.
 Durable reconciliation and credential enforcement remain future prerequisites.
-Self-service response attribution and deferred password-change guards remain outside
-this coverage. Existing reset preflight and captured-time freshness semantics are
-preserved, rather than promising a wall-clock check at commit time.
+Existing reset preflight and captured-time freshness semantics are preserved,
+rather than promising a wall-clock check at commit time.
 
-Storage also offers a typed self-password continuation API, without adoption by
-existing service flows. Its separate two-command admission retains an acquired
+Storage offers a typed self-password continuation API. Its separate two-command
+admission retains an acquired
 enrollment from conditional password SQL commit into an opaque pending value.
 A prepared session batch checks every value against its receiving factory's SQL
 domain, coordinator, exact KV instance and derived account before IO. The actual
@@ -171,9 +170,31 @@ KV worker owns all slots and tokens through one revocation transaction, completi
 followers while its resumed leader holds serialization and the leader last.
 Lost SQL-result delivery, dropped pending values and async-owner loss are uncertain;
 a late worker success cannot clear an earlier unknown outcome. Database close
-waits these retained leases, including pending values held by callers. This API
-adds no service audit/event or response-guard ownership guarantee; those existing
-paths remain unchanged until a separate adoption increment.
+waits these retained leases, including pending values held by callers.
+
+Self-service password changes use that typed continuation and a separate bounded
+service flow owner. One preadmitted slot/runtime/tracker lease spans independently
+tracked initial and final phases, including overlapping audits. Two slots are
+shared by each AccountService construction and its clones; independent service
+constructions retain separate existing response ledgers. Database-clone storage
+capacity is shared separately, and forced/reset admission remains independent.
+Mere pre-body response guards consume no new operation or waiting-task slot.
+
+After SQL commit, guarded changes transfer opaque pending commitments into the
+user ledger before the existing password audit/event. Serialization is released,
+so later handler email/rename calls can proceed. Finish synchronously freezes the
+existing status/broadcast attribution and dispatches preowned cleanup before
+returning a receiver-only future; unpolled/dropped waiters cannot cancel it. Guard
+Drop uses the captured runtime and existing lease. The last successful guard takes
+both its attributed item and every residual item into one end-all batch. No-action
+guards leave commitments owned. Narrow finalizer handles do not retain the ledger.
+Without a guard, revoke-all and its audit finish before password success/event.
+Deferred success events still precede response cleanup and cannot be retracted on
+later KV failure. Cleanup only deletes, so a session revoked by force is not
+resurrected by a later keep-current decision. Prepare stops new commands while
+already-owned finalizers remain eligible; shutdown waits service/audit and storage
+leases. Forgotten direct guards can prolong that wait. This does not add durable
+reconciliation, cookie enforcement after partial failure or physical-worker proof.
 
 A snapshot describes enrolled work at one instant. It grants no authority. A
 successful drain retains the shared permit in an owned guard, preventing enrolled
@@ -186,8 +207,7 @@ its active enrollment in an opaque suspended token. Other writers can proceed,
 but both drains continue waiting for that unfinished operation. Resuming retains
 the same capacity slot and is allowed after writer stop; dropping the token or
 its resume future records uncertainty. Active counts include suspended work,
-while at most one operation holds serialization. Existing service flows do
-not use this primitive yet; self-service response finalization remains uncovered.
+while at most one operation holds serialization.
 
 Suspended follower completion is a trusted application acknowledgement for a
 coalesced effect. A typed caller must validate domain and account pairing before

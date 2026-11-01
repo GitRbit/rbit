@@ -224,8 +224,15 @@ impl Services {
         let releases = ReleaseService::new(ctx.clone());
         let lfs = LfsService::new(ctx.clone());
         let setup_token = accounts::bootstrap_setup_token(&config, &database.accounts()).await?;
-        let accounts =
-            AccountService::new(Arc::clone(&config), database.accounts(), kv.sessions(), instance.clone(), ctx.events.clone(), setup_token);
+        let accounts = AccountService::new(
+            Arc::clone(&config),
+            database.accounts(),
+            kv.sessions(),
+            instance.clone(),
+            ctx.events.clone(),
+            setup_token,
+            database.self_password_changes(kv)?,
+        );
 
         let issues = IssueService::new(ctx.clone(), timeline.clone(), references.clone(), throttle.clone());
         issues.index_existing_mentions().await?;
@@ -315,9 +322,11 @@ impl Services {
     /// Stops new owned password changes before request draining.
     pub fn prepare_shutdown(&self) {
         self.recovery.prepare_shutdown();
+        self.accounts.prepare_password_shutdown();
+        self.context.database.prepare_self_password_changes_shutdown();
     }
 
-    /// Drains owned forced-password work before closing stores, then stops background
+    /// Drains owned password work before closing stores, then stops background
     /// subsystems using their existing bounds. Credential backend settlement is not
     /// aborted to manufacture a successful bounded shutdown; unresolved work must remain
     /// owned. This does not certify physical worker termination or other credential flows.
@@ -325,6 +334,12 @@ impl Services {
         self.prepare_shutdown();
         if let Err(error) = self.recovery.shutdown().await {
             tracing::error!(%error, "forced password shutdown remains uncertain; no clean ownership release");
+        }
+        if let Err(error) = self.accounts.drain_password_changes().await {
+            tracing::error!(%error, "self password task shutdown remains uncertain; no clean ownership release");
+        }
+        if let Err(error) = self.context.database.drain_self_password_changes().await {
+            tracing::error!(%error, "self password storage shutdown remains uncertain; no clean ownership release");
         }
         tokio::join!(
             self.updates.shutdown(),

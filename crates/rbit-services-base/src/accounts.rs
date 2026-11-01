@@ -29,6 +29,9 @@ use rbit_storage::{AccountStore, NewUser, SessionRecord, SessionStore, kv::Store
 use subtle::ConstantTimeEq;
 use tokio::sync::broadcast::{self, error::TryRecvError};
 
+use crate::credentials::self_service::{Completion, Decision, DeferredCommit, FlowLease, SelfPasswordOwner};
+use rbit_storage::sqlite::credential_changes::{PendingSelfPasswordChange, SelfPasswordAction, SelfPasswordChanges};
+
 use crate::{
     DomainEvent, EventBus, InstanceService, ServiceError,
     audit::{AuditAction, AuditEntry, AuditService},
@@ -104,6 +107,8 @@ pub struct AccountService {
     events: EventBus,
     audit: AuditService,
     password_changes: Arc<PasswordChangeLedger>,
+    self_passwords: SelfPasswordOwner,
+    self_changes: SelfPasswordChanges,
     /// Required to sign up the first account; `None` when the instance started with users.
     setup_token: Option<Arc<str>>,
 }
@@ -117,10 +122,22 @@ impl AccountService {
         instance: InstanceService,
         events: EventBus,
         setup_token: Option<String>,
+        self_changes: SelfPasswordChanges,
     ) -> Self {
         let audit = AuditService::from_store(accounts.audit_log());
         let setup_token = setup_token.map(Arc::from);
-        Self { config, accounts, sessions, instance, events, audit, password_changes: Arc::default(), setup_token }
+        Self {
+            config,
+            accounts,
+            sessions,
+            instance,
+            events,
+            audit,
+            password_changes: Arc::default(),
+            self_passwords: SelfPasswordOwner::default(),
+            self_changes,
+            setup_token,
+        }
     }
 
     /// Whether the public sign-up form is available (an instance setting administrators
@@ -347,45 +364,43 @@ impl AccountService {
         self.enforcer().record_ended_sessions(user, removed).await;
     }
 
-    /// A self-service change can retain its guarded current session. All other sessions
-    /// end when that request completes; without a guard they end before returning.
-    pub(crate) async fn password_changed_preserving_current(&self, user: AccountId) -> Result<(), ServiceError> {
-        if self.password_changes.on_event(user) {
-            self.enforcer().end_sessions(user, None).await?;
-        }
-        Ok(())
+    /// A SQL commitment is handed to the ledger before publishing its event. No
+    /// serial permit crosses this service return or any subsequent handler call.
+    pub(crate) async fn password_changed_preserving_current(
+        &self,
+        user: AccountId,
+        change: PendingSelfPasswordChange,
+        lease: Arc<FlowLease>,
+    ) -> Result<(), ServiceError> {
+        let commit = DeferredCommit::new(change, lease, self.self_changes.clone(), self.enforcer(), user);
+        self.password_changes.committed(user, commit).map_or_else(Completion::default, Decision::dispatch).wait().await
+    }
+
+    pub(crate) fn self_password_owner(&self) -> (&SelfPasswordOwner, &SelfPasswordChanges) {
+        (&self.self_passwords, &self.self_changes)
+    }
+    pub(crate) fn prepare_password_shutdown(&self) {
+        self.self_passwords.prepare_shutdown();
+    }
+    pub(crate) async fn drain_password_changes(&self) -> Result<(), ServiceError> {
+        self.self_passwords.shutdown().await
     }
 }
 
-/// What the password-change subscriber needs, without the event bus.
+/// Narrow audit capabilities only; no service/ledger back-reference.
 #[derive(Debug, Clone)]
-struct SessionEnforcer {
+pub(crate) struct SessionEnforcer {
     accounts: AccountStore,
-    sessions: SessionStore,
     audit: AuditService,
 }
-
 impl SessionEnforcer {
-    /// Ends the user's sessions (all of them, or all but `keep`) and records it.
-    async fn end_sessions(&self, user: AccountId, keep: Option<TokenDigest>) -> Result<(), ServiceError> {
-        let removed = self.sessions.delete_for_account(user, keep).await?;
-        self.record_ended_sessions(user, removed).await;
-        Ok(())
-    }
-
-    async fn record_ended_sessions(&self, user: AccountId, removed: usize) {
+    pub(crate) async fn record_ended_sessions(&self, user: AccountId, removed: usize) {
         let mut entry = AuditEntry::new(AuditAction::SessionsRevokedAfterPasswordChange)
             .detail(format!("{removed} session{} ended", if removed == 1 { "" } else { "s" }));
         if let Ok(Some(found)) = self.accounts.find_user(user).await {
             entry = entry.by(&found);
         }
         self.audit.record(entry).await;
-    }
-
-    async fn end_all_sessions(&self, user: AccountId) {
-        if let Err(error) = self.end_sessions(user, None).await {
-            tracing::error!(%error, user = user.0, "failed to end sessions after a password change");
-        }
     }
 }
 
@@ -402,8 +417,8 @@ pub struct PasswordChangeGuard {
 impl PasswordChangeGuard {
     /// `succeeded`: the request reported success. The change only counts as this
     /// request's own when it also published `PasswordChanged` for the user.
-    pub async fn finish(mut self, succeeded: bool) {
-        let Some(mut receiver) = self.receiver.take() else { return };
+    pub fn finish(mut self, succeeded: bool) -> impl std::future::Future<Output = ()> + Send {
+        let mut receiver = self.receiver.take().expect("unfinished guard");
         let mut changed_here = false;
         loop {
             match receiver.try_recv() {
@@ -415,38 +430,29 @@ impl PasswordChangeGuard {
             }
         }
         let changed_here = changed_here && succeeded;
-        let outcome = self.service.password_changes.finish(self.user, changed_here);
-        let enforcer = self.service.enforcer();
-        if outcome.end_all {
-            enforcer.end_all_sessions(self.user).await;
-        } else if outcome.end_others
-            && let Err(error) = enforcer.end_sessions(self.user, Some(self.current)).await
-        {
-            tracing::error!(%error, user = self.user.0, "failed to end other sessions after a password change");
+        let completion =
+            self.service.password_changes.take(self.user, changed_here, self.current).map_or_else(Completion::default, Decision::dispatch);
+        async move {
+            let _ = completion.wait().await;
         }
     }
 }
 
 impl Drop for PasswordChangeGuard {
-    /// A request abandoned midway (client went away) never keeps its session.
+    /// The synchronous decision never spawns an unadmitted task or needs a current runtime.
     fn drop(&mut self) {
         if self.receiver.take().is_none() {
             return;
         }
-        let outcome = self.service.password_changes.finish(self.user, false);
-        if outcome.end_all
-            && let Ok(runtime) = tokio::runtime::Handle::try_current()
-        {
-            let enforcer = self.service.enforcer();
-            let user = self.user;
-            runtime.spawn(async move { enforcer.end_all_sessions(user).await });
+        if let Some(decision) = self.service.password_changes.take(self.user, false, self.current) {
+            drop(decision.dispatch()); // Receiver-only; actual work owns its preexisting lease.
         }
     }
 }
 
 impl AccountService {
     fn enforcer(&self) -> SessionEnforcer {
-        SessionEnforcer { accounts: self.accounts.clone(), sessions: self.sessions.clone(), audit: self.audit.clone() }
+        SessionEnforcer { accounts: self.accounts.clone(), audit: self.audit.clone() }
     }
 }
 
@@ -457,12 +463,13 @@ struct PasswordChangeLedger {
     accounts: Mutex<HashMap<AccountId, LedgerEntry>>,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default)]
 struct LedgerEntry {
     /// Guarded requests still running.
     in_flight: u32,
     /// Committed changes while requests were in flight, not yet attributed.
     deferred: u32,
+    commits: Vec<DeferredCommit>,
 }
 
 /// What a finishing guard must do.
@@ -481,25 +488,54 @@ impl PasswordChangeLedger {
         self.lock().entry(user).or_default().in_flight += 1;
     }
 
+    fn committed(&self, user: AccountId, commit: DeferredCommit) -> Option<Decision> {
+        let mut accounts = self.lock();
+        if let Some(entry) = accounts.get_mut(&user)
+            && entry.in_flight > 0
+        {
+            entry.deferred += 1;
+            entry.commits.push(commit);
+            return None;
+        }
+        Some(Decision::new(vec![commit], SelfPasswordAction::EndAll))
+    }
+
+    fn take(&self, user: AccountId, changed_here: bool, current: TokenDigest) -> Option<Decision> {
+        let mut accounts = self.lock();
+        let entry = accounts.entry(user).or_default();
+        let outcome = finish_entry(entry, changed_here);
+        // End-all is the UNION of the attributed item and every residual item:
+        // do not pop one first and accidentally lose it in last-success/deferred2.
+        let commits = if outcome.end_all {
+            std::mem::take(&mut entry.commits)
+        } else if outcome.end_others {
+            vec![entry.commits.remove(0)]
+        } else {
+            Vec::new()
+        };
+        if entry.in_flight == 0 && entry.deferred == 0 && entry.commits.is_empty() {
+            accounts.remove(&user);
+        }
+        drop(accounts); // No owning payloads or finalizers are destroyed under the ledger lock.
+        if commits.is_empty() {
+            return None;
+        }
+        Some(Decision::new(commits, if outcome.end_all { SelfPasswordAction::EndAll } else { SelfPasswordAction::EndOthers { current } }))
+    }
+
+    // Preserve the existing pure counter regression matrix without manufacturing
+    // opaque Storage commitments. Production uses committed/take above.
+    #[cfg(test)]
     fn finish(&self, user: AccountId, changed_here: bool) -> FinishOutcome {
         let mut accounts = self.lock();
         let entry = accounts.entry(user).or_default();
-        entry.in_flight = entry.in_flight.saturating_sub(1);
-        let changed_here = changed_here && entry.deferred > 0;
-        if changed_here {
-            entry.deferred -= 1;
-        }
-        let end_all = entry.in_flight == 0 && entry.deferred > 0;
-        if end_all {
-            entry.deferred = 0;
-        }
-        if *entry == LedgerEntry::default() {
+        let outcome = finish_entry(entry, changed_here);
+        if entry.in_flight == 0 && entry.deferred == 0 {
             accounts.remove(&user);
         }
-        FinishOutcome { end_others: changed_here, end_all }
+        outcome
     }
-
-    /// A password change committed; `true` means "end every session now".
+    #[cfg(test)]
     fn on_event(&self, user: AccountId) -> bool {
         let mut accounts = self.lock();
         let Some(entry) = accounts.get_mut(&user) else {
@@ -511,11 +547,23 @@ impl PasswordChangeLedger {
         } else {
             true
         };
-        if *entry == LedgerEntry::default() {
+        if entry.in_flight == 0 && entry.deferred == 0 {
             accounts.remove(&user);
         }
         end_all
     }
+}
+fn finish_entry(entry: &mut LedgerEntry, changed_here: bool) -> FinishOutcome {
+    entry.in_flight = entry.in_flight.saturating_sub(1);
+    let changed_here = changed_here && entry.deferred > 0;
+    if changed_here {
+        entry.deferred -= 1;
+    }
+    let end_all = entry.in_flight == 0 && entry.deferred > 0;
+    if end_all {
+        entry.deferred = 0;
+    }
+    FinishOutcome { end_others: changed_here, end_all }
 }
 
 /// Why the first account's sign-up was refused.
@@ -652,3 +700,7 @@ mod tests {
         assert!(id.chars().all(|c| c == 'a' || c == 'b'));
     }
 }
+
+#[cfg(test)]
+#[path = "accounts/password_ownership_tests.rs"]
+mod password_ownership_tests;

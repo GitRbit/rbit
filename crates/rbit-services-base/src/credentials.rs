@@ -4,26 +4,8 @@ use std::future::Future;
 
 use crate::ServiceError;
 
-/// Once a credential update starts, its security side effects belong to the server.
-/// Dropping the awaiting request detaches the task instead of cancelling revocation
-/// between the database commit and the session-store update.
-pub(crate) async fn finish_update<F>(update: F) -> Result<(), ServiceError>
-where
-    F: Future<Output = Result<(), ServiceError>> + Send + 'static,
-{
-    tokio::spawn(async move {
-        let result = update.await;
-        if let Err(ServiceError::Internal(error)) = &result {
-            tracing::error!(%error, "credential update could not complete");
-        }
-        result
-    })
-    .await
-    .map_err(ServiceError::internal)?
-}
-
 /// Owns forced/admin and email-reset replacements through their audit/event tails.
-/// Self-service still uses `finish_update` and needs separate lifecycle coordination.
+/// Self-service uses its independent bounded INITIAL/FINAL flow owner.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct AdminPasswordOwner {
     inner: std::sync::Arc<AdminInner>,
@@ -121,25 +103,63 @@ impl Drop for AdminTask {
 #[cfg(test)]
 mod admin_tests;
 
+pub(crate) mod self_service;
+
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::self_service::SelfPasswordOwner;
+    use rbit_core::Timestamp;
+    use rbit_storage::{Database, NewUser, SessionRecord, sqlite::credential_changes::SelfPasswordAction};
+    use std::time::Duration;
+    use tokio::{sync::oneshot, time::timeout};
 
     #[tokio::test]
     async fn request_cancellation_cannot_interrupt_session_revocation() {
-        let (committed, commit) = tokio::sync::oneshot::channel();
-        let (continue_update, resume) = tokio::sync::oneshot::channel();
-        let (revoked, revocation) = tokio::sync::oneshot::channel();
-        let request = tokio::spawn(finish_update(async move {
-            committed.send(()).unwrap();
-            resume.await.unwrap();
-            revoked.send(()).unwrap();
-            Ok(())
-        }));
-        commit.await.unwrap();
+        const WAIT: Duration = Duration::from_secs(2);
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(&directory.path().join("sql.db")).await.unwrap();
+        let kv = database.open_kv(&directory.path().join("kv.redb")).unwrap();
+        let user = database
+            .accounts()
+            .create_user(NewUser {
+                name: "alice".parse().unwrap(),
+                email: "alice@example.com".parse().unwrap(),
+                display_name: None,
+                password_hash: "old".into(),
+                is_admin: true,
+            })
+            .await
+            .unwrap();
+        kv.sessions()
+            .put([1; 32], SessionRecord::new(user.id(), Timestamp(Timestamp::now().seconds() + 3600), None, "test"))
+            .await
+            .unwrap();
+        let changes = database.self_password_changes(&kv).unwrap();
+        let owned_changes = changes.clone();
+        let owner = SelfPasswordOwner::default();
+        let coordinator = owner.clone();
+        let (committed, commit) = oneshot::channel();
+        let (continue_update, resume) = oneshot::channel();
+        let (revoked, revocation) = oneshot::channel();
+        let request = tokio::spawn(async move {
+            coordinator
+                .run(&changes, move |reservation, _lease| async move {
+                    let pending = reservation.start(user.id(), "new".into(), "old".into())?.wait().await?.unwrap();
+                    committed.send(()).unwrap(); // The original regression now observes real SQL COMMIT.
+                    timeout(WAIT, resume).await.map_err(crate::ServiceError::internal)?.map_err(crate::ServiceError::internal)?;
+                    owned_changes.prepare_batch(vec![pending], SelfPasswordAction::EndAll)?.start().wait().await?;
+                    revoked.send(()).unwrap();
+                    Ok(())
+                })
+                .await
+        });
+        timeout(WAIT, commit).await.unwrap().unwrap();
         request.abort();
-        assert!(request.await.unwrap_err().is_cancelled());
+        assert!(timeout(WAIT, request).await.unwrap().unwrap_err().is_cancelled());
         continue_update.send(()).unwrap();
-        tokio::time::timeout(std::time::Duration::from_secs(2), revocation).await.unwrap().unwrap();
+        timeout(WAIT, revocation).await.unwrap().unwrap();
+        timeout(WAIT, owner.shutdown()).await.unwrap().unwrap();
+        timeout(WAIT, database.drain_self_password_changes()).await.unwrap().unwrap();
+        assert!(kv.sessions().get([1; 32]).await.unwrap().is_none());
     }
 }
