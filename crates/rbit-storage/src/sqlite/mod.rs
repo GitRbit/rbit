@@ -79,7 +79,7 @@ pub struct Database {
     pool: SqlitePool,
     /// Lazy FULL-synchronous writer, used only by the host package ledger.
     package_pool: SqlitePool,
-    // Enrolled package policy + three account moderation methods only.
+    // Enrolled package policy, three account moderation and four principal creation methods.
     // No duplicate-open, all-writer or physical ownership claim.
     authority_domain: rbit_authority_fence::Domain,
     /// Seals the credentials stores keep (see [`crate::sealing`]).
@@ -165,7 +165,7 @@ impl Database {
     }
 
     pub fn accounts(&self) -> AccountStore {
-        AccountStore::new(self.store("accounts"))
+        AccountStore::new(self.store("accounts"), self.authority_domain.writer())
     }
 
     pub fn repositories(&self) -> RepositoryStore {
@@ -329,7 +329,7 @@ impl Database {
     // Milestone 3: external sign-in (O).
 
     pub fn external_identities(&self) -> external_identities::ExternalIdentityStore {
-        external_identities::ExternalIdentityStore::new(self.store("external_identities"))
+        external_identities::ExternalIdentityStore::new(self.store("external_identities"), self.authority_domain.writer())
     }
 
     // Milestone 3: importing and push mirrors (M).

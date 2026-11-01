@@ -95,11 +95,12 @@ macro_rules! select_identity {
 #[derive(Debug, Clone)]
 pub struct ExternalIdentityStore {
     pool: Pool,
+    writer: rbit_authority_fence::WriterRegistration,
 }
 
 impl ExternalIdentityStore {
-    pub(crate) fn new(pool: Pool) -> Self {
-        Self { pool }
+    pub(crate) fn new(pool: Pool, writer: rbit_authority_fence::WriterRegistration) -> Self {
+        Self { pool, writer }
     }
 
     /// The identity `subject` at `provider`, if linked.
@@ -203,10 +204,25 @@ impl ExternalIdentityStore {
         identity: NewExternalIdentity<'_>,
         registration_open: bool,
     ) -> Result<Result<User, LinkConflict>, StorageError> {
+        let mutation = self.writer.begin().await.map_err(super::accounts::principal_mutation_error)?;
+        let result = self.register_raw(new, email_verified, identity, registration_open).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn register_raw(
+        &self,
+        new: NewUser,
+        email_verified: bool,
+        identity: NewExternalIdentity<'_>,
+        registration_open: bool,
+    ) -> Result<Result<User, LinkConflict>, StorageError> {
         let now = Timestamp::now();
         let mut tx = self.pool.begin().await?;
         let user = insert_user(&mut tx, new, Some(registration_open), email_verified).await?;
         if let Err(conflict) = insert(&mut tx, user.id(), identity, now).await? {
+            tx.rollback().await?;
             return Ok(Err(conflict));
         }
         tx.commit().await?;

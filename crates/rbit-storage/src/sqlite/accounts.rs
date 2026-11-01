@@ -83,11 +83,12 @@ pub struct NewUser {
 #[derive(Debug, Clone)]
 pub struct AccountStore {
     pool: Pool,
+    writer: rbit_authority_fence::WriterRegistration,
 }
 
 impl AccountStore {
-    pub(crate) fn new(pool: Pool) -> Self {
-        Self { pool }
+    pub(crate) fn new(pool: Pool, writer: rbit_authority_fence::WriterRegistration) -> Self {
+        Self { pool, writer }
     }
 
     /// The security audit log in the same database, for services that were handed only
@@ -98,6 +99,14 @@ impl AccountStore {
 
     /// Creates the account and its login atomically.
     pub async fn create_user(&self, new: NewUser) -> Result<User, StorageError> {
+        let mutation = self.writer.begin().await.map_err(principal_mutation_error)?;
+        let result = self.create_user_raw(new).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn create_user_raw(&self, new: NewUser) -> Result<User, StorageError> {
         let mut tx = self.pool.begin().await?;
         let user = insert_user(&mut tx, new, None, false).await?;
         tx.commit().await?;
@@ -106,6 +115,14 @@ impl AccountStore {
 
     /// Creates an administrator-provisioned account with a temporary password.
     pub async fn create_user_with_initial_password(&self, new: NewUser) -> Result<User, StorageError> {
+        let mutation = self.writer.begin().await.map_err(principal_mutation_error)?;
+        let result = self.create_user_with_initial_password_raw(new).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn create_user_with_initial_password_raw(&self, new: NewUser) -> Result<User, StorageError> {
         let mut tx = self.pool.begin().await?;
         let user = insert_user(&mut tx, new, None, false).await?;
         sqlx::query("UPDATE user_logins SET password_change_required = 1 WHERE account_id = ?").bind(user.id().0).execute(&mut *tx).await?;
@@ -124,6 +141,14 @@ impl AccountStore {
     /// Registers a user, deciding the first administrator inside the write transaction.
     /// Closed registration admits only the first user; `new.is_admin` is ignored.
     pub async fn register_user(&self, new: NewUser, registration_open: bool) -> Result<User, StorageError> {
+        let mutation = self.writer.begin().await.map_err(principal_mutation_error)?;
+        let result = self.register_user_raw(new, registration_open).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn register_user_raw(&self, new: NewUser, registration_open: bool) -> Result<User, StorageError> {
         let mut tx = self.pool.begin().await?;
         let user = insert_user(&mut tx, new, Some(registration_open), false).await?;
         tx.commit().await?;
@@ -344,3 +369,13 @@ pub(super) async fn insert_user(
         is_admin: new.is_admin,
     })
 }
+
+pub(super) fn principal_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
+    StorageError::Conflict(match error {
+        rbit_authority_fence::BeginError::Capacity => "principal creation mutation capacity",
+        rbit_authority_fence::BeginError::Stopped => "principal creation writer stopped",
+    })
+}
+
+#[cfg(test)]
+mod fence_tests;
