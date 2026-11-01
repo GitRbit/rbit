@@ -20,9 +20,25 @@ Require all 11 jobs on the final pushed head; earlier-head checks do not certify
 new contracts. The full workspace result below belongs to the preceding UI extraction.
 
 The paired release HTTP experiment compares exact archived `0075cec` and `3b9f263`
-sources. Its baseline binary has completed with production fat LTO and one codegen
-unit; the candidate build and measurements remain pending. Source/build provenance,
-scripts and raw evidence live under ignored `target/perf/ui-extraction/`.
+sources. Both binaries completed with production fat LTO and one codegen unit,
+identical generated assets and recorded source/binary hashes. Initial warmed p95
+changes were below one percent, but same-binary controls exposed enough process
+variation that the two-percent gate remains unresolved. A fresh-process paired
+experiment is in progress. All 120 restart-only samples were valid; these are not
+disk-cold measurements. Scripts and raw evidence live under ignored
+`target/perf/ui-extraction/`.
+
+Standalone [parser fuzzing](../fuzz/README.md) now exercises arbitrary bytes and
+structured native/Wasm/data envelopes with fragmented and interrupted readers. The
+recorded AddressSanitizer campaigns completed 6,875,188 raw and 350,166 structured
+executions without findings. Their input and time bounds are documented; they do
+not certify installation or maximum-size packages. Tooling dependencies remain in
+a separate workspace.
+
+The shared presentation head `3b9f263` passed all 11 CI jobs in
+[run 41272483318](https://github.com/GitRbit/rbit/actions/runs/41272483318),
+including Linux 2,360 tests, Windows 2,352 and the artifact-page regression scenario.
+The newer package and tooling commits require their own final-head CI.
 
 The next package milestone is immutable staging and persistent installation metadata,
 followed by bounded worker framing/supervision and an independently built native sample

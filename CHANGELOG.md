@@ -17,6 +17,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Standalone sanitizer-enabled fuzz targets for streamed package validation, with
+  deterministic native/Wasm/data seeds, structured malformed envelopes and fragmented
+  reader checks. Tooling dependencies stay outside the server workspace.
+
 - Streaming validation of canonical uncompressed plugin archives, including bounded
   manifest parsing, actual payload size/SHA256 checks and strict archive termination.
   The validator writes no files and executes no code; package staging remains later work.

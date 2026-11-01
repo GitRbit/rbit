@@ -215,3 +215,7 @@ real minted task credentials, admitted body drains, stale handles, aborted waite
 precedence and interrupted cancellation/check reporting. Web tests cover the same bound
 router before and after enable/disable, administrator authorization, CSRF, API documentation,
 credential padding, paused stream cancellation and conditional enhancement cleanup.
+
+Package archive parser validation also has a standalone, sanitizer-enabled
+[fuzz workspace](../fuzz/README.md), with bounded campaigns and reproducible seeds.
+It exercises validation only; it does not install or execute packages.

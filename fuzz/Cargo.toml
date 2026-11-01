@@ -1,0 +1,33 @@
+[package]
+name = "rbit-plugin-packages-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+members = ["."]
+
+[dependencies]
+libfuzzer-sys = "=0.4.13"
+rbit-plugin-packages = { path = "../crates/rbit-plugin-packages" }
+serde_json = "1.0"
+sha2 = "0.11"
+tar = { version = "0.4", default-features = false }
+
+[[bin]]
+name = "archive_bytes"
+path = "fuzz_targets/archive_bytes.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "archive_structured"
+path = "fuzz_targets/archive_structured.rs"
+test = false
+doc = false
+bench = false
