@@ -22,11 +22,12 @@ pub struct AccountProfile {
 #[derive(Debug, Clone)]
 pub struct ProfileStore {
     pool: Pool,
+    writer: rbit_authority_fence::WriterRegistration,
 }
 
 impl ProfileStore {
-    pub(crate) fn new(pool: Pool) -> Self {
-        Self { pool }
+    pub(crate) fn new(pool: Pool, writer: rbit_authority_fence::WriterRegistration) -> Self {
+        Self { pool, writer }
     }
 
     /// The account's profile, or `None` if the account does not exist.
@@ -76,14 +77,23 @@ impl ProfileStore {
     /// A different address starts out unverified; re-entering the same one (in any letter
     /// case) keeps its verification.
     pub async fn set_email(&self, account_id: AccountId, email: &Email) -> Result<(), StorageError> {
-        self.replace_email(account_id, email, None).await?;
-        Ok(())
+        let mutation = self.writer.begin().await.map_err(profile_mutation_error)?;
+        let result = self.replace_email(account_id, email, None).await.map(|_| ());
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
     }
 
     /// Changes the email only while the password hash checked by the caller is current.
     /// A concurrent reset must invalidate an already-verified, unfinished request too.
     pub async fn set_email_if_password(&self, account_id: AccountId, email: &Email, expected: &str) -> Result<bool, StorageError> {
-        self.replace_email(account_id, email, Some(expected)).await
+        let mutation = self.writer.begin().await.map_err(profile_mutation_error)?;
+        let result = self.replace_email(account_id, email, Some(expected)).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
     }
 
     async fn replace_email(&self, account_id: AccountId, email: &Email, expected: Option<&str>) -> Result<bool, StorageError> {
@@ -120,8 +130,12 @@ impl ProfileStore {
     /// Stores a new password hash and revokes outstanding reset links atomically. The
     /// password must already be hashed.
     pub async fn set_password_hash(&self, account_id: AccountId, password_hash: &str) -> Result<(), StorageError> {
-        self.replace_password_hash(account_id, password_hash, None).await?;
-        Ok(())
+        let mutation = self.writer.begin().await.map_err(profile_mutation_error)?;
+        let result = self.replace_password_hash(account_id, password_hash, None).await.map(|_| ());
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
     }
 
     /// Replaces the password and revokes reset links only if `expected` is still current.
@@ -131,7 +145,12 @@ impl ProfileStore {
         password_hash: &str,
         expected: &str,
     ) -> Result<bool, StorageError> {
-        self.replace_password_hash(account_id, password_hash, Some(expected)).await
+        let mutation = self.writer.begin().await.map_err(profile_mutation_error)?;
+        let result = self.replace_password_hash(account_id, password_hash, Some(expected)).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
     }
 
     async fn replace_password_hash(
@@ -150,6 +169,7 @@ impl ProfileStore {
             .rows_affected()
             != 0;
         if !changed {
+            tx.rollback().await?;
             return Ok(false);
         }
         sqlx::query("UPDATE email_tokens SET used_at = ? WHERE account_id = ? AND purpose = 'reset' AND used_at IS NULL")
@@ -161,3 +181,13 @@ impl ProfileStore {
         Ok(true)
     }
 }
+
+fn profile_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
+    StorageError::Conflict(match error {
+        rbit_authority_fence::BeginError::Capacity => "profile credential mutation capacity",
+        rbit_authority_fence::BeginError::Stopped => "profile credential writer stopped",
+    })
+}
+
+#[cfg(test)]
+mod fence_tests;

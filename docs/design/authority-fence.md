@@ -2,7 +2,7 @@
 
 The authority fence coordinates policy mutations, user account creation, external
 identity bindings, personal access tokens, SSH keys, SQL recovery, authentication
-factors and administrator role changes,
+factors, profile credentials and administrator role changes,
 suspension and account deletion
 within one `Database` and its clones. It stays closed: it cannot issue a generation,
 authorize execution, reopen admission or activate a package. Managed execution remains
@@ -16,7 +16,8 @@ work. An unused domain starts no task, timer or database query.
 
 Policy initialization, epoch renewal, review/selection/clear, user account creation,
 identity linking/unlinking, token and key creation/deletion and the three moderation
-mutations, together with SQL recovery and factor mutations, acquire that permit
+mutations, together with SQL recovery, factor and profile credential mutations,
+acquire that permit
 before their first database operation. The wrapper records settlement only after the complete storage result
 succeeds, including historical
 replays and committed policy seals. Cancellation while queued is clean because the
@@ -85,6 +86,13 @@ write paths add two control statements each when they reach their write. Later K
 challenge/session changes and full service-task settlement remain outside this
 SQL-only coverage.
 
+The four profile credential APIs each enroll once around their complete result,
+calling existing private helpers directly. Email changes retain their atomic
+verification and old-address token invalidation behavior. Password changes retain
+their current-hash predicate and reset-token revocation; a missing account or stale
+hash explicitly awaits rollback before its clean no-op result. Informational
+profile fields, account renames and later KV session revocation remain separate.
+
 A snapshot describes enrolled work at one instant. It grants no authority. A
 successful drain retains the shared permit in an owned guard, preventing enrolled
 writers from starting until that guard is dropped. It cannot certify an uncertain
@@ -112,7 +120,8 @@ workers have exited.
 
 This increment covers policy writes, the four user-creation methods, external
 identity linking/unlinking, the three token methods, four direct key methods and
-five SQL recovery methods, ten factor methods and the three moderation methods obtained from the same
+five SQL recovery methods, ten factor methods, four profile credential methods and
+the three moderation methods obtained from the same
 database handle or its clones. It does not coordinate independently opened SQLite
 pools, another process, password changes, other credentials, KV sessions or other
 authority writers. It does not prove SQLite worker termination or physical store

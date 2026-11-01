@@ -81,7 +81,7 @@ pub struct Database {
     package_pool: SqlitePool,
     // Enrolled package policy, three account moderation, four principal creation,
     // two external identity linking, three personal access token, four SSH key,
-    // five recovery SQL and ten two-factor methods.
+    // five recovery SQL, ten two-factor and four profile credential methods.
     // No duplicate-open, all-writer or physical ownership claim.
     authority_domain: rbit_authority_fence::Domain,
     /// Seals the credentials stores keep (see [`crate::sealing`]).
@@ -207,7 +207,7 @@ impl Database {
     }
 
     pub fn profiles(&self) -> profiles::ProfileStore {
-        profiles::ProfileStore::new(self.store("profiles"))
+        profiles::ProfileStore::new(self.store("profiles"), self.authority_domain.writer())
     }
 
     pub fn repo_settings(&self) -> repo_settings::RepoSettingsStore {
