@@ -16,6 +16,7 @@
 
 mod commands;
 mod hosts;
+mod packages;
 
 use std::time::Duration;
 
@@ -104,6 +105,7 @@ impl Api {
             // Never silently replay authentication or request bodies elsewhere,
             // including an unauthenticated login or a future streamed upload.
             .redirect(reqwest::redirect::Policy::none())
+            .retry(reqwest::retry::never())
             .build()
             .context("cannot set up HTTPS")?;
         Ok(Self { http, base, token })

@@ -20,6 +20,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `rbit plugin install FILE` streams immutable archives with a retained operation
+  key; `rbit plugin operation ID` inspects recovery state. Uploads never retry or
+  follow redirects, and pending durability never reports installation success.
+
 - Administrator package upload and operation inspection endpoints with Admin PAT
   scope, current account authorization, bounded streaming and cancellation-owned
   work. Packages remain disabled and unreviewed. Windows HTTP uploads await
@@ -29,7 +33,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   immutable archive/version pins, cancellation-owned operations and explicit
   durability recovery states. Records remain disabled and unreviewed. Backup
   format 5 verifies and retains every journaled archive object before completion.
-  Remote CLI installation and executable workers remain later stages.
+  Executable workers remain later stages.
 
 - Host-owned private staging of validated plugin archives and no-clobber,
   digest-addressed publication. Receipts distinguish visibility, durability and

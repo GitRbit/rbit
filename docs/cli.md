@@ -89,3 +89,21 @@ rbit api repos/{owner}/{repo}/dispatches -f event_type=deploy
 sends a body as it is; with fields the method is POST unless `-X` says otherwise, and a
 GET sends them as the query. JSON answers are printed indented; the exit code is 1 when the
 server refused.
+
+## Plugin package recording
+
+`rbit plugin install FILE [--operation-id ID] --hostname URL` streams a canonical
+package archive using an active administrator's Admin-scoped PAT. The fixed host
+package root must already be privately and durably provisioned. This records bytes
+and a version pin without enabling code, approving trust or issuing grants.
+
+The CLI prints a random opaque operation ID before sending the archive. Retain it:
+`rbit plugin operation ID --hostname URL` inspects the durable journal after a lost
+response. Pass the same ID explicitly to retry the same actor/archive; there is no
+automatic retry or redirect replay. GET 404 can mean staging has not yet created a
+journal row, so it does not prove absence of active work or rollback. An awaiting-durability
+result is pending and exits 8; complete exits 0, a recorded error exits
+1. Responses are capped at 64 KiB and the archive is streamed in bounded buffers.
+
+Windows servers currently refuse uploads until supported host root verification is
+available; operation inspection remains available.

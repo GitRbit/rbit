@@ -7,7 +7,11 @@ use clap::{Args, Subcommand};
 use reqwest::Method;
 use serde_json::{Map, Value, json};
 
-use super::{Api, Repo, hosts, parse_remote};
+use super::{
+    Api, Repo, hosts,
+    packages::{self, PluginCommand},
+    parse_remote,
+};
 
 /// Where a command works: the repository and the instance.
 #[derive(Debug, Clone, Args)]
@@ -52,6 +56,13 @@ pub enum ClientCommand {
     Pr {
         #[command(subcommand)]
         command: PrCommand,
+        #[command(flatten)]
+        target: Target,
+    },
+    /// Retain immutable plugin packages without enabling or trusting them.
+    Plugin {
+        #[command(subcommand)]
+        command: PluginCommand,
         #[command(flatten)]
         target: Target,
     },
@@ -279,6 +290,10 @@ pub async fn run(command: ClientCommand) -> anyhow::Result<i32> {
         ClientCommand::Pr { command, target } => {
             let (api, repo) = connect(&target, true)?;
             pulls(&api, &repo.expect("a repository"), command).await
+        }
+        ClientCommand::Plugin { command, target } => {
+            let (api, _) = connect(&target, false)?;
+            packages::run(&api, command).await
         }
         ClientCommand::Api { path, method, raw_fields, fields, input, target } => {
             let needs_repo = path.contains("{owner}") || path.contains("{repo}");

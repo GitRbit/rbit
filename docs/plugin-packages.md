@@ -1,8 +1,7 @@
 # Plugin package storage and installation records
 
-These are authenticated host administration APIs for retaining packages. The CLI
-installation controls, publisher review, native workers and sandbox adapter are
-subsequent stages. Installing an archive here never executes it or enables it.
+Authenticated host APIs and the `rbit plugin` CLI retain packages. Publisher
+review, native workers and the sandbox adapter are subsequent stages. Installing an archive here never executes it or enables it.
 
 `rbit-plugin-api` defines bounded declarations for data, native and Wasm packages.
 Requested capabilities and resource budgets grant no authority. Portable payload
