@@ -588,6 +588,62 @@ impl ActionsRunStore {
         Ok(rows.into_iter().map(|(task, number, summary)| (TaskId(task), number, summary)).collect())
     }
 
+    /// Summary presence for current job tasks, scoped by the authoritative repository.
+    /// No stored summary text is loaded for the overview.
+    pub async fn summary_heads(&self, repo: RepoId, jobs: &[JobId]) -> Result<Vec<(JobId, i64)>, StorageError> {
+        if jobs.is_empty() {
+            return Ok(Vec::new());
+        }
+        let ids = format!("[{}]", jobs.iter().map(|job| job.0.to_string()).collect::<Vec<_>>().join(","));
+        let rows: Vec<(i64, i64)> = sqlx::query_as(
+            "SELECT j.id, MIN(s.number) FROM actions_jobs j \
+             JOIN actions_step_summaries s ON s.task_id = j.task_id \
+             WHERE j.repo_id = ?1 AND j.id IN (SELECT value FROM json_each(?2)) GROUP BY j.id",
+        )
+        .bind(repo.0)
+        .bind(ids)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(|(id, number)| (JobId(id), number)).collect())
+    }
+
+    /// Read only a bounded prefix; a run preview must never fetch every stored body.
+    pub async fn summary_preview(&self, repo: RepoId, job: JobId, number: i64, max_chars: u32) -> Result<Option<String>, StorageError> {
+        Ok(sqlx::query_scalar(
+            "SELECT substr(s.summary, 1, ?4) FROM actions_jobs j \
+             JOIN actions_step_summaries s ON s.task_id = j.task_id \
+             WHERE j.id = ?1 AND j.repo_id = ?2 AND s.number = ?3",
+        )
+        .bind(job.0)
+        .bind(repo.0)
+        .bind(number)
+        .bind(i64::from(max_chars.min(8192)))
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
+    /// One current-task summary and adjacent step numbers, using the existing task/step index.
+    pub async fn step_summary(
+        &self,
+        repo: RepoId,
+        job: JobId,
+        number: Option<i64>,
+    ) -> Result<Option<(i64, String, Option<i64>, Option<i64>)>, StorageError> {
+        Ok(sqlx::query_as(
+            "SELECT s.number, s.summary, \
+             (SELECT MAX(other.number) FROM actions_step_summaries other WHERE other.task_id = j.task_id AND other.number < s.number), \
+             (SELECT MIN(other.number) FROM actions_step_summaries other WHERE other.task_id = j.task_id AND other.number > s.number) \
+             FROM actions_jobs j JOIN actions_step_summaries s ON s.task_id = j.task_id \
+             WHERE j.id = ?1 AND j.repo_id = ?2 AND s.number = COALESCE(?3, \
+             (SELECT MIN(first.number) FROM actions_step_summaries first WHERE first.task_id = j.task_id))",
+        )
+        .bind(job.0)
+        .bind(repo.0)
+        .bind(number)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
     /// The steps of `tasks`, by task and number.
     pub async fn steps_of_tasks(&self, tasks: &[TaskId]) -> Result<Vec<Step>, StorageError> {
         if tasks.is_empty() {

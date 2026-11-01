@@ -53,6 +53,47 @@ pub fn render_markdown(source: &str, base: Option<&DocumentBase>) -> String {
     }
 }
 
+/// Sanitized Markdown with bounded intermediate and final HTML. The source is
+/// limited to 256 KiB; callers can show the escaped source when rendering returns None.
+/// Ordinary rendering/cache behavior remains unchanged.
+pub fn render_markdown_bounded(source: &str, max_html: usize) -> Option<String> {
+    if source.len() > 256 * 1024 || max_html == 0 {
+        return None;
+    }
+    let events = with_heading_ids(Parser::new_ext(source, options()));
+    let mut raw = BoundedHtml { bytes: Vec::new(), limit: max_html, overflow: false };
+    html::write_html_io(&mut raw, events.into_iter()).ok()?;
+    if raw.overflow {
+        return None;
+    }
+    let raw = String::from_utf8(raw.bytes).ok()?;
+    let document = sanitizer().clean(&raw);
+    let mut output = BoundedHtml { bytes: Vec::new(), limit: max_html, overflow: false };
+    document.write_to(&mut output).ok()?;
+    if output.overflow {
+        return None;
+    }
+    String::from_utf8(output.bytes).ok()
+}
+struct BoundedHtml {
+    bytes: Vec<u8>,
+    limit: usize,
+    overflow: bool,
+}
+impl std::io::Write for BoundedHtml {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if self.overflow || self.bytes.len().checked_add(bytes.len()).is_none_or(|size| size > self.limit) {
+            self.overflow = true;
+            return Err(std::io::Error::other("rendered Markdown limit"));
+        }
+        self.bytes.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 /// What [`render_markdown_rewriting`] puts in place of one run of text.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Rewritten {
@@ -536,5 +577,25 @@ mod tests {
             assert!(!html.contains("name="), "{html}");
             assert!(!html.contains(r#" id="1""#) && !html.contains(r##"href="#1""##), "footnotes are prefixed too: {html}");
         }
+    }
+}
+
+#[cfg(test)]
+mod bounded_tests {
+    use super::render_markdown_bounded;
+    #[test]
+    fn bounded_markdown_preserves_sanitization_and_refuses_amplified_output() {
+        let html = render_markdown_bounded("## Summary\n\n|case|ms|\n|---|---|\n|parse|12|\n<script>alert(1)</script>", 4096).unwrap();
+        assert!(html.contains("<table>"));
+        assert!(!html.contains("<script>"));
+        let source = "![](x) ".repeat(1000);
+        assert!(source.len() < 8192);
+        assert!(render_markdown_bounded(&source, 8192).is_none());
+        assert!(render_markdown_bounded("plain", 0).is_none());
+        assert!(render_markdown_bounded(&"x".repeat(256 * 1024 + 1), 1024).is_none());
+    }
+    #[test]
+    fn sanitized_serialization_also_has_an_output_budget() {
+        assert!(render_markdown_bounded("[x](https://example.com)", 40).is_none());
     }
 }

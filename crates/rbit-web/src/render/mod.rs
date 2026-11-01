@@ -9,7 +9,7 @@ pub mod references;
 pub use document_cache::{DocumentCache, DocumentCacheStats};
 pub use highlight::Highlighter;
 pub use highlight_cache::{CacheStats, HIGHLIGHTER_VERSION, HighlightCache, HighlightedFile};
-pub use markdown::{Rewritten, escape_html, render_markdown, render_markdown_rewriting};
+pub use markdown::{Rewritten, escape_html, render_markdown, render_markdown_bounded, render_markdown_rewriting};
 
 /// The character a row of code shows for `ch`: itself, or a visible stand-in when `ch`
 /// would break the line.

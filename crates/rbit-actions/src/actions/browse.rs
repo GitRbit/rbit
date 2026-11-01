@@ -80,6 +80,21 @@ pub struct RunDetail {
     pub people: BTreeMap<AccountId, Account>,
 }
 
+/// A job with a summary in its current task; bodies are deliberately absent.
+#[derive(Debug, Clone)]
+pub struct SummaryHead {
+    pub job_id: JobId,
+    pub step: i64,
+}
+/// A complete single step, with bounded keyset navigation rather than an unbounded join.
+#[derive(Debug, Clone)]
+pub struct StepSummary {
+    pub number: i64,
+    pub text: String,
+    pub previous: Option<i64>,
+    pub next: Option<i64>,
+}
+
 impl ActionsService {
     /// Whether `repo` has Actions on; the tab and every page depend on it.
     pub async fn enabled_for(&self, repo: RepoId) -> Result<bool, ServiceError> {
@@ -104,6 +119,57 @@ impl ActionsService {
             by_task.entry(task).or_default().push(text);
         }
         Ok(jobs.iter().filter_map(|job| Some((job.id, by_task.remove(&job.task_id?)?))).collect())
+    }
+
+    /// Summary metadata in requested job order, re-scoped against stored job ownership/current tasks.
+    pub async fn summary_heads(&self, repo: &RepoContext, jobs: &[Job]) -> Result<Vec<SummaryHead>, ServiceError> {
+        self.require_pages(repo).await?;
+        let ids: Vec<_> = jobs.iter().filter(|job| job.repo_id == repo.repo.repo.id).map(|job| job.id).collect();
+        let mut heads: BTreeMap<_, _> =
+            self.ctx().database.actions_runs().summary_heads(repo.repo.repo.id, &ids).await?.into_iter().collect();
+        Ok(jobs.iter().filter_map(|job| heads.remove(&job.id).map(|step| SummaryHead { job_id: job.id, step })).collect())
+    }
+    /// At most 8 KiB of one body for a bounded overview.
+    pub async fn summary_preview(
+        &self,
+        repo: &RepoContext,
+        job: &Job,
+        step: i64,
+        max_bytes: usize,
+    ) -> Result<Option<String>, ServiceError> {
+        self.require_pages(repo).await?;
+        if job.repo_id != repo.repo.repo.id {
+            return Err(ServiceError::NotFound);
+        }
+        let limit = max_bytes.min(8192);
+        let mut text = self
+            .ctx()
+            .database
+            .actions_runs()
+            .summary_preview(repo.repo.repo.id, job.id, step, u32::try_from(limit).unwrap_or(8192))
+            .await?;
+        if let Some(text) = &mut text {
+            let mut end = limit.min(text.len());
+            while !text.is_char_boundary(end) {
+                end -= 1;
+            }
+            text.truncate(end);
+        }
+        Ok(text)
+    }
+    /// Full selected summary; stored ownership and current task are authoritative.
+    pub async fn step_summary(&self, repo: &RepoContext, job: &Job, step: Option<i64>) -> Result<Option<StepSummary>, ServiceError> {
+        self.require_pages(repo).await?;
+        if job.repo_id != repo.repo.repo.id || step.is_some_and(|number| number < 0) {
+            return Err(ServiceError::NotFound);
+        }
+        Ok(self
+            .ctx()
+            .database
+            .actions_runs()
+            .step_summary(repo.repo.repo.id, job.id, step)
+            .await?
+            .map(|(number, text, previous, next)| StepSummary { number, text, previous, next }))
     }
 
     /// Every workflow of `repo` with runs: its path and the name of its newest run.
