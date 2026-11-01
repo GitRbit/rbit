@@ -217,18 +217,25 @@ impl ActionsSlot {
             Ok(slot)
         }
     }
-    #[allow(clippy::unused_async)] // Unavailable builds have no activation controller to await.
+    #[cfg(not(feature = "actions"))]
+    pub(crate) fn bind_routes(&self, routes: crate::ActionsRouteBundle) -> std::future::Ready<Result<(), ServiceError>> {
+        let result = if self.inner.shutting_down.load(Ordering::Acquire) {
+            Err(ServiceError::Conflict("server shutdown"))
+        } else {
+            self.inner.routes.bind(routes)
+        };
+        std::future::ready(result)
+    }
+    #[cfg(feature = "actions")]
     pub(crate) async fn bind_routes(&self, routes: crate::ActionsRouteBundle) -> Result<(), ServiceError> {
         if self.inner.shutting_down.load(Ordering::Acquire) {
             return Err(ServiceError::Conflict("server shutdown"));
         }
-        #[cfg(feature = "actions")]
         let _controller = self.inner.controller.lock().await;
         if self.inner.shutting_down.load(Ordering::Acquire) {
             return Err(ServiceError::Conflict("server shutdown"));
         }
         self.inner.routes.bind(routes)?;
-        #[cfg(feature = "actions")]
         if self.is_some() {
             let scope = self
                 .inner
