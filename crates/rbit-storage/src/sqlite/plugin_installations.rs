@@ -13,7 +13,8 @@ use crate::StorageError;
 const MAX_WIRE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const PAGE_SIZE: i64 = 128;
 
-/// Host-generated idempotency token, never a filesystem name or package input.
+/// Opaque idempotency token chosen by authenticated host administration or its CLI,
+/// never a filesystem name or identity supplied by a package/plugin.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OperationId(String);
 impl OperationId {

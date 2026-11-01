@@ -18,6 +18,7 @@ i18n = ["rbit-services/i18n"]
 rbit-ui.workspace = true
 rbit-messages.workspace = true
 rbit-plugin-api.workspace = true
+rbit-plugin-packages.workspace = true
 rbit-plugin-runtime.workspace = true
 http-body = "1"
 rbit-core.workspace = true
@@ -31,7 +32,7 @@ axum-extra.workspace = true
 tower.workspace = true
 tower-http.workspace = true
 tokio.workspace = true
-tokio-util.workspace = true
+tokio-util = { workspace = true, features = ["io-util"] }
 futures-util.workspace = true
 async-compression.workspace = true
 brotli.workspace = true

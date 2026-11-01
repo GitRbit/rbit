@@ -1,0 +1,122 @@
+{
+  "paths": {
+    "/admin/plugin-package-operations/{operation_id}": {
+      "parameters": [
+        {
+          "name": "operation_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]{1,64}$"
+          }
+        }
+      ],
+      "put": {
+        "operationId": "installPluginPackage",
+        "tags": [
+          "admin packages"
+        ],
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Record immutable package without activation",
+        "description": "Windows PUT is unavailable (503 before body polling) until supported host root verification exists; GET remains available. Requires active site administrator and Admin PAT scope. Cookies and plugin/workflow credentials are not accepted. Administrator/CLI chooses the opaque ID before upload. GET 404 does not imply no staging worker. Fixed host-private package root must be durably provisioned; no root path, grants, trust or enabled intent can be supplied.",
+        "responses": {
+          "200": {
+            "description": "Completed or inspected operation; no trust, grants or activation implied"
+          },
+          "202": {
+            "description": "Verified publication awaiting host durability reconciliation"
+          },
+          "400": {
+            "description": "Invalid request body transport"
+          },
+          "401": {
+            "description": "Bearer authentication required"
+          },
+          "403": {
+            "description": "Active site administrator with Admin PAT scope required"
+          },
+          "404": {
+            "description": "No journal row; staging may still be active"
+          },
+          "408": {
+            "description": "Absolute deadline expired; inspect status, outcome may be uncertain"
+          },
+          "409": {
+            "description": "Active operation or immutable pin conflict"
+          },
+          "413": {
+            "description": "Wire byte bound exceeded"
+          },
+          "415": {
+            "description": "Unsupported media type or content encoding"
+          },
+          "422": {
+            "description": "Invalid operation identity or canonical USTAR archive"
+          },
+          "500": {
+            "description": "Uncertain coordinator failure; inspect status"
+          },
+          "503": {
+            "description": "Admission/store unavailable, host reconciliation required, or Windows upload lacks supported host root verification"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "description": "Uncompressed canonical USTAR archive, exact EOF required; identity content encoding only. Absolute 60 second deadline, bounded bytes and fail-fast two-operation global admission. Disconnect cancels staging but cannot roll back published bytes or an in-flight commit. Same ID replay requires exact actor+descriptor.",
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "inspectPluginPackageOperation",
+        "tags": [
+          "admin packages"
+        ],
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Inspect durable package operation journal",
+        "description": "Windows PUT is unavailable (503 before body polling) until supported host root verification exists; GET remains available. Requires active site administrator and Admin PAT scope. Cookies and plugin/workflow credentials are not accepted. Administrator/CLI chooses the opaque ID before upload. GET 404 does not imply no staging worker. Fixed host-private package root must be durably provisioned; no root path, grants, trust or enabled intent can be supplied.",
+        "responses": {
+          "200": {
+            "description": "Completed or inspected operation; no trust, grants or activation implied"
+          },
+          "401": {
+            "description": "Bearer authentication required"
+          },
+          "403": {
+            "description": "Active site administrator with Admin PAT scope required"
+          },
+          "404": {
+            "description": "No journal row; staging may still be active"
+          },
+          "422": {
+            "description": "Invalid operation identity or canonical USTAR archive"
+          },
+          "500": {
+            "description": "Uncertain coordinator failure; inspect status"
+          },
+          "503": {
+            "description": "Admission/store unavailable, host reconciliation required, or Windows upload lacks supported host root verification"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {}
+  }
+}

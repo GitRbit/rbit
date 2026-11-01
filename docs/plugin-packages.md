@@ -1,6 +1,6 @@
 # Plugin package storage and installation records
 
-These are trusted host APIs for retaining packages. The administrator HTTP/CLI
+These are authenticated host administration APIs for retaining packages. The CLI
 installation controls, publisher review, native workers and sandbox adapter are
 subsequent stages. Installing an archive here never executes it or enables it.
 
@@ -19,7 +19,9 @@ private directory and protect its ancestors and Windows ACL before use. Package
 operations never create or relax that root. On Unix its permission bits must be
 0700. Callers cannot supply a different object-store root.
 
-Installation requires a host-generated operation token and an administrator. Two
+Installation requires an opaque operation token chosen by the authenticated host
+administrator or CLI before upload, never by package/plugin metadata. The token
+grants no authority and is never a filesystem name. Two
 operations can own admission at once; duplicates and overload fail immediately.
 The deadline is capped at 60 seconds and the wire quota at the archive maximum.
 These checks are cooperative: callers must additionally enforce deadlines on
@@ -102,3 +104,39 @@ Pending operations assert no durable archive, so their private/unreferenced file
 are omitted. Restore retains journal state without approving trust or activating
 code. The initial append-only store avoids backup/garbage-collection races; future
 GC requires explicit coordination. See [deployment and restore](deployment.md#backups).
+
+## Administrator HTTP transport
+
+`PUT /api/v1/admin/plugin-package-operations/{operation_id}` accepts the canonical
+uncompressed archive as `application/octet-stream`, with absent or `identity`
+content encoding. The operation ID contains 1–64 lowercase ASCII letters, digits
+or hyphens. Choose and retain it before upload to inspect work after a lost
+response. Both PUT and GET at this URL require an Admin-scoped personal access
+token belonging to an active site administrator; session cookies and workflow or
+runner credentials do not authorize these routes. There is no inventory endpoint.
+
+Uploads have an absolute 60-second deadline and a fixed wire-byte ceiling,
+including chunked bodies. Validation and staging are incremental; the transport
+adapter may retain one inbound frame alongside the fixed archive I/O buffer.
+It yields between frames to keep deadlines/cancellation observable even for
+empty frames. HTTP trailers are ignored and supply no metadata or authority.
+Dropping the request waiter cancels its body reader and requests coordinator
+cancellation; it cannot abort an in-flight filesystem synchronization or commit.
+Errors and timeouts after valid ID parsing include the operation URL. A response
+lost after publication must be resolved through that URL or host reconciliation,
+not interpreted as rollback.
+
+PUT returns 200 for durable completion or 202 for awaiting-durability status. GET
+returns a compact journal record with stage, revision, static error classification,
+package ID/version, archive digest and byte size. GET 404 means no journal row
+yet: staging precedes the journal, so this does not prove there is no active work.
+Completion still changes no enabled intent, trust decision, capability grant or
+runtime selection. The host must provision the private durable root before use;
+these routes accept no filesystem path and never create or relax that root.
+
+Windows HTTP uploads currently fail 503 before polling the archive body because
+the HTTP host has no supported root/ACL verification path. Authentication alone
+cannot establish the private-root prerequisite. GET journal inspection remains
+available. The low-level Windows store/coordinator APIs still require a trusted
+host to establish their documented root preconditions; a marker file or matching
+archive bytes do not prove private ACLs or durable provisioning.

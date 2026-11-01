@@ -54,3 +54,8 @@ mod properties;
 mod repository_documents;
 mod security;
 mod work_counts;
+// Host-only administrative package ingress remains available without optional plugins.
+#[cfg(not(windows))]
+mod plugin_package_uploads;
+#[cfg(windows)]
+mod plugin_package_uploads_windows;

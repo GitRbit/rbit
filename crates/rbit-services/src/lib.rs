@@ -21,6 +21,12 @@ pub use plugin_packages::{PackageInstallOutcome, PluginPackageService};
 pub use rbit_plugin_web as plugin_pages;
 pub use rbit_plugin_web as plugin_mutations;
 pub use rbit_plugin_web as request_hooks;
+/// Host package administration contracts for transport adapters. These describe
+/// journal state without exposing a ledger writer or granting trust/activation.
+pub use rbit_storage::sqlite::plugin_installations::{
+    InstallationDescriptor as PackageInstallationDescriptor, InstallationOperation as PackageInstallationOperation,
+    OperationError as PackageOperationError, OperationId as PackageOperationId, OperationStage as PackageOperationStage,
+};
 #[cfg(test)]
 mod actions_route_tests;
 #[cfg(test)]

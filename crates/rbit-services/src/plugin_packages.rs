@@ -97,7 +97,8 @@ impl PluginPackageService {
 
     /// The reader must have host-enforced transport deadlines: cancellation is
     /// cooperative and cannot interrupt a blocking Read/fsync. The operation token
-    /// is host-generated. A dropped HTTP waiter cancels, but never aborts its owner.
+    /// is chosen by authenticated host administration/CLI before upload, never by
+    /// package/plugin metadata. A dropped HTTP waiter cancels, but never aborts its owner.
     pub async fn install(
         &self,
         actor: &User,

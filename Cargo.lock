@@ -4689,6 +4689,7 @@ dependencies = [
  "rbit-git",
  "rbit-messages",
  "rbit-plugin-api",
+ "rbit-plugin-packages",
  "rbit-plugin-runtime",
  "rbit-services",
  "rbit-storage",
