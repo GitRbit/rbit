@@ -141,8 +141,35 @@ reap. Deadline checks precede and follow each probe. Three injected observation
 tests verify unknown followed by absence, permanent denial, and unknown followed
 by presence then another error. These are branch tests, separate from OS evidence.
 
+## Partial-session deadlines and simultaneous raw output
+
+The last compact increment adds two fixed modes. Partial Ready validates Hello,
+writes exactly two encoded Ready-prefix bytes and blocks. The actual Session
+consumes that partial input without completing a message, then a shared 300 ms
+write/read deadline expires. A fixed shell bootstrap preserves ignored TERM
+through quoted positional exec; a separate 300 ms grace performs no reap.
+The parent then requires SIGKILL status, group absence and both pipe EOFs before
+asserting the expected timeouts and terminal session. This tests controlled
+escalation, not a production signal policy or a macOS exited-leader observation.
+
+The other mode produces concurrent raw stdout/stderr bursts, 256 KiB each,
+after an acknowledged fixed start byte. It is explicitly not an SDK dialogue.
+Both independent drains must observe more than their 16 KiB cap and return cap
+refusal; timeout, EOF or only one noisy stream cannot substitute. After force/reap,
+cleanup retains original counters and a 20-second deadline, using a separately
+reserved 256 KiB per channel plus an EOF probe. Fixed 512-byte buffers avoid output
+queues. Missing EOF or exhausted reservation fails; no generic pipe-size bound
+or sustained-rate guarantee is inferred.
+
+The combined macOS suite passes eight actual OS tests, three injected observation
+tests and ten codec tests, with one outer ignored helper actually dispatched by
+four parent cases. Strict full workspace/all-target Rust 1.99 lint passes. The
+separate observation correction was also exported and tested independently before
+its commit. Failed parallel runs and strict-lint attempts remain retained.
+The newer waiter/protocol/limit cases still require Linux hosted execution.
+
 Still required: production Hello/Ready and partial-frame session deadlines, graceful
-TERM escalation, production waiter-loss ownership/admission, bounded flood queues,
+TERM policy, production waiter-loss ownership/admission, bounded flood queues,
 repeated FD/task/process leak checks, supported platform backends, durable attempt
 settlement/restart recovery, executable image preparation, explicit execution-policy
 review and enforced precommit revocation across every relevant writer. These two

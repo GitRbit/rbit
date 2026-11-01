@@ -30,19 +30,32 @@ pub enum Helper {
     Blocked,
     Protocol,
     BadReady,
+    PartialReady,
+    Flood,
     #[cfg(target_os = "linux")]
     ExitFirst,
 }
 impl Helper {
     fn command(self) -> io::Result<Command> {
         let mut command = match self {
-            Self::Protocol | Self::BadReady => Command::new(std::env::current_exe()?),
+            Self::Protocol | Self::BadReady | Self::Flood => Command::new(std::env::current_exe()?),
             _ => Command::new("/bin/sh"),
         };
         command.env_clear().current_dir("/");
         match self {
-            Self::Protocol | Self::BadReady => {
-                let mode = if matches!(self, Self::Protocol) { "good" } else { "bad_ready" };
+            Self::Protocol | Self::BadReady | Self::PartialReady | Self::Flood => {
+                let mode = match self {
+                    Self::Protocol => "good",
+                    Self::BadReady => "bad_ready",
+                    Self::PartialReady => "partial_ready",
+                    Self::Flood => "flood",
+                    _ => unreachable!("fixed fixture modes only"),
+                };
+                if matches!(self, Self::PartialReady) {
+                    // No interpolation: executable and every argument are quoted
+                    // positional parameters of this fixed shell bootstrap.
+                    command.args(["-c", "trap '' TERM; exec \"$@\"", "rbit-fixed-term-bootstrap"]).arg(std::env::current_exe()?);
+                }
                 command
                     .args(["--exact", "protocol_fixture::protocol_child", "--ignored", "--nocapture", "--test-threads=1"])
                     .env("RBIT_FIXED_PROTOCOL_MODE", mode);
@@ -173,7 +186,14 @@ pub struct Leader {
 impl Leader {
     pub fn spawn(helper: Helper) -> io::Result<(Self, Pipes)> {
         let sigchild = signal(SignalKind::child())?;
-        let mut child = helper.command()?.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).process_group(0).spawn()?;
+        let mut child = helper
+            .command()?
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .process_group(0)
+            .spawn()
+            .map_err(|error| io::Error::new(error.kind(), format!("owned helper spawn: {error}")))?;
         let raw = match i32::try_from(child.id()) {
             Ok(pid) if pid > 1 => pid,
             _ => {
@@ -189,7 +209,8 @@ impl Leader {
             let output = Output(Receiver::from_owned_fd(child.stdout.take().ok_or_else(|| io::Error::other("missing stdout"))?.into())?);
             let error = Output(Receiver::from_owned_fd(child.stderr.take().ok_or_else(|| io::Error::other("missing stderr"))?.into())?);
             Ok(Pipes { input, output, error })
-        })()?;
+        })()
+        .map_err(|error| owned_error("pipe setup", leader.pgid, &error))?;
         Ok((leader, pipes))
     }
     pub fn is_owned(&self) -> bool {
@@ -221,6 +242,14 @@ impl Leader {
             sleep(Duration::from_millis(10)).await;
         }
     }
+    /// Graceful escalation signal while the owned leader remains unreaped.
+    /// No wait is performed here or during the caller's bounded grace window.
+    pub fn terminate_group(&self) -> io::Result<()> {
+        if self.child.is_none() {
+            return Err(io::Error::other("leader already reaped"));
+        }
+        killpg(self.pgid, Signal::SIGTERM).map_err(errno)
+    }
     /// The only force signal occurs while the exclusively owned leader is still
     /// unreaped. Once `try_wait` reaps it, this object can never signal that PGID.
     pub async fn force_and_reap(&mut self) -> io::Result<(ExitStatus, GroupObservation)> {
@@ -229,7 +258,7 @@ impl Leader {
         }
         match killpg(self.pgid, Signal::SIGKILL) {
             Ok(()) | Err(Errno::ESRCH) => {}
-            Err(error) => return Err(errno(error)),
+            Err(error) => return Err(owned_error("force signal", self.pgid, &errno(error))),
         }
         self.reap_owned().await
     }
@@ -249,7 +278,7 @@ impl Leader {
                     self.child.take();
                     return Err(io::Error::other("lost waitable leader; cleanup unresolved"));
                 }
-                Err(error) => return Err(error),
+                Err(error) => return Err(owned_error("leader reap", self.pgid, &error)),
             }
             if Instant::now() >= end {
                 return Err(timeout());

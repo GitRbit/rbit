@@ -9,6 +9,9 @@ use std::{
 };
 use tokio::time::Instant;
 
+#[path = "protocol_limits.rs"]
+mod os_limits;
+
 const ACK: &[u8] = b"RBIT_FIXED_PROTOCOL_V1\n";
 const HARNESS_LIMIT: usize = 16 * 1024;
 
@@ -31,15 +34,23 @@ fn limits() -> WorkerLimits {
 #[ignore = "fixed child fixture; only its exact owned parent dispatch is valid"]
 fn protocol_child() {
     let mode = std::env::var("RBIT_FIXED_PROTOCOL_MODE").expect("fixed fixture mode missing");
-    assert!(matches!(mode.as_str(), "good" | "bad_ready"));
+    assert!(matches!(mode.as_str(), "good" | "bad_ready" | "partial_ready" | "flood"));
     let mut output = io::stderr().lock();
     output.write_all(ACK).unwrap();
     output.flush().unwrap();
     let mut input = io::stdin().lock();
+    if mode == "flood" {
+        os_limits::flood(&mut input, &mut output);
+        return;
+    }
     assert_eq!(
         child_request(&mut input),
         HostMessage::Hello { protocol_version: WORKER_PROTOCOL_VERSION, identity: identity(), limits: limits() }
     );
+    if mode == "partial_ready" {
+        os_limits::partial(&mut input, &mut output);
+        return;
+    }
     let mut ready = identity();
     if mode == "bad_ready" {
         ready.launch_nonce = serde_json::from_value(serde_json::json!("f".repeat(64))).unwrap();

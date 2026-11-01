@@ -2,6 +2,17 @@
 
 ## Controlled Unix pipe feasibility — 2026-11-01
 
+The completed compact test slice passes eight macOS OS cases, three injected
+presence-observation cases and ten codec tests, plus full strict Rust 1.99 workspace
+lint. Partial Ready exercises a real session deadline and TERM-ignore/grace/KILL;
+two raw streams each hit their own cap before reserved bounded cleanup reaches EOF.
+Two failed parallel runs exposed post-reap EPERM; the separate correction retains
+the five-second deadline and requires actual ESRCH, treating permission denial as
+unknown and failing if it persists. That correction passed an isolated staged-source
+preflight too; no claim proves the original groups' exact zombie state. These new
+cases need Linux CI. The next production prerequisite is an enforced shared writer/
+admission fence; no fixture grants execution authority.
+
 The codec-aware fixed child now passes actual Hello/Ready, Ping/Pong and
 Stop/Stopped/EOF with natural exit, plus exact wrong-nonce rejection and forced
 settlement. Its SDK responses use an explicit test-only stderr channel; libtest
