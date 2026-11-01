@@ -356,6 +356,113 @@ async fn backup_includes_retained_package_objects_without_an_installation_pin() 
     assert_eq!(std::fs::read(backup.join(path.strip_prefix(&data).unwrap())).unwrap(), bytes);
 }
 
+/// Preserve an already sealed fixture; storage tests exercise actual capacity sealing.
+async fn seal_policy_fixture(
+    data: &Path,
+    actor: rbit_core::AccountId,
+    mut review: rbit_plugin_api::PackageReviewRequest,
+    revision: rbit_plugin_api::PolicyRevision,
+) {
+    use sqlx::{ConnectOptions, Connection};
+    review.expected_review = rbit_plugin_api::ExpectedPolicyRevision::Exact { revision };
+    let canonical = rbit_storage::sqlite::plugin_policy::PolicyCommand::Review(review).canonical_request().unwrap();
+    let mut connection = sqlx::sqlite::SqliteConnectOptions::new().filename(data.join("rbit.db")).connect().await.unwrap();
+    sqlx::query(
+        "UPDATE plugin_policy_gate SET state=2,seal_reason=0,seal_actor=?,seal_operation='backup-seal',seal_request=?,sealed_at=1 WHERE id=1",
+    )
+    .bind(actor.0)
+    .bind(canonical)
+    .execute(&mut connection)
+    .await
+    .unwrap();
+    connection.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn backup_restores_exact_review_selection_and_policy_epoch() {
+    use rbit_core::Timestamp;
+    use rbit_plugin_api::{
+        ExpectedPolicyRevision, InstalledPackageRef, PackageReviewIntent, PackageReviewRequest, PackageSelectionRequest,
+        PolicyGrantRequests,
+    };
+    use rbit_storage::{
+        NewUser,
+        sqlite::{plugin_installations::OperationId, plugin_policy::ApplyOutcome},
+    };
+
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    let (path, bytes) = seed_package(&data).await;
+    let database = Database::open(&data.join("rbit.db")).await.unwrap();
+    let actor = database
+        .accounts()
+        .create_user(NewUser {
+            name: "policy-admin".parse().unwrap(),
+            email: "policy-admin@example.com".parse().unwrap(),
+            display_name: None,
+            password_hash: "unused-by-this-storage-fixture".to_owned(),
+            is_admin: true,
+        })
+        .await
+        .unwrap();
+    let store = database.plugin_policy();
+    let gate = store.prepare(actor.id(), Timestamp::now()).await.unwrap();
+    let package =
+        InstalledPackageRef::new("example.backup".parse().unwrap(), "1.0.0".parse().unwrap(), archive_digest(&bytes).parse().unwrap())
+            .unwrap();
+    let review = PackageReviewRequest::new(
+        package.clone(),
+        ExpectedPolicyRevision::Absent {},
+        gate.fingerprint.clone().unwrap(),
+        PackageReviewIntent::DataOnly {},
+        PolicyGrantRequests::new(Vec::new()).unwrap(),
+    )
+    .unwrap();
+    let ApplyOutcome::Applied { receipt, .. } =
+        store.apply_review(actor.id(), &OperationId::new("backup-review").unwrap(), &review, Timestamp::now()).await.unwrap()
+    else {
+        panic!("fresh review must apply");
+    };
+    let selection = PackageSelectionRequest::new(
+        package.clone(),
+        ExpectedPolicyRevision::Absent {},
+        receipt.result_revision,
+        gate.fingerprint.clone().unwrap(),
+    );
+    assert!(matches!(
+        store.apply_selection(actor.id(), &OperationId::new("backup-select").unwrap(), &selection, Timestamp::now()).await.unwrap(),
+        ApplyOutcome::Applied { .. }
+    ));
+    let before = store.inspect(actor.id(), package.plugin_id()).await.unwrap();
+    database.close().await;
+
+    let backup = dir.path().join("backup");
+    let output = rbit(&data, &["backup", "--output", backup.to_str().unwrap()]);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert_eq!(std::fs::read(backup.join(path.strip_prefix(&data).unwrap())).unwrap(), bytes);
+    let restored = Database::open(&backup.join("rbit.db")).await.unwrap();
+    let after = restored.plugin_policy().inspect(actor.id(), package.plugin_id()).await.unwrap();
+    assert_eq!(after.gate.epoch, before.gate.epoch);
+    assert_eq!(after.gate.fingerprint, before.gate.fingerprint);
+    assert_eq!(after.selection.as_ref().unwrap().package, Some(package));
+    assert_eq!(after.selection.as_ref().unwrap().revision, before.selection.as_ref().unwrap().revision);
+    assert_eq!(after.review.as_ref().unwrap().revision, before.review.as_ref().unwrap().revision);
+    restored.close().await;
+
+    seal_policy_fixture(&data, actor.id(), review, before.review.as_ref().unwrap().revision).await;
+    let sealed_backup = dir.path().join("sealed-backup");
+    let output = rbit(&data, &["backup", "--output", sealed_backup.to_str().unwrap()]);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let restored = Database::open(&sealed_backup.join("rbit.db")).await.unwrap();
+    let after = restored.plugin_policy().inspect(actor.id(), &"example.backup".parse().unwrap()).await.unwrap();
+    assert_eq!(after.gate.state, rbit_storage::sqlite::plugin_policy::PolicyGateState::Sealed);
+    assert_eq!(after.gate.epoch, before.gate.epoch);
+    assert_eq!(after.gate.fingerprint, before.gate.fingerprint);
+    assert_eq!(after.gate.seal.as_ref().unwrap().operation.as_str(), "backup-seal");
+    assert_eq!(after.selection.as_ref().unwrap().revision, before.selection.as_ref().unwrap().revision);
+    restored.close().await;
+}
+
 #[tokio::test]
 async fn backup_fails_before_final_manifest_for_missing_or_corrupt_package_objects() {
     for damage in ["missing", "digest", "short", "trailing", "directory"] {
@@ -430,12 +537,75 @@ async fn backup_accepts_pre_package_databases_but_rejects_partial_or_missing_cur
             package_sql(&data, "DROP TABLE plugin_installations; DROP TABLE plugin_objects").await;
         }
         if damage == "legacy" {
+            package_sql(
+                &data,
+                "DROP TABLE plugin_policy_receipts; DROP TABLE plugin_selection_heads; \
+                 DROP TABLE plugin_review_heads; DROP TABLE plugin_review_history; DROP TABLE plugin_policy_gate",
+            )
+            .await;
             package_sql(&data, "DELETE FROM _sqlx_migrations WHERE version >= 63").await;
         }
         let backup = dir.path().join("backup");
         let output = rbit(&data, &["backup", "--output", backup.to_str().unwrap()]);
         assert_eq!(output.status.success(), damage == "legacy", "{damage}: {}", String::from_utf8_lossy(&output.stderr));
         assert_eq!(backup.join("manifest.json").exists(), damage == "legacy");
+    }
+}
+
+#[tokio::test]
+async fn backup_accepts_pre_policy_schema_but_rejects_partial_or_missing_current_policy() {
+    for damage in ["legacy", "partial", "current-missing"] {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        let (path, bytes) = seed_package(&data).await;
+        if damage == "partial" {
+            package_sql(&data, "DROP TABLE plugin_policy_receipts").await;
+        } else {
+            package_sql(
+                &data,
+                "DROP TABLE plugin_policy_receipts; DROP TABLE plugin_selection_heads; \
+                 DROP TABLE plugin_review_heads; DROP TABLE plugin_review_history; DROP TABLE plugin_policy_gate",
+            )
+            .await;
+        }
+        if damage == "legacy" {
+            package_sql(&data, "DROP INDEX plugin_installations_exact; DELETE FROM _sqlx_migrations WHERE version >= 64").await;
+        }
+        let backup = dir.path().join("backup");
+        let output = rbit(&data, &["backup", "--output", backup.to_str().unwrap()]);
+        assert_eq!(output.status.success(), damage == "legacy", "{damage}: {}", String::from_utf8_lossy(&output.stderr));
+        assert_eq!(backup.join("manifest.json").exists(), damage == "legacy");
+        if damage == "legacy" {
+            assert_eq!(std::fs::read(backup.join(path.strip_prefix(&data).unwrap())).unwrap(), bytes);
+            let restored = Database::open(&backup.join("rbit.db")).await.unwrap();
+            restored.close().await;
+        }
+    }
+}
+
+#[tokio::test]
+async fn backup_rejects_missing_extra_or_malformed_policy_gate_without_leaking_request_text() {
+    for damage in ["missing", "extra", "uninitialized-epoch", "uninitialized-seal"] {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        seed_package(&data).await;
+        let sql = match damage {
+            "missing" => "DROP TRIGGER plugin_policy_gate_delete; DELETE FROM plugin_policy_gate",
+            "extra" => "PRAGMA ignore_check_constraints=ON; INSERT INTO plugin_policy_gate(id,state) VALUES(2,0)",
+            "uninitialized-epoch" => {
+                "PRAGMA ignore_check_constraints=ON; DROP TRIGGER plugin_policy_gate_transition; UPDATE plugin_policy_gate SET epoch=printf('%064x',1)"
+            }
+            "uninitialized-seal" => {
+                "PRAGMA ignore_check_constraints=ON; DROP TRIGGER plugin_policy_gate_transition; UPDATE plugin_policy_gate SET seal_request='sensitive-policy-fixture'"
+            }
+            _ => unreachable!(),
+        };
+        package_sql(&data, sql).await;
+        let backup = dir.path().join("backup");
+        let output = rbit(&data, &["backup", "--output", backup.to_str().unwrap()]);
+        assert!(!output.status.success(), "{damage}");
+        assert!(!backup.join("manifest.json").exists(), "{damage}");
+        assert!(!String::from_utf8_lossy(&output.stderr).contains("sensitive-policy-fixture"));
     }
 }
 

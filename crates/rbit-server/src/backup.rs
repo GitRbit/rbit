@@ -278,6 +278,7 @@ struct PackageObject {
 /// Read only the immutable backup database. Pending operations assert no durable
 /// object, whereas every retained object and installation pin must survive restore.
 async fn read_package_inventory(connection: &mut sqlx::SqliteConnection) -> anyhow::Result<Vec<PackageObject>> {
+    validate_package_policy_snapshot(connection).await?;
     let tables: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name IN ('plugin_objects', 'plugin_installations', 'plugin_package_operations')")
         .fetch_one(&mut *connection).await?;
     if tables != 3 {
@@ -331,6 +332,34 @@ async fn read_package_inventory(connection: &mut sqlx::SqliteConnection) -> anyh
         anyhow::ensure!(identities.get(&digest) == Some(&(id, version)), "installed plugin identity differs from its archive manifest");
     }
     Ok(objects)
+}
+
+/// Review and candidate metadata belong to this same immutable database snapshot.
+/// A missing pre-policy schema is supported; a partial/current missing ledger must
+/// never be silently restored as unreviewed or open state.
+async fn validate_package_policy_snapshot(connection: &mut sqlx::SqliteConnection) -> anyhow::Result<()> {
+    let tables: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name IN \
+         ('plugin_policy_gate', 'plugin_review_history', 'plugin_review_heads', \
+          'plugin_selection_heads', 'plugin_policy_receipts')",
+    )
+    .fetch_one(&mut *connection)
+    .await?;
+    if tables != 5 {
+        let migrations: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = '_sqlx_migrations'")
+            .fetch_one(&mut *connection)
+            .await?;
+        let current: bool = if migrations == 0 {
+            false
+        } else {
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM _sqlx_migrations WHERE version >= 64)").fetch_one(&mut *connection).await?
+        };
+        anyhow::ensure!(tables == 0 && !current, "incomplete generic plugin policy ledger in backup snapshot");
+        return Ok(());
+    }
+    rbit_storage::sqlite::plugin_policy::validate_snapshot(connection)
+        .await
+        .map_err(|_| anyhow::anyhow!("invalid generic plugin policy ledger in backup snapshot"))
 }
 
 async fn nonsymlink_directory(path: &Path) -> anyhow::Result<()> {
