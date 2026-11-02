@@ -16,6 +16,83 @@ use crate::{
     actions_runner_tasks::{logs, payload, poll, seed, spec, state, template},
 };
 
+// Test-local static phase diagnostics. Never write to a terminal/pipe in the page budget.
+mod run_page_diagnostics {
+    use std::{
+        fmt,
+        io::{self, Write},
+        sync::{Arc, Mutex},
+    };
+
+    const CAPACITY: usize = 64 * 1024;
+
+    #[derive(Clone)]
+    pub(super) struct Buffer(Arc<Mutex<State>>);
+    struct State {
+        bytes: Vec<u8>,
+        truncated: bool,
+        poisoned: bool,
+    }
+    impl fmt::Debug for Buffer {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let snapshot = {
+                let state = self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                (state.bytes.len(), state.truncated, state.poisoned)
+            };
+            f.debug_tuple("RunPageDiagnosticBuffer").field(&snapshot).finish()
+        }
+    }
+    impl Buffer {
+        pub(super) fn new() -> Self {
+            // Allocate the entire bounded sink before starting the request deadline.
+            Self(Arc::new(Mutex::new(State { bytes: Vec::with_capacity(CAPACITY), truncated: false, poisoned: false })))
+        }
+        pub(super) fn emit(&self) {
+            let (bytes, truncated, poisoned) = {
+                let state = self.0.lock().unwrap_or_else(|error| {
+                    let mut state = error.into_inner();
+                    state.poisoned = true;
+                    state
+                });
+                (state.bytes.clone(), state.truncated, state.poisoned)
+            };
+            // Snapshot/copy is complete and its guard gone; stdout IO is outside BOTH
+            // the page deadline and this sink's mutex. This is diagnostics, not success.
+            print!("{}", String::from_utf8_lossy(&bytes));
+            if truncated {
+                println!("[Actions run diagnostic buffer truncated at 64 KiB]");
+            }
+            if poisoned {
+                println!("[Actions run diagnostic buffer mutex recovered poison]");
+            }
+        }
+    }
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Buffer {
+        type Writer = Self;
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+    impl Write for Buffer {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            let mut state = self.0.lock().unwrap_or_else(|error| {
+                let mut state = error.into_inner();
+                state.poisoned = true;
+                state
+            });
+            let retained = bytes.len().min(CAPACITY.saturating_sub(state.bytes.len()));
+            state.bytes.extend_from_slice(&bytes[..retained]);
+            state.truncated |= retained < bytes.len();
+            // A bounded sink consumes the full write even after truncation. Returning
+            // a partial/zero write could make formatting retry instead of staying bounded.
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+}
+
 pub async fn token(fixture: &Fixture, user: &User, scope: TokenScope) -> String {
     let input = CreateAccessToken { name: format!("{scope:?}"), scope, expires_in_days: None };
     fixture.services.tokens.create(user, input).await.unwrap().1
@@ -251,8 +328,16 @@ async fn step_summaries_follow_their_jobs_whatever_order_they_were_claimed_in() 
     // A 503 deliberately has a generic body. Keep the existing boundary's
     // PageError diagnostics local to this request, without owning the global
     // subscriber used by SQL query instrumentation in the same test binary.
-    let diagnostics = tracing_subscriber::fmt().with_env_filter("rbit_web::routes::plugin_pages=debug").with_test_writer().finish();
+    // CLOSE also records cancellation: returned=true distinguishes a normal
+    // phase return from a future dropped at the unchanged one-second deadline.
+    let diagnostic_output = run_page_diagnostics::Buffer::new();
+    let diagnostics = tracing_subscriber::fmt()
+        .with_env_filter("rbit_web::routes::plugin_pages=debug,rbit_web::actions_run_phase=debug")
+        .with_span_events(tracing_subscriber::fmt::format::FmtSpan::CLOSE)
+        .with_writer(diagnostic_output.clone())
+        .finish();
     let response = fixture.router.clone().oneshot(request).with_subscriber(diagnostics).await.unwrap();
+    diagnostic_output.emit(); // PageLease deadline has returned; stdout IO is outside it.
     let status = response.status();
     let page = String::from_utf8(to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
     assert_eq!(status, StatusCode::OK, "run page response: {page}");

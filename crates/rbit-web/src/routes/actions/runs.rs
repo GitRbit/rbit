@@ -36,6 +36,15 @@ pub(crate) fn actions(state: &AppState) -> WebResult<ActionsService> {
     state.services.actions.snapshot().ok_or(WebError::NotFound)
 }
 
+// A span also closes when its pending future is dropped by the page deadline.
+// Record normal return separately; neither field proves successful completion.
+pub(crate) async fn page_phase<T>(phase: &'static str, future: impl std::future::Future<Output = T>) -> T {
+    let span = tracing::debug_span!(target: "rbit_web::actions_run_phase", "actions_run_phase", phase, returned = false);
+    let result = tracing::Instrument::instrument(future, span.clone()).await;
+    span.record("returned", true);
+    result
+}
+
 /// The filters as GET parameters; empty values mean "any".
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
@@ -377,8 +386,8 @@ pub async fn show(
     Path((owner, repo, run)): Path<(String, String, String)>,
 ) -> WebResult<RunPage> {
     let actions = actions(&state)?;
-    let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
-    let detail = actions.run_detail(&loaded.ctx, run_number(&run)?).await?;
+    let loaded = page_phase("repository_header_and_refs", RepoPage::load(&state, &viewer, &owner, &repo)).await?;
+    let detail = page_phase("run_detail", actions.run_detail(&loaded.ctx, run_number(&run)?)).await?;
     let urls = ActionsUrls::new(&loaded.urls.home());
     let run = &detail.run;
     // Writer controls follow the repository's content: none in an archived one.
@@ -387,10 +396,13 @@ pub async fn show(
     let has_jobs = !run.is_workflow_error();
     let any_failed = detail.jobs.iter().any(|job| matches!(job.status, Status::Failure | Status::Cancelled));
     // Actions: artifacts (A).
-    let artifacts: Vec<_> =
-        actions.run_artifacts(&loaded.ctx, run.id).await?.iter().map(|artifact| ArtifactRow::new(artifact, &urls, run.number)).collect();
+    let artifacts: Vec<_> = page_phase("artifacts", actions.run_artifacts(&loaded.ctx, run.id))
+        .await?
+        .iter()
+        .map(|artifact| ArtifactRow::new(artifact, &urls, run.number))
+        .collect();
     // Actions: step summaries.
-    let heads = actions.summary_heads(&loaded.ctx, &detail.jobs).await?;
+    let heads = page_phase("summary_heads", actions.summary_heads(&loaded.ctx, &detail.jobs)).await?;
     let mut summaries = Vec::new();
     let mut remaining = 8 * 1024;
     for head in heads.iter().take(4) {
@@ -400,10 +412,14 @@ pub async fn show(
         if remaining == 0 {
             break;
         }
-        if let Some(text) = actions.summary_preview(&loaded.ctx, job, head.step, remaining).await? {
+        if let Some(text) = page_phase("summary_read", actions.summary_preview(&loaded.ctx, job, head.step, remaining)).await? {
             let clipped = text.len() >= remaining;
             remaining = remaining.saturating_sub(text.len());
-            summaries.push(SummaryView::preview(&job.name, &text, urls.summary(run.number, job.id.0, Some(head.step)), clipped));
+            let span = tracing::debug_span!(target: "rbit_web::actions_run_phase", "actions_run_phase", phase = "summary_render", returned = false);
+            let summary =
+                span.in_scope(|| SummaryView::preview(&job.name, &text, urls.summary(run.number, job.id.0, Some(head.step)), clipped));
+            span.record("returned", true);
+            summaries.push(summary);
         }
     }
     let mut jobs = job_rows(&detail.jobs, run.number, &urls, can_write && finished && has_jobs);
@@ -418,8 +434,7 @@ pub async fn show(
     let artifacts = artifacts.into_iter().skip(artifacts_pagination.offset).take(32).collect();
     let self_url = crate::views::actions::run_page_url(&page, run.number, None)?;
     // Actions: environments.
-    let deployments = actions
-        .pending_deployments(viewer.user(), &loaded.ctx, run)
+    let deployments = page_phase("deployments", actions.pending_deployments(viewer.user(), &loaded.ctx, run))
         .await?
         .into_iter()
         .map(|pending| DeploymentView {

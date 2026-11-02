@@ -30,7 +30,7 @@ pub(super) fn bundle(weak: WeakAppState) -> Result<ActionsRouteBundle, ServiceEr
     bundle.pages.push(compiled_request_page(descriptor, move |context, forms, query| {
         let weak = state.clone();
         async move {
-            let (state, viewer, mut page, owner, repo) = super::request(&weak, &context, forms).await?;
+            let (state, viewer, mut page, owner, repo) = runs::page_phase("request", super::request(&weak, &context, forms)).await?;
             page.path = super::repo_url(&owner, &repo, "run");
             page.plugin_query = query.clone();
             for cursor in ["jobs_page", "artifacts_page"] {
@@ -40,7 +40,9 @@ pub(super) fn bundle(weak: WeakAppState) -> Result<ActionsRouteBundle, ServiceEr
             }
 
             let run = query.get("run").ok_or(rbit_services::plugin_pages::PageError::Forbidden)?.to_owned();
-            let view = runs::show(State(state), viewer, page, Path((owner, repo, run))).await.map_err(super::page_error)?;
+            let view = runs::page_phase("model", runs::show(State(state), viewer, page, Path((owner, repo, run))))
+                .await
+                .map_err(super::page_error)?;
             super::document(view, context.locale)
         }
     }));
