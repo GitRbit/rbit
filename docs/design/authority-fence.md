@@ -458,6 +458,44 @@ orchestration and all-eight Store/caller adoption remain required. Its drain is
 logical observation; it does not certify physical worker termination, filesystem
 containment, crash recovery or available managed execution.
 
+A separate trusted-Rust repository command facade now derives fixed SQL plans from
+one Database domain. Two command cells are shared by clones; caller String payload
+bytes and independently opened Databases are outside that count bound. The plans
+cover the eight repository/settings write origins and a bounded general/rename/archive
+sequence. They retain one acquired enrollment across acknowledged SQL phases and
+resume that same enrollment after admission stops. No arbitrary SQL, callback, raw
+neutral token or caller-provided settlement report is accepted.
+
+A checked outer deferred BEGIN cannot silently become a savepoint. Acquisition failure
+is distinct from attempted-BEGIN uncertainty. Query errors retain the original error
+and await explicit rollback; COMMIT/rollback failure or owner/phase loss remains
+unconfirmed. Create captures its authoritative ID after COMMIT and before fallible
+row conversion, and permits one fixed captured-ID metadata compensation. Known
+failed/partial work can recycle command credit only at a source-known SQL boundary
+and after the trusted backend termination assertion; logical uncertainty stays
+sticky. This is not successful reconciliation or safe automatic retry.
+
+Consuming async success/failure/cancel terminals resume the same enrollment solely
+for final acknowledgement or uncertain Drop, without new SQL or admission. They do
+not use the neutral suspended follower acknowledgement as standalone completion.
+Backend completion remains a trusted builtin assertion, not evidence inferred from
+SQL. A future actual adopter must end required SQL/backend attempts, obtain the
+same ordinary Git edit's returned keepalive, then await its Storage terminal inside
+an already-owned Service task. An HTTP reply receiver must own neither command nor
+actual-flow loss marker. Source SQL uncertainty cannot be cleared by either terminal.
+
+Database close synchronously stops new command admissions and drains eligible
+continuations and busy phases before pool closure. Pure retained reservations are
+permanently ineligible after stop and are not erased; unknown idle cells forbid later
+SQL and report uncertainty rather than waiting forever for their restart-only anchor.
+A busy phase remains counted after owner loss until its owning future ends or drops.
+Observed cell poison wakes an existing drain once; repeated poisoned reads do not
+create a busy notification loop. None of this acknowledges residual driver work,
+physical shutdown or all-authority coverage. Constructor allocation and terminal
+serial handoffs are unmeasured costs. Existing eight Store APIs and all actual
+Services/Git/Fork callers remain unchanged and unenrolled by this unused facade;
+whole caller adoption and the earlier execution prerequisites remain unfinished.
+
 Before execution can become available, supported store opens need enforced shared
 identity and ownership, and every relevant authority writer must join the same
 domain. Cross-store changes need one guard spanning their actual settlement.

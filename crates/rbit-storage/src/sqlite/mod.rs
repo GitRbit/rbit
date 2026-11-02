@@ -49,6 +49,7 @@ pub mod recovery;
 pub mod releases;
 pub mod repo_settings;
 mod repositories;
+pub mod repository_commands;
 mod repository_writes;
 mod reseal;
 pub mod reviews;
@@ -93,6 +94,7 @@ pub struct Database {
     authority_domain: rbit_authority_fence::Domain,
     forced_passwords: credential_changes::Coordinator,
     self_passwords: credential_changes::SelfCoordinator,
+    repository_commands: repository_commands::RepositoryCoordinator,
     /// Seals the credentials stores keep (see [`crate::sealing`]).
     key: SealingKey,
 }
@@ -149,6 +151,7 @@ impl Database {
             authority_domain: rbit_authority_fence::Domain::new(),
             forced_passwords: credential_changes::Coordinator::default(),
             self_passwords: credential_changes::SelfCoordinator::default(),
+            repository_commands: repository_commands::RepositoryCoordinator::default(),
         };
         database.optimize().await?;
         Ok(database)
@@ -238,6 +241,31 @@ impl Database {
     ) -> impl std::future::Future<Output = Result<(), credential_changes::SelfPasswordDrainError>> + Send + '_ {
         self.prepare_self_password_changes_shutdown();
         self.self_passwords.drain()
+    }
+
+    /// Trusted fixed repository SQL commands. Existing public stores/callers are not adopted.
+    pub fn repository_commands(&self) -> repository_commands::RepositoryCommands {
+        repository_commands::RepositoryCommands::new(
+            self.repository_commands.clone(),
+            self.store("repositories"),
+            self.store("repo_settings"),
+            self.authority_domain.writer(),
+        )
+    }
+
+    /// Synchronously stops fresh/stale reservations. Acquired continuations remain eligible.
+    pub fn prepare_repository_commands_shutdown(&self) {
+        self.repository_commands.stop();
+    }
+
+    /// Stops synchronously before returning the deadline drain future. Known eligible
+    /// work remains owned on timeout; no physical/all-authority certificate.
+    pub fn drain_repository_commands(
+        &self,
+        deadline: tokio::time::Instant,
+    ) -> impl std::future::Future<Output = Result<(), repository_commands::RepositoryCommandDrainError>> + Send + '_ {
+        self.prepare_repository_commands_shutdown();
+        repository_commands::drain(&self.repository_commands, Some(deadline))
     }
 
     pub fn accounts(&self) -> AccountStore {
@@ -460,6 +488,7 @@ impl Database {
     pub fn close(&self) -> impl std::future::Future<Output = ()> + Send + '_ {
         self.prepare_forced_password_changes_shutdown();
         self.prepare_self_password_changes_shutdown();
+        self.prepare_repository_commands_shutdown();
         // This executes when close() is CALLED, even if its future is never polled.
         // It stops enrolled writers, not every authority writer.
         drop(self.authority_domain.stop_writers());
@@ -469,6 +498,9 @@ impl Database {
             }
             if let Err(error) = self.drain_self_password_changes().await {
                 tracing::error!(%error, "closing pools after uncertain self password command; no clean ownership release");
+            }
+            if let Err(error) = repository_commands::drain(&self.repository_commands, None).await {
+                tracing::error!(%error, "closing pools after nonclean repository command drain; no clean ownership release");
             }
             self.package_pool.close().await;
             self.pool.close().await;

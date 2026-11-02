@@ -28,6 +28,8 @@
 use std::{fmt, time::Instant};
 
 use crate::work;
+
+pub(super) mod outer_deferred;
 use futures_util::{
     FutureExt, StreamExt, TryFutureExt, TryStreamExt,
     future::BoxFuture,
