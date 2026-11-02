@@ -50,6 +50,14 @@ async fn load_for_admin(state: &AppState, viewer: &Viewer, owner: &str, repo: &s
     Ok(loaded)
 }
 
+async fn load_for_admin_mutation(state: &AppState, viewer: &Viewer, owner: &str, repo: &str) -> WebResult<RepoPage> {
+    let loaded = RepoPage::load_for_mutation(state, viewer, owner, repo).await?;
+    if !loaded.ctx.access.can_admin() {
+        return Err(WebError::NotFound);
+    }
+    Ok(loaded)
+}
+
 async fn transfer_page(state: &AppState, loaded: &RepoPage, user: &User, page: Page) -> WebResult<TransferPage> {
     let suggestions = state.services.transfers.suggested_owners(user, &loaded.ctx).await?;
     Ok(TransferPage::new(page, loaded.header(state, "settings"), &suggestions, user.is_admin))
@@ -76,7 +84,7 @@ pub async fn transfer(
     Path((owner, repo)): Path<(String, String)>,
     Form(form): Form<TransferFormData>,
 ) -> WebResult<Response> {
-    let loaded = load_for_admin(&state, &viewer, &owner, &repo).await?;
+    let loaded = load_for_admin_mutation(&state, &viewer, &owner, &repo).await?;
     match state.services.transfers.transfer(&user, &loaded.ctx, &form.new_owner, &form.confirm).await {
         Ok(moved) => Ok(Redirect::to(&format!("/{}/{}", moved.owner.name, moved.repo.name)).into_response()),
         Err(ServiceError::Invalid(message)) => {

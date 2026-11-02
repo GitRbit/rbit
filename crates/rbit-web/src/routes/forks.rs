@@ -68,7 +68,7 @@ async fn fork(
     Path((owner, repo)): Path<(String, String)>,
     Form(form): Form<ForkFormInput>,
 ) -> WebResult<Response> {
-    let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
+    let loaded = RepoPage::load_for_mutation(&state, &viewer, &owner, &repo).await?;
     let input = ForkInput { owner: form.owner.clone(), name: form.name.clone() };
     match state.services.forks.fork(&user, &loaded.ctx, input).await {
         Ok(created) => Ok(Redirect::to(&format!("/{}/{}", created.owner.name, created.repo.name)).into_response()),

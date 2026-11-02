@@ -110,12 +110,36 @@ pub(crate) struct RepoPage {
     actions_on: bool,
 }
 
+enum ReaderLifetime {
+    Page,
+    Mutation,
+}
+
 impl RepoPage {
     /// The repository, access-checked, with its header's data from the same statement
     /// ([`rbit_services::RepositoryService::open_page`]), and its refs.
     pub(crate) async fn load(state: &AppState, viewer: &Viewer, owner: &str, repo: &str) -> WebResult<Self> {
+        Self::load_with_reader(state, viewer, owner, repo, ReaderLifetime::Page).await
+    }
+
+    /// Loads the same header and refs without retaining an open repository between
+    /// operations. Mutation callers can retain this page across Service waits without
+    /// retaining a populated pin; later reads use their ordinary per-operation leases.
+    pub(super) async fn load_for_mutation(state: &AppState, viewer: &Viewer, owner: &str, repo: &str) -> WebResult<Self> {
+        Self::load_with_reader(state, viewer, owner, repo, ReaderLifetime::Mutation).await
+    }
+
+    async fn load_with_reader(
+        state: &AppState,
+        viewer: &Viewer,
+        owner: &str,
+        repo: &str,
+        reader_lifetime: ReaderLifetime,
+    ) -> WebResult<Self> {
         let (mut ctx, header) = state.services.repositories.open_page(viewer.user(), owner, repo).await?;
-        ctx.reader = ctx.reader.pinned();
+        if matches!(reader_lifetime, ReaderLifetime::Page) {
+            ctx.reader = ctx.reader.pinned();
+        }
         let urls = RepoUrls::new(ctx.repo.owner.name.as_str(), ctx.repo.repo.name.as_str());
         // Actions: interface and secrets (U). Only an instance with Actions asks the
         // repository whether it has them on, beside reading the refs.
@@ -741,5 +765,111 @@ mod tests {
         // Not a whole segment, or not a ref at all: left to the reader.
         assert_eq!(split("mainline/src"), None);
         assert_eq!(split("3f9a2c1/src"), None);
+    }
+}
+
+#[cfg(test)]
+mod mutation_reader_lifetime_regression {
+    use std::{
+        path::Path,
+        process::{Command, Stdio},
+        sync::Arc,
+    };
+
+    use rbit_core::{Config, Visibility};
+    use rbit_services::{CreateRepository, Services};
+    use rbit_storage::{Database, NewUser};
+
+    use super::RepoPage;
+    use crate::{AppState, extract::Viewer};
+
+    fn local_git(directory: &Path, arguments: &[&str]) {
+        let mut command = Command::new("git");
+        command.env_clear();
+        for key in ["PATH", "SYSTEMROOT", "TEMP", "TMP", "TMPDIR"] {
+            if let Some(value) = std::env::var_os(key) {
+                command.env(key, value);
+            }
+        }
+        let output = command
+            .current_dir(directory)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", if cfg!(windows) { "NUL" } else { "/dev/null" })
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .stdin(Stdio::null())
+            .args(["-c", "user.name=Fixture", "-c", "user.email=fixture@example.com", "-c", "core.autocrlf=false"])
+            .args(arguments)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "git {arguments:?}: {}", String::from_utf8_lossy(&output.stderr));
+    }
+
+    #[tokio::test]
+    async fn retained_mutation_page_allows_independent_delete_and_keeps_error_header_data() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut config = Config::default();
+        config.storage.data_dir = directory.path().join("data");
+        config.updates.check_for_updates = false;
+        std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
+        let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
+        let kv = database.open_kv(&config.storage.kv_path()).unwrap();
+        let config = Arc::new(config);
+        let services = Services::new(Arc::clone(&config), &database, &kv).await.unwrap();
+        let actor = database
+            .accounts()
+            .create_user(NewUser {
+                name: "holder".parse().unwrap(),
+                email: "holder@example.com".parse().unwrap(),
+                display_name: None,
+                password_hash: "fixture-not-used-for-login".to_owned(),
+                is_admin: false,
+            })
+            .await
+            .unwrap();
+        services
+            .repositories
+            .create(
+                &actor,
+                CreateRepository { name: "held".to_owned(), description: "retained header".to_owned(), visibility: Visibility::Public },
+            )
+            .await
+            .unwrap();
+        let original = services.repositories.open(Some(&actor), "holder", "held").await.unwrap();
+        let path = original.disk_path.clone();
+        let work = directory.path().join("work");
+        std::fs::create_dir(&work).unwrap();
+        local_git(&work, &["init", "--quiet", "--initial-branch=main"]);
+        std::fs::write(work.join("README.md"), "packed fixture\n").unwrap();
+        local_git(&work, &["add", "README.md"]);
+        local_git(&work, &["commit", "--quiet", "-m", "fixture"]);
+        local_git(&work, &["push", "--quiet", path.to_str().unwrap(), "main"]);
+        local_git(&path, &["repack", "-ad"]);
+        drop(original);
+        let state = AppState::new(config, services);
+        let viewer = Viewer(Some(Arc::new(actor.clone())));
+        let loaded = RepoPage::load_for_mutation(&state, &viewer, "holder", "held").await.unwrap();
+        // Actually read packed Git content while the caller's loaded page survives.
+        // No assertion claims this operation proves a particular OS mapping exists.
+        let blob = loaded.ctx.reader.blob("main".to_owned(), "README.md".to_owned(), 1024).await.unwrap();
+        drop(blob);
+        let independent = state.services.repositories.open(Some(&actor), "holder", "held").await.unwrap();
+        // close() inside delete sees this independent ordinary context, not loaded's
+        // shared slot. Therefore that existing close cannot sanitize a pinned caller.
+        state.services.repo_settings.delete(&actor, &independent, "holder/held").await.unwrap();
+        assert!(!path.exists());
+        assert!(database.repositories().find_by_path("holder", "held").await.unwrap().is_none());
+        // This post-await use keeps the actual loaded page in the caller frame and
+        // checks the same owned metadata/ref values used by error-page headers.
+        let header = loaded.header(&state, "settings");
+        assert_eq!(header.owner, "holder");
+        assert_eq!(header.name, "held");
+        assert_eq!(header.description.as_deref(), Some("retained header"));
+        assert!(loaded.refs().iter().any(|reference| reference.name == "main"));
+        drop(loaded);
+        drop(independent);
+        state.services.shutdown().await;
+        drop(state);
+        database.close().await;
+        drop(kv);
     }
 }

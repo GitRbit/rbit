@@ -47,6 +47,14 @@ async fn load_for_admin(state: &AppState, viewer: &Viewer, owner: &str, repo: &s
     Ok(loaded)
 }
 
+async fn load_for_admin_mutation(state: &AppState, viewer: &Viewer, owner: &str, repo: &str) -> WebResult<RepoPage> {
+    let loaded = RepoPage::load_for_mutation(state, viewer, owner, repo).await?;
+    if !loaded.ctx.access.can_admin() {
+        return Err(WebError::NotFound);
+    }
+    Ok(loaded)
+}
+
 /// The repository's branch names, in the reader's order.
 async fn branch_names(loaded: &RepoPage) -> WebResult<Vec<String>> {
     let refs = loaded.ctx.reader.refs().await.map_err(ServiceError::from)?;
@@ -104,7 +112,7 @@ pub async fn update(
     Path((owner, repo)): Path<(String, String)>,
     Form(form): Form<GeneralFormInput>,
 ) -> WebResult<Response> {
-    let loaded = load_for_admin(&state, &viewer, &owner, &repo).await?;
+    let loaded = load_for_admin_mutation(&state, &viewer, &owner, &repo).await?;
     let result = match Visibility::parse(&form.visibility) {
         Some(visibility) => {
             let input = UpdateRepository { description: form.description.clone(), visibility, default_branch: form.default_branch.clone() };
@@ -144,7 +152,7 @@ pub async fn rename(
     Path((owner, repo)): Path<(String, String)>,
     Form(form): Form<RenameFormInput>,
 ) -> WebResult<Response> {
-    let loaded = load_for_admin(&state, &viewer, &owner, &repo).await?;
+    let loaded = load_for_admin_mutation(&state, &viewer, &owner, &repo).await?;
     match state.services.repo_settings.rename(&loaded.ctx, &form.name).await {
         Ok(name) => Ok(Redirect::to(&format!("/{}/{name}/settings", loaded.ctx.repo.owner.name)).into_response()),
         Err(error @ (ServiceError::Invalid(_) | ServiceError::Conflict(_))) => {
@@ -169,7 +177,7 @@ pub async fn archive(
     Path((owner, repo)): Path<(String, String)>,
     Form(form): Form<ArchiveFormInput>,
 ) -> WebResult<Response> {
-    let loaded = load_for_admin(&state, &viewer, &owner, &repo).await?;
+    let loaded = load_for_admin_mutation(&state, &viewer, &owner, &repo).await?;
     let user = viewer.user().ok_or(WebError::NotFound)?;
     let archived = match form.archived.as_str() {
         "true" => true,
@@ -194,8 +202,8 @@ pub async fn delete(
     Path((owner, repo)): Path<(String, String)>,
     Form(form): Form<DeleteFormInput>,
 ) -> WebResult<Response> {
-    let loaded = load_for_admin(&state, &viewer, &owner, &repo).await?;
-    // Administrators are always signed in; `load_for_admin` answered 404 otherwise.
+    let loaded = load_for_admin_mutation(&state, &viewer, &owner, &repo).await?;
+    // Administrators are always signed in; the admin loader answered 404 otherwise.
     let user = viewer.user().ok_or(WebError::NotFound)?;
     match state.services.repo_settings.delete(user, &loaded.ctx, &form.confirm).await {
         Ok(()) => Ok(Redirect::to(&format!("/{}", loaded.ctx.repo.owner.name)).into_response()),

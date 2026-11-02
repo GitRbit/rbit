@@ -527,6 +527,16 @@ queue accounting and shared pinned readers still need separate bounds/design.
 Pointer-based storage is not a measured Step-layout, allocation, RSS or speed claim;
 no Service permission/reload adoption or performance experiment is established.
 
+HTML repository settings, transfer and fork POST loaders now construct ordinary
+readers from the original access/header load. Their retained page data does not
+keep a populated pin across Service waits; later reads use per-operation leases.
+GET loaders keep their pinned-reader optimization. This changes repeated POST
+read work and concurrent observation timing, without moving permission checks or
+closing another caller's shared pin. Actual in-flight readers still retain their
+own leases until their workers end; cancellation is not that acknowledgement.
+External populated pins retain the existing cooperative ten-second fallback.
+No pending Service queue or physical exclusion guarantee is introduced here.
+
 Before execution can become available, supported store opens need enforced shared
 identity and ownership, and every relevant authority writer must join the same
 domain. Cross-store changes need one guard spanning their actual settlement.
