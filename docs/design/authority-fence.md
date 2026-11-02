@@ -504,7 +504,7 @@ race elimination is promised. Only the fixed Admin upsert is possible, with orig
 actor/date provenance. Captured-ID compensation consumes an unentered creator
 stage; once that stage is entered, failure preserves the created repository.
 
-`DeferredSettings` commits general settings before parsing its captured raw rename.
+`DeferredSettings` commits general settings before parsing its captured rename.
 Invalid names return typed `NameError` rejection before resume, BEGIN or DML, retain
 earlier commits, halt remaining stages and require the failed terminal. Archive time
 is captured at the selected phase's first poll, before its same-token serial wait.
@@ -513,6 +513,19 @@ checks are performed here: the later service adopter must preserve their origina
 order and refuse a reloaded repository ID or owner mismatch before archiving,
 without retargeting the bound command. That mismatch refusal is an intentional
 future safety change, not implemented by these Storage plans.
+
+The deferred-name input is an opaque nonclone capture. Its consuming constructor
+Unicode-trims raw input and freshly copies at most `RepoName::MAX_LEN` bytes into
+boxed text, or retains only an overlength marker, dropping the original raw input
+before handoff. Capture parses nothing and returns no validation result. The fixed
+post-General stage applies the original exact-name filter and parser, or constructs
+the same `TooLong` error there; earlier General failure still wins. Reserved-name
+errors preserve exact trimmed spelling. This intentionally changes the unused
+trusted API's input representation and where trimming work occurs, not the later
+error/partial-result boundary. Eager plans remain unchanged. Other command payloads,
+queue accounting and shared pinned readers still need separate bounds/design.
+Pointer-based storage is not a measured Step-layout, allocation, RSS or speed claim;
+no Service permission/reload adoption or performance experiment is established.
 
 Before execution can become available, supported store opens need enforced shared
 identity and ownership, and every relevant authority writer must join the same

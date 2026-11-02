@@ -35,6 +35,7 @@ impl Fixture {
                 "CREATE TRIGGER fixture_delete BEFORE DELETE ON repositories WHEN (SELECT enabled FROM fixture_gate) = 2 AND OLD.name = 'keep-row' BEGIN SELECT RAISE(ABORT, 'injected compensation statement refusal'); END",
                 "CREATE TRIGGER fixture_rollback BEFORE UPDATE OF description ON repositories WHEN (SELECT enabled FROM fixture_gate) = 3 BEGIN SELECT RAISE(ROLLBACK, 'injected outer rollback'); END",
                 "CREATE TRIGGER fixture_creator BEFORE INSERT ON collaborators WHEN (SELECT enabled FROM fixture_gate) = 4 BEGIN SELECT RAISE(ABORT, 'injected creator grant refusal'); END",
+                "CREATE TRIGGER fixture_general BEFORE UPDATE OF description ON repositories WHEN (SELECT enabled FROM fixture_gate) = 5 BEGIN SELECT RAISE(ABORT, 'injected general statement refusal'); END",
             ] {
                 sqlx::query(statement).execute(&db.pool).await.unwrap();
             }
@@ -621,7 +622,7 @@ fn deferred(id: RepoId, name: &str, raw: Option<&str>, archival: Option<Reposito
         repo: id,
         initial_name: name.parse().unwrap(),
         general: settings(),
-        rename_input: raw.map(str::to_owned),
+        rename_input: raw.map(|name| RepositoryDeferredName::capture(name.to_owned())),
         archival,
     })
 }
@@ -913,4 +914,137 @@ async fn rejected_name_direct_successful_terminal_is_refused_without_another_inv
     assert_eq!(count, 0);
     assert!(f.db.authority_domain.snapshot().uncertain);
     assert_eq!(f.db.drain_repository_commands(Instant::now() + WAIT).await, Err(RepositoryCommandDrainError::Unconfirmed));
+}
+
+// Bounded captured-name cases; no Services/principal/reload or performance proof.
+#[test]
+fn captured_deferred_name_preserves_parser_errors_and_reserved_spelling() {
+    for raw in ["", "  ", "bad/name", "-edge", "edge-", "Settings", "Repo.GIT", "a..b", "é", "good-name", " GOOD-NAME "] {
+        let expected = raw.trim().parse::<RepoName>();
+        let actual = RepositoryDeferredName::capture(raw.to_owned()).parse();
+        assert_eq!(actual, expected, "{raw:?}");
+    }
+    assert_eq!(
+        RepositoryDeferredName::capture(" Settings ".to_owned()).parse(),
+        Err(NameError::Reserved { kind: "repository name", value: "Settings".to_owned() })
+    );
+}
+
+#[test]
+fn captured_deferred_name_uses_byte_limit_and_original_error_precedence() {
+    let ascii_limit = "a".repeat(RepoName::MAX_LEN);
+    assert_eq!(RepositoryDeferredName::capture(ascii_limit.clone()).parse().unwrap().as_str(), ascii_limit);
+    for raw in ["a".repeat(RepoName::MAX_LEN + 1), "é".repeat(51), format!("/{}", "a".repeat(RepoName::MAX_LEN))] {
+        assert_eq!(
+            RepositoryDeferredName::capture(raw.clone()).parse(),
+            Err(NameError::TooLong { kind: "repository name", max: RepoName::MAX_LEN })
+        );
+        assert_eq!(raw.trim().parse::<RepoName>(), Err(NameError::TooLong { kind: "repository name", max: RepoName::MAX_LEN }));
+    }
+    assert_eq!(RepositoryDeferredName::capture("é".repeat(50)).parse(), Err(NameError::InvalidCharacter { kind: "repository name" }));
+}
+
+#[test]
+fn captured_deferred_name_preserves_unicode_trim_empty_filter_and_case() {
+    let initial: RepoName = "original".parse().unwrap();
+    for raw in ["original", " original ", "\u{2003}original\u{3000}"] {
+        let captured = RepositoryDeferredName::capture(raw.to_owned());
+        assert!(captured.is_unchanged(&initial));
+        assert_eq!(captured.parse().unwrap(), initial);
+    }
+    let captured = RepositoryDeferredName::capture(" ORIGINAL ".to_owned());
+    assert!(!captured.is_unchanged(&initial));
+    assert_eq!(captured.parse().unwrap().as_str(), "ORIGINAL");
+    let captured = RepositoryDeferredName::capture("\u{2003}\u{3000}".to_owned());
+    assert!(!captured.is_unchanged(&initial));
+    assert_eq!(captured.parse(), Err(NameError::Empty { kind: "repository name" }));
+    let captured = RepositoryDeferredName::capture("a".repeat(RepoName::MAX_LEN + 1));
+    assert!(!captured.is_unchanged(&initial));
+    assert!(matches!(captured.0, DeferredName::OverLength));
+}
+
+#[test]
+fn captured_deferred_name_copies_bounded_text_without_retaining_raw_capacity() {
+    let mut raw = String::with_capacity(1024 * 1024);
+    raw.push_str("  fresh-name  ");
+    let trimmed_pointer = raw.trim().as_ptr() as usize;
+    let captured = RepositoryDeferredName::capture(raw);
+    let DeferredName::Text(text) = captured.0 else { panic!("missing bounded text") };
+    assert_eq!(text.as_ref(), "fresh-name");
+    assert_eq!(text.len(), "fresh-name".len());
+    assert_ne!(text.as_ptr() as usize, trimmed_pointer, "copy occurs while the raw allocation still exists");
+    let captured = RepositoryDeferredName::capture("x".repeat(1024 * 1024));
+    assert!(matches!(captured.0, DeferredName::OverLength));
+    let captured = RepositoryDeferredName::capture(" ".repeat(1024 * 1024));
+    assert!(matches!(captured.0, DeferredName::Text(ref text) if text.is_empty()));
+    // Source/value ownership check, not allocator accounting or RSS release proof.
+}
+
+#[tokio::test]
+async fn captured_overlength_rejection_after_general_commit_needs_no_serial_or_sql_and_halts_archive() {
+    let f = Fixture::new().await;
+    let id = f.create("captured-lazy").await;
+    let raw = "a".repeat(RepoName::MAX_LEN + 1);
+    let AdmittedRepositoryCommand { mut command, owner } =
+        f.admit(deferred(id, "captured-lazy", Some(&raw), Some(RepositoryDeferredArchive::Archive { by: f.alice }))).await;
+    let general = settled(command.execute_next().await);
+    assert_eq!(general.boundary, RepositorySqlBoundary::Committed);
+    general.result.unwrap();
+    let serial = f.db.authority_domain.writer().begin().await.unwrap();
+    let (result, work) = crate::count_work(timeout(WAIT, command.execute_next())).await;
+    assert!(matches!(
+        result.unwrap(),
+        RepositoryPhaseResult::RejectedName(NameError::TooLong { kind: "repository name", max: RepoName::MAX_LEN })
+    ));
+    assert_eq!(work, crate::Work { acquisitions: 0, statements: 0, cache_writes: 0 });
+    assert_eq!(f.db.authority_domain.snapshot().queued, 0);
+    assert!(command.script.steps.is_empty());
+    assert_eq!(command.script.terminal_requirement, TerminalRequirement::FailedFlow);
+    let row: (String, String, String, String) =
+        sqlx::query_as("SELECT name, description, visibility, default_branch FROM repositories WHERE id = ?")
+            .bind(id.0)
+            .fetch_one(&f.db.pool)
+            .await
+            .unwrap();
+    assert_eq!(row, ("captured-lazy".to_owned(), "changed".to_owned(), "public".to_owned(), "next".to_owned()));
+    let archives: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM repo_archives WHERE repo_id = ?").bind(id.0).fetch_one(&f.db.pool).await.unwrap();
+    assert_eq!(archives, 0);
+    serial.complete();
+    let completion = command.finish_failed_backend(owner).await.unwrap();
+    assert_eq!(completion.progress.committed_forward_steps, 1);
+    assert_eq!(completion.progress.last_forward_boundary, Some(RepositorySqlBoundary::NoTransaction));
+    assert_eq!(completion.logical, RepositoryLogicalSettlement::FailureRecorded);
+}
+
+#[tokio::test]
+async fn actual_general_abort_masks_captured_overlength_and_preserves_prior_row() {
+    let f = Fixture::with_commit_fault(true).await;
+    let id = f.create("masked-name").await;
+    sqlx::query("UPDATE fixture_gate SET enabled = 5").execute(&f.db.pool).await.unwrap();
+    let raw = "a".repeat(RepoName::MAX_LEN + 1);
+    let AdmittedRepositoryCommand { mut command, owner } =
+        f.admit(deferred(id, "masked-name", Some(&raw), Some(RepositoryDeferredArchive::Archive { by: f.alice }))).await;
+    let report = settled(command.execute_next().await);
+    assert_eq!(report.boundary, RepositorySqlBoundary::RolledBack);
+    assert!(
+        matches!(report.result, Err(StorageError::Sqlite(sqlx::Error::Database(error))) if error.code().as_deref() == Some("1811") && error.message() == "injected general statement refusal")
+    );
+    assert!(command.script.steps.is_empty(), "the overlength stage is never evaluated after General failure");
+    let row: (String, String, String, String) =
+        sqlx::query_as("SELECT name, description, visibility, default_branch FROM repositories WHERE id = ?")
+            .bind(id.0)
+            .fetch_one(&f.db.pool)
+            .await
+            .unwrap();
+    assert_eq!(row, ("masked-name".to_owned(), "original".to_owned(), "private".to_owned(), "main".to_owned()));
+    let archives: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM repo_archives WHERE repo_id = ?").bind(id.0).fetch_one(&f.db.pool).await.unwrap();
+    assert_eq!(archives, 0);
+    let completion = command.finish_failed_backend(owner).await.unwrap();
+    assert_eq!(completion.progress.committed_forward_steps, 0);
+    assert_eq!(completion.progress.last_forward_boundary, Some(RepositorySqlBoundary::RolledBack));
+    assert_eq!(completion.logical, RepositoryLogicalSettlement::FailureRecorded);
+    sqlx::query("UPDATE fixture_gate SET enabled = 0").execute(&f.db.pool).await.unwrap();
+    f.create("after-masked-name").await;
 }

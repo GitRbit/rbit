@@ -40,13 +40,47 @@ pub struct OrganizationCreator {
     pub actor_is_site_admin: bool,
     pub owner_is_organization: bool,
 }
-/// Raw rename is intentionally not parsed until after the General stage.
+/// Bounded rename capture for the fixed deferred stage; no validation result is returned here.
+///
+/// Consumes raw input, retaining only its exact Unicode-trimmed text up to
+/// `RepoName::MAX_LEN` bytes or an opaque overlength marker. Parsing and any
+/// rejection remain at the selected post-General phase. This is not a bound on
+/// other command payloads or a measured allocation/layout/performance guarantee.
+pub struct RepositoryDeferredName(DeferredName);
+#[derive(Debug)]
+enum DeferredName {
+    Text(Box<str>),
+    OverLength,
+}
+impl fmt::Debug for RepositoryDeferredName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("RepositoryDeferredName { captured input omitted }")
+    }
+}
+impl RepositoryDeferredName {
+    pub fn capture(raw: String) -> Self {
+        let trimmed = raw.trim();
+        let captured = if trimmed.len() > RepoName::MAX_LEN { DeferredName::OverLength } else { DeferredName::Text(Box::from(trimmed)) };
+        drop(raw);
+        Self(captured)
+    }
+    fn is_unchanged(&self, initial: &RepoName) -> bool {
+        matches!(&self.0, DeferredName::Text(text) if text.as_ref() == initial.as_str())
+    }
+    fn parse(self) -> Result<RepoName, NameError> {
+        match self.0 {
+            DeferredName::Text(text) => text.parse(),
+            DeferredName::OverLength => Err(NameError::TooLong { kind: "repository name", max: RepoName::MAX_LEN }),
+        }
+    }
+}
+/// Captured rename is intentionally not parsed until after the General stage.
 #[derive(Debug)]
 pub struct RepositoryDeferredSettingsPlan {
     pub repo: RepoId,
     pub initial_name: RepoName,
     pub general: RepoGeneralSettings,
-    pub rename_input: Option<String>,
+    pub rename_input: Option<RepositoryDeferredName>,
     pub archival: Option<RepositoryDeferredArchive>,
 }
 #[derive(Debug)]
@@ -81,7 +115,7 @@ enum Step {
     Create(NewRepository),
     Creator { owner: AccountId, request: OrganizationCreator },
     GrantCreator(AccountId),
-    DeferredRename { initial: RepoName, raw: Option<String> },
+    DeferredRename { initial: RepoName, raw: Option<RepositoryDeferredName> },
     PreparedRename(RepoName),
     ArchiveNow(AccountId),
     Delete,
@@ -442,9 +476,9 @@ impl RepositoryCommand {
         match step {
             // First-poll capture after caller checks, BEFORE token.resume/serial wait.
             Step::ArchiveNow(by) => Prepared::Write(Step::Archive(by, Timestamp::now())),
-            Step::DeferredRename { initial, raw } => match raw.filter(|name| name.trim() != initial.as_str()) {
+            Step::DeferredRename { initial, raw } => match raw.filter(|name| !name.is_unchanged(&initial)) {
                 None => Prepared::NoWrite(sql::Raw::RenameUnchanged(initial)),
-                Some(raw) => match raw.trim().parse::<RepoName>() {
+                Some(raw) => match raw.parse() {
                     Ok(name) if name == initial => Prepared::NoWrite(sql::Raw::RenameUnchanged(name)),
                     Ok(name) => Prepared::Write(Step::PreparedRename(name)),
                     Err(error) => Prepared::RejectedName(error),
