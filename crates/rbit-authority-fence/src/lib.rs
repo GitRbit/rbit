@@ -31,6 +31,13 @@ struct State {
     queued: usize,
     uncertain: bool,
     writers_stopped: bool,
+    // None permanently disables only observed admission, never legacy begin.
+    admission_revision: Option<u64>,
+}
+impl State {
+    fn advance_admission_revision(&mut self) {
+        self.admission_revision = self.admission_revision.and_then(|revision| revision.checked_add(1));
+    }
 }
 #[derive(Debug)]
 struct Inner {
@@ -60,7 +67,7 @@ impl Default for Domain {
     fn default() -> Self {
         Self {
             inner: Arc::new(Inner {
-                state: Mutex::new(State { active: 0, queued: 0, uncertain: false, writers_stopped: false }),
+                state: Mutex::new(State { active: 0, queued: 0, uncertain: false, writers_stopped: false, admission_revision: Some(0) }),
                 serial: Arc::new(AsyncMutex::new(())),
                 changed: Notify::new(),
             }),
@@ -83,7 +90,13 @@ impl Domain {
     /// Already acquired suspended enrollments may resume their unfinished work.
     /// This happens synchronously; dropping the token never re-enables writers.
     pub fn stop_writers(&self) -> WriterShutdown {
-        self.inner.state().writers_stopped = true;
+        {
+            let mut state = self.inner.state();
+            if !state.writers_stopped {
+                state.writers_stopped = true;
+                state.advance_admission_revision();
+            }
+        }
         self.inner.changed.notify_waiters();
         WriterShutdown { inner: self.inner.clone() }
     }
@@ -150,21 +163,47 @@ impl WriterRegistration {
             }
             state.queued += 1;
         }
-        let mut ticket = Ticket { inner: self.inner.clone(), queued: true };
+        self.acquire_registered(Ticket { inner: self.inner.clone(), queued: true }).await.ok_or(BeginError::Stopped)
+    }
+
+    /// Like `begin`, with an opaque one-shot waiter ONLY for this exact capacity
+    /// rejection. The waiter reserves nothing and promises no fairness or progress.
+    /// Observer exhaustion rejects only this API before registration; legacy
+    /// `begin` remains available under its original capacity/stop rules.
+    pub async fn begin_observed(&self) -> Result<Mutation, MutationAdmissionFailure> {
+        {
+            let mut state = self.inner.state();
+            if state.writers_stopped {
+                return Err(MutationAdmissionFailure::Stopped);
+            }
+            let Some(revision) = state.admission_revision else {
+                return Err(MutationAdmissionFailure::ObserverUnavailable);
+            };
+            if state.active.checked_add(state.queued).is_none_or(|n| n >= MAX_MUTATIONS) {
+                return Err(MutationAdmissionFailure::Capacity { wait: MutationCapacityWait { inner: self.inner.clone(), revision } });
+            }
+            state.queued += 1;
+        }
+        self.acquire_registered(Ticket { inner: self.inner.clone(), queued: true }).await.ok_or(MutationAdmissionFailure::Stopped)
+    }
+
+    // A registered ticket has already passed capacity checks. None means only
+    // the irreversible post-serial stop check; its queued Drop is known clean.
+    async fn acquire_registered(&self, mut ticket: Ticket) -> Option<Mutation> {
         let permit = self.inner.serial.clone().lock_owned().await;
         {
             let mut state = self.inner.state();
             // A preexisting ticket may acquire serial only after shutdown.
             // Returning here drops its Ticket cleanly: no enrolled work began.
             if state.writers_stopped {
-                return Err(BeginError::Stopped);
+                return None;
             }
             state.queued -= 1;
             state.active += 1;
             ticket.queued = false;
         }
         self.inner.changed.notify_waiters();
-        Ok(Mutation { enrollment: ActiveEnrollment { inner: self.inner.clone(), complete: false }, _permit: permit })
+        Some(Mutation { enrollment: ActiveEnrollment { inner: self.inner.clone(), complete: false }, _permit: permit })
     }
 }
 #[derive(Debug)]
@@ -175,7 +214,11 @@ struct Ticket {
 impl Drop for Ticket {
     fn drop(&mut self) {
         if self.queued {
-            self.inner.state().queued -= 1;
+            {
+                let mut state = self.inner.state();
+                state.queued -= 1;
+                state.advance_admission_revision();
+            }
             self.inner.changed.notify_waiters();
         }
     }
@@ -193,6 +236,7 @@ impl ActiveEnrollment {
         {
             let mut state = self.inner.state();
             state.active -= 1;
+            state.advance_admission_revision();
             self.complete = true;
         }
         self.inner.changed.notify_waiters();
@@ -203,6 +247,7 @@ impl Drop for ActiveEnrollment {
         if !self.complete {
             let mut state = self.inner.state();
             state.active -= 1;
+            state.advance_admission_revision();
             state.uncertain = true;
             drop(state);
             self.inner.changed.notify_waiters();
@@ -289,6 +334,78 @@ impl fmt::Display for BeginError {
 }
 impl std::error::Error for BeginError {}
 
+/// Exact capacity rejection, or a known pre-registration terminal refusal.
+#[derive(Debug)]
+pub enum MutationAdmissionFailure {
+    Capacity { wait: MutationCapacityWait },
+    Stopped,
+    ObserverUnavailable,
+}
+impl fmt::Display for MutationAdmissionFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Capacity { .. } => "enrolled mutation capacity",
+            Self::Stopped => "enrolled writers permanently closed",
+            Self::ObserverUnavailable => "enrolled admission observer unavailable",
+        })
+    }
+}
+impl std::error::Error for MutationAdmissionFailure {}
+
+/// Source-bound, nonclone, one-shot advisory wait. No mutation is registered and
+/// no capacity is reserved. Dropping this value/future changes no enrollment.
+/// A release racing before `changed` is polled remains visible. Unrelated domain
+/// notifications (including acquisition) do not count as admission changes.
+pub struct MutationCapacityWait {
+    inner: Arc<Inner>,
+    revision: u64,
+}
+impl fmt::Debug for MutationCapacityWait {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MutationCapacityWait").finish_non_exhaustive()
+    }
+}
+impl MutationCapacityWait {
+    /// Waits for a same-source capacity decrease, permanent stop or observer
+    /// exhaustion. Ok is ONLY a hint to reattempt, not admission or a clean drain.
+    /// No timer, queue, execution authority or reopening is created.
+    pub async fn changed(self) -> Result<(), AdmissionWatchError> {
+        loop {
+            let notified = self.inner.changed.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            {
+                let state = self.inner.state();
+                if state.writers_stopped {
+                    return Err(AdmissionWatchError::Stopped);
+                }
+                let Some(revision) = state.admission_revision else {
+                    return Err(AdmissionWatchError::ObserverUnavailable);
+                };
+                if revision != self.revision {
+                    return Ok(());
+                }
+            }
+            notified.await;
+            tokio::task::consume_budget().await;
+        }
+    }
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdmissionWatchError {
+    Stopped,
+    ObserverUnavailable,
+}
+impl fmt::Display for AdmissionWatchError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Stopped => "enrolled writers permanently closed",
+            Self::ObserverUnavailable => "enrolled admission observer unavailable",
+        })
+    }
+}
+impl std::error::Error for AdmissionWatchError {}
+
 /// Terminal closure token for this enrolled domain only, never physical ownership.
 #[derive(Debug)]
 pub struct WriterShutdown {
@@ -357,3 +474,6 @@ mod tests;
 
 #[cfg(test)]
 mod suspension_tests;
+
+#[cfg(test)]
+mod observed_tests;
