@@ -30,6 +30,41 @@ pub enum GitAdmissionError {
     #[error("Git edit coordinator unavailable")]
     CoordinatorUnavailable,
 }
+/// Exact observed reservation refusal. Only Capacity carries a reattempt hint.
+/// The hint holds no credit and is not an available-slot or fairness guarantee.
+#[derive(Debug)]
+pub struct GitReserveFailure {
+    pub reason: GitAdmissionError,
+    pub capacity: Option<GitCapacityWait>,
+}
+/// Nonclone, source-bound hint captured only at an actual two-credit refusal.
+/// Dropping it changes no counts. It bounds neither external waiters nor payload bytes.
+pub struct GitCapacityWait {
+    registry: Arc<state::Registry>,
+    revision: u64,
+}
+impl fmt::Debug for GitCapacityWait {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("GitCapacityWait { observation omitted }")
+    }
+}
+impl GitCapacityWait {
+    /// Waits for a real clean credit release, or reports stop/coordinator refusal.
+    /// Ok is only a reattempt hint; another caller may already have taken the credit.
+    /// Checked revision exhaustion disables only this new observation API.
+    pub async fn changed(self) -> Result<(), GitAdmissionError> {
+        loop {
+            let changed = self.registry.changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+            if self.registry.capacity_changed(self.revision)? {
+                return Ok(());
+            }
+            changed.await;
+            tokio::task::consume_budget().await;
+        }
+    }
+}
 /// Loss of the ACTUAL wrapper/worker/payload, never an HTTP final reply waiter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkerLoss {
@@ -104,6 +139,14 @@ impl RepositoryStorage {
     pub fn reserve_edit(&self) -> Result<GitFlowReservation, GitAdmissionError> {
         let runtime = Handle::try_current().map_err(|_| GitAdmissionError::RuntimeUnavailable)?;
         let custody = self.owned_edits.reserve(runtime)?;
+        Ok(GitFlowReservation { storage: Some(self.clone()), custody: Some(custody) })
+    }
+    /// Reserves as usual, capturing a capacity hint atomically with an exact full refusal.
+    /// Runtime capture still precedes admission checks; the hint itself reserves nothing.
+    pub fn try_reserve_edit_observed(&self) -> Result<GitFlowReservation, GitReserveFailure> {
+        let runtime =
+            Handle::try_current().map_err(|_| GitReserveFailure { reason: GitAdmissionError::RuntimeUnavailable, capacity: None })?;
+        let custody = self.owned_edits.reserve_observed(runtime)?;
         Ok(GitFlowReservation { storage: Some(self.clone()), custody: Some(custody) })
     }
     /// Irreversibly refuses new reserve AND attach; already attached flows can continue.

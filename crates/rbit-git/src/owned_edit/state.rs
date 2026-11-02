@@ -1,5 +1,5 @@
 //! Fixed two-cell custody, intentionally retained on unknown ownership.
-use super::{GitAdmissionError, WorkerLoss};
+use super::{GitAdmissionError, GitCapacityWait, GitReserveFailure, WorkerLoss};
 use crate::lease::ExclusiveLease;
 use std::{
     any::Any,
@@ -18,11 +18,22 @@ pub(crate) struct Registry {
     pub(super) changed: Notify,
     unknown: AtomicBool,
 }
-#[derive(Default)]
 struct RegistryState {
     stopped: bool,
     poisoned: bool,
     slots: [Option<Arc<Custody>>; CAPACITY],
+    // None permanently disables only the new observation subsystem.
+    capacity_revision: Option<u64>,
+}
+impl Default for RegistryState {
+    fn default() -> Self {
+        Self { stopped: false, poisoned: false, slots: Default::default(), capacity_revision: Some(0) }
+    }
+}
+impl RegistryState {
+    fn capacity_released(&mut self) {
+        self.capacity_revision = self.capacity_revision.and_then(|revision| revision.checked_add(1));
+    }
 }
 impl fmt::Debug for Registry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -58,6 +69,41 @@ impl Registry {
         state.slots[index] = Some(custody.clone());
         Ok(custody)
     }
+    pub(super) fn reserve_observed(self: &Arc<Self>, runtime: Handle) -> Result<Arc<Custody>, GitReserveFailure> {
+        let mut state = self.lock();
+        let reason = if state.poisoned {
+            Some(GitAdmissionError::CoordinatorUnavailable)
+        } else if state.stopped {
+            Some(GitAdmissionError::Stopped)
+        } else if state.capacity_revision.is_none() {
+            Some(GitAdmissionError::CoordinatorUnavailable)
+        } else {
+            None
+        };
+        if let Some(reason) = reason {
+            return Err(GitReserveFailure { reason, capacity: None });
+        }
+        let Some(index) = state.slots.iter().position(Option::is_none) else {
+            return Err(GitReserveFailure {
+                reason: GitAdmissionError::Capacity,
+                capacity: Some(GitCapacityWait { registry: self.clone(), revision: state.capacity_revision.expect("checked observation") }),
+            });
+        };
+        let custody = Arc::new(Custody { registry: self.clone(), index, runtime, state: Mutex::default() });
+        state.slots[index] = Some(custody.clone());
+        Ok(custody)
+    }
+    pub(super) fn capacity_changed(&self, captured: u64) -> Result<bool, GitAdmissionError> {
+        let state = self.lock();
+        if state.poisoned {
+            return Err(GitAdmissionError::CoordinatorUnavailable);
+        }
+        if state.stopped {
+            return Err(GitAdmissionError::Stopped);
+        }
+        let revision = state.capacity_revision.ok_or(GitAdmissionError::CoordinatorUnavailable)?;
+        Ok(revision != captured)
+    }
     pub(super) fn attach(&self, custody: &Custody) -> Result<(), GitAdmissionError> {
         let state = self.lock();
         if state.poisoned {
@@ -80,7 +126,13 @@ impl Registry {
         Ok(())
     }
     pub(super) fn stop(&self) {
-        self.lock().stopped = true;
+        {
+            let mut state = self.lock();
+            if !state.stopped {
+                state.stopped = true;
+                state.capacity_released();
+            }
+        }
         self.changed.notify_waiters();
     }
     pub(super) fn snapshot(&self) -> (bool, usize, bool) {
@@ -192,6 +244,9 @@ impl Custody {
             state.released = true;
             lease = state.lease.take();
             removed = registry.slots[self.index].take();
+            if removed.is_some() {
+                registry.capacity_released();
+            }
         }
         drop(lease);
         drop(removed);
@@ -291,3 +346,6 @@ mod tests {
         assert_eq!(storage.owned_edits.snapshot(), (false, 1, true));
     }
 }
+
+#[cfg(test)]
+mod observed_tests;
