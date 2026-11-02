@@ -2,10 +2,16 @@
 //!
 //! SQL states are enforced here. Named backend terminals are trusted host assertions,
 //! not backend evidence; no execution, crash or physical ownership certificate.
+//!
+//! Fixed optional creator snapshots are declared before effects; the original late
+//! role read remains separate from the grant. Deferred settings parse their captured
+//! name only after General, rejecting before resume/BEGIN without hiding prior commits.
+//! `ArchiveNow` captures time at the selected phase's first poll, before serial wait.
+//! Service reload/principal checks and mismatch hardening are NOT implemented here.
 use super::{NewRepository, pool::Pool, repo_settings::RepoGeneralSettings};
 use crate::{AdmissionReason, StorageError};
 use rbit_authority_fence::{BeginError, SuspendedMutation, WriterRegistration};
-use rbit_core::{AccountId, RepoId, RepoName, Repository, Timestamp};
+use rbit_core::{AccountId, NameError, OrgRole, RepoId, RepoName, Repository, Timestamp};
 use state::{Acquisition, Cell, Coordinator, Life, PhaseOwner};
 use std::{collections::VecDeque, fmt, sync::Arc};
 use tokio::time::Instant;
@@ -17,6 +23,8 @@ mod tests;
 
 pub enum RepositoryPlan {
     Create(NewRepository),
+    CreateWithCreator { repository: NewRepository, creator: OrganizationCreator },
+    DeferredSettings(RepositoryDeferredSettingsPlan),
     Delete { repo: RepoId, via: RepositoryDeleteSource },
     Transfer { repo: RepoId, new_owner: AccountId },
     General { repo: RepoId, settings: RepoGeneralSettings },
@@ -24,6 +32,27 @@ pub enum RepositoryPlan {
     Archive { repo: RepoId, by: AccountId, at: Timestamp },
     Unarchive { repo: RepoId },
     Settings(RepositorySettingsPlan),
+}
+/// Fixed request snapshots, not a fresh authorization assertion.
+#[derive(Debug, Clone, Copy)]
+pub struct OrganizationCreator {
+    pub actor: AccountId,
+    pub actor_is_site_admin: bool,
+    pub owner_is_organization: bool,
+}
+/// Raw rename is intentionally not parsed until after the General stage.
+#[derive(Debug)]
+pub struct RepositoryDeferredSettingsPlan {
+    pub repo: RepoId,
+    pub initial_name: RepoName,
+    pub general: RepoGeneralSettings,
+    pub rename_input: Option<String>,
+    pub archival: Option<RepositoryDeferredArchive>,
+}
+#[derive(Debug)]
+pub enum RepositoryDeferredArchive {
+    Archive { by: AccountId },
+    Unarchive,
 }
 #[derive(Debug, Clone, Copy)]
 pub enum RepositoryDeleteSource {
@@ -50,6 +79,11 @@ impl fmt::Debug for RepositoryPlan {
 #[derive(Debug)]
 enum Step {
     Create(NewRepository),
+    Creator { owner: AccountId, request: OrganizationCreator },
+    GrantCreator(AccountId),
+    DeferredRename { initial: RepoName, raw: Option<String> },
+    PreparedRename(RepoName),
+    ArchiveNow(AccountId),
     Delete,
     Transfer(AccountId),
     General(RepoGeneralSettings),
@@ -57,11 +91,24 @@ enum Step {
     Archive(AccountId, Timestamp),
     Unarchive,
 }
+enum Prepared {
+    Write(Step),
+    NoWrite(sql::Raw),
+    ReadError(StorageError),
+    RejectedName(NameError),
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TerminalRequirement {
+    KnownBoundary,
+    FailedFlow,
+}
 struct Script {
     steps: VecDeque<Step>,
     id: Option<RepoId>,
     create: bool,
     settings: bool,
+    creator_entered: bool,
+    terminal_requirement: TerminalRequirement,
 }
 impl Script {
     fn from_plan(plan: RepositoryPlan) -> Result<Self, StorageError> {
@@ -70,6 +117,23 @@ impl Script {
             RepositoryPlan::Create(new) => {
                 steps.push_back(Step::Create(new));
                 (None, true, false)
+            }
+            RepositoryPlan::CreateWithCreator { repository, creator } => {
+                let owner = repository.owner_id;
+                steps.push_back(Step::Create(repository));
+                steps.push_back(Step::Creator { owner, request: creator });
+                (None, true, false)
+            }
+            RepositoryPlan::DeferredSettings(plan) => {
+                steps.push_back(Step::General(plan.general));
+                steps.push_back(Step::DeferredRename { initial: plan.initial_name, raw: plan.rename_input });
+                if let Some(archival) = plan.archival {
+                    steps.push_back(match archival {
+                        RepositoryDeferredArchive::Archive { by } => Step::ArchiveNow(by),
+                        RepositoryDeferredArchive::Unarchive => Step::Unarchive,
+                    });
+                }
+                (Some(plan.repo), false, true)
             }
             RepositoryPlan::Delete { repo, via } => {
                 steps.push_back(Step::Delete);
@@ -114,7 +178,7 @@ impl Script {
         if steps.is_empty() {
             return Err(StorageError::Invariant("empty repository plan"));
         }
-        Ok(Self { steps, id, create, settings })
+        Ok(Self { steps, id, create, settings, creator_entered: false, terminal_requirement: TerminalRequirement::KnownBoundary })
     }
 }
 
@@ -235,8 +299,17 @@ pub struct RepositorySqlProgress {
 #[derive(Debug)]
 pub enum RepositoryOutput {
     Created(Repository),
+    CreatorGrant(CreatorGrantOutcome),
+    Renamed(RepoName),
+    RenameUnchanged(RepoName),
     Unit,
     Changed(bool),
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CreatorGrantOutcome {
+    NotRequired,
+    NotMember,
+    Granted,
 }
 #[derive(Debug)]
 pub struct RepositoryPhaseReport {
@@ -247,7 +320,12 @@ pub struct RepositoryPhaseReport {
 #[derive(Debug)]
 pub enum RepositoryPhaseResult {
     Settled(RepositoryPhaseReport),
-    Unconfirmed { original: StorageError, rollback_error: Option<StorageError> },
+    /// Source validation refused before resume/BEGIN/DML; earlier commits remain.
+    RejectedName(NameError),
+    Unconfirmed {
+        original: StorageError,
+        rollback_error: Option<StorageError>,
+    },
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RepositoryLogicalSettlement {
@@ -292,15 +370,24 @@ impl RepositoryCommand {
             return self.invalid_phase();
         }
         let step = self.script.steps.pop_front().expect("nonempty fixed script");
+        if matches!(step, Step::Creator { .. }) {
+            self.script.creator_entered = true;
+        }
         self.run_phase(step, false).await
     }
     /// One fixed captured-ID metadata delete; never an arbitrary rollback/retry callback.
     pub async fn compensate_created(&mut self) -> RepositoryPhaseResult {
-        if !self.script.create || self.script.id.is_none() || self.compensation_used || !self.script.steps.is_empty() || !self.enter_phase()
+        if !self.script.create
+            || self.script.id.is_none()
+            || self.script.creator_entered
+            || self.compensation_used
+            || !self.script.steps.iter().all(|step| matches!(step, Step::Creator { .. }))
+            || !self.enter_phase()
         {
             return self.invalid_phase();
         }
         self.compensation_used = true;
+        self.script.steps.clear(); // Consume an unentered fixed creator continuation.
         self.cell.lock().logical_failure = true;
         self.run_phase(Step::Delete, true).await
     }
@@ -318,6 +405,12 @@ impl RepositoryCommand {
     }
     async fn run_phase(&mut self, step: Step, compensation: bool) -> RepositoryPhaseResult {
         let mut phase = PhaseOwner { cell: self.cell.clone(), done: false };
+        let step = match self.prepare_step(step).await {
+            Prepared::Write(step) => step,
+            Prepared::NoWrite(raw) => return self.finish_known(sql::Settled::NoWrite(raw), compensation, &mut phase),
+            Prepared::ReadError(error) => return self.finish_known(sql::Settled::NoTransaction(error), compensation, &mut phase),
+            Prepared::RejectedName(error) => return self.reject_name(error, &mut phase),
+        };
         let token = self.token.take().expect("entered phase token");
         let mutation = token.resume().await;
         if self.cell.lock().unknown {
@@ -341,31 +434,90 @@ impl RepositoryCommand {
             }
             known => {
                 self.token = Some(mutation.suspend());
-                let report = self.record_known(known, compensation);
-                self.cell.finish_phase();
-                phase.done = true;
-                let unknown = self.cell.lock().unknown;
-                if unknown {
-                    self.cell.unknown();
-                    RepositoryPhaseResult::Unconfirmed {
-                        original: report.result.err().unwrap_or(StorageError::OutcomeUnavailable { scope: "repository command" }),
-                        rollback_error: None,
-                    }
-                } else {
-                    RepositoryPhaseResult::Settled(report)
-                }
+                self.finish_known(known, compensation, &mut phase)
             }
         }
     }
+    async fn prepare_step(&self, step: Step) -> Prepared {
+        match step {
+            // First-poll capture after caller checks, BEFORE token.resume/serial wait.
+            Step::ArchiveNow(by) => Prepared::Write(Step::Archive(by, Timestamp::now())),
+            Step::DeferredRename { initial, raw } => match raw.filter(|name| name.trim() != initial.as_str()) {
+                None => Prepared::NoWrite(sql::Raw::RenameUnchanged(initial)),
+                Some(raw) => match raw.trim().parse::<RepoName>() {
+                    Ok(name) if name == initial => Prepared::NoWrite(sql::Raw::RenameUnchanged(name)),
+                    Ok(name) => Prepared::Write(Step::PreparedRename(name)),
+                    Err(error) => Prepared::RejectedName(error),
+                },
+            },
+            Step::Creator { owner, request } => {
+                if !request.owner_is_organization || request.actor_is_site_admin {
+                    return Prepared::NoWrite(sql::Raw::CreatorGrant(CreatorGrantOutcome::NotRequired));
+                }
+                // Preserve the original late read, separate from write serialization.
+                // Phase ownership + the same suspended enrollment survive this await.
+                match super::orgs::role_of(&self.factory.repositories, owner, request.actor).await {
+                    Ok(Some(OrgRole::Member)) => Prepared::Write(Step::GrantCreator(request.actor)),
+                    Ok(_) => Prepared::NoWrite(sql::Raw::CreatorGrant(CreatorGrantOutcome::NotMember)),
+                    Err(error) => Prepared::ReadError(error),
+                }
+            }
+            other => Prepared::Write(other),
+        }
+    }
+    fn reject_name(&mut self, error: NameError, phase: &mut PhaseOwner) -> RepositoryPhaseResult {
+        self.script.steps.clear();
+        self.script.terminal_requirement = TerminalRequirement::FailedFlow;
+        {
+            let mut selected = self.cell.lock();
+            selected.logical_failure = true;
+            selected.progress.last_forward_boundary = Some(RepositorySqlBoundary::NoTransaction);
+        }
+        self.cell.finish_phase();
+        phase.done = true;
+        let unknown = self.cell.lock().unknown;
+        if unknown {
+            self.cell.unknown();
+            RepositoryPhaseResult::Unconfirmed {
+                original: StorageError::OutcomeUnavailable { scope: "repository command" },
+                rollback_error: None,
+            }
+        } else {
+            RepositoryPhaseResult::RejectedName(error)
+        }
+    }
+    fn finish_known(&mut self, known: sql::Settled, compensation: bool, phase: &mut PhaseOwner) -> RepositoryPhaseResult {
+        let report = self.record_known(known, compensation);
+        self.cell.finish_phase();
+        phase.done = true;
+        let unknown = self.cell.lock().unknown;
+        if unknown {
+            self.cell.unknown();
+            RepositoryPhaseResult::Unconfirmed {
+                original: report.result.err().unwrap_or(StorageError::OutcomeUnavailable { scope: "repository command" }),
+                rollback_error: None,
+            }
+        } else {
+            RepositoryPhaseResult::Settled(report)
+        }
+    }
     fn record_known(&mut self, result: sql::Settled, compensation: bool) -> RepositoryPhaseReport {
+        let boundary = if matches!(result, sql::Settled::NoWrite(_)) {
+            RepositorySqlBoundary::NoTransaction
+        } else {
+            RepositorySqlBoundary::Committed
+        };
         let (boundary, result) = match result {
-            sql::Settled::Committed(raw) => (
-                RepositorySqlBoundary::Committed,
+            sql::Settled::Committed(raw) | sql::Settled::NoWrite(raw) => (
+                boundary,
                 match raw {
                     sql::Raw::Created(row) => {
                         self.script.id = Some(RepoId(row.id));
                         row.try_into().map(RepositoryOutput::Created)
                     }
+                    sql::Raw::CreatorGrant(outcome) => Ok(RepositoryOutput::CreatorGrant(outcome)),
+                    sql::Raw::Renamed(name) => Ok(RepositoryOutput::Renamed(name)),
+                    sql::Raw::RenameUnchanged(name) => Ok(RepositoryOutput::RenameUnchanged(name)),
                     sql::Raw::Unit => Ok(RepositoryOutput::Unit),
                     sql::Raw::Changed(changed) => Ok(RepositoryOutput::Changed(changed)),
                 },
@@ -375,6 +527,9 @@ impl RepositoryCommand {
             sql::Settled::Unconfirmed { .. } => unreachable!("unknown handled before settlement"),
         };
         if result.is_err() {
+            if self.script.creator_entered {
+                self.script.terminal_requirement = TerminalRequirement::FailedFlow;
+            }
             self.script.steps.clear();
         }
         {
@@ -404,12 +559,13 @@ impl RepositoryCommand {
         self,
         owner: RepositoryFlowOwner,
     ) -> Result<RepositorySqlCompletion, RepositoryCommandQuarantine> {
-        if !self.script.steps.is_empty() {
+        if !self.script.steps.is_empty() || self.script.terminal_requirement == TerminalRequirement::FailedFlow {
             return Err(self.quarantine(owner));
         }
         self.finish(owner, false, false).await
     }
-    /// Trusted ordinary backend failure ended; may have effects. Always logical failure.
+    /// Trusted backend/repair termination for a failed flow. Earlier backend work
+    /// may have succeeded or been unnecessary; always records logical failure.
     pub async fn finish_failed_backend(self, owner: RepositoryFlowOwner) -> Result<RepositorySqlCompletion, RepositoryCommandQuarantine> {
         self.finish(owner, true, false).await
     }

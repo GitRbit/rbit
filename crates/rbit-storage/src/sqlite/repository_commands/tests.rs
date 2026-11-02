@@ -34,6 +34,7 @@ impl Fixture {
                 "CREATE TRIGGER fixture_commit AFTER INSERT ON repositories WHEN (SELECT enabled FROM fixture_gate) = 1 BEGIN INSERT INTO fixture_deferred VALUES (NEW.id, -999_999); END",
                 "CREATE TRIGGER fixture_delete BEFORE DELETE ON repositories WHEN (SELECT enabled FROM fixture_gate) = 2 AND OLD.name = 'keep-row' BEGIN SELECT RAISE(ABORT, 'injected compensation statement refusal'); END",
                 "CREATE TRIGGER fixture_rollback BEFORE UPDATE OF description ON repositories WHEN (SELECT enabled FROM fixture_gate) = 3 BEGIN SELECT RAISE(ROLLBACK, 'injected outer rollback'); END",
+                "CREATE TRIGGER fixture_creator BEFORE INSERT ON collaborators WHEN (SELECT enabled FROM fixture_gate) = 4 BEGIN SELECT RAISE(ABORT, 'injected creator grant refusal'); END",
             ] {
                 sqlx::query(statement).execute(&db.pool).await.unwrap();
             }
@@ -84,7 +85,9 @@ impl Fixture {
 fn settled(result: RepositoryPhaseResult) -> RepositoryPhaseReport {
     match result {
         RepositoryPhaseResult::Settled(report) => report,
-        other @ RepositoryPhaseResult::Unconfirmed { .. } => panic!("unexpected phase: {other:?}"),
+        other @ (RepositoryPhaseResult::Unconfirmed { .. } | RepositoryPhaseResult::RejectedName(_)) => {
+            panic!("unexpected phase: {other:?}")
+        }
     }
 }
 async fn pending<F: Future + ?Sized>(mut future: Pin<&mut F>) {
@@ -592,4 +595,322 @@ async fn concrete_owned_rust_caller_can_move_command_execute_and_acknowledge_wit
     assert_eq!(completion.logical, RepositoryLogicalSettlement::EnrollmentAcknowledged);
     assert_eq!(f.db.repositories().find_by_path("alice", "owned-caller").await.unwrap().unwrap().repo.id, id);
     // SQL-only caller: backend assertion is vacuous, not actual Git/HTTP adoption.
+}
+
+// Fixed-continuation contract cases; no Services/Git adoption or timing parity claim.
+async fn creator_plan(f: &Fixture, name: &str, actor: AccountId) -> RepositoryPlan {
+    let org =
+        f.db.orgs()
+            .create(NewOrganization { name: name.parse().unwrap(), display_name: None, description: None, creator: f.alice })
+            .await
+            .unwrap()
+            .account
+            .id;
+    if actor != f.alice {
+        f.db.orgs().add_member(org, actor, OrgRole::Member).await.unwrap();
+    }
+    let mut repository = f.new_repo("created");
+    repository.owner_id = org;
+    RepositoryPlan::CreateWithCreator {
+        repository,
+        creator: OrganizationCreator { actor, actor_is_site_admin: false, owner_is_organization: true },
+    }
+}
+fn deferred(id: RepoId, name: &str, raw: Option<&str>, archival: Option<RepositoryDeferredArchive>) -> RepositoryPlan {
+    RepositoryPlan::DeferredSettings(RepositoryDeferredSettingsPlan {
+        repo: id,
+        initial_name: name.parse().unwrap(),
+        general: settings(),
+        rename_input: raw.map(str::to_owned),
+        archival,
+    })
+}
+
+#[tokio::test]
+async fn fixed_creator_grant_uses_insert_id_and_original_actor_provenance() {
+    let f = Fixture::new().await;
+    let plan = creator_plan(&f, "creator-org", f.bob).await;
+    let AdmittedRepositoryCommand { mut command, owner } = f.admit(plan).await;
+    let created = settled(command.execute_next().await);
+    let id = created.repository_id.unwrap();
+    created.result.unwrap();
+    assert_eq!(f.db.authority_domain.snapshot().active, 1);
+    let grant = settled(command.execute_next().await);
+    assert_eq!(grant.boundary, RepositorySqlBoundary::Committed);
+    assert!(matches!(grant.result, Ok(RepositoryOutput::CreatorGrant(CreatorGrantOutcome::Granted))));
+    let row: (i64, i64, String) =
+        sqlx::query_as("SELECT repo_id, added_by, permission FROM collaborators WHERE repo_id = ? AND user_id = ?")
+            .bind(id.0)
+            .bind(f.bob.0)
+            .fetch_one(&f.db.pool)
+            .await
+            .unwrap();
+    assert_eq!(row, (id.0, f.bob.0, "admin".to_owned()));
+    command.finish_after_successful_backend(owner).await.unwrap();
+    assert_eq!(f.db.authority_domain.snapshot().active, 0);
+}
+
+#[tokio::test]
+async fn creator_reads_role_after_insert_and_skip_does_not_wait_for_serial() {
+    let f = Fixture::new().await;
+    let plan = creator_plan(&f, "late-role", f.bob).await;
+    let org = match &plan {
+        RepositoryPlan::CreateWithCreator { repository, .. } => repository.owner_id,
+        _ => unreachable!(),
+    };
+    let AdmittedRepositoryCommand { mut command, owner } = f.admit(plan).await;
+    let id = settled(command.execute_next().await).repository_id.unwrap();
+    f.db.orgs().set_role(org, f.bob, OrgRole::Owner).await.unwrap();
+    let serial = f.db.authority_domain.writer().begin().await.unwrap();
+    let (result, work) = crate::count_work(timeout(WAIT, command.execute_next())).await;
+    let report = settled(result.unwrap());
+    assert_eq!(report.boundary, RepositorySqlBoundary::NoTransaction);
+    assert!(matches!(report.result, Ok(RepositoryOutput::CreatorGrant(CreatorGrantOutcome::NotMember))));
+    assert_eq!(work.statements, 1, "actual late role read; no grant transaction");
+    let count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM collaborators WHERE repo_id = ?").bind(id.0).fetch_one(&f.db.pool).await.unwrap();
+    assert_eq!(count, 0);
+    serial.complete();
+    command.finish_after_successful_backend(owner).await.unwrap();
+}
+
+#[tokio::test]
+async fn creator_personal_and_site_admin_short_circuit_without_role_query() {
+    let f = Fixture::new().await;
+    for (name, is_org, is_admin) in [("personal-skip", false, false), ("admin-skip", true, true)] {
+        let AdmittedRepositoryCommand { mut command, owner } = f
+            .admit(RepositoryPlan::CreateWithCreator {
+                repository: f.new_repo(name),
+                creator: OrganizationCreator { actor: f.bob, owner_is_organization: is_org, actor_is_site_admin: is_admin },
+            })
+            .await;
+        settled(command.execute_next().await).result.unwrap();
+        let serial = f.db.authority_domain.writer().begin().await.unwrap();
+        let (result, work) = crate::count_work(timeout(WAIT, command.execute_next())).await;
+        assert!(matches!(settled(result.unwrap()).result, Ok(RepositoryOutput::CreatorGrant(CreatorGrantOutcome::NotRequired))));
+        assert_eq!(work, crate::Work { acquisitions: 0, statements: 0, cache_writes: 0 });
+        serial.complete();
+        command.finish_after_successful_backend(owner).await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn creator_compensation_consumes_unentered_stage_and_is_forbidden_after_entry() {
+    let f = Fixture::new().await;
+    let plan = creator_plan(&f, "compensate-org", f.bob).await;
+    let AdmittedRepositoryCommand { mut command, owner } = f.admit(plan).await;
+    let id = settled(command.execute_next().await).repository_id.unwrap();
+    settled(command.compensate_created().await).result.unwrap();
+    command.finish_failed_backend(owner).await.unwrap();
+    assert!(f.db.admin().find_repository(id).await.unwrap().is_none());
+    let plan = creator_plan(&f, "entered-org", f.bob).await;
+    let AdmittedRepositoryCommand { mut command, owner } = f.admit(plan).await;
+    let id = settled(command.execute_next().await).repository_id.unwrap();
+    settled(command.execute_next().await).result.unwrap();
+    assert!(matches!(command.compensate_created().await, RepositoryPhaseResult::Unconfirmed { .. }));
+    assert!(f.db.admin().find_repository(id).await.unwrap().is_some());
+    assert!(command.finish_failed_backend(owner).await.is_err());
+}
+
+#[tokio::test]
+async fn creator_statement_failure_rolls_back_without_deleting_created_repository() {
+    let f = Fixture::with_commit_fault(true).await;
+    let plan = creator_plan(&f, "refused-grant", f.bob).await;
+    let AdmittedRepositoryCommand { mut command, owner } = f.admit(plan).await;
+    let id = settled(command.execute_next().await).repository_id.unwrap();
+    sqlx::query("UPDATE fixture_gate SET enabled = 4").execute(&f.db.pool).await.unwrap();
+    let report = settled(command.execute_next().await);
+    assert_eq!(report.boundary, RepositorySqlBoundary::RolledBack);
+    assert!(
+        matches!(report.result, Err(StorageError::Sqlite(sqlx::Error::Database(error))) if error.code().as_deref() == Some("1811") && error.message() == "injected creator grant refusal")
+    );
+    assert!(f.db.admin().find_repository(id).await.unwrap().is_some());
+    let count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM collaborators WHERE repo_id = ?").bind(id.0).fetch_one(&f.db.pool).await.unwrap();
+    assert_eq!(count, 0);
+    let result = command.finish_failed_backend(owner).await.unwrap();
+    assert_eq!(result.logical, RepositoryLogicalSettlement::FailureRecorded);
+    assert!(f.db.authority_domain.snapshot().uncertain);
+    f.create("later-after-grant-refusal").await;
+}
+
+#[tokio::test]
+async fn creator_read_error_has_no_write_transaction_and_failed_terminal_reuses_credit() {
+    let f = Fixture::new().await;
+    let plan = creator_plan(&f, "closed-read", f.bob).await;
+    let AdmittedRepositoryCommand { mut command, owner } = f.admit(plan).await;
+    settled(command.execute_next().await).result.unwrap();
+    // Actual closed read pool, not a fabricated SQL error or lost acknowledgement.
+    f.db.pool.close().await;
+    let report = settled(command.execute_next().await);
+    assert_eq!(report.boundary, RepositorySqlBoundary::NoTransaction);
+    assert!(matches!(report.result, Err(StorageError::Sqlite(sqlx::Error::PoolClosed))));
+    command.finish_failed_backend(owner).await.unwrap();
+    let first = f.db.repository_commands().reserve(RepositoryPlan::Create(f.new_repo("reserved-one"))).unwrap();
+    let second = f.db.repository_commands().reserve(RepositoryPlan::Create(f.new_repo("reserved-two"))).unwrap();
+    drop((first, second));
+}
+
+#[tokio::test]
+async fn deferred_invalid_name_is_lazy_no_resume_or_dml_and_preserves_general_commit() {
+    let f = Fixture::new().await;
+    let id = f.create("lazy-name").await;
+    let AdmittedRepositoryCommand { mut command, owner } =
+        f.admit(deferred(id, "lazy-name", Some("bad/name"), Some(RepositoryDeferredArchive::Archive { by: f.alice }))).await;
+    settled(command.execute_next().await).result.unwrap();
+    let serial = f.db.authority_domain.writer().begin().await.unwrap();
+    let (result, work) = crate::count_work(timeout(WAIT, command.execute_next())).await;
+    assert!(matches!(result.unwrap(), RepositoryPhaseResult::RejectedName(NameError::InvalidCharacter { kind: "repository name" })));
+    assert_eq!(work, crate::Work { acquisitions: 0, statements: 0, cache_writes: 0 });
+    let row: (String, String, String) = sqlx::query_as("SELECT name, description, visibility FROM repositories WHERE id = ?")
+        .bind(id.0)
+        .fetch_one(&f.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(row, ("lazy-name".to_owned(), "changed".to_owned(), "public".to_owned()));
+    let archives: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM repo_archives WHERE repo_id = ?").bind(id.0).fetch_one(&f.db.pool).await.unwrap();
+    assert_eq!(archives, 0);
+    serial.complete();
+    let completion = command.finish_failed_backend(owner).await.unwrap();
+    assert_eq!(completion.progress.committed_forward_steps, 1);
+    assert_eq!(completion.progress.last_forward_boundary, Some(RepositorySqlBoundary::NoTransaction));
+    assert_eq!(completion.logical, RepositoryLogicalSettlement::FailureRecorded);
+}
+
+#[tokio::test]
+async fn deferred_name_filter_and_case_only_change_preserve_fixed_outputs_and_redirects() {
+    let f = Fixture::new().await;
+    let id = f.create("case-name").await;
+    for (raw, changed) in [(None, false), (Some(" case-name "), false), (Some("CASE-NAME"), true)] {
+        let AdmittedRepositoryCommand { mut command, owner } = f.admit(deferred(id, "case-name", raw, None)).await;
+        settled(command.execute_next().await).result.unwrap();
+        let report = settled(command.execute_next().await);
+        if changed {
+            assert_eq!(report.boundary, RepositorySqlBoundary::Committed);
+            assert!(matches!(report.result, Ok(RepositoryOutput::Renamed(ref name)) if name.as_str() == "CASE-NAME"));
+        } else {
+            assert_eq!(report.boundary, RepositorySqlBoundary::NoTransaction);
+            assert!(matches!(report.result, Ok(RepositoryOutput::RenameUnchanged(ref name)) if name.as_str() == "case-name"));
+        }
+        command.finish_after_successful_backend(owner).await.unwrap();
+    }
+    let redirects: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM repo_redirects WHERE repo_id = ?").bind(id.0).fetch_one(&f.db.pool).await.unwrap();
+    assert_eq!(redirects, 0);
+}
+
+#[tokio::test]
+async fn fixed_archive_now_and_creator_continue_after_stop_with_no_new_admission() {
+    let f = Fixture::new().await;
+    let id = f.create("archive-late").await;
+    let creator = creator_plan(&f, "stopped-creator", f.bob).await;
+    let AdmittedRepositoryCommand { command: mut create, owner: create_owner } = f.admit(creator).await;
+    settled(create.execute_next().await).result.unwrap();
+    let AdmittedRepositoryCommand { mut command, owner } =
+        f.admit(deferred(id, "archive-late", None, Some(RepositoryDeferredArchive::Archive { by: f.alice }))).await;
+    settled(command.execute_next().await).result.unwrap();
+    settled(command.execute_next().await).result.unwrap();
+    drop(f.db.clone().close()); // Stops new registrations, but does not poll pool closure.
+    assert!(matches!(settled(create.execute_next().await).result, Ok(RepositoryOutput::CreatorGrant(CreatorGrantOutcome::Granted))));
+    create.finish_after_successful_backend(create_owner).await.unwrap();
+    let before = Timestamp::now().seconds();
+    assert!(matches!(settled(command.execute_next().await).result, Ok(RepositoryOutput::Changed(true))));
+    let after = Timestamp::now().seconds();
+    let attribution: (i64, i64) = sqlx::query_as("SELECT archived_by, archived_at FROM repo_archives WHERE repo_id = ?")
+        .bind(id.0)
+        .fetch_one(&f.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(attribution.0, f.alice.0);
+    assert!((before..=after).contains(&attribution.1)); // Value bounds; capture-before-resume is source-reviewed separately.
+    command.finish_after_successful_backend(owner).await.unwrap();
+    assert_eq!(f.db.authority_domain.snapshot().active, 0);
+}
+
+#[tokio::test]
+async fn creator_phase_cancellation_during_preparation_or_resume_retains_busy_until_future_drop() {
+    let f = Fixture::new().await;
+    let plan = creator_plan(&f, "cancel-creator", f.bob).await;
+    let AdmittedRepositoryCommand { mut command, owner } = f.admit(plan).await;
+    let id = settled(command.execute_next().await).repository_id.unwrap();
+    let serial = f.db.authority_domain.writer().begin().await.unwrap();
+    let mut phase = Box::pin(command.execute_next());
+    pending(phase.as_mut()).await; // Enrollment/progress only, not proof the role read/driver completed.
+    drop(owner);
+    let mut drain = Box::pin(f.db.drain_repository_commands(Instant::now() + WAIT));
+    pending(drain.as_mut()).await;
+    drop(phase);
+    serial.complete();
+    assert_eq!(timeout(WAIT, drain).await.unwrap(), Err(RepositoryCommandDrainError::Unconfirmed));
+    let count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM collaborators WHERE repo_id = ?").bind(id.0).fetch_one(&f.db.pool).await.unwrap();
+    assert_eq!(count, 0);
+    drop(command);
+}
+
+#[tokio::test]
+async fn creator_upsert_preserves_preexisting_added_by_and_created_at() {
+    let f = Fixture::new().await;
+    let plan = creator_plan(&f, "existing-grant", f.bob).await;
+    let AdmittedRepositoryCommand { mut command, owner } = f.admit(plan).await;
+    let id = settled(command.execute_next().await).repository_id.unwrap();
+    f.db.collaborators().add(id, f.bob, Permission::Write, f.alice).await.unwrap();
+    let before: (i64, i64) = sqlx::query_as("SELECT added_by, created_at FROM collaborators WHERE repo_id = ? AND user_id = ?")
+        .bind(id.0)
+        .bind(f.bob.0)
+        .fetch_one(&f.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(before.0, f.alice.0);
+    settled(command.execute_next().await).result.unwrap();
+    let after: (i64, i64, String) =
+        sqlx::query_as("SELECT added_by, created_at, permission FROM collaborators WHERE repo_id = ? AND user_id = ?")
+            .bind(id.0)
+            .bind(f.bob.0)
+            .fetch_one(&f.db.pool)
+            .await
+            .unwrap();
+    assert_eq!(after, (before.0, before.1, "admin".to_owned()));
+    command.finish_after_successful_backend(owner).await.unwrap();
+}
+
+#[tokio::test]
+async fn rejected_name_halts_declared_archive_and_cannot_acknowledge_success() {
+    let f = Fixture::new().await;
+    let id = f.create("halted").await;
+    let AdmittedRepositoryCommand { mut command, owner } =
+        f.admit(deferred(id, "halted", Some("bad/name"), Some(RepositoryDeferredArchive::Archive { by: f.alice }))).await;
+    settled(command.execute_next().await).result.unwrap();
+    assert!(matches!(command.execute_next().await, RepositoryPhaseResult::RejectedName(_)));
+    let (next, work) = crate::count_work(command.execute_next()).await;
+    assert!(matches!(next, RepositoryPhaseResult::Unconfirmed { original: StorageError::Invariant(_), .. }));
+    assert_eq!(work, crate::Work { acquisitions: 0, statements: 0, cache_writes: 0 });
+    let count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM repo_archives WHERE repo_id = ?").bind(id.0).fetch_one(&f.db.pool).await.unwrap();
+    assert_eq!(count, 0);
+    assert!(command.finish_after_successful_backend(owner).await.is_err());
+}
+
+#[tokio::test]
+async fn rejected_name_direct_successful_terminal_is_refused_without_another_invalid_phase() {
+    let f = Fixture::new().await;
+    let id = f.create("direct-rejection").await;
+    let AdmittedRepositoryCommand { mut command, owner } =
+        f.admit(deferred(id, "direct-rejection", Some("bad/name"), Some(RepositoryDeferredArchive::Archive { by: f.alice }))).await;
+    settled(command.execute_next().await).result.unwrap();
+    assert!(matches!(command.execute_next().await, RepositoryPhaseResult::RejectedName(_)));
+    assert!(!command.cell.lock().unknown, "isolate the failed-only terminal guard before any invalid call");
+    assert_eq!(command.script.terminal_requirement, TerminalRequirement::FailedFlow);
+    assert!(command.script.steps.is_empty());
+    assert_eq!(command.repository_id(), Some(id));
+    assert!(command.finish_after_successful_backend(owner).await.is_err());
+    let row: (String, String) =
+        sqlx::query_as("SELECT name, description FROM repositories WHERE id = ?").bind(id.0).fetch_one(&f.db.pool).await.unwrap();
+    assert_eq!(row, ("direct-rejection".to_owned(), "changed".to_owned()));
+    let count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM repo_archives WHERE repo_id = ?").bind(id.0).fetch_one(&f.db.pool).await.unwrap();
+    assert_eq!(count, 0);
+    assert!(f.db.authority_domain.snapshot().uncertain);
+    assert_eq!(f.db.drain_repository_commands(Instant::now() + WAIT).await, Err(RepositoryCommandDrainError::Unconfirmed));
 }

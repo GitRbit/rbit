@@ -5,18 +5,22 @@ use super::{
         repository_writes,
         rows::RepositoryRow,
     },
-    Step,
+    CreatorGrantOutcome, Step,
 };
 use crate::StorageError;
-use rbit_core::{RepoId, Timestamp};
+use rbit_core::{Permission, RepoId, RepoName, Timestamp};
 
 pub(super) enum Raw {
     Created(RepositoryRow),
+    CreatorGrant(CreatorGrantOutcome),
+    Renamed(RepoName),
+    RenameUnchanged(RepoName),
     Unit,
     Changed(bool),
 }
 pub(super) enum Settled {
     Committed(Raw),
+    NoWrite(Raw),
     RolledBack(StorageError),
     NoTransaction(StorageError),
     Unconfirmed { original: StorageError, rollback_error: Option<StorageError> },
@@ -34,6 +38,15 @@ pub(super) async fn execute(pool: &Pool, step: &Step, id: Option<RepoId>) -> Set
     // IDs are bound by the command before this private fixed phase, not caller SQL.
     let result = match step {
         Step::Create(new) => repository_writes::create(&mut *tx, new, created_at.expect("create phase timestamp")).await.map(Raw::Created),
+        Step::GrantCreator(actor) => {
+            super::super::collaborators::upsert(&mut *tx, id.expect("bound creator repository"), *actor, Permission::Admin, Some(*actor))
+                .await
+                .map(|()| Raw::CreatorGrant(CreatorGrantOutcome::Granted))
+        }
+        Step::PreparedRename(name) => {
+            repository_writes::rename(&mut *tx, id.expect("bound repository phase"), name).await.map(|()| Raw::Renamed(name.clone()))
+        }
+        Step::Creator { .. } | Step::DeferredRename { .. } | Step::ArchiveNow(_) => unreachable!("fixed preparation precedes SQL"),
         Step::Delete => repository_writes::delete(&mut *tx, id.expect("bound repository phase")).await.map(|()| Raw::Unit),
         Step::Transfer(owner) => {
             repository_writes::transfer(&mut tx, id.expect("bound repository phase"), *owner).await.map(|()| Raw::Unit)

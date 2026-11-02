@@ -496,6 +496,24 @@ serial handoffs are unmeasured costs. Existing eight Store APIs and all actual
 Services/Git/Fork callers remain unchanged and unenrolled by this unused facade;
 whole caller adoption and the earlier execution prerequisites remain unfinished.
 
+Two additional closed plans prepare later builtin adoption without changing those
+callers. `CreateWithCreator` declares the creator snapshot before effects and reads
+the original organization role only when its post-create stage is invoked. The role
+read remains separate from same-enrollment grant serialization; no freshness or
+race elimination is promised. Only the fixed Admin upsert is possible, with original
+actor/date provenance. Captured-ID compensation consumes an unentered creator
+stage; once that stage is entered, failure preserves the created repository.
+
+`DeferredSettings` commits general settings before parsing its captured raw rename.
+Invalid names return typed `NameError` rejection before resume, BEGIN or DML, retain
+earlier commits, halt remaining stages and require the failed terminal. Archive time
+is captured at the selected phase's first poll, before its same-token serial wait.
+Eager plans and direct Store results remain unchanged. No Web principal/reload
+checks are performed here: the later service adopter must preserve their original
+order and refuse a reloaded repository ID or owner mismatch before archiving,
+without retargeting the bound command. That mismatch refusal is an intentional
+future safety change, not implemented by these Storage plans.
+
 Before execution can become available, supported store opens need enforced shared
 identity and ownership, and every relevant authority writer must join the same
 domain. Cross-store changes need one guard spanning their actual settlement.
