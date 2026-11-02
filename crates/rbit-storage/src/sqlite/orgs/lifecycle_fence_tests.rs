@@ -94,9 +94,13 @@ async fn apply(f: &Fixture, store: &OrgStore, operation: Operation) -> Result<()
         Operation::Delete => store.delete_if_empty(f.org).await.map(|_| ()),
     }
 }
-async fn pending<F: Future + ?Sized>(mut future: Pin<&mut F>) {
+async fn pending<F: Future + ?Sized>(mut future: Pin<&mut F>)
+where
+    F::Output: std::fmt::Debug,
+{
     poll_fn(|cx| {
-        assert!(future.as_mut().poll(cx).is_pending());
+        let observed = future.as_mut().poll(cx);
+        assert!(observed.is_pending(), "expected blocked future, got {observed:?}");
         Poll::Ready(())
     })
     .await;
@@ -339,15 +343,51 @@ async fn capacity_and_terminal_close_preserve_distinct_lifecycle_and_member_scop
 async fn already_acquired_lifecycle_can_finish_after_stop() {
     for operation in OPERATIONS {
         let f = Fixture::new().await;
-        let mut lock = f.db.pool.acquire().await.unwrap();
-        sqlx::query("BEGIN IMMEDIATE").execute(&mut *lock).await.unwrap();
+        // Hold every actual ordinary-pool permit. The Store can acquire its
+        // enrollment, but cannot begin SQL until these connections return.
+        // This is explicitly a pool-acquire boundary, not driver-entry evidence.
+        let held = timeout(WAIT, async {
+            let mut held = Vec::new();
+            for _ in 0..f.db.pool.options().get_max_connections() {
+                held.push(f.db.pool.acquire().await.unwrap());
+            }
+            held
+        })
+        .await
+        .unwrap();
         let store = f.db.orgs();
         let mut command = Box::pin(apply(&f, &store, operation));
-        pending(command.as_mut()).await;
-        assert_eq!(f.db.authority_domain.snapshot().active, 1);
+        poll_fn(|cx| {
+            let observed = command.as_mut().poll(cx);
+            assert!(observed.is_pending(), "{operation:?} returned before pool release: {observed:?}");
+            Poll::Ready(())
+        })
+        .await;
+        let enrolled = f.db.authority_domain.snapshot();
+        assert_eq!(enrolled.active, 1);
+        assert_eq!(enrolled.queued, 0);
         drop(f.db.authority_domain.stop_writers());
-        sqlx::query("ROLLBACK").execute(&mut *lock).await.unwrap();
+        // SQLx returns dropped connections asynchronously. The successful awaited
+        // Store result below, not this Drop, acknowledges continuation completion.
+        drop(held);
         timeout(WAIT, command).await.unwrap().unwrap();
+        match operation {
+            Operation::Create => {
+                let created = store.find_by_name("fresh").await.unwrap().unwrap();
+                assert_eq!(created.description.as_deref(), Some("About"));
+                assert_eq!(store.role_of(created.account.id, f.alice).await.unwrap(), Some(OrgRole::Owner));
+                let profiles: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM org_profiles WHERE account_id = ?")
+                    .bind(created.account.id.0)
+                    .fetch_one(&f.db.pool)
+                    .await
+                    .unwrap();
+                assert_eq!(profiles, 1);
+            }
+            Operation::Delete => assert!(store.find(f.org).await.unwrap().is_none()),
+        }
+        for (name, id) in [("alice", f.alice), ("bob", f.bob)] {
+            assert_eq!(f.db.accounts().find_login(name).await.unwrap().unwrap().user.id(), id);
+        }
         timeout(WAIT, f.db.authority_domain.stop_writers().drain(Instant::now() + WAIT)).await.unwrap().unwrap();
         assert!(!f.db.authority_domain.snapshot().uncertain);
     }
