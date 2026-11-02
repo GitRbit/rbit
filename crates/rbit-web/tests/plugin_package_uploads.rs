@@ -305,7 +305,13 @@ async fn two_stalled_uploads_reject_a_third_unpolled_and_disconnect_wakes_the_ow
     assert_eq!(third.polls.load(Ordering::SeqCst), 0);
     assert!(third.dropped.load(Ordering::SeqCst));
     first_request.abort();
-    wait_for(&first, || first.dropped.load(Ordering::SeqCst)).await;
+    // The Drop-body marker precedes receiver field destruction. Observe both
+    // events within the original aggregate two-second observation budget.
+    tokio::time::timeout(Duration::from_secs(2), async {
+        tokio::join!(wait_for(&first, || first.dropped.load(Ordering::SeqCst)), first_sender.closed());
+    })
+    .await
+    .expect("cancelled upload must drop its body and close the receiver");
     // first_sender remains live: cancellation, not source progress or EOF, woke the bridge.
     assert!(first_sender.is_closed());
     let bytes = archive(&json!({"type":"data"}), "1.0.0");
