@@ -210,6 +210,14 @@ impl<K: Send + 'static> RepositoryEdit<K> {
     pub fn quarantine(self) -> QuarantinedEdit {
         self.core.quarantine()
     }
+    /// Trusted builtin assertion: SQL is already KNOWN settled and no required
+    /// backend/repair is pending. This unbound type has performed no Git phase.
+    /// Returns the SAME K with its active SQL enrollment for the later Storage
+    /// terminal; not a no-effects, SQL settlement or whole-flow certificate.
+    /// Already attached flows remain eligible after stop; unknown still quarantines.
+    pub fn finish_without_backend(self) -> Result<K, QuarantinedEdit> {
+        self.core.finish()
+    }
     /// Trusted assertion that no SQL/backend effects have begun. No generic SQL proof.
     pub fn cancel_before_effects(self) -> Result<K, QuarantinedEdit> {
         self.core.finish()

@@ -360,3 +360,6 @@ impl Services {
 
 #[cfg(test)]
 mod session_binding_tests;
+
+#[cfg(test)]
+mod repository_handoff_tests;

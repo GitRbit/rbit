@@ -364,3 +364,88 @@ async fn send_only_context_moves_through_actual_worker_without_requiring_sync() 
     storage.prepare_owned_shutdown();
     storage.drain_owned(Instant::now() + WAIT).await.unwrap();
 }
+
+// No SQL fixture: these cases prove Git context/credit behavior only. The named
+// terminal's SQL-boundary assertion is a trusted caller prerequisite, not test data.
+#[tokio::test]
+async fn unbound_no_backend_terminal_returns_same_context_and_reuses_more_than_two_credits() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().join("never-created");
+    let storage = RepositoryStorage::new(&root);
+    let weak = Arc::downgrade(&storage.owned_edits);
+    for _ in 0..4 {
+        let (value, drops) = context();
+        let value = Box::new(value);
+        let pointer = std::ptr::from_ref(&*value);
+        let command = storage.clone().reserve_edit().unwrap().attach(value).unwrap();
+        assert_eq!(storage.owned_edits.snapshot(), (false, 1, false));
+        let returned = command.finish_without_backend().unwrap();
+        assert_eq!(std::ptr::from_ref(&*returned), pointer);
+        assert_eq!(drops.load(Ordering::SeqCst), 0);
+        assert_eq!(storage.owned_edits.snapshot(), (false, 0, false));
+        assert!(!root.exists(), "terminal must not initialize or edit any repository");
+        drop(returned);
+        assert_eq!(drops.load(Ordering::SeqCst), 1);
+    }
+    drop(storage);
+    assert!(weak.upgrade().is_none(), "successful terminal leaves no registry cycle");
+}
+
+#[tokio::test]
+async fn unbound_no_backend_terminal_after_stop_returns_context_without_reopening_admission() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().join("never-created");
+    let storage = RepositoryStorage::new(&root);
+    let attached = storage.reserve_edit().unwrap().attach("same context").unwrap();
+    let stale = storage.clone().reserve_edit().unwrap();
+    storage.prepare_owned_shutdown();
+    assert_eq!(attached.finish_without_backend().unwrap(), "same context");
+    let refused = stale.attach("stale context").unwrap_err();
+    assert_eq!(refused.reason, GitAdmissionError::Stopped);
+    assert_eq!(refused.context, "stale context");
+    assert_eq!(storage.reserve_edit().unwrap_err(), GitAdmissionError::Stopped);
+    assert_eq!(storage.owned_edits.snapshot(), (true, 0, false));
+    storage.drain_owned(Instant::now() + WAIT).await.unwrap();
+    assert!(!root.exists());
+}
+
+#[tokio::test]
+async fn unbound_no_backend_terminal_keeps_explicit_unknown_credit_and_recoverable_context() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().join("never-created");
+    let storage = RepositoryStorage::new(&root);
+    let weak = Arc::downgrade(&storage.owned_edits);
+    let (value, drops) = context();
+    let command = storage.reserve_edit().unwrap().attach(value).unwrap();
+    command.core.custody.unknown(WorkerLoss::OwnerLost);
+    let Err(retained) = command.finish_without_backend() else { panic!("unknown custody must never return K as acknowledged") };
+    assert_eq!(storage.owned_edits.snapshot(), (false, 1, true));
+    let spare = storage.reserve_edit().unwrap();
+    assert_eq!(storage.reserve_edit().unwrap_err(), GitAdmissionError::Capacity);
+    drop(spare);
+    storage.prepare_owned_shutdown();
+    assert_eq!(storage.drain_owned(Instant::now() + WAIT).await, Err(OwnedGitDrainError::Unconfirmed));
+    assert_eq!(drops.load(Ordering::SeqCst), 0, "recoverable explicit quarantine retains K; no panic-survival claim");
+    assert!(!root.exists());
+    drop(retained);
+    drop(storage);
+    assert!(weak.upgrade().is_some(), "restart-only unknown anchor survives last public handle");
+    assert_eq!(drops.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn unbound_no_backend_terminal_accepts_send_only_context_and_moves_returned_value() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().join("never-created");
+    let storage = RepositoryStorage::new(&root);
+    let mut command = storage.reserve_edit().unwrap().attach(std::cell::Cell::new(17_u8)).unwrap();
+    command.context_mut().set(23);
+    // Cell is Send but not Sync. This is an owned Rust task, not a Git IO worker.
+    let task = tokio::spawn(async move { command.finish_without_backend().unwrap() });
+    let returned = timeout(WAIT, task).await.unwrap().unwrap();
+    assert_eq!(returned.get(), 23);
+    assert_eq!(storage.owned_edits.snapshot(), (false, 0, false));
+    assert!(!root.exists());
+    storage.prepare_owned_shutdown();
+    storage.drain_owned(Instant::now() + WAIT).await.unwrap();
+}
