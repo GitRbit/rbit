@@ -3,12 +3,13 @@ import { execFileSync } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir, hostname } from "node:os";
 import { join } from "node:path";
+import { EventEmitter } from "node:events";
 import test from "node:test";
 import { context, git } from "../workspace/paths.mjs";
 import { create, list, remove } from "../workspace/worktrees.mjs";
 import { cacheReport, prune } from "../workspace/storage.mjs";
 import { acquire } from "../workspace/lease.mjs";
-import { pruneGenerations } from "../workspace/runtime.mjs";
+import { pruneGenerations, runBinary } from "../workspace/runtime.mjs";
 import { runtimeEnvironment } from "../workspace/ports.mjs";
 
 async function fixture(t) {
@@ -113,4 +114,29 @@ test("linked port registry leaves an external sentinel untouched", async (t) => 
   }
   await assert.rejects(runtimeEnvironment(ctx, {}), /Linked paths/);
   assert.equal(await readFile(sentinel, "utf8"), "external sentinel");
+});
+
+test("dead launcher remains protected from prune and worktree removal until verification resolves", async (t) => {
+  const ctx = await fixture(t);
+  const entry = await create(ctx, "gated-runtime");
+  const nested = await context(entry.path);
+  const generation = join(nested.state, "bin", "gated");
+  await mkdir(generation, { recursive: true });
+  const executable = join(generation, "test.exe");
+  await writeFile(executable, "test placeholder");
+  const child = new EventEmitter(); child.pid = -1; child.exitCode = null; child.signalCode = null;
+  let releaseVerification;
+  const verification = new Promise((done) => { releaseVerification = done; });
+  t.after(() => releaseVerification(true));
+  await runBinary(nested, executable, [], {}, {
+    launch: () => { setImmediate(() => child.emit("spawn")); return child; },
+    verify: () => verification,
+  });
+  child.exitCode = 0; child.emit("close", 0, null);
+  await pruneGenerations(nested, 0);
+  assert.equal(JSON.parse(await readFile(join(generation, "running.json"), "utf8")).requiresProof, true);
+  await assert.rejects(remove(ctx, "gated-runtime"), /active runtime/);
+  releaseVerification(true); await child.runtimeCompletion;
+  await pruneGenerations(nested, 0);
+  await remove(ctx, "gated-runtime");
 });
