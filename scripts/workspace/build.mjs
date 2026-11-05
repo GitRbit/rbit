@@ -44,7 +44,9 @@ export function cargoProcess(ctx, args, env, onArtifact = () => {}, { spawnProce
     // Even spawn errors settle on close, after stdio handles/children have closed.
     child.on("error", (error) => { spawnError = error; });
     child.on("close", (code, signal) => {
-      if (signal || (!spawnError && (code === null || code < 0 || code > 255)) || (spawnError && child.pid)) {
+      // Windows taskkill can report code1 with no signal, while rustc descendants
+      // survive. Only Cargo's documented normal success/error exits prove completion.
+      if (signal || (!spawnError && code !== 0 && code !== 101) || (spawnError && child.pid)) {
         reject(new UncertainProcessTreeError(`Cargo terminated abnormally (${signal ?? code}); compiler descendants may still be writing`));
       } else if (spawnError || parseError) reject(spawnError ?? parseError);
       else if (code !== 0) reject(new Error(`Cargo ${signal ?? `exited ${code}`}`));
