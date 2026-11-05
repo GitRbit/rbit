@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync, symlinkSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { authored, checkSizes, checkEdges, checkMigrations, sourceFiles } from "../rewrite/check.mjs";
+import { authored, checkSizes, checkEdges, checkMigrations, checkLedger, sourceFiles } from "../rewrite/check.mjs";
 
 test("legacy ceilings cannot grow and new authored files have no blanket exemptions", () => {
   const baseline = { authoredSizeBaseline: [{ path: "legacy.rs", lines: 500 }] };
@@ -51,5 +51,23 @@ test("source scan ignores cache roots and refuses directory links", () => {
     assert.deepEqual(sourceFiles(root), ["crates/source.rs"]);
     symlinkSync(join(root, ".build-cache"), join(root, "crates", "escape"), "junction");
     assert.throws(() => sourceFiles(root), /contains a link/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("feature retirement requires replacement and acceptance evidence", () => {
+  const root = mkdtempSync(join(tmpdir(), "rbit-ledger-"));
+  try {
+    writeFileSync(join(root, "baseline.rs"), "// baseline");
+    const feature = { id: "example", status: "baseline-retained", source: "baseline.rs", test: "baseline.rs" };
+    assert.deepEqual(checkLedger(root, { features: [feature] }), []);
+    assert.match(checkLedger(root, { features: [feature, feature] })[0], /duplicate/);
+    feature.status = "ported";
+    assert.equal(checkLedger(root, { features: [feature] }).length, 2);
+    feature.replacement = ["baseline.rs"]; feature.acceptance = "baseline.rs";
+    assert.deepEqual(checkLedger(root, { features: [feature] }), []);
+    feature.status = "changed";
+    assert.match(checkLedger(root, { features: [feature] })[0], /decision/);
+    feature.decision = "../escape.md";
+    assert.match(checkLedger(root, { features: [feature] })[0], /decision/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -1,8 +1,8 @@
 /** Ratchet legacy file sizes and dependencies while enforcing strict bounds on new code. */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
-import { join, resolve, relative } from "node:path";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const LIMIT = 400;
@@ -82,13 +82,41 @@ export function checkMigrations(root, baseline) {
   });
 }
 
+/** A completed ledger row needs replacement source and concrete acceptance evidence. */
+export function checkLedger(root, ledger) {
+  const violations = [], ids = new Set();
+  const safe = (path) => typeof path === "string" && path.length > 0 && !isAbsolute(path)
+    && !path.split(/[\\/]/).includes("..") && existsSync(join(root, path));
+  for (const feature of ledger.features) {
+    if (ids.has(feature.id)) violations.push(`Feature ledger: duplicate ${feature.id}`);
+    ids.add(feature.id);
+    if (!["baseline-retained", "ported", "changed"].includes(feature.status)) {
+      violations.push(`${feature.id}: unknown ledger status`);
+    }
+    if (feature.status === "baseline-retained") {
+      for (const field of ["source", "test"]) {
+        if (!safe(feature[field])) violations.push(`${feature.id}: missing ${field} evidence`);
+      }
+    } else {
+      if (!Array.isArray(feature.replacement) || !feature.replacement.length || !feature.replacement.every(safe)) {
+        violations.push(`${feature.id}: completed feature needs replacement paths`);
+      }
+      if (!safe(feature.acceptance)) violations.push(`${feature.id}: completed feature needs acceptance evidence`);
+      if (feature.status === "changed" && !safe(feature.decision)) violations.push(`${feature.id}: changed behavior needs a decision`);
+    }
+  }
+  return violations;
+}
+
 export function check(root) {
   const baseline = JSON.parse(readFileSync(join(root, "docs/design/rewrite/main-inventory.json"), "utf8"));
+  const ledger = JSON.parse(readFileSync(join(root, "docs/design/rewrite/feature-ledger.json"), "utf8"));
+  if (ledger.baseline !== baseline.baseline) throw new Error("Ledger and inventory baselines differ");
   const files = sourceFiles(root).map((path) => [path, readFileSync(join(root, path), "utf8")]);
   const metadata = JSON.parse(execFileSync("cargo", ["metadata", "--no-deps", "--locked", "--offline", "--format-version=1"], {
     cwd: root, encoding: "utf8", windowsHide: true, stdio: ["pipe", "pipe", "pipe"], maxBuffer: 8 * 1024 * 1024,
   }));
-  return { files: files.length, violations: [...checkSizes(files, baseline), ...checkEdges(metadata, baseline), ...checkMigrations(root, baseline)] };
+  return { files: files.length, violations: [...checkSizes(files, baseline), ...checkEdges(metadata, baseline), ...checkMigrations(root, baseline), ...checkLedger(root, ledger)] };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
