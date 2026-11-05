@@ -93,4 +93,24 @@ test("generation cleanup retains live handoffs and runtime ports/data remain ind
   assert.notEqual(firstEnv.RBIT_SERVER__BIND, secondEnv.RBIT_SERVER__BIND);
   assert.notEqual(firstEnv.RBIT_STORAGE__DATA_DIR, secondEnv.RBIT_STORAGE__DATA_DIR);
   assert.equal(firstEnv.RBIT_SERVER__BIND, (await runtimeEnvironment(ctx, {})).RBIT_SERVER__BIND);
+  assert.equal(firstEnv.RBIT_SSH__ENABLED, "false");
+  assert.equal((await runtimeEnvironment(ctx, { RBIT_SSH__ENABLED: "true", RBIT_SSH__BIND: "127.0.0.1:4444" })).RBIT_SSH__BIND, "127.0.0.1:4444");
+});
+
+test("linked port registry leaves an external sentinel untouched", async (t) => {
+  const ctx = await fixture(t);
+  const outside = await mkdtemp(join(tmpdir(), "rbit-port-sentinel-"));
+  t.after(() => rm(outside, { recursive: true, force: true }));
+  const sentinel = join(outside, "sentinel.json");
+  await writeFile(sentinel, "external sentinel");
+  await mkdir(join(ctx.root, ".worktree-state"), { recursive: true });
+  // Windows file symlinks require Developer Mode; test a linked registry directory
+  // there as well when the host does not grant file-symlink creation.
+  try { await symlink(sentinel, join(ctx.root, ".worktree-state", "ports.json"), "file"); }
+  catch (error) {
+    if (process.platform !== "win32" || error.code !== "EPERM") throw error;
+    await symlink(outside, join(ctx.root, ".worktree-state", "ports.json"), "junction");
+  }
+  await assert.rejects(runtimeEnvironment(ctx, {}), /Linked paths/);
+  assert.equal(await readFile(sentinel, "utf8"), "external sentinel");
 });
