@@ -1,0 +1,14 @@
+[package]
+name = "rbit-kernel"
+description = "Bounded work admission and lifetime coordination for the rbit application host."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+tokio.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

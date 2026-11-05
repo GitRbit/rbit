@@ -4253,6 +4253,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbit-kernel"
+version = "0.1.5"
+dependencies = [
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "rbit-mail"
 version = "0.1.5"
 dependencies = [
