@@ -1,6 +1,6 @@
 //! Compiled messages for the first repository-listing slice; no runtime parsing.
 
-use std::{fmt, fmt::Write};
+use std::{borrow::Cow, fmt, fmt::Write};
 
 use crate::{Locale, pseudo};
 
@@ -27,6 +27,25 @@ pub enum Message<'a> {
     PreviousPage,
     PageNumber { page: u64 },
     RepositoryLinkLabel { owner: &'a str, name: &'a str },
+    ExploreTitle,
+    ExploreSubtitle { site: &'a str },
+    ExploreSearchPlaceholder,
+    SortBy,
+    SortUpdated,
+    SortName,
+    SortNewest,
+    ArchiveFilterLabel,
+    ArchiveAll,
+    ArchiveActive,
+    Archived,
+    NothingHereYet,
+    PublicRepositoriesEmpty,
+    NoMatchingRepositories,
+    SearchSuggestion,
+    CountForQuery { count: u64, query: &'a str },
+    PaginationLabel,
+    PageOf { page: u32, pages: u32 },
+    Stars { count: i64 },
 }
 
 impl Message<'_> {
@@ -44,6 +63,25 @@ impl Message<'_> {
             Self::PreviousPage => "pagination.previous",
             Self::PageNumber { .. } => "pagination.page-number",
             Self::RepositoryLinkLabel { .. } => "repositories.link-label",
+            Self::ExploreTitle => "explore.title",
+            Self::ExploreSubtitle { .. } => "explore.subtitle",
+            Self::ExploreSearchPlaceholder => "explore.search-placeholder",
+            Self::SortBy => "repositories.sort-label",
+            Self::SortUpdated => "repositories.sort-updated",
+            Self::SortName => "repositories.sort-name",
+            Self::SortNewest => "repositories.sort-newest",
+            Self::ArchiveFilterLabel => "repositories.archive-filter-label",
+            Self::ArchiveAll => "repositories.archive-all",
+            Self::ArchiveActive => "repositories.archive-active",
+            Self::Archived => "repositories.archived",
+            Self::NothingHereYet => "explore.empty-title",
+            Self::PublicRepositoriesEmpty => "explore.empty-description",
+            Self::NoMatchingRepositories => "explore.no-match-title",
+            Self::SearchSuggestion => "explore.no-match-description",
+            Self::CountForQuery { .. } => "explore.count-for-query",
+            Self::PaginationLabel => "pagination.label",
+            Self::PageOf { .. } => "pagination.page-of",
+            Self::Stars { .. } => "repositories.stars",
         }
     }
 }
@@ -51,7 +89,7 @@ impl Message<'_> {
 /// Plain Unicode text, never an HTML fragment. Use ordinary Askama interpolation;
 /// `safe` or unescaped `innerHTML` would violate this type's presentation contract.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct LocalizedText(String);
+pub struct LocalizedText(Cow<'static, str>);
 
 impl LocalizedText {
     /// Borrows plain text for templates, text mail, accessible labels or CLI output.
@@ -87,11 +125,8 @@ impl Catalog {
     /// catalog syntax, markup or formatting instructions. Templates escape once.
     pub fn text(self, message: Message<'_>) -> LocalizedText {
         let mut output = String::new();
-        if self.locale != Locale::English {
-            output.push('[');
-        }
         match message {
-            Message::RepositoriesTitle => self.literal(&mut output, "Repositories"),
+            Message::RepositoriesTitle => return self.literal_text("Repositories"),
             Message::RepositoryCount { count } => {
                 let _ = write!(output, "{count}");
                 self.literal(&mut output, if count == 1 { " repository" } else { " repositories" });
@@ -100,19 +135,18 @@ impl Catalog {
                 self.literal(&mut output, "Repositories owned by ");
                 self.argument(&mut output, owner);
             }
-            Message::Visibility { visibility } => self.literal(
-                &mut output,
-                match visibility {
+            Message::Visibility { visibility } => {
+                return self.literal_text(match visibility {
                     RepositoryVisibility::Public => "Public",
                     RepositoryVisibility::Private => "Private",
                     RepositoryVisibility::Internal => "Internal",
-                },
-            ),
-            Message::EmptyRepositories => self.literal(&mut output, "No repositories found."),
-            Message::SearchRepositories => self.literal(&mut output, "Search repositories"),
-            Message::SearchLabel => self.literal(&mut output, "Search"),
-            Message::NextPage => self.literal(&mut output, "Next"),
-            Message::PreviousPage => self.literal(&mut output, "Previous"),
+                });
+            }
+            Message::EmptyRepositories => return self.literal_text("No repositories found."),
+            Message::SearchRepositories => return self.literal_text("Search repositories"),
+            Message::SearchLabel => return self.literal_text("Search"),
+            Message::NextPage => return self.literal_text("Next"),
+            Message::PreviousPage => return self.literal_text("Previous"),
             Message::PageNumber { page } => {
                 self.literal(&mut output, "Page ");
                 let _ = write!(output, "{page}");
@@ -123,11 +157,64 @@ impl Catalog {
                 output.push('/');
                 self.argument(&mut output, name);
             }
+            Message::ExploreTitle => return self.literal_text("Explore"),
+            Message::ExploreSubtitle { site } => {
+                self.literal(&mut output, "Public repositories on ");
+                self.argument(&mut output, site);
+                output.push('.');
+            }
+            Message::ExploreSearchPlaceholder => return self.literal_text("Search by name or description"),
+            Message::SortBy => return self.literal_text("Sort by"),
+            Message::SortUpdated => return self.literal_text("Updated"),
+            Message::SortName => return self.literal_text("Name"),
+            Message::SortNewest => return self.literal_text("Newest"),
+            Message::ArchiveFilterLabel => return self.literal_text("Archived repositories"),
+            Message::ArchiveAll => return self.literal_text("All"),
+            Message::ArchiveActive => return self.literal_text("Active"),
+            Message::Archived => return self.literal_text("Archived"),
+            Message::NothingHereYet => return self.literal_text("Nothing here yet"),
+            Message::PublicRepositoriesEmpty => return self.literal_text("Public repositories will be listed here once they exist."),
+            Message::NoMatchingRepositories => return self.literal_text("No matching repositories"),
+            Message::SearchSuggestion => return self.literal_text("Try a shorter search or different words."),
+            Message::CountForQuery { count, query } => {
+                let _ = write!(output, "{count}");
+                self.literal(&mut output, if count == 1 { " repository" } else { " repositories" });
+                if !query.is_empty() {
+                    self.literal(&mut output, " for “");
+                    self.argument(&mut output, query);
+                    output.push('”');
+                }
+            }
+            Message::PaginationLabel => return self.literal_text("Pagination"),
+            Message::PageOf { page, pages } => {
+                self.literal(&mut output, "Page ");
+                let _ = write!(output, "{page}");
+                self.literal(&mut output, " of ");
+                let _ = write!(output, "{pages}");
+            }
+            Message::Stars { count } => {
+                let _ = write!(output, "{count}");
+                self.literal(&mut output, " stars");
+            }
         }
+        self.finish(output)
+    }
+
+    fn literal_text(self, text: &'static str) -> LocalizedText {
+        if self.locale == Locale::English {
+            return LocalizedText(Cow::Borrowed(text));
+        }
+        let mut output = String::new();
+        self.literal(&mut output, text);
+        self.finish(output)
+    }
+
+    fn finish(self, mut output: String) -> LocalizedText {
         if self.locale != Locale::English {
+            output.insert(0, '[');
             output.push(']');
         }
-        LocalizedText(output)
+        LocalizedText(Cow::Owned(output))
     }
 
     fn literal(self, output: &mut String, text: &str) {
@@ -147,3 +234,6 @@ impl Catalog {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
