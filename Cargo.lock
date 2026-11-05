@@ -4261,6 +4261,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbit-localization"
+version = "0.1.5"
+
+[[package]]
 name = "rbit-mail"
 version = "0.1.5"
 dependencies = [
