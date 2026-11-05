@@ -31,11 +31,13 @@ async function running(ctx, checkout) {
   const state = (await context(checkout)).state;
   try {
     for (const generation of await readdir(join(state, "bin"))) {
-      try {
-        const record = JSON.parse(await readFile(join(state, "bin", generation, "running.json"), "utf8"));
-        // Unknown/other-host process state fails closed.
-        if (record.host !== (await import("node:os")).hostname() || alive(record.pid)) return true;
-      } catch (error) { if (error.code !== "ENOENT") throw error; }
+      for (const marker of ["running.json", "handoff.json"]) {
+        try {
+          const record = JSON.parse(await readFile(join(state, "bin", generation, marker), "utf8"));
+          // Unknown/other-host process state fails closed, including pending launch.
+          if (record.host !== (await import("node:os")).hostname() || alive(record.pid)) return true;
+        } catch (error) { if (error.code !== "ENOENT") throw error; }
+      }
     }
   } catch (error) { if (error.code !== "ENOENT") throw error; }
   return false;

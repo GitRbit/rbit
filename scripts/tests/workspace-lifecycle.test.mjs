@@ -35,6 +35,9 @@ test("nested worktree discovers common root; dirty and active checkouts cannot b
   await writeFile(join(bin, "running.json"), JSON.stringify({ pid: process.pid, host: hostname() }));
   await assert.rejects(remove(ctx, "example"), /active runtime/);
   await rm(join(bin, "running.json"));
+  await writeFile(join(bin, "handoff.json"), JSON.stringify({ pid: process.pid, host: hostname() }));
+  await assert.rejects(remove(ctx, "example"), /active runtime/);
+  await rm(join(bin, "handoff.json"));
   await remove(ctx, "example");
   assert.equal(list(ctx).length, 1);
   assert.match(git(ctx.root, ["branch", "--list", "feature/example"]), /feature\/example/);
