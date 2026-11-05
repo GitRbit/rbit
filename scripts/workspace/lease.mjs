@@ -7,6 +7,9 @@ import { randomUUID } from "node:crypto";
 
 const pause = (ms) => new Promise((done) => setTimeout(done, ms));
 
+/** Cargo/runtime termination is not proof that all descendants have stopped. */
+export class UncertainProcessTreeError extends Error {}
+
 export function alive(pid) {
   if (!Number.isSafeInteger(pid) || pid < 1) return false;
   try { process.kill(pid, 0); return true; } catch (error) { return error.code !== "ESRCH"; }
@@ -30,6 +33,10 @@ export async function acquire(path, { timeout = 120_000, signal } = {}) {
       break;
     } catch (error) {
       if (error.code !== "EEXIST") throw error;
+      try {
+        const blocked = JSON.parse(await readFile(join(path, "blocked.json"), "utf8"));
+        throw new Error(`Blocked lease ${path}: ${blocked.reason}; inspect orphaned processes before manual recovery`);
+      } catch (blockedError) { if (blockedError.code !== "ENOENT") throw blockedError; }
       const current = await owner(path);
       if (current?.host === hostname() && !alive(current.pid)) {
         throw new Error(`Stale lease ${path}; inspect orphaned Cargo/rustc processes, then remove this lease directory manually`);
@@ -50,5 +57,13 @@ export async function acquire(path, { timeout = 120_000, signal } = {}) {
 
 export async function leased(path, task, options) {
   const release = await acquire(path, options);
-  try { return await task(); } finally { await release(); }
+  let retained = false;
+  try { return await task(); }
+  catch (error) {
+    if (error instanceof UncertainProcessTreeError) {
+      retained = true;
+      await writeFile(join(path, "blocked.json"), JSON.stringify({ reason: error.message, at: new Date().toISOString() }));
+    }
+    throw error;
+  } finally { if (!retained) await release(); }
 }

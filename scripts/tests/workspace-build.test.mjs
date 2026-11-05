@@ -149,6 +149,20 @@ test("process errors settle only after close, keeping the enclosing lease held",
   await failed;
 });
 
+test("signalled Cargo retains a blocked lease instead of admitting another writer", async (t) => {
+  const ctx = await fixture(t);
+  const child = new EventEmitter();
+  child.stdout = new PassThrough();
+  const execute = (_ctx, args, env, artifact) => {
+    const pending = cargoProcess(_ctx, args, env, artifact, { spawnProcess: () => child });
+    setImmediate(() => { child.stdout.end(); child.emit("close", null, "SIGTERM"); });
+    return pending;
+  };
+  await assert.rejects(cargo(ctx, "check", [], { key, env: {}, execute }), /descendants may still be writing/);
+  await assert.rejects(acquire(join(ctx.cache, ".lease"), { timeout: 0 }), /Blocked lease/);
+  assert.match(await readFile(join(ctx.cache, ".lease", "blocked.json"), "utf8"), /SIGTERM/);
+});
+
 test("unstable output escapes, directory changes and destructive commands are refused before execution", async (t) => {
   const ctx = await fixture(t);
   for (const args of [["-Celsewhere"], ["-C", "elsewhere"], ["--artifact-dir=outside"], ["--build-dir", "outside"], ["--lockfile-path=outside"]]) {

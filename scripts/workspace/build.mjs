@@ -5,7 +5,7 @@ import { copyFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { createInterface } from "node:readline";
 import { guarded, managedDirectory } from "./paths.mjs";
-import { leased } from "./lease.mjs";
+import { leased, UncertainProcessTreeError } from "./lease.mjs";
 
 export function compatibility(env = process.env, rustc = execFileSync("rustc", ["-vV"], { encoding: "utf8", windowsHide: true })) {
   const flags = Object.fromEntries(Object.entries(env).filter(([key]) =>
@@ -44,7 +44,9 @@ export function cargoProcess(ctx, args, env, onArtifact = () => {}, { spawnProce
     // Even spawn errors settle on close, after stdio handles/children have closed.
     child.on("error", (error) => { spawnError = error; });
     child.on("close", (code, signal) => {
-      if (spawnError || parseError) reject(spawnError ?? parseError);
+      if (signal || (!spawnError && (code === null || code < 0 || code > 255)) || (spawnError && child.pid)) {
+        reject(new UncertainProcessTreeError(`Cargo terminated abnormally (${signal ?? code}); compiler descendants may still be writing`));
+      } else if (spawnError || parseError) reject(spawnError ?? parseError);
       else if (code !== 0) reject(new Error(`Cargo ${signal ?? `exited ${code}`}`));
       else done();
     });
