@@ -4280,6 +4280,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbit-rewrite-check"
+version = "0.1.5"
+dependencies = [
+ "proc-macro2",
+ "serde",
+ "serde_json",
+ "syn 2.0.119",
+ "tempfile",
+ "toml",
+]
+
+[[package]]
 name = "rbit-runner"
 version = "0.1.5"
 dependencies = [

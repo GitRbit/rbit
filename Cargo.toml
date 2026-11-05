@@ -16,6 +16,7 @@ members = [
     "crates/rbit-runner",
     "crates/rbit-kernel",
     "crates/rbit-localization",
+    "tools/rewrite-check",
 ]
 default-members = ["crates/rbit-server"]
 
