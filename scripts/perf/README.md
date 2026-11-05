@@ -5,8 +5,11 @@
 With the development server running (`npm run dev`), run:
 
 ```bash
-npm run test:realworld -- http://localhost:3000
+npm run test:realworld -- http://localhost:3100
 ```
+
+Replace the example origin with the URL printed by `npm run dev`; managed worktrees
+receive distinct ports from 3100–3999.
 
 This creates public `realworld/rbit` and `realworld/git` repositories on the local
 server using a generated test account. rbit comes from the workspace's configured

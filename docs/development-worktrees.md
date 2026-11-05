@@ -160,7 +160,8 @@ runtime data and shared cache remain. The helper does not remove legacy checkout
 the repository or under old target directories. Coordinate their migration separately.
 
 Never use a direct `cargo clean` against a shared lane. Cache maintenance must enter the
-same repository lease. Normal command failures release the lease. A hard crash leaves a
+same repository lease. Ordinary Cargo errors and failures before process startup
+release the lease. A hard crash leaves a
 stale lease and intentionally blocks new builds: inspect the recorded host/PID and any
 orphan Cargo/rustc descendants before manually removing only `.build-cache/.lease`.
 Do not steal a lease just because its parent died; orphaned compilers may still write.
@@ -175,7 +176,7 @@ cleanup from an arbitrary small integer exit code.
 ## Verification and remaining integrations
 
 ```sh
-node --test scripts/tests/workspace-build.test.mjs scripts/tests/workspace-lifecycle.test.mjs
+node --test scripts/tests/workspace*.test.mjs scripts/perf/*.test.mjs
 ```
 
 The tests use disposable directories and temporary Git repositories. They cover

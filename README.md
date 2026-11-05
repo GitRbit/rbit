@@ -211,20 +211,25 @@ cargo run            # serves http://localhost:3000, data in ./data
 `cargo build --release` produces `target/release/rbit`; `docker build -t rbit .` builds the
 image from source.
 
+These direct Cargo commands also work in source archives without Git metadata. For
+day-to-day Git checkout and worktree development, use the shared build helper below;
+direct Cargo commands otherwise create checkout-local output.
+
 ### Local build storage
 
-All crates share the root workspace, `Cargo.lock`, and `target/`. Cargo 1.91+ puts
-compiler intermediates in `.cargo-build/`; development profiles use line tables
-and disable incremental compilation to keep artifacts small and cacheable.
+All crates share the root workspace and `Cargo.lock`. In Git checkouts, use
+`node scripts/workspace.mjs build --release -p rbit-server --locked` to share both final
+compiler output and intermediates across compatible worktrees. The helper serializes
+builds and copies exact executables into per-checkout runtime generations before
+releasing its lease, so Windows servers can keep running while another build links.
 
-On the configured development workstation, Cargo uses a bounded shared `sccache`
-cache. After creating a Git worktree, run
-`rust-worktree-storage seed /path/to/main /path/to/worktree` to seed both artifact
-directories using copy-on-write, without sharing mutable output directories.
-Run `rust-worktree-storage sweep --dry-run /path/to/repository` to inspect the
-30-day cleanup, or omit `--dry-run` to remove stale artifacts. The workstation's
-weekly cleanup applies the same policy. Stop builds before running `cargo clean`
-when a full local reset is needed.
+New checkouts belong under `worktrees/`; compiler output lives in `.build-cache/` and
+isolated runtime data in `.worktree-state/`. Inspect usage with
+`node scripts/workspace.mjs cache-report` and prune inactive compatibility groups to
+an explicit byte budget with `node scripts/workspace.mjs cache-prune 21474836480`.
+Do not run direct `cargo clean` against shared output. See
+[Worktrees and shared developer builds](docs/development-worktrees.md) for setup,
+runtime shutdown, IDE configuration and safe cache maintenance.
 
 ## First steps
 
@@ -335,10 +340,10 @@ Log verbosity follows `RUST_LOG` (e.g. `RUST_LOG=debug`), and `NO_COLOR` turns o
 (`npm run dev`), the quality gate and the rules for commits and pull requests. In short:
 
 ```bash
-npm run dev                            # rebuild and restart on every change, data in ./data-live
+npm run dev                            # prints checkout-specific URL and isolated data path
 cargo fmt --all --check                # rustfmt.toml pins the style
-cargo clippy --workspace --all-targets -- -D warnings   # pedantic lints, workspace-wide
-cargo test --workspace                 # unit, integration, property and end-to-end tests
+node scripts/workspace.mjs clippy --workspace --all-targets --locked -- -D warnings
+node scripts/workspace.mjs test --workspace --locked
 ```
 
 The end-to-end suite (`crates/rbit-e2e`) boots real servers on ephemeral ports and drives
