@@ -5,8 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Account, AccountId, RepoName, Timestamp};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct RepoId(pub i64);
+pub use rbit_contracts::RepoId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum Visibility {
@@ -174,6 +173,16 @@ impl OwnedRepository {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_repository_paths_remain_the_same_contract_type() {
+        let module_path: super::RepoId = rbit_contracts::RepoId(-1);
+        let root_path: crate::RepoId = super::RepoId(module_path.0);
+        let contract: rbit_contracts::RepoId = root_path;
+        assert_eq!(contract.0, -1);
+        assert_eq!(std::any::TypeId::of::<crate::RepoId>(), std::any::TypeId::of::<rbit_contracts::RepoId>());
+        assert_eq!(serde_json::to_string(&root_path).unwrap(), "-1");
+    }
 
     #[test]
     fn archived_filters_round_trip() {

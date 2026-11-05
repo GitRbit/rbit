@@ -5,10 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{AccountName, Email, Timestamp};
 
-/// Stable, never-reused primary key of an account. Used for on-disk paths so that
-/// renaming an account never moves files.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct AccountId(pub i64);
+pub use rbit_contracts::AccountId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AccountKind {
@@ -70,5 +67,20 @@ impl User {
 
     pub fn name(&self) -> &AccountName {
         &self.account.name
+    }
+}
+
+#[cfg(test)]
+mod identity_compatibility {
+    use std::any::TypeId;
+
+    #[test]
+    fn legacy_account_paths_remain_the_same_contract_type() {
+        let module_path: super::AccountId = rbit_contracts::AccountId(-1);
+        let root_path: crate::AccountId = super::AccountId(module_path.0);
+        let contract: rbit_contracts::AccountId = root_path;
+        assert_eq!(contract.0, -1);
+        assert_eq!(TypeId::of::<crate::AccountId>(), TypeId::of::<rbit_contracts::AccountId>());
+        assert_eq!(serde_json::to_string(&root_path).unwrap(), "-1");
     }
 }

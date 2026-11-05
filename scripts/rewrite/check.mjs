@@ -18,6 +18,8 @@ const FEATURE_EDGES = {
   "rbit-actions": ["rbit-contracts", "rbit-access", "rbit-workflow", "rbit-kernel"],
   "rbit-presentation": ["rbit-contracts", "rbit-localization"],
 };
+// Reviewed seams added to legacy adapters during incremental replacement.
+const ADDED_EDGES = { "rbit-core": ["rbit-contracts"] };
 
 export function authored(path) {
   return /\.(rs|html|mjs|js)$/.test(path) && !GENERATED.has(path)
@@ -58,7 +60,8 @@ export function checkEdges(metadata, baseline) {
     .map((pkg) => [pkg.name, pkg]));
   const violations = [];
   for (const [name, pkg] of members) {
-    const allowed = FEATURE_EDGES[name] ?? legacy.get(name);
+    const allowed = FEATURE_EDGES[name] ?? (legacy.has(name)
+      ? [...legacy.get(name), ...(ADDED_EDGES[name] ?? [])] : undefined);
     if (!allowed) { violations.push(`${name}: declare an explicit architecture policy before adding a workspace crate`); continue; }
     for (const dependency of pkg.dependencies) {
       if (members.has(dependency.name) && !allowed.includes(dependency.name)) {
