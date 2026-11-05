@@ -7,6 +7,8 @@ use tokio::{
     task::JoinHandle,
 };
 
+use crate::BlockingReservation;
+
 /// Why a worker was not submitted. Rejections never enqueue work.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum AdmissionError {
@@ -43,6 +45,24 @@ impl BlockingBudget {
         Self { slots: Arc::new(Semaphore::new(capacity.get())), capacity }
     }
 
+    /// Reserves capacity immediately, before one-use state or other attempt effects.
+    ///
+    /// The non-cloneable reservation can be dropped without starting work or consumed
+    /// to spawn exactly one worker. Acquisition does not require a Tokio runtime.
+    /// Keep pre-dispatch work short: an unused reservation still occupies capacity.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AdmissionError::Busy`] when saturated or [`AdmissionError::Closed`]
+    /// after shutdown closes admission. Neither rejection starts or queues any work.
+    pub fn try_reserve(&self) -> Result<BlockingReservation, AdmissionError> {
+        let permit = Arc::clone(&self.slots).try_acquire_owned().map_err(|error| match error {
+            TryAcquireError::NoPermits => AdmissionError::Busy,
+            TryAcquireError::Closed => AdmissionError::Closed,
+        })?;
+        Ok(BlockingReservation::new(permit))
+    }
+
     /// Submits `operation` only when a slot is immediately available.
     ///
     /// The closure owns the permit, not the future awaiting its result. Tokio's
@@ -66,14 +86,7 @@ impl BlockingBudget {
         F: FnOnce() -> T + Send + 'static,
         T: Send + 'static,
     {
-        let permit = Arc::clone(&self.slots).try_acquire_owned().map_err(|error| match error {
-            TryAcquireError::NoPermits => AdmissionError::Busy,
-            TryAcquireError::Closed => AdmissionError::Closed,
-        })?;
-        Ok(tokio::task::spawn_blocking(move || {
-            let _permit = permit;
-            operation()
-        }))
+        Ok(self.try_reserve()?.spawn(operation))
     }
 
     /// Stops new admission across every clone; queued/running work retains its slot.

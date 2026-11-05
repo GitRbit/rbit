@@ -9,5 +9,7 @@
 //! budget handle. Dependencies exclude domain entities, HTTP and persistence.
 
 mod blocking;
+mod blocking_reservation;
 
 pub use blocking::{AdmissionError, BlockingBudget};
+pub use blocking_reservation::BlockingReservation;

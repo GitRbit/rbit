@@ -17,6 +17,14 @@ cannot admit replacement work while the abandoned operation still consumes resou
 Aborting a running blocking job does not stop it. A queued aborted closure releases its
 permit when Tokio disposes it; reclamation need not happen at the instant of abort.
 
+`try_reserve()` separates the admission decision from worker submission when an attempt
+must consume a one-use proof. Its opaque non-cloneable reservation releases capacity
+when dropped before submission; its consuming `spawn()` transfers ownership into the
+worker. Applications place proof consumption after successful reservation. Admission
+does not require a Tokio runtime; failed spawning outside a runtime returns capacity
+on unwind. Closing admission does not revoke already-issued reservations. Keep any
+pre-dispatch work bounded and short; an unsubmitted reservation still occupies a slot.
+
 Deadlines bound response waiting, not synchronous execution. Callers reject already
 expired requests before submitting work and may use `timeout_at` on the returned handle.
 Long operations need their own cooperative cancellation points. Never release capacity
