@@ -15,34 +15,36 @@ export function compatibility(env = process.env, rustc = execFileSync("rustc", [
 
 export function validateCargoArgs(args) {
   // Output location flags would bypass the lane; custom config can override build-dir.
-  if (args.some((arg) => /^(--target-dir|--config|--manifest-path|--message-format)(=|$)/.test(arg))) {
+  if (!Array.isArray(args) || args.some((arg) => typeof arg !== "string" || arg.includes("\0"))) throw new Error("Cargo arguments must be strings");
+  if (args.some((arg) => /^(--target-dir|--build-dir|--artifact-dir|--out-dir|--lockfile-path|--config|--cargo-config|--manifest-path|--message-format)(=|$)/.test(arg) || /^-C/.test(arg))) {
     throw new Error("Output/config overrides are not supported by the shared build helper");
   }
 }
 
-export function cargoProcess(ctx, args, env, onArtifact = () => {}) {
+export function cargoProcess(ctx, args, env, onArtifact = () => {}, { spawnProcess = spawn, output = process.stdout, diagnostics = process.stderr } = {}) {
   return new Promise((done, reject) => {
-    const child = spawn("cargo", args, { cwd: ctx.checkout, env, windowsHide: true, stdio: ["inherit", "pipe", "inherit"] });
+    const child = spawnProcess("cargo", args, { cwd: ctx.checkout, env, windowsHide: true, stdio: ["inherit", "pipe", "inherit"] });
     const lines = createInterface({ input: child.stdout });
-    let parseError;
+    let parseError, spawnError;
     lines.on("line", (line) => {
+      let message;
+      try { message = JSON.parse(line); }
+      catch { output.write(`${line}\n`); return; }
       try {
-        const message = JSON.parse(line);
-        if (env.RBIT_WORKSPACE_JSON === "1") process.stdout.write(`${line}\n`);
+        if (!message || typeof message !== "object" || !message.reason) { output.write(`${line}\n`); return; }
+        if (env.RBIT_WORKSPACE_JSON === "1") output.write(`${line}\n`);
         if (message.reason === "compiler-artifact" && message.executable) onArtifact(message);
-        else if (env.RBIT_WORKSPACE_JSON !== "1" && message.reason === "compiler-message" && message.message.rendered) process.stderr.write(message.message.rendered);
-        else if (!message.reason) process.stdout.write(`${line}\n`);
+        else if (env.RBIT_WORKSPACE_JSON !== "1" && message.reason === "compiler-message" && message.message.rendered) diagnostics.write(message.message.rendered);
       } catch (error) {
-        // Non-JSON output from tests/nextest is normal; callback failures are fatal.
-        if (error instanceof SyntaxError) process.stdout.write(`${line}\n`);
-        else parseError = error;
+        parseError = error;
       }
     });
     // Default interruption deliberately leaves the lease behind. This prevents another
     // build from reusing output while orphaned compiler descendants may still be alive.
-    child.on("error", reject);
+    // Even spawn errors settle on close, after stdio handles/children have closed.
+    child.on("error", (error) => { spawnError = error; });
     child.on("close", (code, signal) => {
-      if (parseError) reject(parseError);
+      if (spawnError || parseError) reject(spawnError ?? parseError);
       else if (code !== 0) reject(new Error(`Cargo ${signal ?? `exited ${code}`}`));
       else done();
     });
@@ -51,7 +53,9 @@ export function cargoProcess(ctx, args, env, onArtifact = () => {}) {
 
 /** Only helpers acquire this lease. Direct Cargo/IDE builds must not use this lane. */
 export async function cargo(ctx, command, args = [], { execute = cargoProcess, env = process.env, key } = {}) {
+  if (!["build", "check", "clippy", "test", "nextest", "generate-lockfile"].includes(command)) throw new Error("Unsupported Cargo command");
   validateCargoArgs(args);
+  if (command === "nextest" && !["run", "list"].includes(args[0])) throw new Error("Use nextest run or list");
   const buildEnv = { ...env, LIBSQLITE3_FLAGS: [env.LIBSQLITE3_FLAGS ?? "", "-DSQLITE_ENABLE_QPSG"].join(" ").trim() };
   const namespace = key ?? compatibility(buildEnv, execFileSync("rustc", ["-vV"], {
     cwd: ctx.checkout, env: buildEnv, encoding: "utf8", windowsHide: true,
@@ -63,6 +67,7 @@ export async function cargo(ctx, command, args = [], { execute = cargoProcess, e
   return leased(join(cache, ".lease"), async () => {
     const lane = await managedDirectory(ctx, join(cache, namespace, "shared"));
     buildEnv.CARGO_TARGET_DIR = join(lane, "target");
+    buildEnv.CARGO_BUILD_TARGET_DIR = buildEnv.CARGO_TARGET_DIR;
     buildEnv.CARGO_BUILD_BUILD_DIR = join(lane, "intermediates");
     const artifacts = [];
     const json = ["build", "check", "clippy", "test"].includes(command);

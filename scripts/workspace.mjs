@@ -9,6 +9,9 @@ import { runtimeEnvironment } from "./workspace/ports.mjs";
 
 async function main() {
   const [command, ...args] = process.argv.slice(2);
+  const arities = { new: [1, 2], list: [0, 0], remove: [1, 1], "cache-report": [0, 0], "cache-prune": [1, 1] };
+  if (arities[command] && (args.length < arities[command][0] || args.length > arities[command][1])) throw new Error(`Unexpected arguments for ${command}`);
+  if (command === "cache-prune" && !/^\d+$/.test(args[0])) throw new Error("cache-prune requires an integer byte budget");
   const ctx = await context();
   let result;
   if (command === "new") result = await create(ctx, args[0], args[1]);

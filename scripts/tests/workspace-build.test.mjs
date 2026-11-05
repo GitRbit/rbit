@@ -3,8 +3,10 @@ import { spawn } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 import test from "node:test";
-import { cargo, compatibility } from "../workspace/build.mjs";
+import { cargo, cargoProcess, compatibility } from "../workspace/build.mjs";
 import { acquire } from "../workspace/lease.mjs";
 import { contains, guarded } from "../workspace/paths.mjs";
 
@@ -88,4 +90,48 @@ test("Cargo output options precede clippy and test argument separators", async (
       assert.deepEqual(actual, [command, "--message-format=json-render-diagnostics", ...args]);
     } });
   }
+});
+
+test("IDE output forwards every Cargo JSON record exactly once, including non-executable artifacts", async () => {
+  const child = new EventEmitter();
+  child.stdout = new PassThrough();
+  const messages = [
+    { reason: "compiler-artifact", executable: null, target: { name: "library" } },
+    { reason: "build-script-executed", package_id: "library" },
+    { reason: "compiler-message", message: { rendered: "diagnostic" } },
+    null, { testOutput: true },
+  ];
+  let output = "";
+  const running = cargoProcess({ checkout: "." }, [], { RBIT_WORKSPACE_JSON: "1" }, () => {}, {
+    spawnProcess: () => child, output: { write: (line) => { output += line; } },
+    diagnostics: { write: () => assert.fail("IDE diagnostics must remain JSON") },
+  });
+  child.stdout.end(messages.map((item) => JSON.stringify(item)).join("\n") + "\n");
+  await new Promise((done) => setImmediate(done));
+  child.emit("close", 0, null);
+  await running;
+  assert.deepEqual(output.trim().split("\n").map(JSON.parse), messages);
+});
+
+test("process errors settle only after close, keeping the enclosing lease held", async () => {
+  const child = new EventEmitter();
+  child.stdout = new PassThrough();
+  let settled = false;
+  const running = cargoProcess({ checkout: "." }, [], {}, () => {}, { spawnProcess: () => child });
+  const failed = assert.rejects(running, /spawn failed/).then(() => { settled = true; });
+  child.emit("error", new Error("spawn failed"));
+  await new Promise((done) => setImmediate(done));
+  assert.equal(settled, false);
+  child.stdout.end();
+  child.emit("close", -1, null);
+  await failed;
+});
+
+test("unstable output escapes, directory changes and destructive commands are refused before execution", async (t) => {
+  const ctx = await fixture(t);
+  for (const args of [["-Celsewhere"], ["-C", "elsewhere"], ["--artifact-dir=outside"], ["--build-dir", "outside"], ["--lockfile-path=outside"]]) {
+    await assert.rejects(cargo(ctx, "build", args, { key }), /overrides/);
+  }
+  await assert.rejects(cargo(ctx, "clean", [], { key }), /Unsupported/);
+  await assert.rejects(cargo(ctx, "nextest", ["archive"], { key }), /nextest run or list/);
 });
