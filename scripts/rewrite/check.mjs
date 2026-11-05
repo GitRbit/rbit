@@ -22,7 +22,7 @@ const FEATURE_EDGES = {
 const ADDED_EDGES = { "rbit-core": ["rbit-contracts"] };
 
 export function authored(path) {
-  return /\.(rs|html|mjs|js)$/.test(path) && !GENERATED.has(path)
+  return /\.(rs|html|mjs|js|ps1|cs)$/.test(path) && !GENERATED.has(path)
     && !path.startsWith("crates/rbit-web/assets/vendor/")
     && !path.startsWith("crates/rbit-web/assets/mermaid/");
 }
@@ -116,7 +116,7 @@ export function check(root) {
   const ledger = JSON.parse(readFileSync(join(root, "docs/design/rewrite/feature-ledger.json"), "utf8"));
   if (ledger.baseline !== baseline.baseline) throw new Error("Ledger and inventory baselines differ");
   const files = sourceFiles(root).map((path) => [path, readFileSync(join(root, path), "utf8")]);
-  const metadata = JSON.parse(execFileSync("cargo", ["metadata", "--no-deps", "--locked", "--offline", "--format-version=1"], {
+  const metadata = JSON.parse(execFileSync("cargo", ["metadata", "--no-deps", "--locked", "--format-version=1"], {
     cwd: root, encoding: "utf8", windowsHide: true, stdio: ["pipe", "pipe", "pipe"], maxBuffer: 8 * 1024 * 1024,
   }));
   return { files: files.length, violations: [...checkSizes(files, baseline), ...checkEdges(metadata, baseline), ...checkMigrations(root, baseline), ...checkLedger(root, ledger)] };

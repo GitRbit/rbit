@@ -14,6 +14,8 @@ test("legacy ceilings cannot grow and new authored files have no blanket exempti
   assert.equal(checkSizes(sources, baseline).length, 2);
   assert.equal(authored("crates/rbit-web/assets/vendor/htmx.js"), false);
   assert.equal(authored("crates/rbit-web/src/routes/new.rs"), true);
+  assert.equal(authored("scripts/workspace/windows-job.ps1"), true);
+  assert.equal(authored("scripts/workspace/WindowsJob.cs"), true);
 });
 
 test("Cargo resolved names catch renamed or dev dependency boundary leaks", () => {

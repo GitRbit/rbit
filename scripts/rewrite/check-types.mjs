@@ -11,7 +11,7 @@ async function main() {
   const baseline = JSON.parse(await readFile(new URL("../../docs/design/rewrite/main-inventory.json", import.meta.url), "utf8"));
   const legacy = new Set(baseline.crates.map((crate) => crate.name));
   // Metadata with --locked is read-only and does not invoke compiler/build-script writers.
-  const metadata = JSON.parse(execFileSync("cargo", ["metadata", "--no-deps", "--locked", "--offline", "--format-version=1"], {
+  const metadata = JSON.parse(execFileSync("cargo", ["metadata", "--no-deps", "--locked", "--format-version=1"], {
     cwd: ctx.checkout, encoding: "utf8", windowsHide: true, stdio: ["pipe", "pipe", "pipe"], maxBuffer: 8 * 1024 * 1024,
   }));
   const roots = metadata.packages.filter((pkg) => metadata.workspace_members.includes(pkg.id) && !legacy.has(pkg.name))

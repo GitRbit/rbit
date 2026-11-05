@@ -24,6 +24,20 @@ env:
   NODE_VERSION: "24"
 
 jobs:
+  rewrite-contracts:
+    name: Rewrite contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - run: node --test scripts/tests/rewrite-*.test.mjs scripts/tests/workspace*.test.mjs
+      - run: node scripts/rewrite/check.mjs
+      - run: node scripts/workspace.mjs test --package rbit-contracts --package rbit-core --package rbit-kernel --package rbit-localization --package rbit-rewrite-check --locked
+      - run: node scripts/rewrite/check-types.mjs
+
   lint:
     name: Format and clippy
     runs-on: ubuntu-latest

@@ -1,6 +1,9 @@
 # Rust
 /target
 /.cargo-build
+/worktrees/
+/.build-cache/
+/.worktree-state/
 
 # Front-end tooling (build-time only)
 /node_modules
