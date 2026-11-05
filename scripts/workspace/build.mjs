@@ -9,7 +9,7 @@ import { leased } from "./lease.mjs";
 
 export function compatibility(env = process.env, rustc = execFileSync("rustc", ["-vV"], { encoding: "utf8", windowsHide: true })) {
   const flags = Object.fromEntries(Object.entries(env).filter(([key]) =>
-    /^(RUSTFLAGS|CARGO_ENCODED_RUSTFLAGS|RUSTC_WRAPPER|RUSTC_WORKSPACE_WRAPPER|LIBSQLITE3_FLAGS|CC|CXX|CFLAGS|CARGO_BUILD_TARGET|CARGO_TARGET_.*_RUSTFLAGS)$/.test(key)));
+    /^(RUSTFLAGS|CARGO_ENCODED_RUSTFLAGS|RUSTC_WRAPPER|RUSTC_WORKSPACE_WRAPPER|LIBSQLITE3_FLAGS|CC|CXX|CFLAGS|CARGO_BUILD_TARGET|CARGO_TARGET_.*_RUSTFLAGS)$/.test(key)).sort(([a], [b]) => a.localeCompare(b)));
   return createHash("sha256").update(JSON.stringify({ rustc, platform: process.platform, arch: process.arch, flags })).digest("hex").slice(0, 20);
 }
 
@@ -75,8 +75,17 @@ export async function cargo(ctx, command, args = [], { execute = cargoProcess, e
     await execute(ctx, [command, ...(json ? [`--message-format=${format}`] : []), ...args], buildEnv, (item) => artifacts.push(item));
     const result = { executables: [], environment: buildEnv, namespace };
     if (command === "build") {
-      const generation = await managedDirectory(ctx, join(ctx.state, "bin", randomUUID()));
+      const binaries = new Map();
       for (const item of artifacts.filter((entry) => entry.target.kind.includes("bin"))) {
+        const name = basename(item.executable).toLowerCase();
+        const previous = binaries.get(name);
+        if (previous && (previous.executable !== item.executable || previous.target.name !== item.target.name)) {
+          throw new Error(`Ambiguous executable basename ${name}; build one package/target at a time`);
+        }
+        binaries.set(name, item);
+      }
+      const generation = await managedDirectory(ctx, join(ctx.state, "bin", randomUUID()));
+      for (const item of binaries.values()) {
         await guarded(lane, item.executable);
         const destination = join(generation, basename(item.executable));
         await copyFile(item.executable, destination);

@@ -81,6 +81,21 @@ test("location overrides cannot escape lanes and compatibility changes with comp
   }
   assert.notEqual(compatibility({}, "compiler A"), compatibility({}, "compiler B"));
   assert.notEqual(compatibility({}, "A"), compatibility({ RUSTFLAGS: "-C target-cpu=native" }, "A"));
+  assert.equal(compatibility({ CC: "clang", RUSTFLAGS: "-C opt-level=1" }, "A"), compatibility({ RUSTFLAGS: "-C opt-level=1", CC: "clang" }, "A"));
+});
+
+test("same-basename cross-target artifacts are rejected before either can overwrite a copy", async (t) => {
+  const ctx = await fixture(t);
+  await assert.rejects(cargo(ctx, "build", [], { key, env: {}, execute: async (_ctx, _args, env, artifact) => {
+    for (const target of ["host-a", "host-b"]) {
+      const path = join(env.CARGO_TARGET_DIR, target, "rbit.exe");
+      await mkdir(join(env.CARGO_TARGET_DIR, target), { recursive: true });
+      await writeFile(path, target);
+      artifact({ executable: path, target: { kind: ["bin"], name: "rbit" } });
+    }
+  } }), /Ambiguous executable basename/);
+  const release = await acquire(join(ctx.cache, ".lease"), { timeout: 0 });
+  await release();
 });
 
 test("Cargo output options precede clippy and test argument separators", async (t) => {
