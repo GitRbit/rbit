@@ -60,6 +60,22 @@ Runtime markers preserve running generations; cleanup retains the three most rec
 inactive copies and live handoffs. The CLI prints only intentional build metadata,
 never the inherited environment, which may contain credentials.
 
+Managed runtimes own a process tree, including Windows admin-restart workers. On
+Windows the developer launcher uses Windows PowerShell 5.1 (`powershell.exe`) and a
+small runtime-loaded C# Job Object bridge: create the target suspended, assign it to a
+kill-on-close job without breakaway, then resume it. It forwards arguments, environment,
+working directory and standard handles. A stop request terminates the owned job and
+waits for zero active processes before acknowledging cleanup. This is developer
+tooling; the deployed server remains Rust and has no PowerShell requirement.
+
+Unix runtimes start in a separate process group. Shutdown targets only that owned group
+and verifies its absence. There are no global process-name scans or kills. Normal
+marker removal checks a per-launch nonce while holding the management lease, so a
+delayed old cleanup cannot erase a new owner's marker. A dead supervisor alone never
+authorizes pruning: markers require explicit tree-stopped proof. Abrupt Windows
+launcher death causes job-handle cleanup but retains an unverified marker until manual
+inspection, because the lost launcher cannot acknowledge the final descendant state.
+
 ## Development runtime isolation
 
 `run` and `npm run dev` use independent `.worktree-state/<checkout-id>/data`, stable
@@ -71,6 +87,11 @@ debug assets stay in the source checkout.
 
 Explicit `RBIT_STORAGE__DATA_DIR`, `RBIT_SERVER__BIND`,
 `RBIT_SERVER__PUBLIC_URL` and `RBIT_MAIL__TRANSPORT` override these defaults.
+Managed development and benchmark launches also explicitly default
+`RBIT_SSH__ENABLED=false`, preventing inherited configuration from binding every
+worktree to SSH port 2222. To exercise SSH deliberately, set
+`RBIT_SSH__ENABLED=true`, a distinct `RBIT_SSH__BIND` and matching
+`RBIT_SSH__PUBLIC_PORT` for each running checkout. Production defaults are unchanged.
 When overriding the bind address, set the matching public URL too. External programs
 can still claim a port between allocation and bind; a server bind error remains visible.
 Runtime state and data are intentionally retained after checkout removal. Port registry
@@ -137,6 +158,12 @@ stale lease and intentionally blocks new builds: inspect the recorded host/PID a
 orphan Cargo/rustc descendants before manually removing only `.build-cache/.lease`.
 Do not steal a lease just because its parent died; orphaned compilers may still write.
 PID reuse/unknown hosts fail closed. No automatic stale-lock deletion is performed.
+Unknown child exit statuses, including Windows termination reported as code 1 with no
+signal, also retain a blocked lease. Only documented Cargo success/error statuses
+0/101 release normally. For now this conservatively includes nextest-specific failure
+codes: inspect the failed job's process tree before manual recovery. A future plugin
+exit policy requires verified semantics or an owned-tree acknowledgement; never infer
+cleanup from an arbitrary small integer exit code.
 
 ## Verification and remaining integrations
 
@@ -148,6 +175,9 @@ The tests use disposable directories and temporary Git repositories. They cover
 independent-process exclusion, failed build recovery, dual directories and exact
 handoff, containment/junction protection, dirty/active worktree guards, LRU cache pruning,
 port isolation and live generation retention. They do not compile the full Rust workspace.
+The runtime suite additionally exercises a real Node supervisor that replaces a
+long-lived child, stops the owned tree, checks Windows abrupt-launcher death, verifies
+quote/space/backslash argument preservation and tests delayed marker cleanup races.
 
 The performance launcher accepts exact executable paths or helper build records and
 retains the fixture paths, binary hash and source metadata. It never compiles during a

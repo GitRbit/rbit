@@ -6,6 +6,7 @@ import { create, list, remove } from "./workspace/worktrees.mjs";
 import { cacheReport, prune } from "./workspace/storage.mjs";
 import { pruneGenerations, runBinary } from "./workspace/runtime.mjs";
 import { runtimeEnvironment } from "./workspace/ports.mjs";
+import { stopTree } from "./workspace/process-tree.mjs";
 
 async function main() {
   const [command, ...args] = process.argv.slice(2);
@@ -34,7 +35,14 @@ async function main() {
     if (!binary) throw new Error("Cargo did not produce rbit");
     const child = await runBinary(ctx, binary.path, runArgs.length ? runArgs : ["serve"], await runtimeEnvironment(ctx));
     child.on("exit", (code) => { process.exitCode = code ?? 1; });
+    child.runtimeCompletion.catch((error) => { console.error(error.message); process.exitCode = 1; });
     if (child.exitCode !== null) process.exitCode = child.exitCode;
+    let stopping = false;
+    for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => {
+      if (stopping) return;
+      stopping = true;
+      stopTree(child).catch((error) => { console.error(error.message); process.exitCode = 1; });
+    });
   } else throw new Error("Usage: workspace.mjs new NAME [REV] | list | remove NAME | build/check/clippy/test/nextest [ARGS] | run [BUILD ARGS] -- [RUN ARGS] | cache-report | cache-prune MAX_BYTES");
   // Small inactive binary copies are pruned only after successful commands.
   await pruneGenerations(ctx);

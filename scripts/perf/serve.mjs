@@ -1,12 +1,13 @@
 // Launch an already-built benchmark server; never compile during a measurement.
 // See README.md for paired release builds, isolated data and provenance limitations.
-import { spawn } from "node:child_process";
 import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { fingerprint, hashFile } from "./support.mjs";
 import { contains, context } from "../workspace/paths.mjs";
 import { runBinary } from "../workspace/runtime.mjs";
+import { launchTree, stopTree, verifyTreeStopped } from "../workspace/process-tree.mjs";
+import { randomUUID } from "node:crypto";
 
 export function serveOptions(argv, root) {
   const options = { profile: "release", port: "3005", executable: "", "build-record": "", "target-dir": "", "data-dir": "target/perf/data", metadata: "", "source-revision": "", "source-dir": "." };
@@ -63,6 +64,7 @@ async function main() {
       RBIT_SERVER__PUBLIC_URL: options.baseUrl,
       RBIT_STORAGE__DATA_DIR: options.dataDir,
       RBIT_MAIL__TRANSPORT: "log",
+      RBIT_SSH__ENABLED: process.env.RBIT_SSH__ENABLED ?? "false",
     },
   };
   // Managed generation markers protect benchmark binaries from helper cleanup. The
@@ -74,7 +76,8 @@ async function main() {
   try {
     server = managed
       ? await runBinary(workspace, options.executable, ["serve"], spawnOptions.env, spawnOptions)
-      : spawn(options.executable, ["serve"], spawnOptions);
+      : launchTree(options.executable, ["serve"], { ...spawnOptions,
+        stopFile: `${options.metadata}.stop`, proofFile: `${options.metadata}.stopped`, token: randomUUID() });
   } catch (error) {
     log.end();
     writeFileSync(`${options.metadata}.exit.json`, JSON.stringify({ endedAt: new Date().toISOString(), error: error.message }));
@@ -87,16 +90,23 @@ async function main() {
   console.log(`Benchmark server: ${options.baseUrl}\nMetadata: ${options.metadata}\nRaw server log: ${options.metadata}.log`);
   server.once("error", (error) => { console.error(error.message); process.exitCode = 1; log.end(); });
   let finished = false;
-  function finish(code, signal) {
+  async function finish(code, signal) {
     if (finished) return;
     finished = true;
+    const treeCleanupVerified = await verifyTreeStopped(server);
+    if (!treeCleanupVerified) console.error("Runtime descendant cleanup is unverified; inspect owned processes before recovery");
     log.end();
-    writeFileSync(`${options.metadata}.exit.json`, JSON.stringify({ endedAt: new Date().toISOString(), code, signal }));
-    process.exitCode = code ?? (signal ? 1 : 0);
+    writeFileSync(`${options.metadata}.exit.json`, JSON.stringify({ endedAt: new Date().toISOString(), code, signal, treeCleanupVerified }));
+    process.exitCode = treeCleanupVerified ? code ?? (signal ? 1 : 0) : 1;
   }
   server.once("close", finish);
   if (server.exitCode !== null && server.stdout.destroyed && server.stderr.destroyed) finish(server.exitCode, server.signalCode);
-  for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => server.kill());
+  let stopping = false;
+  for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => {
+    if (stopping) return;
+    stopping = true;
+    stopTree(server).catch((error) => { console.error(error.message); process.exitCode = 1; });
+  });
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

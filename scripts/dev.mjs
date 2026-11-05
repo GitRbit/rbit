@@ -13,6 +13,7 @@ import { context } from "./workspace/paths.mjs";
 import { cargo } from "./workspace/build.mjs";
 import { pruneGenerations, runBinary } from "./workspace/runtime.mjs";
 import { runtimeEnvironment } from "./workspace/ports.mjs";
+import { stopTree } from "./workspace/process-tree.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const workspace = await context(root);
@@ -23,6 +24,8 @@ let server = null;
 let building = false;
 let pending = false;
 let timer = null;
+let stopping = false;
+let activeBuild = null;
 /** Last seen modification time per watched path. */
 const stamps = new Map();
 
@@ -30,15 +33,11 @@ function log(message) {
   console.log(`[dev ${new Date().toLocaleTimeString()}] ${message}`);
 }
 
-function stopServer() {
-  if (!server) return Promise.resolve();
+async function stopServer() {
+  if (!server) return;
   const old = server;
+  await stopTree(old);
   server = null;
-  if (old.exitCode !== null || old.signalCode !== null) return Promise.resolve();
-  return new Promise((done) => {
-    old.once("exit", done);
-    old.kill();
-  });
 }
 
 async function rebuild() {
@@ -49,11 +48,14 @@ async function rebuild() {
   building = true;
   log("building…");
   try {
-    const build = await cargo(workspace, "build", ["--package", "rbit-server"], { env });
+    activeBuild = cargo(workspace, "build", ["--package", "rbit-server"], { env });
+    const build = await activeBuild;
+    if (stopping) return;
     const executable = build.executables.find((item) => item.name === "rbit");
     if (!executable) throw new Error("Cargo did not produce rbit");
     await stopServer();
     server = await runBinary(workspace, executable.path, ["serve"], env);
+    server.runtimeCompletion.catch((error) => log(error.message));
     server.on("exit", (code, signal) => {
       if (signal || code === null) return;
       log(`server exited with code ${code}`);
@@ -62,9 +64,11 @@ async function rebuild() {
     log(`server started (${env.RBIT_SERVER__BIND ?? "127.0.0.1:3000"}); data: ${dataDir}`);
   } catch (error) {
     log(`build/start failed: ${error.message}`);
+  } finally {
+    activeBuild = null;
+    building = false;
   }
-  building = false;
-  if (pending) {
+  if (pending && !stopping) {
     pending = false;
     rebuild();
   }
@@ -100,10 +104,17 @@ watch(join(root, "Cargo.toml"), () => schedule("Cargo.toml"));
 const css = spawn("npm", ["run", "watch:css"], { cwd: root, stdio: "inherit", shell: process.platform === "win32" });
 const js = spawn("npm", ["run", "watch:js"], { cwd: root, stdio: "inherit", shell: process.platform === "win32" });
 
-function shutdown() {
+async function shutdown() {
+  if (stopping) return;
+  stopping = true;
+  clearTimeout(timer);
   css.kill();
   js.kill();
-  stopServer().then(() => process.exit(0));
+  try {
+    if (activeBuild) { log("waiting for the current build before shutdown"); await activeBuild.catch(() => {}); }
+    await stopServer();
+    process.exit(0);
+  } catch (error) { log(error.message); process.exit(1); }
 }
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);

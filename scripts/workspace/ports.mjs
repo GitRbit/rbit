@@ -44,7 +44,7 @@ export async function runtimeEnvironment(ctx, input = process.env) {
     RBIT_SERVER__BIND: input.RBIT_SERVER__BIND ?? `127.0.0.1:${port}`,
     RBIT_SERVER__PUBLIC_URL: input.RBIT_SERVER__PUBLIC_URL ?? `http://localhost:${port}`,
     RBIT_MAIL__TRANSPORT: input.RBIT_MAIL__TRANSPORT ?? "log",
-    // Inherited TOML may enable SSH on2222; managed developer servers opt out unless
+    // Inherited TOML may enable SSH on 2222; managed developer servers opt out unless
     // explicitly enabled with independently chosen bind/public ports by their owner.
     RBIT_SSH__ENABLED: input.RBIT_SSH__ENABLED ?? "false",
   };

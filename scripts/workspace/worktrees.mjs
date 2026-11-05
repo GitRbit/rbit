@@ -2,7 +2,8 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { featureName, git, guarded, managedDirectory } from "./paths.mjs";
-import { alive, leased } from "./lease.mjs";
+import { leased } from "./lease.mjs";
+import { protectedRuntime } from "./runtime-marker.mjs";
 
 export function list(ctx) {
   return git(ctx.checkout, ["worktree", "list", "--porcelain", "-z"])
@@ -35,7 +36,7 @@ async function running(ctx, checkout) {
         try {
           const record = JSON.parse(await readFile(join(state, "bin", generation, marker), "utf8"));
           // Unknown/other-host process state fails closed, including pending launch.
-          if (record.host !== (await import("node:os")).hostname() || alive(record.pid)) return true;
+          if (protectedRuntime(record)) return true;
         } catch (error) { if (error.code !== "ENOENT") throw error; }
       }
     }
