@@ -4263,6 +4263,9 @@ dependencies = [
 [[package]]
 name = "rbit-localization"
 version = "0.1.5"
+dependencies = [
+ "askama",
+]
 
 [[package]]
 name = "rbit-mail"
