@@ -105,6 +105,10 @@ holding the lease. Metadata-only Cargo commands do not produce compiler trees. V
 your IDE's logs after changing settings; do not silently add a separate target per IDE
 window. Nested worktrees inherit parent Cargo configuration; both directory environment
 overrides are always set by the helper, while other project configuration remains intact.
+The two override entry points follow the
+[rust-analyzer configuration reference](https://rust-analyzer.github.io/book/configuration.html).
+IDE mode requests plain JSON: Cargo's `json-render-diagnostics` mode renders compiler
+diagnostics itself and therefore cannot supply the editor's diagnostic records.
 
 ## Cache reports and safe removal
 

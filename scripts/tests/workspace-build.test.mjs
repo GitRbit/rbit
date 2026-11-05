@@ -113,6 +113,13 @@ test("IDE output forwards every Cargo JSON record exactly once, including non-ex
   assert.deepEqual(output.trim().split("\n").map(JSON.parse), messages);
 });
 
+test("IDE checks request actual JSON diagnostics instead of Cargo-rendered diagnostics", async (t) => {
+  const ctx = await fixture(t);
+  await cargo(ctx, "check", ["--workspace"], { key, env: { RBIT_WORKSPACE_JSON: "1" }, execute: async (_ctx, args) => {
+    assert.deepEqual(args, ["check", "--message-format=json", "--workspace"]);
+  } });
+});
+
 test("process errors settle only after close, keeping the enclosing lease held", async () => {
   const child = new EventEmitter();
   child.stdout = new PassThrough();
