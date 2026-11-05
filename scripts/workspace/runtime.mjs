@@ -6,7 +6,7 @@ import { readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { alive, leased } from "./lease.mjs";
 import { guarded, managedDirectory } from "./paths.mjs";
 
-export async function runBinary(ctx, executable, args, env = process.env) {
+export async function runBinary(ctx, executable, args, env = process.env, { cwd = ctx.checkout, stdio = "inherit" } = {}) {
   await guarded(ctx.root, executable);
   await managedDirectory(ctx, ctx.cache);
   return leased(join(ctx.cache, ".lease"), async () => {
@@ -15,7 +15,7 @@ export async function runBinary(ctx, executable, args, env = process.env) {
       const previous = JSON.parse(await readFile(marker, "utf8"));
       if (previous.host !== hostname() || alive(previous.pid)) throw new Error("This binary generation is already running");
     } catch (error) { if (error.code !== "ENOENT") throw error; }
-    const child = spawn(executable, args, { cwd: ctx.checkout, env, stdio: "inherit", windowsHide: true });
+    const child = spawn(executable, args, { cwd, env, stdio, windowsHide: true });
     // Wait for spawn success before publishing ownership, and keep removal excluded.
     await new Promise((done, reject) => { child.once("spawn", done); child.once("error", reject); });
     try {

@@ -145,7 +145,9 @@ independent-process exclusion, failed build recovery, dual directories and exact
 handoff, containment/junction protection, dirty/active worktree guards, LRU cache pruning,
 port isolation and live generation retention. They do not compile the full Rust workspace.
 
-Performance launchers still need a separate update to consume helper-produced executable
-paths and retain source/fixture metadata. CI may continue using isolated runner storage;
+The performance launcher accepts exact executable paths or helper build records and
+retains the fixture paths, binary hash and source metadata. It never compiles during a
+measurement. Save build commands/logs and explicitly retain binaries needed for later
+reproduction; inactive runtime generations are disposable. CI may continue using isolated runner storage;
 do not blindly share a developer cache between trusted and untrusted CI jobs. A globally
 installed IDE or external shell remains outside the helper's enforcement boundary.
