@@ -22,6 +22,7 @@ async function main() {
   if (!binary) throw new Error("Cargo did not produce the structural checker");
   const child = await runBinary(ctx, binary.path, roots);
   const code = child.exitCode ?? await new Promise((done) => child.once("exit", (value) => done(value ?? 1)));
+  if (child.runtimeCompletion) await child.runtimeCompletion;
   await pruneGenerations(ctx);
   process.exitCode = code;
 }
