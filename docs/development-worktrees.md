@@ -26,7 +26,6 @@ node scripts/workspace.mjs clippy --workspace --all-targets --locked -- -D warni
 node scripts/workspace.mjs test --workspace --locked
 node scripts/workspace.mjs nextest run --workspace --locked
 node scripts/workspace.mjs build --package rbit-server --package rbit-runner --locked
-node scripts/workspace.mjs generate-lockfile
 node scripts/workspace.mjs run --release -- serve
 npm run dev
 ```
@@ -46,6 +45,12 @@ lane policy. Commands accept normal Cargo arguments except manifest, output-dire
 message-format and arbitrary config overrides, which could escape shared storage.
 `--locked` is caller controlled: use it for verification; omit it only when intentionally
 updating the lockfile.
+
+When adding local workspace members, run a normal `check` or `test` once without
+`--locked`, review the minimal lockfile change, then return to locked verification.
+`node scripts/workspace.mjs generate-lockfile` is available for intentional complete
+lock regeneration; it can refresh the entire dependency resolution and should not be
+used merely to register new local crates.
 
 A successful build reads executable paths from Cargo JSON, copies those exact outputs
 while holding the lease, and reports generation-specific paths under

@@ -80,3 +80,12 @@ test("location overrides cannot escape lanes and compatibility changes with comp
   assert.notEqual(compatibility({}, "compiler A"), compatibility({}, "compiler B"));
   assert.notEqual(compatibility({}, "A"), compatibility({ RUSTFLAGS: "-C target-cpu=native" }, "A"));
 });
+
+test("Cargo output options precede clippy and test argument separators", async (t) => {
+  const ctx = await fixture(t);
+  for (const [command, args] of [["clippy", ["--", "-D", "warnings"]], ["test", ["--", "--nocapture"]]]) {
+    await cargo(ctx, command, args, { key, env: {}, execute: async (_ctx, actual) => {
+      assert.deepEqual(actual, [command, "--message-format=json-render-diagnostics", ...args]);
+    } });
+  }
+});

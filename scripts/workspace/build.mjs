@@ -66,7 +66,7 @@ export async function cargo(ctx, command, args = [], { execute = cargoProcess, e
     buildEnv.CARGO_BUILD_BUILD_DIR = join(lane, "intermediates");
     const artifacts = [];
     const json = ["build", "check", "clippy", "test"].includes(command);
-    await execute(ctx, [command, ...args, ...(json ? ["--message-format=json-render-diagnostics"] : [])], buildEnv, (item) => artifacts.push(item));
+    await execute(ctx, [command, ...(json ? ["--message-format=json-render-diagnostics"] : []), ...args], buildEnv, (item) => artifacts.push(item));
     const result = { executables: [], environment: buildEnv, namespace };
     if (command === "build") {
       const generation = await managedDirectory(ctx, join(ctx.state, "bin", randomUUID()));
