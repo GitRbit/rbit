@@ -61,15 +61,22 @@ inactive copies and live handoffs. The CLI prints only intentional build metadat
 never the inherited environment, which may contain credentials.
 
 Managed runtimes own a process tree, including Windows admin-restart workers. On
-Windows the developer launcher uses Windows PowerShell 5.1 (`powershell.exe`) and a
-small runtime-loaded C# Job Object bridge: create the target suspended, assign it to a
-kill-on-close job without breakaway, then resume it. It forwards arguments, environment,
+Windows 10 or newer the developer launcher uses Windows PowerShell 5.1 (`powershell.exe`)
+and a small runtime-loaded C# Job Object bridge: atomically associate the suspended
+target with a kill-on-close job using `PROC_THREAD_ATTRIBUTE_JOB_LIST`, then resume it.
+There is no unowned create/assign interval and no non-atomic fallback on older systems.
+It forwards arguments, environment,
 working directory and standard handles. A stop request terminates the owned job and
 waits for zero active processes before acknowledging cleanup. This is developer
 tooling; the deployed server remains Rust and has no PowerShell requirement.
+Arguments use a private UTF-8 response file removed after reading, preserving long
+native command lines without base64 expansion. Non-string/NUL arguments are rejected.
+The association uses Microsoft's
+[extended process attribute API](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-updateprocthreadattribute).
 
-Unix runtimes start in a separate process group. Shutdown targets only that owned group
-and verifies its absence. There are no global process-name scans or kills. Normal
+Unix runtimes start in a separate process group. Shutdown targets only that owned group,
+escalates to SIGKILL if SIGTERM is ignored while waiting for pipe closure, and verifies
+its absence. There are no global process-name scans or kills. Normal
 marker removal checks a per-launch nonce while holding the management lease, so a
 delayed old cleanup cannot erase a new owner's marker. A dead supervisor alone never
 authorizes pruning: markers require explicit tree-stopped proof. Abrupt Windows

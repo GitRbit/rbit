@@ -9,6 +9,12 @@ import { launchTree, stopTree, verifyTreeStopped } from "../workspace/process-tr
 import { finishRuntime, protectedRuntime } from "../workspace/runtime-marker.mjs";
 
 const pause = (ms) => new Promise((done) => setTimeout(done, ms));
+
+test("response-file transport preserves native spawn rejection of non-string or NUL arguments", () => {
+  for (const args of [["nul\0argument"], [null], "not-an-array"]) {
+    assert.throws(() => launchTree(process.execPath, args, {}), /non-NUL strings/);
+  }
+});
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), "rbit-runtime-test-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -67,7 +73,7 @@ async function waitFor(file, predicate = () => true) {
 
 test("owned launcher preserves quoting, cwd, environment, output and normal exit code", { timeout: 30_000 }, async (t) => {
   const ctx = await fixture(t);
-  const expected = ["with spaces", "embedded\"quote", "trailing\\", "", "a\\\"b"];
+  const expected = ["with spaces", "embedded\"quote", "trailing\\", "", "a\\\"b", "a".repeat(26_000)];
   const { child, closed } = launch(ctx, ["-e", "console.log(JSON.stringify({args:process.argv.slice(1),cwd:process.cwd(),env:process.env.WORKSPACE_ARG_TEST}));process.exit(7)", ...expected]);
   let output = "", errors = "";
   child.stdout.on("data", (chunk) => { output += chunk; }); child.stderr.on("data", (chunk) => { errors += chunk; });
@@ -119,5 +125,38 @@ test("abrupt Windows launcher death kills its job but lacks a cleanup acknowledg
   const verified = await verifyTreeStopped(child);
   assert.equal(verified, process.platform !== "win32");
   for (let attempt = 0; attempt < 100 && (alive(pids.root) || alive(pids.child)); attempt++) await pause(100);
+  assert.equal(alive(pids.root), false); assert.equal(alive(pids.child), false);
+});
+
+test("abrupt launcher death before first target instruction cannot strand an unowned suspended process", { timeout: 30_000, skip: process.platform !== "win32" }, async (t) => {
+  const ctx = await fixture(t);
+  const token = randomUUID();
+  const ready = join(ctx.root, "suspended.json");
+  const child = launchTree(process.execPath, ["-e", "setInterval(()=>{},1000)"], {
+    cwd: ctx.root, env: process.env, stdio: ["ignore", "pipe", "pipe"],
+    token, stopFile: join(ctx.root, "stop"), proofFile: join(ctx.root, "proof"),
+    suspendedReady: ready, resumeGate: join(ctx.root, "never-resume"),
+  });
+  child.stderr.resume();
+  const closed = new Promise((done) => child.once("close", done));
+  const suspendedPid = await waitFor(ready);
+  assert.equal(alive(suspendedPid), true);
+  child.kill("SIGKILL"); await closed;
+  for (let attempt = 0; attempt < 100 && alive(suspendedPid); attempt++) await pause(100);
+  assert.equal(alive(suspendedPid), false);
+  assert.equal(await verifyTreeStopped(child), false);
+});
+
+test("Unix stop escalates an owned SIGTERM-ignoring group before waiting for pipe close", { timeout: 30_000, skip: process.platform === "win32" }, async (t) => {
+  const ctx = await fixture(t);
+  const file = join(ctx.root, "ignore.mjs");
+  await writeFile(file, `import {spawn} from 'node:child_process';import {writeFileSync} from 'node:fs';
+const child=spawn(process.execPath,['-e',"process.on('SIGTERM',()=>{});setInterval(()=>{},1000)"],{stdio:'inherit'});
+process.on('SIGTERM',()=>{});setInterval(()=>{},1000);writeFileSync('ignoring.json',JSON.stringify({root:process.pid,child:child.pid}));`);
+  const { child, closed } = launch(ctx, [file]);
+  child.stderr.resume();
+  const pids = await waitFor(join(ctx.root, "ignoring.json"));
+  await pause(200);
+  await stopTree(child); await closed;
   assert.equal(alive(pids.root), false); assert.equal(alive(pids.child), false);
 });

@@ -1,20 +1,26 @@
 // Explicit process ownership for managed developer runtimes, never a global PID scan.
 import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
+import { rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { UncertainProcessTreeError } from "./lease.mjs";
 
 const pause = (ms) => new Promise((done) => setTimeout(done, ms));
 
 export function launchTree(executable, args, options) {
-  const { stopFile, proofFile, token, ...spawnOptions } = options;
+  if (!Array.isArray(args) || args.some((arg) => typeof arg !== "string" || arg.includes("\0"))) throw new TypeError("Runtime arguments must be non-NUL strings");
+  const { stopFile, proofFile, token, suspendedReady, resumeGate, ...spawnOptions } = options;
   let child;
   if (process.platform === "win32") {
     const launcher = fileURLToPath(new URL("job-launcher.ps1", import.meta.url));
+    const argumentsFile = `${stopFile}.args.json`;
+    writeFileSync(argumentsFile, JSON.stringify(args), { flag: "wx", mode: 0o600 });
     child = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", launcher,
-      "-Executable", executable, "-ArgumentsBase64", Buffer.from(JSON.stringify(args)).toString("base64"),
-      "-Directory", spawnOptions.cwd, "-StopFile", stopFile, "-ProofFile", proofFile, "-Token", token],
+      "-Executable", executable, "-ArgumentsFile", argumentsFile,
+      "-Directory", spawnOptions.cwd, "-StopFile", stopFile, "-ProofFile", proofFile, "-Token", token,
+      ...(suspendedReady ? ["-SuspendedReady", suspendedReady, "-ResumeGate", resumeGate] : [])],
     { ...spawnOptions, windowsHide: true });
+    child.once("close", () => { rmSync(argumentsFile, { force: true }); });
   } else child = spawn(executable, args, { ...spawnOptions, detached: true });
   child.treeControl = { stopFile, proofFile, token };
   return child;
@@ -25,7 +31,12 @@ function groupExists(pid) {
 }
 
 /** Windows acknowledgement comes only after job ActiveProcesses==0. */
-export async function verifyTreeStopped(child) {
+export function verifyTreeStopped(child) {
+  child.treeVerification ??= verifyOwnedTree(child);
+  return child.treeVerification;
+}
+
+async function verifyOwnedTree(child) {
   if (!child.pid) return true; // native spawn failed before a target could exist
   if (process.platform === "win32") {
     try { return await readFile(child.treeControl.proofFile, "utf8") === child.treeControl.token; }
@@ -50,7 +61,12 @@ export async function stopTree(child, { awaitMarker = true } = {}) {
     else { try { process.kill(-child.pid, "SIGTERM"); } catch (error) { if (error.code !== "ESRCH") throw error; } }
     let timer;
     try {
-      await Promise.race([closed, new Promise((_, reject) => { timer = setTimeout(() => reject(new UncertainProcessTreeError("Owned runtime did not acknowledge stop")), 15_000); })]);
+      // Escalate the owned Unix group while waiting: an ignoring root/pipe worker can
+      // otherwise prevent close forever and keep the escalation unreachable.
+      const cleanup = process.platform === "win32" ? Promise.resolve(true) : verifyTreeStopped(child);
+      await Promise.race([Promise.all([closed, cleanup.then((verified) => {
+        if (!verified) throw new UncertainProcessTreeError("Owned runtime group did not stop");
+      })]), new Promise((_, reject) => { timer = setTimeout(() => reject(new UncertainProcessTreeError("Owned runtime did not acknowledge stop")), 15_000); })]);
     } finally { clearTimeout(timer); }
   }
   if (awaitMarker && child.runtimeCompletion) await child.runtimeCompletion;

@@ -1,5 +1,5 @@
-// Developer-only Windows process ownership. The suspended target cannot escape its job
-// before assignment. No breakaway is allowed; server restart workers inherit the job.
+// Developer-only Windows10+ process ownership. JOB_LIST associates the target atomically
+// inside CreateProcess; even abrupt launcher death cannot strand an unowned target.
 using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
@@ -14,6 +14,8 @@ public static class WorkspaceJobLauncher {
         public uint x, y, width, height, charsX, charsY, fill, flags;
         public short show, reservedSize; public IntPtr reservedBytes, input, output, error;
     }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct StartupEx { public Startup startup; public IntPtr attributes; }
     [StructLayout(LayoutKind.Sequential)]
     private struct ProcessInfo { public IntPtr process, thread; public uint pid, threadId; }
     [StructLayout(LayoutKind.Sequential)]
@@ -42,10 +44,11 @@ public static class WorkspaceJobLauncher {
     private static extern bool QueryInformationJobObject(IntPtr job, int infoClass, out Accounting info, uint size, IntPtr returned);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool CreateProcess(string executable, StringBuilder command, IntPtr processAttributes,
-        IntPtr threadAttributes, bool inherit, uint flags, IntPtr environment, string cwd, ref Startup startup, out ProcessInfo process);
-    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+        IntPtr threadAttributes, bool inherit, uint flags, IntPtr environment, string cwd, ref StartupEx startup, out ProcessInfo process);
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool InitializeProcThreadAttributeList(IntPtr list, int count, uint flags, ref IntPtr size);
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool UpdateProcThreadAttribute(IntPtr list, uint flags, UIntPtr attribute, IntPtr value, IntPtr size, IntPtr previous, IntPtr returned);
+    [DllImport("kernel32.dll")] private static extern void DeleteProcThreadAttributeList(IntPtr list);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool TerminateJobObject(IntPtr job, uint code);
-    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool TerminateProcess(IntPtr process, uint code);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern uint ResumeThread(IntPtr thread);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern uint WaitForSingleObject(IntPtr handle, uint timeout);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool GetExitCodeProcess(IntPtr process, out uint code);
@@ -77,25 +80,39 @@ public static class WorkspaceJobLauncher {
         return false;
     }
 
-    public static int Run(string executable, string[] args, string cwd, string stop, string proof, string token) {
+    public static int Run(string executable, string[] args, string cwd, string stop, string proof, string token, string suspendedReady, string resumeGate) {
         IntPtr job = IntPtr.Zero;
+        IntPtr attributes = IntPtr.Zero, jobValue = IntPtr.Zero;
+        bool attributesReady = false;
         ProcessInfo process = new ProcessInfo();
-        bool assigned = false, stopped = false;
+        bool stopped = false;
         try {
             job = CreateJobObject(IntPtr.Zero, null);
             if (job == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
             ExtendedLimits limits = new ExtendedLimits(); limits.basic.flags = 0x2000; // KILL_ON_JOB_CLOSE
             Require(SetInformationJobObject(job, 9, ref limits, (uint)Marshal.SizeOf(typeof(ExtendedLimits))));
-            Startup startup = new Startup(); startup.cb = Marshal.SizeOf(typeof(Startup)); startup.flags = 0x100;
-            startup.input = GetStdHandle(-10); startup.output = GetStdHandle(-11); startup.error = GetStdHandle(-12);
-            foreach (IntPtr handle in new IntPtr[] { startup.input, startup.output, startup.error }) {
+            IntPtr attributeSize = IntPtr.Zero;
+            InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref attributeSize);
+            attributes = Marshal.AllocHGlobal(attributeSize);
+            Require(InitializeProcThreadAttributeList(attributes, 1, 0, ref attributeSize)); attributesReady = true;
+            jobValue = Marshal.AllocHGlobal(IntPtr.Size); Marshal.WriteIntPtr(jobValue, job);
+            Require(UpdateProcThreadAttribute(attributes, 0, new UIntPtr(0x0002000D), jobValue,
+                new IntPtr(IntPtr.Size), IntPtr.Zero, IntPtr.Zero)); // PROC_THREAD_ATTRIBUTE_JOB_LIST
+            StartupEx startup = new StartupEx(); startup.attributes = attributes;
+            startup.startup.cb = Marshal.SizeOf(typeof(StartupEx)); startup.startup.flags = 0x100;
+            startup.startup.input = GetStdHandle(-10); startup.startup.output = GetStdHandle(-11); startup.startup.error = GetStdHandle(-12);
+            foreach (IntPtr handle in new IntPtr[] { startup.startup.input, startup.startup.output, startup.startup.error }) {
                 if (handle != IntPtr.Zero && handle != new IntPtr(-1)) Require(SetHandleInformation(handle, 1, 1));
             }
             StringBuilder command = new StringBuilder(Quote(executable));
             foreach (string arg in args) command.Append(" ").Append(Quote(arg));
             Require(CreateProcess(executable, command, IntPtr.Zero, IntPtr.Zero, true,
-                0x08000004, IntPtr.Zero, cwd, ref startup, out process)); // NO_WINDOW | SUSPENDED
-            Require(AssignProcessToJobObject(job, process.process)); assigned = true;
+                0x08080004, IntPtr.Zero, cwd, ref startup, out process)); // NO_WINDOW | EXTENDED_STARTUPINFO | SUSPENDED
+            // Explicit deterministic test fence; normal launcher calls leave both empty.
+            if (!String.IsNullOrEmpty(suspendedReady)) {
+                File.WriteAllText(suspendedReady, process.pid.ToString());
+                while (!File.Exists(resumeGate) && !File.Exists(stop)) Thread.Sleep(50);
+            }
             if (ResumeThread(process.thread) == UInt32.MaxValue) throw new Win32Exception(Marshal.GetLastWin32Error());
             while (WaitForSingleObject(process.process, 100) == 258 && !File.Exists(stop)) { }
             uint code; Require(GetExitCodeProcess(process.process, out code));
@@ -105,14 +122,16 @@ public static class WorkspaceJobLauncher {
             if (!stopped) throw new IOException("Owned process tree did not stop");
             return code == 259 ? 0 : unchecked((int)code);
         } finally {
-            // Assignment failure must never leave an unowned suspended child behind.
+            // Every created target is already in the job; no post-creation assignment gap.
             if (!stopped && process.process != IntPtr.Zero) {
-                if (assigned) { TerminateJobObject(job, 125); stopped = WaitEmpty(job); }
-                else { stopped = TerminateProcess(process.process, 125) && WaitForSingleObject(process.process, 10000) == 0; }
+                TerminateJobObject(job, 125); stopped = WaitEmpty(job);
             }
             if (process.process == IntPtr.Zero) stopped = true;
             if (process.thread != IntPtr.Zero) CloseHandle(process.thread);
             if (process.process != IntPtr.Zero) CloseHandle(process.process);
+            if (attributesReady) DeleteProcThreadAttributeList(attributes);
+            if (attributes != IntPtr.Zero) Marshal.FreeHGlobal(attributes);
+            if (jobValue != IntPtr.Zero) Marshal.FreeHGlobal(jobValue);
             if (job != IntPtr.Zero) CloseHandle(job);
             if (stopped) File.WriteAllText(proof, token); // only verified-empty jobs acknowledge cleanup
         }
