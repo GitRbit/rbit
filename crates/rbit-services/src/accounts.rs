@@ -28,6 +28,8 @@ pub(crate) mod application_error;
 pub(crate) mod effects;
 pub use effects::PasswordChangeGuard;
 mod password_authentication;
+pub use password_authentication::OriginalProofOutcome;
+pub use rbit_identity::accounts::{OriginalProofReceipt, ProvenAccount};
 mod registration;
 mod sessions;
 pub use registration::create_user_offline;

@@ -32,3 +32,13 @@ impl AccountRepository for AccountStore {
         AccountStore::register_user(self, new, registration_open)
     }
 }
+
+impl rbit_identity_models::credential::CredentialLoginRepository for AccountStore {
+    type Error = StorageError;
+    fn find_login_snapshot(
+        &self,
+        login: &str,
+    ) -> impl Future<Output = Result<Option<rbit_identity_models::credential::CredentialLoginSnapshot>, Self::Error>> + Send {
+        AccountStore::find_login_snapshot(self, login)
+    }
+}

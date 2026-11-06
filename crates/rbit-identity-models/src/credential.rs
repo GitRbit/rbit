@@ -44,6 +44,16 @@ pub struct CredentialLoginSnapshot {
     pub fence: CredentialFence,
 }
 
+/// Same-row credential snapshot port. Implementations must return the PHC and fence
+/// from one statement/snapshot, never a separate later epoch lookup.
+pub trait CredentialLoginRepository: Sync {
+    type Error: std::error::Error + Send + Sync + 'static;
+    fn find_login_snapshot(
+        &self,
+        login: &str,
+    ) -> impl std::future::Future<Output = Result<Option<CredentialLoginSnapshot>, Self::Error>> + Send;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

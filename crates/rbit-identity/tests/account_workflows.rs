@@ -5,6 +5,8 @@
 mod authentication;
 #[path = "account_workflows/fixture.rs"]
 mod fixture;
+#[path = "account_workflows/original_proof.rs"]
+mod original_proof;
 #[path = "account_workflows/registration.rs"]
 mod registration;
 

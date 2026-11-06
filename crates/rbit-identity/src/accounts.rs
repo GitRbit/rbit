@@ -10,7 +10,9 @@ mod error;
 mod registration;
 
 #[cfg(feature = "password-work")]
-pub use authentication::{AuthenticationOutcome, PasswordAuthentication};
+pub use authentication::{
+    AuthenticationOutcome, OriginalProofReceipt, PasswordAuthentication, PasswordProofError, PasswordProofOutcome, ProvenAccount,
+};
 #[cfg(feature = "password-work")]
 pub use error::AccountError;
 #[cfg(feature = "password-work")]

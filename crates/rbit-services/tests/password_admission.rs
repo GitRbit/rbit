@@ -13,7 +13,7 @@ const PASSWORD: &str = "correct horse battery";
 const REPLACEMENT: &str = "a new correct passphrase";
 
 struct Fixture {
-    _dir: tempfile::TempDir,
+    directory: tempfile::TempDir,
     database: Database,
     services: Services,
     passwords: PasswordWork,
@@ -29,7 +29,7 @@ impl Fixture {
         let kv = KvStore::open(&config.storage.kv_path()).unwrap();
         let passwords = PasswordWork::new(BlockingBudget::new(NonZeroUsize::new(1).unwrap()));
         let services = Services::with_password_work(Arc::new(config), &database, &kv, passwords.clone()).await.unwrap();
-        Self { _dir: dir, database, services, passwords }
+        Self { directory: dir, database, services, passwords }
     }
 
     async fn user(&self, name: &str, admin: bool) -> User {
@@ -160,3 +160,5 @@ mod workflows;
 mod session_shutdown;
 
 mod secret_inputs;
+
+mod original_proof;
