@@ -1,6 +1,9 @@
 //! Owned plaintext is protected before constructing password-operation futures.
 
-use super::*;
+use super::{
+    AuditAction, AuditEntry, ClientInfo, SecondFactorProof, ServiceError, Services, SignInOutcome, ThrottleScope, User, account_key,
+    digests, formatted, ip_key, login_key, new_recovery_codes,
+};
 
 impl Services {
     /// Checks a password sign-in, throttled per client address, per login as typed and
