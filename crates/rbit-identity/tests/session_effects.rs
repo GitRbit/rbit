@@ -4,3 +4,6 @@
 mod enforcement;
 #[path = "session_effects/scope.rs"]
 mod scope;
+
+#[path = "session_effects/value.rs"]
+mod value;

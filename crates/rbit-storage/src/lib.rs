@@ -30,4 +30,4 @@ pub use error::StorageError;
 pub use kv::{KvStore, SessionRecord, SessionStore};
 pub use sealing::SealingKey;
 pub use sqlite::{AccessTokenStore, AccountStore, Database, NewAccessToken, NewRepository, NewUser, RepositoryStore, SessionUser};
-pub use work::{Work, count_work};
+pub use work::{CapturedWork, Work, capture_work, count_work};

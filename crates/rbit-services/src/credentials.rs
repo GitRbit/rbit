@@ -9,13 +9,25 @@ where
     F: Future<Output = Result<(), ServiceError>> + Send + 'static,
     U: FnOnce(SessionMutationContext) -> F + Send + 'static,
 {
+    finish_value(ownership, update).await
+}
+
+/// Return a completed store outcome through the same single tracked worker.
+pub(crate) async fn finish_value<T: Send + 'static, F, U>(ownership: SessionMutationPermit, update: U) -> Result<T, ServiceError>
+where
+    F: Future<Output = Result<T, ServiceError>> + Send + 'static,
+    U: FnOnce(SessionMutationContext) -> F + Send + 'static,
+{
+    let work = rbit_storage::capture_work();
     ownership
-        .submit(move |context| async move {
-            let result = update(context).await;
-            if let Err(ServiceError::Internal(error)) = &result {
-                tracing::error!(%error, "credential update could not complete");
-            }
-            result
+        .submit_value(move |context| {
+            work.scope(async move {
+                let result = update(context).await;
+                if let Err(ServiceError::Internal(error)) = &result {
+                    tracing::error!(%error, "credential update could not complete");
+                }
+                result
+            })
         })
         .map_err(ServiceError::internal)?
         .await
@@ -50,5 +62,23 @@ mod tests {
         assert!(report.drained());
         assert_eq!(report.abnormal, 0);
         revocation.await.unwrap();
+    }
+    #[tokio::test]
+    async fn completed_values_preserve_real_sql_work_through_owned_handoff() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = rbit_storage::Database::open(&directory.path().join("work.db")).await.unwrap();
+        let accounts = database.accounts();
+        let scope = SessionEffectScope::new();
+        let ownership = scope.reserve().unwrap();
+        let (result, work) =
+            rbit_storage::count_work(finish_value(
+                ownership,
+                move |_| async move { accounts.count_users().await.map_err(ServiceError::from) },
+            ))
+            .await;
+        assert_eq!(result.unwrap(), 0);
+        assert_eq!(work, rbit_storage::Work { acquisitions: 1, statements: 1, cache_writes: 0 });
+        assert!(scope.shutdown().await.drained());
+        database.close().await;
     }
 }

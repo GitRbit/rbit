@@ -37,7 +37,8 @@ tokio::task_local! {
 }
 
 /// Runs `future`, counting the storage work it does on its own task (work it spawns
-/// onto other tasks is not counted). A nested call counts its future only for itself.
+/// onto other tasks is not counted unless explicitly carried with [`capture_work`]).
+/// A nested call counts its future only for itself.
 pub async fn count_work<F: Future>(future: F) -> (F::Output, Work) {
     let counter = Arc::new(Counter::default());
     let output = COUNTER.scope(Arc::clone(&counter), future).await;
@@ -63,4 +64,49 @@ pub(crate) fn statement() {
 
 pub(crate) fn cache_write() {
     add(|counter| &counter.cache_writes);
+}
+
+/// Explicit instrumentation handoff, not ownership of business work. It carries only
+/// counters, never a service, task handle, credentials or request context.
+#[derive(Clone, Debug)]
+pub struct CapturedWork(Option<Arc<Counter>>);
+
+/// Capture the current measurement before submitting explicitly owned child work.
+/// Outside count_work this performs no allocation and preserves no business owner.
+pub fn capture_work() -> CapturedWork {
+    CapturedWork(COUNTER.try_with(Arc::clone).ok())
+}
+impl CapturedWork {
+    pub async fn scope<F: Future>(self, future: F) -> F::Output {
+        match self.0 {
+            Some(counter) => COUNTER.scope(counter, future).await,
+            None => future.await,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[tokio::test]
+    async fn explicit_owned_handoff_counts_actual_work_without_inheriting_unrelated_tasks() {
+        let ((), work) = count_work(async {
+            tokio::spawn(async {
+                acquisition();
+                statement();
+            })
+            .await
+            .unwrap();
+            let captured = capture_work();
+            tokio::spawn(captured.scope(async {
+                acquisition();
+                statement();
+                statement();
+            }))
+            .await
+            .unwrap();
+        })
+        .await;
+        assert_eq!(work, Work { acquisitions: 1, statements: 2, cache_writes: 0 });
+    }
 }

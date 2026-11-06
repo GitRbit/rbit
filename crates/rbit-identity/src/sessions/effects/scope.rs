@@ -164,6 +164,19 @@ impl SessionMutationPermit {
         F: Future<Output = Result<(), E>> + Send + 'static,
         U: FnOnce(SessionMutationContext) -> F + Send + 'static,
     {
+        self.submit_value(update)
+    }
+
+    /// Same admitted ownership and completion accounting, returning completed data.
+    /// The result must not substitute a handle to unfinished effects for their join.
+    pub fn submit_value<T: Send + 'static, E: Send + 'static, F, U>(
+        self,
+        update: U,
+    ) -> Result<JoinHandle<Result<T, E>>, SessionEffectsError>
+    where
+        F: Future<Output = Result<T, E>> + Send + 'static,
+        U: FnOnce(SessionMutationContext) -> F + Send + 'static,
+    {
         let runtime = tokio::runtime::Handle::try_current().map_err(|_| {
             self.statistics.abnormal.fetch_add(1, Ordering::SeqCst);
             SessionEffectsError::NoRuntime
