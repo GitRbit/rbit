@@ -306,16 +306,7 @@ fn json_array(values: impl IntoIterator<Item = i64>) -> String {
 
 // ------------------------------------------------------------------ public types
 
-/// An issue or pull request to insert. Its number is assigned on insertion.
-#[derive(Debug, Clone)]
-pub struct NewIssue {
-    pub repo: RepoId,
-    pub kind: IssueKind,
-    pub title: IssueTitle,
-    pub body: IssueText,
-    pub author: AccountId,
-    pub at: Timestamp,
-}
+pub use rbit_collaboration::threads::NewIssue;
 
 /// What a reference (`#12`) needs to render: enough to link and describe the thread.
 #[derive(Debug, Clone, PartialEq, Eq)]

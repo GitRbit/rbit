@@ -17,7 +17,7 @@ const FEATURE_EDGES = {
   "rbit-identity": ["rbit-contracts", "rbit-kernel"],
   "rbit-access": [],
   "rbit-repositories": ["rbit-contracts", "rbit-identity"],
-  "rbit-collaboration": ["rbit-contracts", "rbit-access", "rbit-repositories", "rbit-kernel"],
+  "rbit-collaboration": ["rbit-identity", "rbit-contracts", "rbit-access", "rbit-repositories", "rbit-kernel"],
   "rbit-actions": ["rbit-contracts", "rbit-access", "rbit-workflow", "rbit-kernel"],
   "rbit-presentation": ["rbit-contracts", "rbit-localization"],
 };

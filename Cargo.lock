@@ -4235,6 +4235,7 @@ name = "rbit-collaboration"
 version = "0.1.5"
 dependencies = [
  "rbit-contracts",
+ "rbit-identity",
  "serde",
  "serde_json",
  "tokio",

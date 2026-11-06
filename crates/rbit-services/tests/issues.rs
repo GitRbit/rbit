@@ -115,53 +115,7 @@ fn git(dir: &Path, args: &[&str]) -> String {
     String::from_utf8_lossy(&output.stdout).trim().to_owned()
 }
 
-#[tokio::test]
-async fn writers_open_issues_with_metadata_and_opened_is_published_once() {
-    let fixture = Fixture::new().await;
-    let repo = fixture.repo(&fixture.alice).await;
-    fixture.services.collaborators.add(&fixture.alice, &repo, "bob", Permission::Write).await.unwrap();
-    let bug = fixture.label("bug").await;
-    let milestone = fixture
-        .services
-        .issues
-        .create_milestone(&fixture.alice, &repo, &MilestoneInput { title: "v1".into(), ..MilestoneInput::default() })
-        .await
-        .unwrap();
-    let mut events = fixture.services.events.subscribe();
-
-    let input = NewIssueInput {
-        title: "Crash".into(),
-        body: "Boom".into(),
-        labels: vec![bug, bug],
-        assignees: vec![fixture.bob.id()],
-        milestone: Some(milestone.id),
-    };
-    let issue = fixture.services.issues.create(&fixture.alice, &repo, input).await.unwrap();
-    assert_eq!(issue_actions(&mut events), [IssueAction::Opened], "metadata changes are not published separately");
-    let metadata = fixture.services.issues.metadata(&[issue.id]).await.unwrap().remove(&issue.id).unwrap();
-    assert_eq!(metadata.labels.len(), 1);
-    assert_eq!(metadata.assignees[0].id, fixture.bob.id());
-    assert_eq!(metadata.milestone.unwrap().title, "v1");
-    let recorded = fixture.events_of(&fixture.alice, issue.number).await;
-    assert_eq!(recorded.len(), 3, "labeled, assigned and milestoned: {recorded:?}");
-    // A list that shows only labels reads only labels.
-    let query = rbit_core::issue_query::IssueQuery::parse("is:open");
-    let labels_only = rbit_services::issues::MetadataNeeds::Labels;
-    let listed = fixture.services.issues.search_with(Some(&fixture.alice), &repo, &query, 1, labels_only).await.unwrap();
-    let listed = &listed.metadata[&issue.id];
-    assert_eq!(listed.labels.len(), 1);
-    assert!(listed.assignees.is_empty() && listed.milestone.is_none());
-
-    // A reader's metadata is ignored; a carol (not a writer) cannot be assigned.
-    let reader_repo = fixture.repo(&fixture.carol).await;
-    let input = NewIssueInput { title: "Question".into(), labels: vec![bug], ..NewIssueInput::default() };
-    let theirs = fixture.services.issues.create(&fixture.carol, &reader_repo, input).await.unwrap();
-    assert_eq!(fixture.services.issues.metadata(&[theirs.id]).await.unwrap()[&theirs.id].labels, []);
-    let input = NewIssueInput { title: "x".into(), assignees: vec![fixture.carol.id()], ..NewIssueInput::default() };
-    assert!(matches!(fixture.services.issues.create(&fixture.alice, &repo, input).await, Err(ServiceError::Invalid(_))));
-    let input = NewIssueInput { title: " ".into(), ..NewIssueInput::default() };
-    assert!(matches!(fixture.services.issues.create(&fixture.alice, &repo, input).await, Err(ServiceError::Invalid(_))));
-}
+mod read_create_port;
 
 mod labels_port;
 

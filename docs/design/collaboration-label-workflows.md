@@ -15,7 +15,8 @@ original root/`issue` paths, storage's `sqlite::issue_meta` paths and services'
 values and serde representation. The storage-local `From<LabelRow> for Label`
 remains legal because its source row is local; no orphan implementation is lost.
 
-The default feature graph contains contracts and serde only. Core explicitly
+The default feature graph contains contracts, serde and credential-free identity
+models (required by the later shared thread model's existing `is_author` API). Core explicitly
 disables defaults. Storage and services explicitly request `applications`, which
 adds only a static `std::future::Future` port and application policy. Neither graph
 imports legacy core, concrete persistence, HTTP, Tokio or credential work.

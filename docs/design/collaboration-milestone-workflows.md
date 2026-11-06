@@ -18,8 +18,10 @@ storage and service paths. Original constructors, fields and signatures remain.
 `IssueMilestone`, the storage thread-attachment record, stays in storage because
 its `IssueId` dependency belongs to the later attachment closure.
 
-Both the default model graph and opt-in `applications` graph remain contracts plus
-serde, without runtime, password, crypto or legacy adapter imports. The existing
+Both the default model graph and opt-in `applications` graph remain contracts,
+serde and credential-free identity models, without runtime, password, crypto or legacy
+adapter imports. The identity edge preserves the later shared thread model's existing
+`is_author` API. The existing
 explicit consumer feature guard and isolated graph checks apply unchanged. This
 slice adds no feature, dependency, package, lock entry or migration.
 

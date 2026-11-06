@@ -11,6 +11,7 @@
 
 mod collaboration_labels;
 mod collaboration_milestones;
+mod collaboration_threads;
 pub mod error;
 mod identity_accounts;
 mod identity_sessions;

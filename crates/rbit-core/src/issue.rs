@@ -8,17 +8,15 @@
 //! The integrator owns this file (see `docs/design/milestone-2b.md`); workstreams request
 //! changes through their reports.
 
-use std::{fmt, str::FromStr};
+use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{AccountId, NameError, PushSource, RepoAccess, RepoId, Timestamp, User};
+use crate::{AccountId, PushSource, RepoAccess, RepoId, Timestamp, User};
 
 // ------------------------------------------------------------------ ids
 
-/// Database id of an issue or pull request (the `issues` row).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct IssueId(pub i64);
+pub use rbit_collaboration::threads::IssueId;
 
 /// Database id of a comment on an issue or pull request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -38,78 +36,7 @@ pub struct ReviewId(pub i64);
 
 // ------------------------------------------------------------------ numbers
 
-/// Per-repository number of an issue or pull request, always `> 0`. Parsed from URL
-/// segments (`"12"`) with [`IssueNumber::parse`]; displayed as `#12`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(try_from = "u32", into = "u32")]
-pub struct IssueNumber(u32);
-
-impl IssueNumber {
-    const KIND: &'static str = "issue number";
-
-    /// Accepts only canonical decimal numbers: digits, no sign, no leading zero, `1..=u32::MAX`.
-    /// Anything else (which a URL handler answers with 404) is an error.
-    pub fn parse(value: &str) -> Result<Self, NameError> {
-        let kind = Self::KIND;
-        if value.is_empty() {
-            return Err(NameError::Empty { kind });
-        }
-        if value.len() > 10 {
-            return Err(NameError::TooLong { kind, max: 10 });
-        }
-        if !value.bytes().all(|b| b.is_ascii_digit()) || value.starts_with('0') {
-            return Err(NameError::NotANumber { kind });
-        }
-        value.parse::<u32>().map_err(|_| NameError::NotANumber { kind }).and_then(Self::try_from)
-    }
-
-    /// `None` for zero.
-    pub const fn new(value: u32) -> Option<Self> {
-        if value == 0 { None } else { Some(Self(value)) }
-    }
-
-    pub const fn get(self) -> u32 {
-        self.0
-    }
-}
-
-impl TryFrom<u32> for IssueNumber {
-    type Error = NameError;
-
-    fn try_from(value: u32) -> Result<Self, Self::Error> {
-        Self::new(value).ok_or(NameError::NotANumber { kind: Self::KIND })
-    }
-}
-
-impl TryFrom<i64> for IssueNumber {
-    type Error = NameError;
-
-    /// For database rows.
-    fn try_from(value: i64) -> Result<Self, Self::Error> {
-        u32::try_from(value).map_err(|_| NameError::NotANumber { kind: Self::KIND }).and_then(Self::try_from)
-    }
-}
-
-impl From<IssueNumber> for u32 {
-    fn from(number: IssueNumber) -> Self {
-        number.0
-    }
-}
-
-impl FromStr for IssueNumber {
-    type Err = NameError;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        Self::parse(value)
-    }
-}
-
-/// `#12`. Use [`IssueNumber::get`] for URLs.
-impl fmt::Display for IssueNumber {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "#{}", self.0)
-    }
-}
+pub use rbit_collaboration::threads::IssueNumber;
 
 // ------------------------------------------------------------------ enums
 
@@ -149,24 +76,11 @@ macro_rules! text_enum {
     };
 }
 
-text_enum!(
-    /// Whether a numbered thread is a plain issue or a pull request.
-    IssueKind {
-        Issue => "issue",
-        Pull => "pull",
-    }
-);
+pub use rbit_collaboration::threads::IssueKind;
 
 pub use rbit_collaboration::IssueState;
 
-text_enum!(
-    /// Why a thread was closed. `Merged` is only possible for pull requests.
-    StateReason {
-        Completed => "completed",
-        NotPlanned => "not_planned",
-        Merged => "merged",
-    }
-);
+pub use rbit_collaboration::threads::StateReason;
 
 text_enum!(
     /// How a pull request was merged.
@@ -193,149 +107,11 @@ text_enum!(
 
 // ------------------------------------------------------------------ text
 
-/// Longest issue or pull request title, in characters.
-pub const MAX_TITLE_CHARS: usize = 256;
-/// Longest body or comment, in bytes (after line endings are normalised).
-pub const MAX_TEXT_BYTES: usize = 65_536;
-
-/// Why a title, body or comment was refused. Messages are shown to users as is.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum IssueTextError {
-    #[error("{kind} must not be empty")]
-    Empty { kind: &'static str },
-    #[error("{kind} must be at most {max} characters")]
-    TooManyCharacters { kind: &'static str, max: usize },
-    #[error("{kind} must be at most {max} bytes")]
-    TooLong { kind: &'static str, max: usize },
-    #[error("{kind} must not contain control characters")]
-    ControlCharacter { kind: &'static str },
-}
-
-/// An issue or pull request title: trimmed, `1..=256` characters, no control characters.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct IssueTitle(String);
-
-impl IssueTitle {
-    pub fn parse(value: &str) -> Result<Self, IssueTextError> {
-        let kind = "title";
-        let value = value.trim();
-        if value.is_empty() {
-            return Err(IssueTextError::Empty { kind });
-        }
-        if value.chars().count() > MAX_TITLE_CHARS {
-            return Err(IssueTextError::TooManyCharacters { kind, max: MAX_TITLE_CHARS });
-        }
-        if value.chars().any(char::is_control) {
-            return Err(IssueTextError::ControlCharacter { kind });
-        }
-        Ok(Self(value.to_owned()))
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for IssueTitle {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl From<IssueTitle> for String {
-    fn from(title: IssueTitle) -> Self {
-        title.0
-    }
-}
-
-/// Markdown for issue bodies and comments: at most [`MAX_TEXT_BYTES`], with `\r\n` (and
-/// lone `\r`) normalised to `\n`. May be empty for bodies ([`IssueText::body`]), never
-/// blank for comments ([`IssueText::comment`]).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
-pub struct IssueText(String);
-
-impl IssueText {
-    /// An issue or pull request description, possibly empty.
-    pub fn body(value: &str) -> Result<Self, IssueTextError> {
-        Self::normalise("description", value)
-    }
-
-    /// A comment: like a body, but it must contain something other than whitespace.
-    pub fn comment(value: &str) -> Result<Self, IssueTextError> {
-        let text = Self::normalise("comment", value)?;
-        if text.0.trim().is_empty() {
-            return Err(IssueTextError::Empty { kind: "comment" });
-        }
-        Ok(text)
-    }
-
-    fn normalise(kind: &'static str, value: &str) -> Result<Self, IssueTextError> {
-        let text = value.replace("\r\n", "\n").replace('\r', "\n");
-        if text.len() > MAX_TEXT_BYTES {
-            return Err(IssueTextError::TooLong { kind, max: MAX_TEXT_BYTES });
-        }
-        Ok(Self(text))
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-}
-
-impl fmt::Display for IssueText {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl From<IssueText> for String {
-    fn from(text: IssueText) -> Self {
-        text.0
-    }
-}
+pub use rbit_collaboration::threads::{IssueText, IssueTextError, IssueTitle, MAX_TEXT_BYTES, MAX_TITLE_CHARS};
 
 // ------------------------------------------------------------------ entities
 
-/// An issue or pull request (the shared `issues` row).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Issue {
-    pub id: IssueId,
-    pub repo_id: RepoId,
-    pub number: IssueNumber,
-    pub kind: IssueKind,
-    pub title: IssueTitle,
-    pub body: IssueText,
-    /// `None` once the author's account is deleted (shown as a ghost).
-    pub author: Option<AccountId>,
-    pub state: IssueState,
-    /// Set exactly when closed.
-    pub state_reason: Option<StateReason>,
-    pub closed_at: Option<Timestamp>,
-    pub closed_by: Option<AccountId>,
-    pub locked: bool,
-    pub comment_count: u32,
-    pub created_at: Timestamp,
-    pub updated_at: Timestamp,
-}
-
-impl Issue {
-    pub fn is_open(&self) -> bool {
-        self.state == IssueState::Open
-    }
-
-    pub fn is_pull(&self) -> bool {
-        self.kind == IssueKind::Pull
-    }
-
-    /// Whether `user` opened it.
-    pub fn is_author(&self, user: &User) -> bool {
-        self.author == Some(user.id())
-    }
-}
+pub use rbit_collaboration::threads::Issue;
 
 /// A comment on an issue or pull request.
 #[derive(Debug, Clone, PartialEq, Eq)]

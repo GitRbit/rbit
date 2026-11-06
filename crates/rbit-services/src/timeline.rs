@@ -12,6 +12,8 @@
 //!
 //! Creating, editing and commenting spend [`ThrottleScope::Content`] for the actor.
 
+mod threads;
+
 use std::collections::{HashMap, HashSet};
 
 use rbit_core::{
@@ -19,7 +21,7 @@ use rbit_core::{
     IssueTitle, RepoId, StateReason, TimelineEvent, Timestamp, User,
     issue::{CommentAction, IssueAction, comment_permissions, issue_permissions},
 };
-use rbit_storage::sqlite::issues::{NewIssue, StoredTimelineItem};
+use rbit_storage::sqlite::issues::StoredTimelineItem;
 pub use rbit_storage::sqlite::issues::{TimelineCursor, TimelineItemId};
 
 use crate::{DomainEvent, RepoContext, ServiceContext, ServiceError, ThrottleScope, ThrottleService, actions::tokens::TaskGrant};
@@ -38,12 +40,7 @@ pub struct IssueContext {
     pub permissions: IssuePermissions,
 }
 
-/// Open threads of a repository, for the Issues and Pull requests tabs.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct OpenCounts {
-    pub issues: u64,
-    pub pulls: u64,
-}
+pub use rbit_collaboration::threads::OpenCounts;
 
 /// A state change a person asks for. Closing as [`StateReason::Merged`] is refused: only
 /// merging a pull request produces it.
@@ -118,46 +115,6 @@ pub struct TimelineService {
 impl TimelineService {
     pub(crate) fn new(ctx: ServiceContext, throttle: ThrottleService) -> Self {
         Self { ctx, throttle }
-    }
-
-    /// Thread `number` of `repo` (already access-checked) for `viewer`. `NotFound` when
-    /// it does not exist or the viewer may not read the repository.
-    pub async fn open(&self, viewer: Option<&User>, repo: RepoContext, number: IssueNumber) -> Result<IssueContext, ServiceError> {
-        if !repo.access.can_read() {
-            return Err(ServiceError::NotFound);
-        }
-        let (issue, author) =
-            self.ctx.database.issues().find_by_number_with_author(repo.repo.repo.id, number).await?.ok_or(ServiceError::NotFound)?;
-        let permissions = thread_permissions(viewer, &repo, &issue);
-        Ok(IssueContext { repo, issue, author, permissions })
-    }
-
-    /// Open issues and pull requests of `repo`, in one indexed query.
-    pub async fn open_counts(&self, repo: RepoId) -> Result<OpenCounts, ServiceError> {
-        let (issues, pulls) = self.ctx.database.issues().open_counts(repo).await?;
-        Ok(OpenCounts { issues, pulls })
-    }
-
-    /// Inserts a new thread by `actor` (who must be able to read `repo`) after validating
-    /// the title and body and spending the actor's content budget. Creates the row only:
-    /// the caller adds its own data and then publishes `IssueAction::Opened`.
-    pub(crate) async fn create(
-        &self,
-        actor: &User,
-        repo: &RepoContext,
-        kind: IssueKind,
-        title: &str,
-        body: &str,
-    ) -> Result<Issue, ServiceError> {
-        if !repo.access.can_read() {
-            return Err(ServiceError::NotFound);
-        }
-        repo.ensure_writable()?;
-        let title = IssueTitle::parse(title)?;
-        let body = IssueText::body(body)?;
-        self.spend(actor)?;
-        let new = NewIssue { repo: repo.repo.repo.id, kind, title, body, author: actor.id(), at: Timestamp::now() };
-        Ok(self.ctx.database.issues().create(&new).await?)
     }
 
     /// Changes the title and/or the body (`None` keeps it). Publishes `Edited` with the

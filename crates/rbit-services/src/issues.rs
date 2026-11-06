@@ -19,6 +19,7 @@
 //! and closing keywords in commits pushed to the default branch (or in the body of a
 //! merged pull request) close the issues they name.
 
+mod creation;
 pub mod hooks;
 pub mod json;
 mod labels;
@@ -61,10 +62,7 @@ use crate::{
     repositories::viewer_grants,
 };
 
-/// Most labels on one thread.
-pub const MAX_LABELS_PER_ISSUE: usize = 25;
-/// Most assignees of one thread.
-pub const MAX_ASSIGNEES: usize = 10;
+pub use rbit_collaboration::issues::{MAX_ASSIGNEES, MAX_LABELS_PER_ISSUE};
 /// Most users [`IssueService::assignable`] lists.
 pub const MAX_ASSIGNABLE: u32 = 100;
 /// Threads per page of a list.
@@ -87,16 +85,7 @@ pub struct IssueMetadata {
 
 pub use rbit_collaboration::milestones::MilestoneRef;
 
-/// A new issue as submitted. Labels, assignees and the milestone are applied only when
-/// the author may triage (they are ignored otherwise, as on GitHub).
-#[derive(Debug, Clone, Default)]
-pub struct NewIssueInput {
-    pub title: String,
-    pub body: String,
-    pub labels: Vec<LabelId>,
-    pub assignees: Vec<AccountId>,
-    pub milestone: Option<MilestoneId>,
-}
+pub use rbit_collaboration::issues::NewIssueInput;
 
 pub use rbit_collaboration::labels::LabelInput;
 
@@ -259,64 +248,6 @@ impl IssueService {
     }
 
     // ------------------------------------------------------------------ issues
-
-    /// Opens an issue by `actor` in `repo` (which they can read). Writers' labels,
-    /// assignees and milestone are validated first, attached in one transaction after the
-    /// row and recorded on the timeline; then `Opened` is published once.
-    pub async fn create(&self, actor: &User, repo: &RepoContext, input: NewIssueInput) -> Result<Issue, ServiceError> {
-        if !repo.access.can_read() {
-            return Err(ServiceError::NotFound);
-        }
-        repo.ensure_writable()?;
-        let triage = repo.access.can_write();
-        let (labels, assignees, milestone) = if triage {
-            let labels = self.repo_labels(repo.repo.repo.id, &distinct(&input.labels)).await?;
-            if labels.len() > MAX_LABELS_PER_ISSUE {
-                return Err(invalid(format!("an issue can have at most {MAX_LABELS_PER_ISSUE} labels")));
-            }
-            let assignees = self.validated_assignees(&repo.repo, &distinct(&input.assignees)).await?;
-            if assignees.len() > MAX_ASSIGNEES {
-                return Err(invalid(format!("an issue can have at most {MAX_ASSIGNEES} assignees")));
-            }
-            let milestone = match input.milestone {
-                Some(id) => Some(
-                    self.ctx
-                        .database
-                        .issue_meta()
-                        .find_milestone(repo.repo.repo.id, id)
-                        .await?
-                        .ok_or_else(|| invalid("unknown milestone"))?,
-                ),
-                None => None,
-            };
-            (labels, assignees, milestone)
-        } else {
-            (Vec::new(), Vec::new(), None)
-        };
-
-        let issue = self.timeline.create(actor, repo, IssueKind::Issue, &input.title, &input.body).await?;
-        if !labels.is_empty() || !assignees.is_empty() || milestone.is_some() {
-            let label_ids: Vec<LabelId> = labels.iter().map(|l| l.id).collect();
-            let assignee_ids: Vec<AccountId> = assignees.iter().map(User::id).collect();
-            self.ctx
-                .database
-                .issue_meta()
-                .attach(issue.id, &label_ids, &assignee_ids, milestone.as_ref().map(|m| m.id), actor.id(), Timestamp::now())
-                .await?;
-            for label in &labels {
-                self.timeline.record(issue.id, Some(actor.id()), TimelineEvent::Labeled { label: label.snapshot() }).await?;
-            }
-            for assignee in &assignees {
-                self.timeline.record(issue.id, Some(actor.id()), TimelineEvent::Assigned { assignee: assignee.id() }).await?;
-            }
-            if let Some(milestone) = &milestone {
-                let event = TimelineEvent::Milestoned { milestone: milestone.id, title: milestone.title.clone() };
-                self.timeline.record(issue.id, Some(actor.id()), event).await?;
-            }
-        }
-        self.publish(&issue, Some(actor.id()), IssueAction::Opened);
-        Ok(issue)
-    }
 
     /// Deletes an issue (repository administrators only; pull requests cannot be
     /// deleted): audited, and `Deleted` is published with what it was.

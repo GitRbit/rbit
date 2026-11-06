@@ -2,6 +2,7 @@
 import { execFileSync } from "node:child_process";
 
 const consumers = {
+  "rbit-collaboration": { normal: [] },
   "rbit-repositories": { normal: [] },
   "rbit-core": { normal: [] },
   "rbit-storage": { normal: [] },
