@@ -150,8 +150,8 @@ behavior is recorded as reference, not silently patched for the benchmark. Ident
 rounded text on two requests is possible; require current metric mapping rather than
 asserting every request's formatted number changes.
 
-Root's actual render-time.js navigation/revalidation/HTMX contract tests passed4 cases
-at preparation. New HTTP harness tests cover streamed raw footer, distinct totals,
+Navigation/revalidation/HTMX contract tests cover fresh footer updates.
+HTTP harness tests cover streamed raw footer, distinct totals,
 304 empty/null-footer behavior, per-origin auth and secret-free raw evidence. These are
 functional Node tests, NOT real application timings or a completed browser review.
 The pending release comparison must retain all raw samples, invalid cases, executable/
