@@ -329,6 +329,13 @@ Acceptance scenarios: build two different worktrees sequentially with reused dep
 
 ## 12 Delivery sequence and ownership
 
+Every change is delivered in an atomic commit: one coherent behavior, extraction or
+tooling change with its required manifests, lockfile, tests and documentation. Each
+commit must build and pass the checks appropriate to its scope. Keep mechanical moves,
+behavior changes and unrelated dependency updates separate. Integrate parallel work
+only after review and focused validation; fold integration corrections into the owning
+unpublished commit so intermediate revisions remain reviewable and usable.
+
 Implementation follows plan review. A ground-up code organization does not require discarding tested algorithms, wire protocols or immutable data history. Build the new workspace in successive vertical slices, retaining an independently runnable main reference. During transition, old-code exceptions are explicit; all new/replaced modules meet the final standards.
 
 | Phase | Deliverables | Exit gate |

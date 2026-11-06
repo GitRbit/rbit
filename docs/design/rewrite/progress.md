@@ -21,12 +21,13 @@ The current kernel is a work-admission foundation. Full module lifecycle, identi
 ## Validation checkpoint
 
 - Contracts/core: 150 tests and strict Clippy passed after ID extraction; the 148 core tests also passed with the patched Markdown parser.
-- Identity/auth: ten identity tests and 42 auth/compatibility tests passed; strict Clippy passed for both crates and all targets. The password-attempt API is available; production callers have not migrated.
+- Identity/auth: 24 identity tests and 42 auth/compatibility tests passed; strict Clippy passed for both crates and all targets. The password-attempt API covers single-slot login/reuse checks and eagerly zeroizing inputs, with a fixed published Argon2id compatibility vector. Production callers have not migrated. The services crate also passed type checking against the extracted credential graph.
 - Kernel admission: all ten cancellation, saturation, panic, closure, reservation and queued-abort tests and strict Clippy passed.
 - Localization: 13 tests, including real Askama escaping and borrowed/static output checks, and strict Clippy passed.
-- Structural checker: 16 tests and strict Clippy passed; runtime checks of all five replacement/tool crates, including reservations, reported no size violations.
+- Structural checker: 16 tests and strict Clippy passed; runtime checks of all six replacement/tool crates, including reservations, reported no size violations.
 - JavaScript: the final full Windows suite passed 231 tests, with one Unix-only case skipped. The final helper/performance suite passes 50 tests on Windows and 49 on Linux, with only opposite-platform cases skipped. Linux runs use a disposable native Git fixture because Linux Git cannot resolve Windows worktree metadata.
 - Web: all targets passed type checking. All 415 unit, 129 integration and one Actions evaluation test passed with the patched Markdown parser. Strict Clippy passed for all core/web targets with the patched dependency graph. The combined core/web result is 693 passing tests.
+- Rendering probe: all six semantic/CLI tests and strict Clippy passed for inherited, segmented and block composition at eight distinct contexts. Exact HTML, escaping and buffer reuse are checked; scaling and compiler-memory measurements remain pending.
 - Dependency security: `pulldown-cmark` minimum and lockfile raised to 0.13.6 for RUSTSEC-2026-0433. Advisories and licenses pass, with no new advisory exception or unrelated external upgrade.
 - Real worktree check: a second source checkout passed all ten kernel tests using the same compatibility namespace and was removed cleanly. No checkout-local compiler tree was created.
 - CI configuration is committed; no hosted CI result is claimed for unpublished local commits.
