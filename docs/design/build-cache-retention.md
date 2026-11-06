@@ -212,9 +212,15 @@ $env:RBIT_RUN_NATIVE_CARGO_PROOF = '1'
 node --test scripts/tests/workspace-cargo-native.test.mjs
 ```
 
-After the compiler lane is available, Windows acceptance must run that fixture and
-an existing small Cargo command through the shared helper with strict mode enabled,
-checking IDE/Cargo JSON and descendant completion. Native acceptance, Linux ownership,
-trusted persisted generation records, a retention executor, cold-build cost/headroom
-measurement and an activation decision remain pending. No actual cache mutation or
-native test execution is implied by source/fake-process fixture acceptance.
+On November 6, 2026, the real Windows fixture passed, including verified termination
+of its lingering compiler-style child. Strict-mode `check --package rbit-kernel
+--locked` and the corresponding `ide-check` passed, with valid Cargo JSON ending in
+`build-finished` success. The structural-checker build, exact executable handoff
+and checker execution also passed under this mode, followed by strict workspace
+Clippy. These are local cooperative Windows workload observations, not hostile
+descendant or production Git containment acceptance.
+
+Linux compiler ownership, trusted persisted generation records, a retention executor,
+cold-build cost/headroom measurement and an activation decision remain pending.
+No cache deletion or rotation was performed for this validation; the existing
+protected namespace still exceeds its soft watermark.

@@ -29,7 +29,7 @@ The kernel now coordinates password admission and its first statically owned bac
 
 ## Latest published checkpoint
 
-`fcdd2f95` adds repository discovery, collaboration label/milestone catalogs and
+`cd2198a4` builds on `fcdd2f95`, which adds repository discovery, collaboration label/milestone catalogs and
 issue read/create applications through static ports. Existing SQL and event ordering
 remain the compatibility authority. Issue creation still spans separate durable
 transactions; its partial-commit limitation is covered rather than presented as
@@ -52,20 +52,33 @@ required for this integrated batch.
 - Main CI passed at `ec57e0ac`: [run 42188842556](https://github.com/GitRbit/rbit/actions/runs/42188842556).
   The full [run 42182650192](https://github.com/GitRbit/rbit/actions/runs/42182650192)
   also passed at `7326e563`. Both precede the latest domain-port batch.
-- Local Node checks pass: 362 tests, four platform skips. Source policy reports
-  1,326 authored files and no violations; formatting passes. The previous integrated
-  workspace run reached E2E with 109 passed and one failed import-progress assertion.
-  Its focused rerun and latest broad Rust, structural AST and strict Clippy gates
-  are pending. No complete latest-candidate pass is claimed.
+- Local Node checks pass: 378 tests, five platform skips. Source policy reports
+  1,330 authored files and no violations. Formatting, strict workspace/all-target
+  Clippy and cumulative structural checks pass; the password-boundary audit covers
+  140 files. The later UTF-8 snapshot preflight passes focused domain/tool tests
+  and strict Clippy, including closed UTF-16 little- and big-endian refusal fixtures.
+- The latest broad local run passes all 110 E2E cases, 208 service unit tests and
+  355 service integration tests. It reaches web tests with 445 passed and one failed
+  new fragment assertion, corrected to preserve the escaped site name in its title
+  while excluding the full-document subtitle from results. A fresh web run is pending.
+  Hosted `fcdd2f95` has the same sole test failure: 2,384 Linux and 2,369 Windows
+  tests passed. Its release build passed; its contract download assumption and lint
+  failures are corrected locally. A new complete hosted/doctest pass remains required.
+- Opt-in owned Windows Cargo completion passes a real lingering-child fixture,
+  kernel/IDE checks, checker build/handoff/execution and strict workspace Clippy.
+  It remains off by default. No automatic generation rotation or hard storage
+  bound is claimed; the protected shared namespace remains above the soft limit.
 - The [matched release footer comparison](measurements/footer-small-pages.md)
   retains four valid runs and 1,800 measured responses against pinned main.
   Both revisions have sub-500-microsecond medians for the six small page cases.
   Tail differences remain investigation items; later ports and operational workloads
   require fresh evidence.
-- The separate [visual review run](https://github.com/GitRbit/rbit/actions/runs/42188842595)
-  passed the initial-namespace denial and isolated namespace chroot probes, then
-  returned from browser launch before failing sandbox-proof setup. No images or
-  browser acceptance resulted. The new checkpoint adds bounded stage diagnostics.
+- The separate [visual review run](https://github.com/GitRbit/rbit/actions/runs/42204656483)
+  passed namespace prerequisites and browser launch, then failed the command-line
+  verification protocol call. The pinned Playwright defaults omit its required
+  automation switch; the new checkpoint supplies it explicitly while retaining
+  actual command-line and namespace/seccomp proof. No images or browser acceptance
+  are claimed before a successful hosted follow-up.
 
 ## Historical validation checkpoints
 
