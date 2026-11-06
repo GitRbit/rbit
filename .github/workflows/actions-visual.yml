@@ -64,7 +64,7 @@ jobs:
         with:
           node-version: '24'
       - name: Verify harness contracts without launching a browser
-        run: node --test scripts/tests/rewrite-actions-visual.test.mjs
+        run: node --test scripts/tests/rewrite-actions-visual*.test.mjs
       - name: Build fresh same-revision theme CSS
         run: |
           npm ci --ignore-scripts

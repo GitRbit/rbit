@@ -1,7 +1,7 @@
 // Inspect launch diagnostics only in memory; retain fixed categories, never text.
 const known = new Set([
   "SANDBOX_ROOT_USER", "SANDBOX_DISABLED_FLAGS", "SANDBOX_UNPROVED",
-  "BROWSER_VERSION_MISMATCH", "LINUX_NONROOT_REQUIRED",
+  "BROWSER_VERSION_MISMATCH", "LINUX_NONROOT_REQUIRED", "OWNED_HOME_NOT_READY", "BUNDLED_EXECUTABLE_NOT_READY",
 ]);
 const launch = [
   ["BROWSER_NAMESPACE_DENIED", /(?:failed to move to new namespace|failed to unshare|unshare.*failed)[\s\S]{0,1024}(?:operation not permitted|permission denied|EPERM)/i],

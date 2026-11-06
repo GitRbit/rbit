@@ -109,3 +109,31 @@ per-ref group, with cancellation disabled, so a new irrelevant skipped run canno
 cancel an older real capture. GitHub may still replace a pending job with a newer
 pending relevant job; running captures are preserved. Cleanup belongs to the heavy
 job and runs even during its cancellation, using its private ownership evidence.
+## Launch evidence and preflight
+
+Before launching, the runner creates its fixed ephemeral HOME with mode 0700,
+checks ownership and lack of links, and performs an exclusive write/read/delete
+probe. It records only readiness booleans, numeric UID and expected executable
+existence/executability/bundled-root booleans, never paths. Known container-visible
+kernel observations are NoNewPrivs, Seccomp/filter count, whether effective
+capabilities are zero, maximum user namespaces, unprivileged-userns setting and
+AppArmor userns restriction. Missing/unreadable/invalid fields are null; these
+observations alone do not prove Chromium's sandbox and do not identify an LSM
+profile. Actual browser proof is still required before any capture.
+
+Failed launch evidence accepts only the known Playwright process-exit framing,
+Unix exit range and a fixed signal set. Chromium stderr yields only enumerated
+source categories and reason codes from bounded in-memory text. Matched DBus or
+other stderr categories are observations, not proof of the fatal cause. No raw
+stderr, full command, environment, unknown source filename or private value is
+retained. Unknown evidence remains unknown and the run stays invalid.
+
+The exact upstream Playwright 1.65 policy has no clone3 rule. Its default ERRNO
+therefore uses EPERM under the [OCI definition](https://github.com/opencontainers/runtime-spec/blob/main/config-linux.md#seccomp).
+The [glibc 2.39 wrapper](https://github.com/bminor/glibc/blob/glibc-2.39/sysdeps/unix/sysv/linux/clone-internal.c)
+only falls back from clone3 on ENOSYS. The current [Moby policy](https://github.com/moby/profiles/blob/main/seccomp/default.json)
+explicitly denies clone3 with errno 38 without CAP_SYS_ADMIN. This is a plausible
+compatibility difference, not an established cause of the failed CI launches.
+This diagnostic atom changes no syscall rule. Any later narrowly justified errno
+compatibility adjustment needs separate review and exact-delta tests; permitting
+clone3, disabling sandbox controls or broadening host privileges is not a fallback.

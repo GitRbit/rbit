@@ -9,6 +9,8 @@ import { revision, sourceDigest, digest } from "./provenance.mjs";
 import { verifySandbox } from "./sandbox.mjs";
 import { contain } from "./containment.mjs";
 import { setupFailure } from "./diagnostics.mjs";
+import { launchEvidence } from "./launch-evidence.mjs";
+import { environment } from "./environment.mjs";
 import { keyboard, logControls, noJavascript } from "./interactions.mjs";
 const output = "/artifacts";
 const source = "/work/docs/design/prototypes/actions";
@@ -78,6 +80,11 @@ try {
   report.lockSha256 = digest(await readFile(new URL("package-lock.json", import.meta.url)));
   setupStage = "preview-bind";
   server = await preview({ port: 4187 }); // Bind failure is fatal; never reuse an existing server.
+  setupStage = "container-preflight";
+  report.environment = await environment(chromium.executablePath());
+  if (!report.environment.home.owned || !report.environment.home.writable) throw new Error("OWNED_HOME_NOT_READY");
+  if (!report.environment.executable.exists || !report.environment.executable.executable
+    || !report.environment.executable.bundled) throw new Error("BUNDLED_EXECUTABLE_NOT_READY");
   setupStage = "browser-launch";
   browser = await chromium.launch({ channel: "chromium", chromiumSandbox: true, headless: true, timeout: 15000 });
   setupStage = "sandbox-proof";
@@ -91,6 +98,7 @@ try {
   catch { report.failures.push({ fixture: "interactions", code: "INTERACTION_ASSERTION_FAILED" }); }
   report.status = report.failures.length ? "failed" : "candidate-review-required";
 } catch (error) {
+  if (setupStage === "browser-launch") report.launch = launchEvidence(error);
   report.failures.push({ fixture: "setup", stage: setupStage, code: setupFailure(setupStage, error) });
 } finally {
   try { if (browser) await browser.close(); }
