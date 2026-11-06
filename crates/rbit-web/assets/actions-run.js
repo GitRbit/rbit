@@ -56,8 +56,13 @@ document.addEventListener("htmx:afterSwap", event => {
   const xhr = event.detail?.xhr;
   const saved = xhr && pending.get(xhr);
   if (xhr) pending.delete(xhr);
-  if (!saved || saved.run !== runIdentity(location.href) || !polling(event)) return;
-  for (const form of forms(event.detail.target)) {
+  // htmx retains the detached request target in responseInfo after outerHTML.
+  // The event itself is dispatched on the newly inserted, authorized element.
+  const target = event.target;
+  if (!saved || saved.run !== runIdentity(location.href) || !polling(event)
+    || !(target instanceof Element) || target.id !== "run" || !target.isConnected
+    || document.getElementById("run") !== target) return;
+  for (const form of forms(target)) {
     const previous = saved.values.find(item => item.key === formKey(form));
     if (!previous) continue;
     for (const field of fields(form)) {

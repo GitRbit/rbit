@@ -113,6 +113,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Preserve edited Actions review controls after real HTMX outer-element polls, using
+  the newly authorized live element while retaining server permission decisions.
+
 - Refresh the render-time footer from navigation response timing, including HTML
   reused after HTTP revalidation, while preserving HTMX updates and cache validators.
 - Recovery email intake starts once and drains its current operation on shutdown.

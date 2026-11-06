@@ -25,26 +25,29 @@ class Form extends Element {
   querySelector() { return this.environment; }
 }
 class Run extends Element {
-  constructor(forms = []) { super(); this.id = "run"; this.forms = forms; }
+  constructor(forms = []) { super(); this.id = "run"; this.forms = forms; this.isConnected = true; }
   querySelectorAll() { return this.forms; }
 }
 function browser(href = "https://forge.example/owner/repo/actions/runs/1") {
   const listeners = new Map();
-  const document = { body: {}, activeElement: null, addEventListener: (type, listener) => listeners.set(type, listener) };
+  const document = { body: {}, activeElement: null, run: null, getElementById: id => id === "run" ? document.run : null, addEventListener: (type, listener) => listeners.set(type, listener) };
   document.activeElement = document.body;
   const location = new URL(href);
   vm.runInNewContext(source, { Element, document, location, URL });
-  const fire = (name, detail) => listeners.get(name)({ detail });
+  const fire = (name, detail, target = detail.target) => listeners.get(name)({ detail, target });
   return {
     document, location,
     swap(old, next, { status = 200, verb = "get", source = old, path = location.href,
-      responseURL = location.href, headers = {}, boosted = false, beforeAfter = () => {} } = {}) {
+      responseURL = location.href, headers = {}, boosted = false, beforeAfter = () => {}, afterTarget = next } = {}) {
       const xhr = { status, responseURL, getResponseHeader: name => headers[name] ?? null };
       const requestConfig = { verb, elt: source, path, boosted };
+      document.run = old; old.isConnected = true;
       fire("htmx:beforeSwap", { target: old, xhr, requestConfig });
       document.activeElement = document.body; beforeAfter({ xhr, requestConfig });
       for (const form of next.forms) for (const field of form.fields) field.document = document;
-      fire("htmx:afterSwap", { target: next, xhr, requestConfig });
+      old.isConnected = false; next.isConnected = true; document.run = next;
+      // htmx 2.0.11 dispatches on the inserted element and retains responseInfo.target.
+      fire("htmx:afterSwap", { target: old, xhr, requestConfig }, afterTarget);
     },
   };
 }
@@ -136,5 +139,16 @@ test("read-only and inherited fieldset disabled controls remain under the new se
     const page = browser(), field = new Field("comment"); field[property] = true;
     page.swap(new Run([new Form("deployment", [new Field("comment", "draft")])]), new Run([new Form("deployment", [field])]));
     assert.equal(field.value, "");
+  }
+});
+
+
+test("a detached or same-id foreign afterSwap target cannot receive or restore a saved review", () => {
+  for (const detached of [false, true]) {
+    const page = browser(), old = new Run([new Form("deployment", [new Field("comment", "private draft")])]);
+    const fresh = new Field("comment"), next = new Run([new Form("deployment", [fresh])]);
+    const foreignField = new Field("comment"), foreign = new Run([new Form("deployment", [foreignField])]);
+    page.swap(old, next, { afterTarget: detached ? old : foreign });
+    assert.equal(fresh.value, ""); assert.equal(foreignField.value, "");
   }
 });
