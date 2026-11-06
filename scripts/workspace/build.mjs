@@ -1,5 +1,6 @@
 // Shared Cargo execution and exact, generation-specific binary handoff.
 import { spawn, execFileSync } from "node:child_process";
+import { childEnvironment } from "./child-environment.mjs";
 import { createHash, randomUUID } from "node:crypto";
 import { copyFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
@@ -36,7 +37,7 @@ export function cargoProcess(ctx, args, env, onArtifact = () => {}, options = {}
 
 function consumeCargo(ctx, args, env, onArtifact = () => {}, { spawnProcess = spawn, output = process.stdout, diagnostics = process.stderr, onMessage = () => {}, captureStderr = false, verifyCompletion } = {}) {
   return new Promise((done, reject) => {
-    const child = spawnProcess("cargo", args, { cwd: ctx.checkout, env, windowsHide: true, stdio: ["inherit", "pipe", captureStderr ? "pipe" : "inherit"] });
+    const child = spawnProcess("cargo", args, { cwd: ctx.checkout, env: childEnvironment(env), windowsHide: true, stdio: ["inherit", "pipe", captureStderr ? "pipe" : "inherit"] });
     let parseError, spawnError;
     if (captureStderr) child.stderr?.on("data", chunk => { try { diagnostics.write(chunk); } catch (error) { parseError = error; } });
     const lines = createInterface({ input: child.stdout });

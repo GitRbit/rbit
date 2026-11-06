@@ -1,6 +1,7 @@
 // Stable per-worktree development ports, allocated under the same management lease.
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
+import { childEnvironment } from "./child-environment.mjs";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { leased } from "./lease.mjs";
@@ -39,7 +40,7 @@ export async function runtimeEnvironment(ctx, input = process.env) {
     throw new Error("No development port available between 3100 and 3999");
   });
   return {
-    ...input,
+    ...childEnvironment(input),
     RBIT_STORAGE__DATA_DIR: input.RBIT_STORAGE__DATA_DIR ?? data,
     RBIT_SERVER__BIND: input.RBIT_SERVER__BIND ?? `127.0.0.1:${port}`,
     RBIT_SERVER__PUBLIC_URL: input.RBIT_SERVER__PUBLIC_URL ?? `http://localhost:${port}`,

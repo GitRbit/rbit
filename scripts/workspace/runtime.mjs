@@ -1,5 +1,6 @@
 // Runtime generations keep Windows executables relinkable and expose active processes.
 import { randomUUID } from "node:crypto";
+import { childEnvironment } from "./child-environment.mjs";
 import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
@@ -22,7 +23,7 @@ export async function runBinary(ctx, executable, args, env = process.env, {
     const token = randomUUID();
     const stopFile = await guarded(ctx.root, join(dirname(executable), `.stop-${token}`));
     const proofFile = await guarded(ctx.root, join(dirname(executable), `.stopped-${token}`));
-    const child = launch(executable, args, { cwd, env, stdio, stopFile, proofFile, token });
+    const child = launch(executable, args, { cwd, env: childEnvironment(env), stdio, stopFile, proofFile, token });
     child.runtimeCompletion = new Promise((done, reject) => child.once("close", async () => {
       try {
         const verified = await verify(child);
