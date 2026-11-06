@@ -5,6 +5,11 @@ CI permits dependency-cache saves for `pull_request` merge refs and for main-bra
 No write permission, custom token, cache-mode override or privileged follow-up is
 added. Required job names, platform checks and runner smoke commands remain unchanged.
 
+Every CI checkout disables credential persistence. Later compiler, test, Git and
+container commands do not require authenticated Git operations against the source
+repository. This uses the pinned checkout action's documented
+[`persist-credentials` option](https://github.com/actions/checkout/blob/3d3c42e5aac5ba805825da76410c181273ba90b1/README.md).
+
 ## Scope and trust
 
 GitHub stores PR caches under their merge ref. Only that PR can restore them; main
