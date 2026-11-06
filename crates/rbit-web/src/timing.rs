@@ -15,12 +15,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use axum::{
-    extract::Request,
-    http::{HeaderName, HeaderValue},
-    middleware::Next,
-    response::Response,
-};
+use axum::{extract::Request, http::HeaderName, middleware::Next, response::Response};
+
+mod metric;
 
 tokio::task_local! {
     static REQUEST_TIMING: RequestTiming;
@@ -50,12 +47,11 @@ pub async fn track(request: Request, next: Next) -> Response {
             (response, view)
         })
         .await;
-    let millis = start.elapsed().as_secs_f64() * 1_000.0;
-    if let Ok(value) = HeaderValue::from_str(&format!("render;dur={millis:.3}")) {
+    if let Some(value) = metric::total(start.elapsed()) {
         response.headers_mut().append(SERVER_TIMING, value);
     }
     if let Some(view) = view
-        && let Ok(value) = HeaderValue::from_str(&view_metric(view))
+        && let Some(value) = metric::view(view)
     {
         response.headers_mut().append(SERVER_TIMING, value);
     }
@@ -74,6 +70,7 @@ pub fn elapsed() -> Option<String> {
         .ok()
 }
 
+#[cfg(test)]
 fn view_metric(view: Duration) -> String {
     // The footer truncates sub-millisecond durations to whole microseconds. Preserve
     // those digits; larger durations need their fractional precision so later
@@ -111,6 +108,7 @@ pub fn without_render_time(body: &[u8]) -> [&[u8]; 2] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::http::HeaderValue;
 
     #[test]
     fn formats_each_scale() {

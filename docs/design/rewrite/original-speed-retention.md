@@ -172,3 +172,26 @@ Runtime effects still depend on actual release flags/QPSG, cache configuration/s
 permissions, seed size, auth/theme/language, background work and contention. The first
 acceptance evidence remains unchanged work-count tests plus paired idle release runs;
 this audit neither re-ran those tests nor turns identical blobs into a speed claim.
+
+
+## Timing-header formatting follow-up
+
+A source comparison of main `39f932a` and rewrite `128ecfcf` found an additional owned
+formatting buffer in the new `view` Server-Timing metric: `view_metric` built a String,
+then HeaderValue copied its bytes. Main only emitted `render`, whose formatter had
+the same intermediate-buffer pattern. The actual timing middleware now formats both
+metrics into a bounded 64-byte stack writer before creating the final validated owned
+HeaderValue. The old view formatter is test-only reference code. The footer's existing
+String formatting, metric precision, field ordering, HTML caching and borrowed ETag
+inputs remain unchanged. Exact formatter oracles cover microsecond/millisecond
+boundaries and Duration::MAX, alongside the existing real-router 200/304/no-footer
+and interleaved-request timing tests. This removes specific intermediate source work;
+no allocator-count or latency improvement has yet been measured.
+
+The same review followed the extracted SessionApplication resume path and public
+RepositoryDiscovery adapter against main: the former retains one live redb lookup
+plus the combined SQL SessionUser projection and conditional renewal, and the latter
+retains count-before-clamp-before-search ordering. The migrated issue creation and
+label adapters preserve their existing store calls and ordered effects. No additional
+query or removed cache fast path was identified in these reviewed paths; this is a
+bounded source review, not an exhaustive or runtime performance claim.
