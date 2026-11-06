@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { setupFailure } from "../../devtools/actions-visual/diagnostics.mjs";
 import test from "node:test";
-import { mkdtemp, writeFile, rm, symlink } from "node:fs/promises";
+import { mkdtemp, writeFile, rm, symlink, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { allowedRequest, sandboxProof, cases, artifactBudget } from "../../devtools/actions-visual/policy.mjs";
@@ -115,7 +115,7 @@ test("mount preparation refuses caller escape and linked ancestors below the anc
   const directory = await mkdtemp(join(tmpdir(), "rbit-visual-mount-"));
   try {
     await writeFile(join(directory, "app.css"), "public");
-    assert.equal(await checkedMount(directory, "app.css"), join(directory, "app.css"));
+    assert.equal(await checkedMount(directory, "app.css"), await realpath(join(directory, "app.css")));
     await assert.rejects(checkedMount(directory, "../outside"), /MOUNT_ESCAPE/);
     await assert.rejects(checkedMount(directory, directory), /MOUNT_ESCAPE/);
     if (process.platform !== "win32") {
