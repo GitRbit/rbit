@@ -4368,6 +4368,7 @@ dependencies = [
  "mimalloc",
  "rbit-core",
  "rbit-git",
+ "rbit-kernel",
  "rbit-services",
  "rbit-ssh",
  "rbit-storage",

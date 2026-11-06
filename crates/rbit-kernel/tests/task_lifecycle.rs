@@ -109,3 +109,52 @@ fn start_outside_runtime_panics_without_consuming_the_owner() {
     assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| owner.start(async {}))).is_err());
     assert_eq!(owner.state(), TaskState::Idle);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn drain_waits_for_the_worker_future_to_release_its_resources() {
+    use std::{
+        future::Future,
+        pin::Pin,
+        sync::{atomic::AtomicBool, mpsc},
+        task::{Context, Poll},
+        time::Duration,
+    };
+
+    struct DropProbe {
+        entered: Option<tokio::sync::oneshot::Sender<()>>,
+        release: mpsc::Receiver<()>,
+        destroyed: Arc<AtomicBool>,
+    }
+    impl Future for DropProbe {
+        type Output = ();
+        fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<()> {
+            Poll::Ready(())
+        }
+    }
+    impl Drop for DropProbe {
+        fn drop(&mut self) {
+            self.entered.take().unwrap().send(()).unwrap();
+            self.release.recv_timeout(Duration::from_secs(10)).unwrap();
+            self.destroyed.store(true, Ordering::SeqCst);
+        }
+    }
+
+    let owner = TaskLifecycle::new();
+    let (entered, destroying) = tokio::sync::oneshot::channel();
+    let (release, wait) = mpsc::channel();
+    let destroyed = Arc::new(AtomicBool::new(false));
+    owner.start(DropProbe { entered: Some(entered), release: wait, destroyed: Arc::clone(&destroyed) });
+    destroying.await.unwrap();
+    let mut draining = Box::pin(owner.shutdown());
+    tokio::select! {
+        biased;
+        () = &mut draining => panic!("drain returned while the worker's resources were still being destroyed"),
+        () = tokio::task::yield_now() => {},
+    }
+    assert_eq!(owner.state(), TaskState::Stopping);
+    assert!(!destroyed.load(Ordering::SeqCst));
+    release.send(()).unwrap();
+    draining.await;
+    assert!(destroyed.load(Ordering::SeqCst));
+    assert_eq!(owner.state(), TaskState::Stopped);
+}

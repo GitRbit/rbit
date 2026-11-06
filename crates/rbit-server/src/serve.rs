@@ -1,6 +1,6 @@
 //! Wiring: open storage, build services, run the HTTP server, shut down cleanly.
 
-use std::{io::BufRead, sync::Arc, time::Duration};
+use std::{io::BufRead, sync::Arc};
 
 use anyhow::Context;
 use axum::serve::{ListenerExt, TapIo};
@@ -10,8 +10,8 @@ use rbit_storage::{Database, KvStore};
 use rbit_web::AppState;
 use tokio::net::{TcpListener, TcpStream};
 
-/// How often expired sessions are purged from the key/value store.
-const SESSION_PURGE_INTERVAL: Duration = Duration::from_hours(1);
+mod session_purger;
+use session_purger::spawn_session_purger;
 
 /// Opened persistent stores.
 struct Storage {
@@ -40,6 +40,11 @@ pub async fn run(config: Config) -> anyhow::Result<bool> {
     rbit_web::assets::ensure_built().map_err(anyhow::Error::msg)?;
     let config = Arc::new(config);
     let storage = open_storage(&config).await?;
+
+    // Bind before composing features or starting long-lived tasks. A bind error must not
+    // leave background subscribers or an SSH listener behind in an embedding runtime.
+    let listener =
+        http_listener(TcpListener::bind(config.server.bind).await.with_context(|| format!("cannot bind {}", config.server.bind))?);
     let services = Services::new(Arc::clone(&config), &storage.database, &storage.kv).await?;
 
     let purger = spawn_session_purger(storage.kv.clone());
@@ -47,15 +52,13 @@ pub async fn run(config: Config) -> anyhow::Result<bool> {
     let background = services.clone();
     let state = AppState::new(Arc::clone(&config), services);
     let mut restart = state.restart.subscribe();
-    let ssh = crate::ssh::start(&config, &background, restart.clone());
+    let ssh = crate::ssh::start(&config, &background, restart.clone(), purger.stop_signal());
     let app = rbit_web::router(state);
-    let listener =
-        http_listener(TcpListener::bind(config.server.bind).await.with_context(|| format!("cannot bind {}", config.server.bind))?);
     tracing::info!(address = %config.server.bind, public_url = %config.server.public_url, data_dir = %config.storage.data_dir.display(), process_id = std::process::id(), "rbit is listening");
     log_setup_token(&config, &background);
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
-    axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>())
+    let served = axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>())
         .with_graceful_shutdown(async move {
             let restarting = tokio::select! {
                 () = shutdown_signal() => false,
@@ -64,17 +67,23 @@ pub async fn run(config: Config) -> anyhow::Result<bool> {
             let _ = shutdown_tx.send(restarting);
         })
         .await
-        .context("server error")?;
+        .context("server error");
 
     tracing::info!("shutting down");
-    purger.abort();
-    let _ = purger.await;
-    if let Some(ssh) = ssh {
-        let _ = ssh.await;
+    purger.request_stop();
+    purger.shutdown().await;
+    if purger.state() == rbit_kernel::TaskState::Failed {
+        tracing::error!("session purger failed before shutdown completed");
+    }
+    if let Some(ssh) = ssh
+        && let Err(error) = ssh.await
+    {
+        tracing::warn!(%error, "SSH host task failed during shutdown");
     }
     // Stop background work before closing the stores it writes to.
     background.shutdown().await;
     storage.database.close().await;
+    served?;
     Ok(shutdown_rx.await.unwrap_or(false))
 }
 
@@ -131,20 +140,6 @@ fn disable_nagle(stream: &mut TcpStream) {
     }
 }
 
-fn spawn_session_purger(kv: KvStore) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(SESSION_PURGE_INTERVAL);
-        loop {
-            interval.tick().await;
-            match kv.sessions().purge_expired().await {
-                Ok(0) => {}
-                Ok(removed) => tracing::info!(removed, "purged expired sessions"),
-                Err(error) => tracing::warn!(%error, "session purge failed"),
-            }
-        }
-    })
-}
-
 /// Resolves on Ctrl+C, or SIGTERM on Unix (as sent by systemd and container runtimes).
 async fn shutdown_signal() {
     let ctrl_c = async {
@@ -179,5 +174,19 @@ mod tests {
         let _client = tokio::net::TcpStream::connect(address).await.unwrap();
         let (stream, _) = listener.accept().await;
         assert!(stream.nodelay().unwrap());
+    }
+
+    #[tokio::test]
+    async fn bind_failure_does_not_leave_background_owners_holding_stores() {
+        let dir = tempfile::tempdir().unwrap();
+        let occupied = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut config = Config::default();
+        config.storage.data_dir = dir.path().to_path_buf();
+        config.server.bind = occupied.local_addr().unwrap();
+        let kv_path = config.storage.kv_path();
+        let error = run(config).await.unwrap_err();
+        assert!(error.to_string().contains("cannot bind"), "{error:#}");
+        // A spawned subscriber/purger would retain redb's exclusive open handle.
+        KvStore::open(&kv_path).unwrap();
     }
 }

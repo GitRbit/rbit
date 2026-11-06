@@ -352,7 +352,8 @@ impl Services {
     }
 
     /// Stops background work (jobs, webhook deliveries, mirror fetches, release clean-up,
-    /// commit references, notifications, merges) and waits, bounded, for it to finish.
+    /// commit references, notifications, merges) and waits according to each owner's
+    /// drain contract. Recovery finishes its current operation without an implicit timeout.
     /// Call during graceful shutdown, before closing the stores.
     pub async fn shutdown(&self) {
         self.passwords.close();
@@ -362,6 +363,7 @@ impl Services {
         );
         tokio::join!(
             self.updates.shutdown(),
+            self.recovery.shutdown(),
             self.jobs.shutdown(),
             self.webhooks.shutdown(),
             self.releases.shutdown(),

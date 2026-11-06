@@ -10,6 +10,7 @@ use rbit_auth::{Passwords, SessionToken};
 use rbit_identity::PasswordWork;
 use rbit_kernel::BlockingBudget;
 
+mod lifecycle;
 mod password_changes;
 use rbit_core::{
     AccountId, Config, Timestamp, User,
@@ -60,7 +61,7 @@ impl RequestThrottle for RecordingThrottle {
 }
 
 struct Fixture {
-    _dir: tempfile::TempDir,
+    dir: tempfile::TempDir,
     database: Database,
     services: Services,
     recovery: RecoveryService,
@@ -105,7 +106,7 @@ impl Fixture {
         if transport != MailTransport::Disabled {
             builder = builder.mail(MailService::with_mailer(Arc::new(outbox.clone()), Duration::from_secs(5)));
         }
-        Self { _dir: dir, database, recovery: builder.build(), services, outbox, throttle, passwords }
+        Self { dir, database, recovery: builder.build(), services, outbox, throttle, passwords }
     }
 
     /// A user with a real password, created directly (publishes no event).

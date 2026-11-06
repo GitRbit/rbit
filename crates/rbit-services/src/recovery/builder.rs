@@ -50,6 +50,7 @@ impl RecoveryServiceBuilder {
     pub fn build(self) -> RecoveryService {
         let ctx = self.ctx;
         RecoveryService {
+            background: rbit_kernel::TaskLifecycle::new(),
             passwords: self.passwords,
             mail: self.mail.unwrap_or_else(|| MailService::new(ctx.clone())),
             throttle: self.throttle.unwrap_or_else(|| Arc::new(ThrottleService::new(ctx.clone()))),

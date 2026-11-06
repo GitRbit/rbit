@@ -31,6 +31,12 @@ The session purger finishes a started purge before acknowledging stop. SSH keeps
 its existing signal/restart handling and also observes the host stop signal so an
 HTTP serving error cannot leave its listener waiting forever.
 
+Awaiting the SSH listener is not yet proof that all connection descendants or
+detached Git sessions have drained. Those existing child-task ownership gaps need
+their own tracked cancellation and join acceptance; this slice's drain guarantee
+applies to the migrated recovery subscriber and session purger. Mail delivery and
+other feature workers likewise retain their existing contracts pending migration.
+
 Future migrations should adopt the primitive where they resolve an actual
 ownership gap. Existing feature-specific job deadlines, subprocess cancellation,
 disabled startup and transport health semantics remain feature responsibilities.

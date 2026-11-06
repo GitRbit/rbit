@@ -9,10 +9,10 @@
 //! * **Password reset** — [`RecoveryService::request_password_reset`] answers the same way
 //!   whether or not an account uses the address, so it can't be used to discover who has an
 //!   account. The link is valid for an hour and works once; completing it publishes
-//!   [`DomainEvent::PasswordChanged`] after revoking sessions and, since it proves
+//!   [`crate::DomainEvent::PasswordChanged`] after revoking sessions and, since it proves
 //!   control of the mailbox, also verifies the address. Suspended users can't reset.
-//! * **Verification** — sent when an account is created ([`DomainEvent::UserSignedUp`]) and
-//!   when its address changes ([`DomainEvent::EmailChanged`], which also notifies the previous
+//! * **Verification** — sent when an account is created ([`crate::DomainEvent::UserSignedUp`]) and
+//!   when its address changes ([`crate::DomainEvent::EmailChanged`], which also notifies the previous
 //!   address), or on request from the account settings.
 //!
 //! Requests that make the server send mail are throttled with [`ThrottleScope::EmailRequest`],
@@ -23,17 +23,19 @@ use std::{collections::HashSet, fmt, sync::Arc};
 use rbit_auth::SessionToken;
 use rbit_core::{AccountId, Email, Timestamp, User};
 use rbit_identity::PasswordWork;
+use rbit_kernel::TaskLifecycle;
 use rbit_mail::{
     Mail,
-    messages::{EmailChanged, PasswordReset, VerifyEmail, VerifyReason, mask_address},
+    messages::{PasswordReset, VerifyReason},
 };
 use rbit_storage::sqlite::recovery::{NewEmailToken, RecoveryAccount, RecoveryStore, TokenPurpose};
-use tokio::sync::broadcast::error::RecvError;
 
 use crate::audit::{AuditAction, AuditEntry, AuditService};
-use crate::{AccountService, DomainEvent, InstanceService, MailService, ServiceContext, ServiceError, ThrottleScope, ThrottleService};
+use crate::{AccountService, InstanceService, MailService, ServiceContext, ServiceError, ThrottleScope, ThrottleService};
 
+mod background;
 mod builder;
+mod email_events;
 mod password_changes;
 pub use builder::RecoveryServiceBuilder;
 
@@ -91,6 +93,7 @@ pub struct VerifiedEmail {
 
 #[derive(Debug, Clone)]
 pub struct RecoveryService {
+    background: TaskLifecycle,
     passwords: PasswordWork,
     ctx: ServiceContext,
     mail: MailService,
@@ -212,17 +215,7 @@ impl RecoveryService {
     }
 
     async fn send_verification(&self, account: &RecoveryAccount, reason: VerifyReason) -> Result<(), ServiceError> {
-        let token = self.issue(account, TokenPurpose::Verify, VERIFY_LIFETIME_SECONDS).await?;
-        let message = VerifyEmail {
-            site_name: self.site_name(),
-            base_url: self.base_url().to_owned(),
-            username: account.name.to_string(),
-            link: format!("{}/email/verify/{token}", self.base_url()),
-            valid_for: "2 days".to_owned(),
-            reason,
-        };
-        self.mail.queue(Mail::render(account.email.clone(), &message).map_err(ServiceError::internal)?).await;
-        Ok(())
+        self.email_events().send_verification(account, reason).await
     }
 
     // ------------------------------------------------------------------ administration
@@ -243,85 +236,6 @@ impl RecoveryService {
         Ok(account.email)
     }
 
-    // ------------------------------------------------------------------ background
-
-    /// Starts this service's background subscribers. Called once at server start-up.
-    ///
-    /// Sends a verification link when an account is created, and when an address changes a
-    /// link to the new address plus a notice to the previous one.
-    pub fn spawn_background(&self) {
-        if !self.email_available() {
-            tracing::info!("email is disabled; addresses will not be verified");
-            return;
-        }
-        let mut events = self.ctx.events.subscribe();
-        let service = self.clone();
-        tokio::spawn(async move {
-            loop {
-                match events.recv().await {
-                    Ok(event) => {
-                        if let Err(error) = service.handle(&event).await {
-                            tracing::warn!(?event, %error, "could not send email for event");
-                        }
-                    }
-                    Err(RecvError::Lagged(skipped)) => tracing::warn!(skipped, "email subscriber fell behind; events skipped"),
-                    Err(RecvError::Closed) => break,
-                }
-            }
-        });
-    }
-
-    /// Reacts to one domain event. Public so tests can drive it without timing games.
-    pub async fn handle(&self, event: &DomainEvent) -> Result<(), ServiceError> {
-        match event {
-            DomainEvent::UserSignedUp { user } => {
-                let Some(account) = self.store().find_account(*user).await? else { return Ok(()) };
-                // Milestone 3 (O): accounts registered through a provider that verified
-                // the address start verified; there is nothing to confirm.
-                if account.email_verified_at.is_some() {
-                    return Ok(());
-                }
-                self.send_verification(&account, VerifyReason::SignUp).await
-            }
-            DomainEvent::EmailChanged { user, previous } => {
-                let Some(account) = self.store().find_account(*user).await? else { return Ok(()) };
-                if account.email.as_str().eq_ignore_ascii_case(previous) {
-                    return Ok(());
-                }
-                self.send_verification(&account, VerifyReason::Changed).await?;
-                self.notify_previous_address(&account, previous)
-            }
-            DomainEvent::RepositoryPushed { .. }
-            | DomainEvent::RepositoryCreated { .. }
-            | DomainEvent::RepositoryDeleted { .. }
-            | DomainEvent::RepositoryTransferred { .. }
-            | DomainEvent::RepositoryArchived { .. }
-            | DomainEvent::RepositoryForked { .. }
-            | DomainEvent::ReleasePublished { .. }
-            | DomainEvent::PasswordChanged { .. }
-            | DomainEvent::Issue { .. }
-            | DomainEvent::IssueComment { .. }
-            | DomainEvent::PullRequestReview { .. }
-            | DomainEvent::CollaboratorChanged { .. }
-            | DomainEvent::CommitStatus { .. }
-            // Actions: integration (I).
-            | DomainEvent::ActionsRun { .. }
-            | DomainEvent::ActionsJob { .. } => Ok(()),
-        }
-    }
-
-    fn notify_previous_address(&self, account: &RecoveryAccount, previous: &str) -> Result<(), ServiceError> {
-        let Ok(previous) = previous.parse::<Email>() else { return Ok(()) };
-        let message = EmailChanged {
-            site_name: self.site_name(),
-            base_url: self.base_url().to_owned(),
-            username: account.name.to_string(),
-            new_address: mask_address(account.email.as_str()),
-        };
-        self.mail.send(Mail::render(previous, &message).map_err(ServiceError::internal)?);
-        Ok(())
-    }
-
     // ------------------------------------------------------------------ helpers
 
     async fn password_changed(&self, user: AccountId) -> Result<(), ServiceError> {
@@ -333,18 +247,9 @@ impl RecoveryService {
         Ok(())
     }
 
-    /// Stores a new token for the account's current address and returns the secret for the link.
+    /// Stores a new token for the current address and returns its link secret.
     async fn issue(&self, account: &RecoveryAccount, purpose: TokenPurpose, lifetime: i64) -> Result<String, ServiceError> {
-        let secret = SessionToken::generate();
-        let token = NewEmailToken {
-            digest: secret.digest(),
-            account_id: account.id,
-            purpose,
-            email: account.email.clone(),
-            expires_at: Timestamp(Timestamp::now().seconds() + lifetime),
-        };
-        self.store().insert(&token).await?;
-        Ok(secret.encode())
+        issue_token(&self.store(), account, purpose, lifetime).await
     }
 
     fn site_name(&self) -> String {
@@ -381,6 +286,24 @@ fn validate_password(min: usize, password: &str) -> Result<(), ServiceError> {
         return Err(ServiceError::Invalid(format!("password must be at most {MAX_PASSWORD_LEN} characters")));
     }
     Ok(())
+}
+
+async fn issue_token(
+    store: &RecoveryStore,
+    account: &RecoveryAccount,
+    purpose: TokenPurpose,
+    lifetime: i64,
+) -> Result<String, ServiceError> {
+    let secret = SessionToken::generate();
+    let token = NewEmailToken {
+        digest: secret.digest(),
+        account_id: account.id,
+        purpose,
+        email: account.email.clone(),
+        expires_at: Timestamp(Timestamp::now().seconds() + lifetime),
+    };
+    store.insert(&token).await?;
+    Ok(secret.encode())
 }
 
 #[cfg(test)]

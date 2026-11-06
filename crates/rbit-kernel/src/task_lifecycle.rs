@@ -12,9 +12,11 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 pub enum TaskState {
     /// The owner has not started a task.
     Idle,
+    /// The task was admitted and has not completed.
     Running,
     /// Cancellation was requested, but task completion has not been observed.
     Stopping,
+    /// No task was started, or its future returned normally.
     Stopped,
     /// The task unwound or was dropped before normal completion.
     Failed,
@@ -50,6 +52,7 @@ struct Inner {
 }
 
 impl TaskLifecycle {
+    /// Creates an idle owner without starting a task or requiring a runtime.
     pub fn new() -> Self {
         Self(Arc::new(Inner {
             gate: Mutex::new(()),
@@ -64,6 +67,7 @@ impl TaskLifecycle {
         *self.0.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
+    /// Returns cooperative cancellation without granting start or stop authority.
     pub fn stop_signal(&self) -> TaskStop {
         TaskStop(self.0.cancel.clone())
     }
