@@ -17,6 +17,13 @@ const reasons = [
   ["NAMESPACE_DENIED", /(?:new namespace|unshare)[^\r\n]{0,512}(?:operation not permitted|permission denied|EPERM)/i],
   ["NO_USABLE_SANDBOX", /no usable sandbox/i],
   ["SUID_HELPER_INVALID", /SUID sandbox helper[^\r\n]{0,256}not configured correctly/i],
+  ["ZYGOTE_PREMATURE_EXIT", /zygote process.{0,32}prematurely/i],
+  ["ZYGOTE_BOOT_FAILED", /boot message.{0,32}zygote/i],
+  ["ZYGOTE_HELLO_FAILED", /hello message.{0,32}zygote/i],
+  ["ZYGOTE_LAUNCH_FAILED", /launch zygote process/i],
+  ["ZYGOTE_PID_INVALID", /invalid process ID.{0,32}zygote/i],
+  ["SUID_HELPER_NOT_ROOT", /setuid sandbox.{0,32}not running as root/i],
+  ["SUID_NO_NEW_PRIVILEGES", /(?:parent process|setuid sandbox).{0,128}PR_SET_NO_NEW_PRIVS/i],
   ["ZYGOTE_FORK_FAILED", /zygote[^\r\n]{0,128}(?:could not fork|failed to fork)/i],
   ["PROFILE_SINGLETON_FAILED", /failed to create a ProcessSingleton/i],
   ["PROFILE_CREATE_FAILED", /failed to create[^\r\n]{0,128}(?:user data directory|SingletonLock)/i],
@@ -37,14 +44,23 @@ export function launchEvidence(error) {
       exit = { parsed: true, code, signal };
     }
   }
-  const seenSources = new Set(), seenReasons = new Set();
+  const seenSources = new Set(), seenReasons = new Set(), locations = new Map();
+  let zygoteExit = null;
   const stderr = bounded.split(/\r?\n/).filter(line => /\[pid=\d+\]\[err\]/.test(line));
   for (const line of stderr) {
     for (const [file, category] of sources) {
-      if (line.includes(`${file}:`)) seenSources.add(category);
+      const location = line.match(new RegExp(`(?:^|[\\/:\\s])${file.replaceAll(".", "\\.")}:(\\d{1,6})\\]`));
+      if (location) {
+        seenSources.add(category);
+        const severity = line.match(/:(INFO|WARNING|ERROR|FATAL):/)?.[1] ?? null;
+        const number = Number(location[1]);
+        if (locations.size < 32) locations.set(`${category}:${number}:${severity}`, { source: category, line: number, severity });
+      }
     }
     for (const [reason, pattern] of reasons) if (pattern.test(line)) seenReasons.add(reason);
+    const child = line.match(/zygote process.{0,32}prematurely.{0,32}exit code (\d{1,3}) \((namespace|setuid) sandbox\b/i);
+    if (child && Number(child[1]) <= 255) zygoteExit = { code: Number(child[1]), sandbox: child[2].toLowerCase() };
   }
   return { exit, stderrSources: [...seenSources].sort(), stderrReasons: [...seenReasons].sort(),
-    stderrLinesObserved: stderr.length };
+    stderrLinesObserved: stderr.length, stderrLocations: [...locations.values()], zygoteExit };
 }

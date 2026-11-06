@@ -3,6 +3,7 @@ import test from "node:test";
 import { chmod, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setupFailure } from "../../devtools/actions-visual/diagnostics.mjs";
 import { launchEvidence } from "../../devtools/actions-visual/launch-evidence.mjs";
 import { integerSetting, prepareHome, processSettings } from "../../devtools/actions-visual/environment.mjs";
 import { seccompPolicy } from "../../devtools/actions-visual/seccomp.mjs";
@@ -17,7 +18,8 @@ test("bounded Playwright exit evidence and Chromium stderr retain only allowed s
     "[pid=123] <process did exit: exitCode=133, signal=null>",
   ].join("\n")));
   assert.deepEqual(evidence, { exit: { parsed: true, code: 133, signal: null },
-    stderrSources: ["DBUS", "THREAD_PLATFORM"], stderrReasons: ["DBUS_CONNECTION_FAILED", "THREAD_CREATE_EPERM"], stderrLinesObserved: 3 });
+    stderrSources: ["DBUS", "THREAD_PLATFORM"], stderrReasons: ["DBUS_CONNECTION_FAILED", "THREAD_CREATE_EPERM"], stderrLinesObserved: 3,
+    stderrLocations: [{ source: "THREAD_PLATFORM", line: 162, severity: "FATAL" }, { source: "DBUS", line: 408, severity: "ERROR" }], zygoteExit: null });
   assert.equal(JSON.stringify(evidence).includes(secret), false);
   assert.equal(JSON.stringify(evidence).includes("private_file"), false);
   assert.deepEqual(launchEvidence(new Error("<process did exit: exitCode=null, signal=SIGSYS>")).exit,
@@ -32,7 +34,7 @@ test("unknown and malformed exit data cannot become arbitrary retained fields", 
   }
   const message = "x".repeat(200000) + "\n[pid=7][err] chrome_crashpad_handler: --database is required\n<process did exit: exitCode=1, signal=null>";
   assert.deepEqual(launchEvidence(new Error(message)).stderrReasons, ["CRASHPAD_DATABASE_REQUIRED"]);
-  assert.deepEqual(launchEvidence(undefined), { exit: { parsed: false }, stderrSources: [], stderrReasons: [], stderrLinesObserved: 0 });
+  assert.deepEqual(launchEvidence(undefined), { exit: { parsed: false }, stderrSources: [], stderrReasons: [], stderrLinesObserved: 0, stderrLocations: [], zygoteExit: null });
 });
 
 test("kernel observations parse only expected numeric fields and omit unrelated process text", () => {
@@ -75,4 +77,23 @@ test("pinned upstream policy observation remains exact, with clone3 still denied
   assert.equal(policy.defaultErrnoRet, undefined);
   assert.equal(policy.syscalls.some(rule => rule.names.includes("clone3")), false);
   assert.deepEqual(policy.syscalls[0].names, ["clone", "setns", "unshare"]);
+});
+
+test("zygote failures retain known source locations and bounded child exit mode without stderr", () => {
+  const secret = "private path and credential value";
+  const error = new Error([
+    `[pid=42][err] [42:42:FATAL:content/browser/zygote_host/zygote_host_impl_linux.cc:222] Zygote process exited prematurely with exit code 1 (setuid sandbox: ${secret})`,
+    `[pid=42][err] The setuid sandbox is not running as root. ${secret}`,
+    `[pid=42][err] A parent process that set PR_SET_NO_NEW_PRIVS ${secret}`,
+    "[pid=42] <process did exit: exitCode=null, signal=SIGABRT>",
+  ].join("\n"));
+  const evidence = launchEvidence(error);
+  assert.equal(setupFailure("browser-launch", error), "BROWSER_ZYGOTE_PREMATURE_EXIT");
+  assert.deepEqual(evidence.zygoteExit, { code: 1, sandbox: "setuid" });
+  assert.deepEqual(evidence.stderrSources, ["ZYGOTE_HOST"]);
+  assert.deepEqual(evidence.stderrLocations, [{ source: "ZYGOTE_HOST", line: 222, severity: "FATAL" }]);
+  assert.deepEqual(evidence.stderrReasons, ["SUID_HELPER_NOT_ROOT", "SUID_NO_NEW_PRIVILEGES", "ZYGOTE_PREMATURE_EXIT"]);
+  assert.equal(JSON.stringify(evidence).includes(secret), false);
+  const malformed = launchEvidence(new Error("[pid=42][err] Zygote process exited prematurely with exit code 999 (unknown sandbox)"));
+  assert.equal(malformed.zygoteExit, null);
 });

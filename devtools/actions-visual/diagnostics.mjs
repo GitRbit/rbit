@@ -13,6 +13,10 @@ const launch = [
   ["BROWSER_DISPLAY_UNAVAILABLE", /missing X server|cannot open display/i],
   ["BROWSER_LAUNCH_TIMEOUT", /timeout \d+ms exceeded|browser.*launch.*timed out/i],
   ["BROWSER_SIGNAL_TRAP", /signal=SIGTRAP|signal SIGTRAP/i],
+  ["BROWSER_ZYGOTE_PREMATURE_EXIT", /zygote process.{0,32}prematurely/i],
+  ["BROWSER_ZYGOTE_BOOT_FAILED", /boot message.{0,32}zygote/i],
+  ["BROWSER_ZYGOTE_HELLO_FAILED", /hello message.{0,32}zygote/i],
+  ["BROWSER_ZYGOTE_LAUNCH_FAILED", /launch zygote process/i],
   ["BROWSER_EXITED_BEFORE_READY", /target page, context or browser has been closed|browser closed/i],
 ];
 export function setupFailure(stage, error) {

@@ -137,3 +137,14 @@ compatibility difference, not an established cause of the failed CI launches.
 This diagnostic atom changes no syscall rule. Any later narrowly justified errno
 compatibility adjustment needs separate review and exact-delta tests; permitting
 clone3, disabling sandbox controls or broadening host privileges is not a fallback.
+
+The latest retained failure reached browser launch with a nonroot UID, private
+writable HOME, bundled executable, NNP/seccomp and zero effective capabilities,
+then aborted in the zygote host before any browser sandbox proof. The observed
+AppArmor userns-restriction setting alone does not prove an LSM denial. Zygote
+boot/hello/premature-exit categories and bounded numeric known-source locations
+now distinguish these failure sites; a known child exit may identify namespace
+versus setuid mode. Numeric source lines correspond to the pinned
+[Chromium zygote host](https://github.com/chromium/chromium/blob/158.0.8127.18/content/browser/zygote_host/zygote_host_impl_linux.cc),
+not copied private paths. No host or syscall policy change follows from an
+unclassified abort, and no setuid or sandbox-disabling fallback is enabled.
