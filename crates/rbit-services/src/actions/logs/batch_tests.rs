@@ -153,7 +153,7 @@ fn expiry_and_empty_requests_do_no_file_io_and_truncation_keeps_indexed_cursor()
     let mut work = ReadWork::default();
     let expired = LogSnapshot { state: LogState::Expired, live: false, ..snapshot };
     assert!(read_windows(&files, expired, &requests, &mut work).unwrap()[0].expired);
-    assert!(read_windows(&files, snapshot, &[], &mut work).unwrap().is_empty());
+    assert_eq!(read_windows(&files, snapshot, &[], &mut work).unwrap(), Vec::<LogWindow>::new());
     assert_eq!(work, ReadWork::default());
     let progress = append_lines(
         &files,
