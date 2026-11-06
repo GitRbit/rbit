@@ -1,10 +1,17 @@
 import { allowedRequest } from "./policy.mjs";
-export async function contain(context, allow = allowedRequest) {
-  const faults = [];
+export async function contain(context, allow = allowedRequest, allowedPost, faults = []) {
   // Only stable categories are retained; URLs, page text and stacks are never logged.
-  await context.route("**/*", route => {
+  await context.route("**/*", async route => {
     const request = route.request();
-    if (allow(request.url(), request.method())) return route.continue();
+    // Only the synthetic language form may mutate. Read the two validation
+    // headers explicitly; never enumerate or retain cookies/authorization headers.
+    const form = request.method() === "POST" ? { body: request.postData?.() ?? null,
+      contentType: await request.headerValue?.("content-type") ?? null,
+      origin: await request.headerValue?.("origin") ?? null } : undefined;
+    if (allow(request.url(), request.method(), form)) {
+      if (request.method() !== "POST") return route.continue();
+      if (allowedPost) return allowedPost(route, request);
+    }
     faults.push("unexpected-request");
     return route.abort("blockedbyclient");
   });

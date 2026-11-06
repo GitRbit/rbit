@@ -15,6 +15,7 @@ import { fixtureLimits, productionBinary, productionAssetRoot } from "./producti
 import { ProductionFixture } from "./production-process.mjs";
 import { productionChecks } from "./production-checks.mjs";
 import { overviewChecks } from "./production-overview.mjs";
+import { languageChecks } from "./production-language.mjs";
 import { jobChecks } from "./production-job.mjs";
 
 const started = performance.now();
@@ -27,7 +28,7 @@ const fixtureErrors = new Set(["FIXTURE_FILE_REFUSED", "FIXTURE_FILE_DRIFT", "FI
   "FIXTURE_ASSET_DIRECTORY_REFUSED", "FIXTURE_ASSET_LINK_REFUSED", "FIXTURE_ASSET_LIMIT", "FIXTURE_REQUIRED_ASSET_MISSING",
   "FIXTURE_READY_REFUSED", "FIXTURE_OUTPUT_LIMIT", "FIXTURE_SPAWN_FAILED", "FIXTURE_EXITED_BEFORE_READY",
   "FIXTURE_READY_TIMEOUT", "FIXTURE_EXITED_EARLY", "FIXTURE_AUTH_NOT_READY", "FIXTURE_CONTROL_REFUSED",
-  "FIXTURE_STOP_REFUSED", "FIXTURE_CLOSE_UNPROVED", "FIXTURE_FORCED_STOP", "FIXTURE_EXIT_REFUSED", "PRODUCTION_CONTEXT_CLOSE_FAILED"]);
+  "FIXTURE_STOP_REFUSED", "FIXTURE_CLOSE_UNPROVED", "FIXTURE_FORCED_STOP", "FIXTURE_EXIT_REFUSED", "PRODUCTION_CONTEXT_CLOSE_FAILED", "PRODUCTION_LANGUAGE_CHAIN_UNPROVED"]);
 function code(error) {
   if (error?.code === "ERR_ASSERTION") return "ASSERTION_FAILED";
   if (fixtureErrors.has(error?.message)) return error.message;
@@ -81,6 +82,7 @@ try {
   await overviewChecks(browser, fixture, capture, value => { stage = value; });
   await jobChecks(browser, fixture, capture, value => { stage = value; }, value => { report.logChecks = value; });
   await productionChecks(browser, fixture, capture, value => { stage = value; });
+  await languageChecks(browser, fixture, capture, value => { stage = value; });
   report.status = "candidate-review-required";
 } catch (error) {
   if (error instanceof SandboxVerificationError) report.sandboxVerification = error.evidence;

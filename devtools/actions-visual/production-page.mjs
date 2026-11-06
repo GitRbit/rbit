@@ -1,18 +1,21 @@
 // Shared contained production page ownership and fixed-route navigation.
 import assert from "node:assert/strict";
 import { productionOrigin, allowedProductionRequest } from "./production-policy.mjs";
+import { languageTransport } from "./production-language-transport.mjs";
 import { contain } from "./containment.mjs";
 
-async function context(browser, fixture, { width, rtl = false, dark = false, javascript = true }) {
-  const result = await browser.newContext({ viewport: { width, height: 1000 }, locale: rtl ? "ar-XB" : "en-US", timezoneId: "UTC",
+async function context(browser, fixture, { width, rtl = false, dark = false, javascript = true, spanish = false }) {
+  const result = await browser.newContext({ viewport: { width, height: 1000 }, locale: rtl ? "ar-XB" : spanish ? "es-ES" : "en-US", timezoneId: "UTC",
     reducedMotion: "reduce", deviceScaleFactor: 1, serviceWorkers: "block", javaScriptEnabled: javascript,
-    colorScheme: dark ? "dark" : "light", extraHTTPHeaders: { "Accept-Language": rtl ? "ar-XB" : "en" } });
+    colorScheme: dark ? "dark" : "light", extraHTTPHeaders: { "Accept-Language": rtl ? "ar-XB" : spanish ? "es" : "en" } });
   result.setDefaultTimeout(10000); result.setDefaultNavigationTimeout(10000);
   try {
     await fixture.authenticate(result);
     await result.addCookies([{ name: "rbit-theme", value: dark ? "dna-dark" : "dna-day", url: productionOrigin }]);
-    const faults = await contain(result, allowedProductionRequest);
-    return { context: result, faults };
+    const faults = [];
+    const transport = languageTransport(result, faults);
+    await contain(result, allowedProductionRequest, transport.post, faults);
+    return { context: result, faults, transport };
   } catch (error) {
     try { await result.close(); } catch { /* The outer browser owner still closes on this failed setup. */ }
     throw error;
@@ -27,7 +30,10 @@ export async function checkPage(page, faults, javascript = true) {
 export async function session(browser, fixture, options, operation) {
   const owned = await context(browser, fixture, options);
   let failure;
-  try { await operation(await owned.context.newPage(), owned.faults); }
+  try {
+    await operation(await owned.context.newPage(), owned.faults);
+    owned.transport.complete();
+  }
   catch (error) { failure = error; }
   try { await owned.context.close(); } catch { failure ??= Error("PRODUCTION_CONTEXT_CLOSE_FAILED"); }
   if (failure) throw failure;

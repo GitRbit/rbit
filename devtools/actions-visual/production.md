@@ -13,8 +13,8 @@ The Node owner executes only that exact ignored test. Its private process pipe
 transfers a new synthetic session cookie into a class-private field; stdout/stderr,
 cookie values, database files and browser storage are never logged or artifacted.
 A private fixed Unix socket accepts only revoke-writer, finish-log-job and stop commands. Writer
-revocation uses the real collaborator service while the browser keeps GET/HEAD-only
-network access. Shutdown joins the HTTP server, closes fixture stores and confirms
+revocation uses the real collaborator service. Actions navigation remains GET/HEAD;
+the only browser mutation is the bounded synthetic language form described below. Shutdown joins the HTTP server, closes fixture stores and confirms
 the actual process exit before acceptance. Unexpected exits/cleanup failures fail.
 
 ## Binary and public asset handoff
@@ -111,7 +111,7 @@ open-state preservation. The private fixed completion command uses `task_state` 
 finish the known job and finalize its real gzip file; browser-decoded gzip must
 match the earlier live raw digest and byte count. Browser requests remain GET/HEAD
 only. No runner shell command, workflow execution or additional build profile runs.
-Total candidates are eleven, under the unchanged forty-image / 64 MiB ceiling.
+These eleven Actions candidates remain under the unchanged forty-image / 64 MiB ceiling.
 
 Node fake-process/file/DOM-contract tests are not browser proof. Rust compilation,
 real isolated Linux execution, actual asset compatibility and human image review
@@ -119,3 +119,59 @@ remain required. Deployment text drafts, workflow dispatch, full screen-reader r
 and release performance remain outside this bounded fixture. Job polling retains
 the existing step-open contract; this does not claim to preserve summary focus across
 a replaced Job subtree. Run approval and Overview filter focus are explicitly checked.
+
+## Native account language acceptance
+
+Three additional candidates cover real Spanish account language settings and Explore
+navigation, bringing the total to fourteen. They reuse the same test binary, users,
+public assets and hardened browser/container; no new seed protocol or runtime export
+is added. Language checks run after the Actions permission-removal checks, so their
+account preferences cannot change those earlier diagnostic fixtures.
+
+The network policy now permits one bounded mutation family: same-origin native
+`POST /settings/language`, with no query, exact `locale=en`, `locale=es` or empty
+`locale=` form body, URL-encoded content type and the fixed loopback Origin. The
+interceptor reads only that body and the two validation headers, never cookie or
+authorization inventories. Every other mutation remains denied. Only exact language
+settings GETs (optionally `saved=1`) and the unfiltered Explore GET join the existing
+read allowlist. Production CSRF/authentication middleware still handles the real form.
+
+An English-browser session saves Spanish through the rendered nonboosted form, then
+requires Spanish document/catalog metadata and a real HTMX Explore response without
+replacing the document. Back navigation must recover the Spanish language form. A
+360px Spanish-browser session with JavaScript disabled resets the preference through
+the native form and follows browser Spanish. The earlier Spanish document, whose
+browser prefers English, must then receive an actual cross-catalog refresh on its
+next HTMX navigation; a subsequent English HTMX navigation must stay in-document.
+Cookie values, storage, posted bodies, database files and raw responses are excluded
+from artifacts. Captures contain synthetic page content only.
+
+Policy matrices and independent fake-browser transitions exercise denial boundaries,
+wrong-save/no-JS failures and stale swaps. They do not establish actual Playwright,
+HTMX history, sandbox, linguistic or visual acceptance. Those hosted gates remain
+pending until this exact revision runs in the isolated Linux job.
+
+### Native redirect transport boundary
+
+For an admitted language POST, the fixture fetches the actual response with
+`maxRedirects: 0`, `maxRetries: 0` and a ten-second timeout. Only status 303 with one
+exact relative Location `/settings/language?saved=1` is forwarded, unchanged, to the
+browser. A 307/308 replay response, another status, duplicate Location, another
+destination or transport error is refused before forwarding. The real response's
+cookie headers are retained; there is no synthetic 200, manual navigation or secret
+header artifact. The API response is disposed after fulfillment. Actual hosted
+cookie/redirect compatibility must still pass this exact pinned Playwright revision.
+
+[Playwright's redirect behavior](https://playwright.dev/docs/network#redirects) invokes
+a route handler only for the initial request, including when a 3xx is fulfilled.
+Consequently this is initial-request gating and prevention of an unverified POST
+redirect/replay, not preemptive per-hop GET filtering. An observer requires the
+browser's real 303 response followed by the exact fixed GET and a final 200; it faults
+unexpected subsequent requests or redirect responses. Positive completion counts
+are required before the browser context closes. These observers detect issued GET
+hops; they cannot revoke a request already issued. The unchanged network-none
+container namespace remains the actual boundary against host/external egress.
+
+The source fixtures cover refused 307/308 responses, hostile/duplicate destinations,
+failed fetches, request replay and unexpected subsequent GET chains. They do not
+replace actual isolated browser execution or establish general per-hop containment.
