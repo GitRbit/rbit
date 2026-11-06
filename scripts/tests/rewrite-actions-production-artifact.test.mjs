@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, link } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,6 +12,18 @@ import { productionOrigin, productionWorkspace, productionAssetRoot, productionT
   allowedProductionRequest, publicAssetPath } from "../../devtools/actions-visual/production-policy.mjs";
 
 const revision = "a".repeat(40);
+test("the exact public asset policy covers every tracked runtime asset", () => {
+  const prefix = "crates/rbit-web/assets/";
+  const root = fileURLToPath(new URL("../../", import.meta.url));
+  const tracked = execFileSync("git", ["ls-files", "-z", "--", prefix], { cwd: root, encoding: "utf8", windowsHide: true })
+    .split("\0").filter(Boolean).map(path => path.slice(prefix.length));
+  assert.ok(tracked.length > 0);
+  assert.deepEqual(tracked.filter(path => !publicAssetPath(path)), []);
+  assert.equal(publicAssetPath("mermaid-frame.html"), true);
+  for (const path of ["private.html", "mermaid-frame.html/secret.js", "secret.key", "runtime.redb"]) {
+    assert.equal(publicAssetPath(path), false);
+  }
+});
 test("only tracked public assets and the known fresh CSS build output may be exported", () => {
   const tracked = ["app.bundle.js", "vendor/htmx.min.js"];
   const assets = [...tracked, "app.css"].map(path => ({ path }));
@@ -51,6 +65,7 @@ async function artifact(root) {
   await mkdir(join(assets, "vendor"), { recursive: true });
   await writeFile(join(assets, "app.css"), "body{}");
   await writeFile(join(assets, "app.bundle.js"), "export {};");
+  await writeFile(join(assets, "mermaid-frame.html"), "<!doctype html><p>public diagram frame</p>");
   await writeFile(join(assets, "vendor/htmx.min.js"), "void 0;");
   const elf = Buffer.alloc(20); elf.set([0x7f, 0x45, 0x4c, 0x46, 2, 1]); elf.writeUInt16LE(62, 18);
   await writeFile(join(directory, "actions-fixture"), elf);

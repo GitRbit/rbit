@@ -19,7 +19,7 @@ export function publicAssetPath(path) {
   if (typeof path !== "string" || path.length > 180 || path.includes("\\")) return false;
   const parts = path.split("/");
   if (parts.some(part => !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(part) || part.includes(".."))) return false;
-  if (parts.length === 1) return /\.(?:js|css|png|avif)$/.test(path);
+  if (parts.length === 1) return path === "mermaid-frame.html" || /\.(?:js|css|png|avif)$/.test(path);
   return ["themes", "vendor"].includes(parts[0]) && /\.(?:js|css|png|avif|html|txt)$/.test(path);
 }
 
