@@ -1,6 +1,6 @@
 # Identity work admission
 
-Status: accepted direction for the next integration slice; no service behavior changes
+Status: credential extraction and owned password-attempt API implemented; no service behavior changes
 are implemented by this document. Evidence is the pinned GitHub main system plus the
 new `rbit-kernel::BlockingBudget` and shared identity contracts.
 
@@ -21,11 +21,11 @@ process lifetime, per-IP accounting and overload mapping have equivalent tests.
 The composition root constructs a narrow `PasswordWork` handle from validated startup
 configuration and a `BlockingBudget`; clones share the same budget. Its purpose is
 password operations only, not a generic execution framework or credential store.
-Put this application adapter in `rbit-services/src/identity/password_work.rs` initially.
-It may move into `rbit-identity` when that feature is extracted. Crypto primitives stay
-in `rbit-auth`; the kernel knows no account, password, HTTP or authorization types.
+The adapter now lives in `rbit-identity`, alongside private synchronous credential
+primitives. `rbit-auth::Passwords` and its error/module paths re-export the same types
+for compatibility; the kernel knows no account, password, HTTP or authorization types.
 
-Expose synchronous crypto operations from auth for execution inside admitted workers.
+Keep synchronous crypto operations private to identity for execution inside admitted workers.
 Keep current Argon2id algorithm/version, parameters, salts, PHC compatibility and
 malformed-hash false behavior. The existing async facade can remain temporarily for
 source compatibility/test fixtures, but production services must not call its unbounded
@@ -35,7 +35,7 @@ spawns again inside an admitted blocking closure.
 
 ## Reservation before one-use state
 
-Add a small kernel primitive before activating password admission:
+The kernel reservation API is implemented; production activation remains separate:
 
 ```text
 BlockingBudget::try_reserve() -> Result<BlockingReservation, AdmissionError>

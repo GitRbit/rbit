@@ -8,6 +8,7 @@ The rewrite is active on `feature/ground-up-rewrite`, starting from GitHub main 
 | --- | --- |
 | Baseline and parity | Immutable Git-object inventory, schema fingerprints, 55 feature groups, required security contracts and guarded acceptance records |
 | Shared contracts | `rbit-contracts` owns account/repository IDs; existing core module/root paths, constructors and serialized integer behavior remain compatible |
+| Identity credentials | Extracted credential primitives preserve legacy auth types; explicit shared password attempts retain capacity through queued/running work |
 | Kernel admission | Immediate bounded blocking admission and non-cloneable reservations; actual worker lifetime owns capacity across request cancellation |
 | Localization | Bounded locale resolution, typed compiled messages, opt-in expansion/RTL diagnostics and plain-text interpolation; static English labels borrow catalog text |
 | Structural checks | Physical-file ceilings, legacy size/dependency ratchets, immutable migrations and an AST checker for cumulative type definitions and implementations in replacement crates |
@@ -20,9 +21,10 @@ The current kernel is a work-admission foundation. Full module lifecycle, identi
 ## Validation checkpoint
 
 - Contracts/core: 150 tests and strict Clippy passed after ID extraction; the 148 core tests also passed with the patched Markdown parser.
+- Identity/auth: ten identity tests and 42 auth/compatibility tests passed; strict Clippy passed for both crates and all targets. The password-attempt API is available; production callers have not migrated.
 - Kernel admission: all ten cancellation, saturation, panic, closure, reservation and queued-abort tests and strict Clippy passed.
 - Localization: 13 tests, including real Askama escaping and borrowed/static output checks, and strict Clippy passed.
-- Structural checker: 16 tests and strict Clippy passed; runtime checks of all four replacement/tool crates, including reservations, reported no size violations.
+- Structural checker: 16 tests and strict Clippy passed; runtime checks of all five replacement/tool crates, including reservations, reported no size violations.
 - JavaScript: the final full Windows suite passed 231 tests, with one Unix-only case skipped. The final helper/performance suite passes 50 tests on Windows and 49 on Linux, with only opposite-platform cases skipped. Linux runs use a disposable native Git fixture because Linux Git cannot resolve Windows worktree metadata.
 - Web: all targets passed type checking. All 415 unit, 129 integration and one Actions evaluation test passed with the patched Markdown parser. Strict Clippy passed for all core/web targets with the patched dependency graph. The combined core/web result is 693 passing tests.
 - Dependency security: `pulldown-cmark` minimum and lockfile raised to 0.13.6 for RUSTSEC-2026-0433. Advisories and licenses pass, with no new advisory exception or unrelated external upgrade.
@@ -38,7 +40,7 @@ The passing HTTP regressions cover full/fragment consistency, language and ETag 
 ## Work still required
 
 1. Continue from the passing foundation checks. Process-tree ownership has independent review and Windows/Linux fault-test coverage; uncertain compiler/runtime ownership remains protected.
-2. Integrate and validate the prepared identity credential extraction and bounded password-attempt API. Existing services still use the legacy primitive until their constructors and call sites migrate.
+2. Complete policy and protocol adapters for password admission. The identity credential extraction and bounded password-attempt API pass focused tests; existing services still use the legacy primitive until every constructor and call site migrates.
 3. Wire service password admission using the [identity contract](../identity-admission.md), reserving capacity before consuming one-use proofs and preserving uniform known/unknown-login behavior.
 4. Establish fresh release/runtime benchmarks against the pinned main. The [rendering experiment](../rendering-compilation.md) investigates inherited Askama shell duplication without presuming a measured cause or improvement.
 5. Continue repository/access/identity ports, durable required events, collaboration, Actions engine/UI, complete localization, release hardening, and migration/rollback rehearsals through the plan's gates.
