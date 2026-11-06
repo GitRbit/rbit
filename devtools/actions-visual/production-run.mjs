@@ -1,3 +1,4 @@
+import { themeChecks } from "./production-theme.mjs";
 // Contained debug-functional production page checks. Never a release benchmark.
 import { chromium } from "@playwright/test";
 import { readFile, lstat, writeFile, readdir, stat } from "node:fs/promises";
@@ -83,6 +84,7 @@ try {
   await jobChecks(browser, fixture, capture, value => { stage = value; }, value => { report.logChecks = value; });
   await productionChecks(browser, fixture, capture, value => { stage = value; });
   await languageChecks(browser, fixture, capture, value => { stage = value; });
+  await themeChecks(browser, fixture, capture, value => { stage = value; });
   report.status = "candidate-review-required";
 } catch (error) {
   if (error instanceof SandboxVerificationError) report.sandboxVerification = error.evidence;

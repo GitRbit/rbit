@@ -175,3 +175,12 @@ container namespace remains the actual boundary against host/external egress.
 The source fixtures cover refused 307/308 responses, hostile/duplicate destinations,
 failed fetches, request replay and unexpected subsequent GET chains. They do not
 replace actual isolated browser execution or establish general per-hop containment.
+
+
+The Spanish theme picker candidate uses the same synthetic account/browser and exact
+read-only `/themes/picker` endpoint. It verifies translated accessible/search labels,
+Colorblind filtering and empty/results counts without submitting a theme change.
+Native no-script links still target Appearance settings. Preview example code remains
+explicitly English; catalog theme names and machine filter values are unchanged.
+This candidate requires actual hosted browser/Rust acceptance; Node fixtures alone
+are not browser proof or a claim that all settings content has been translated.
