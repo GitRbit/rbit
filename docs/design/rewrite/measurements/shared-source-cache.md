@@ -112,6 +112,38 @@ The executable still printed `one:11`, and no checkout-local compiler directory 
 created. The sanitized JSON records this separately from the 22-step fixture.
 Explicit unowned mode and non-Windows activation have separate limits.
 
+## Completion metadata ordering and application qualification
+
+Helper `9ba9388c9784d383ea4ab1964dcc5618328993d1` corrects an ordering
+failure observed during long application commands. Cargo metadata can flush its
+global-home last-use bookkeeping. Capturing missing-config parent witnesses after
+that completion metadata call incorrectly attributed the helper's maintenance to
+the preceding compiler command.
+
+The instrumented failing command showed the admission metadata result and the
+pre-completion-metadata parent witness were identical: the parent stayed stable
+through compilation. Only the completion metadata call changed it. The correction
+captures completion policy and absence witnesses before fresh metadata, after
+verified native ownership has settled. It does not reuse the admission package
+graph. Actual-command config create/delete transitions and parent churn remain
+refusals; deterministic regressions cover both.
+
+All 22 native scenarios were rerun successfully with the corrected helper. These
+reruns used existing primary library exports; the first-export creation evidence
+above belongs to the original run and is not repeated as a new creation claim.
+The rerun created no checkout-local compiler directories or new compiler namespace.
+
+An actual `clippy --workspace --all-targets --locked -- -D warnings` command then
+passed in 10 minutes 50 seconds with native Windows Job completion and trusted
+admission. Application source was
+`265c0bb39572b5ed8bb955009452dbe22f373ac9`; the helper was the revision above.
+It approved 118 units, invalidated 118, reused zero, reported zero fresh and rebuilt
+117 compiler-artifact frames. Its captured witnesses again remained stable from
+post-admission metadata to pre-completion metadata; the subsequent metadata call
+changed the parent. The helper accepted the command without suppressing native
+interval checks. This is application Clippy qualification, not a whole-platform
+test, release or performance acceptance result.
+
 ## Limits and remaining gates
 
 This fixture establishes the observed Windows owned-completion behavior for a small
@@ -120,8 +152,8 @@ native ownership, whole-platform correctness, hostile-local-user resistance, her
 build inputs, a hard cache-size bound, or compilation speed/memory improvements.
 The scanner and witnesses deliberately refuse unsupported or unproved states.
 
-Actual application compilation/tests and matched original-release comparisons remain
-pending at this checkpoint. Earlier release measurements are not revalidated by this
-fixture; they require their own source-provenance qualification or guarded rebuilds.
+Full latest application tests and matched original-release comparisons remain
+pending. Earlier release measurements are not revalidated by these checks;
+they require their own source-provenance qualification or guarded rebuilds.
 No production-renderer, UI, runtime or release-performance acceptance follows from
 these results.

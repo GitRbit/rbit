@@ -29,6 +29,65 @@ The kernel now coordinates password admission and its first statically owned bac
 
 ## Current validation checkpoint
 
+Published revision `07b3a7e9` contains reference contracts and applications,
+filtered collaboration reads, original-account password/MFA proof ownership,
+dormant epoch-bound session transactions, import startup coordination and
+runner-backed production Actions browser fixtures. Credential/session fencing is
+not active. These slices do not retire their complete feature-ledger groups.
+
+The current local checks pass 541 Node tests with seven platform skips, formatting,
+the source ratchet (1,544 authored files, zero violations), cumulative replacement
+type/component checks and the password boundary (161 files, zero violations).
+Storage passes its all-target compilation check with trusted source admission.
+Rebuilding frontend assets reproduces the committed CSS and JavaScript bytes.
+
+Strict workspace/all-target Clippy passes with the corrected shared helper and
+verified native Windows completion. Its recorded application source is
+`265c0bb39572b5ed8bb955009452dbe22f373ac9`, before publication and the later
+self-qualified storage re-export correction; it is not a latest-head full-suite
+claim. The command approved 118 units, invalidated 118 and rebuilt 117 compiler
+artifacts. All 22 native worktree scenarios also pass with the corrected helper.
+The previous rejection was caused by the helper's own completion metadata call
+updating Cargo global-home bookkeeping after a stable native compilation interval.
+Completion now observes policy before that maintenance; actual-command config
+creation/deletion and parent-churn refusal tests still pass.
+
+The application batch passes 628 service tests with trusted admission. Its broader
+workspace run passes 2,579 Rust tests, zero failures and two ignored, including all
+110 E2E cases. That broader run used the earlier helper observation order and
+refused cache admission after successful tests, so it is not a successful full
+helper/provenance run. Full current-head validation remains required.
+
+At published head, [CI run 42304734686](https://github.com/GitRbit/rbit/actions/runs/42304734686)
+passes Linux tests, both platform contract jobs, formatting/Clippy, frontend,
+runner image, advisories/licenses and the release build. Windows nextest is still
+running at this observation; no overall green conclusion is claimed. The separate
+native ownership and prototype visual workflows pass. Prototype checks do not
+replace production-page browser and accessibility acceptance.
+
+Repository creation/settings/deletion application ownership is the next unpublished
+batch. Its 25 focused feature tests pass; broader service integration has 424 passes
+and one reproducible deletion-retry failure following an injected SQLite trigger
+failure. Diagnosis and correction precede publication. Credential writer-version
+guards and persisted locale integration are queued separately and still require
+their Rust, migration and browser gates.
+
+The local optimized preview remains at `b923`; it is not the latest published
+source. [Matched footer observations](measurements/footer-b923-small-pages.md)
+show signed-in home medians of 233 to 234 microseconds and Explore medians of
+238 to 248.5 microseconds. The Explore difference remains unexplained. Cached
+local dependencies in those release builds were not qualified by the new guard;
+fresh guarded main/candidate builds and repeated paired measurements remain
+required. No operational speedup or performance acceptance is claimed.
+
+Unix owned completion, remaining feature/module migration, complete localization,
+the Actions engine/interface overhaul, full workloads, browser accessibility,
+migration, rollback and release acceptance remain open. The active compiler
+namespace is protected above its soft storage watermark; there is no hard storage
+bound or automatic namespace rotation claim.
+
+## Earlier shared-output validation checkpoint
+
 The published shared-output guard (`1263cc38`) and owned Windows default
 (`b58fa8c6`) prevent admission based only on Cargo source timestamps. The
 [source-cache evidence](measurements/shared-source-cache.md) records 22 native
