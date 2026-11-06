@@ -224,3 +224,66 @@ Linux compiler ownership, trusted persisted generation records, a retention exec
 cold-build cost/headroom measurement and an activation decision remain pending.
 No cache deletion or rotation was performed for this validation; the existing
 protected namespace still exceeds its soft watermark.
+
+
+## Trusted managed observation
+
+`RBIT_BUILD_MANAGED_RETENTION=observe`, together with strict `windows-job` Cargo
+ownership, opts the actual shared build helper into bounded observation. It remains
+off by default. The helper captures input provenance before execution and publishes
+only after successful native completion, exact executable handoff, and completed
+post-command maintenance while still holding the same verified management lease.
+No new Cargo process, metadata command, rotation or artifact deletion is introduced.
+The optional filesystem-reader seam exists for temporary fixtures; the CLI accepts
+no observation document, graph override, read callback or deletion authority.
+
+Graph selection comes from the actual helper command, args and environment. Only
+its hashes, confidence and enumerated reasons are retained. A bounded literal member
+list identifies root/member manifests and the lockfile; unsupported workspace forms
+remain conservative instead of attempting another TOML implementation. Root/ancestor
+and Cargo-home configuration follow Cargo's hierarchical search. Configuration
+includes, inaccessible/linked/oversized inputs and input drift produce conservative
+records. Each input is bounded to 4 MiB, read with one lookahead byte, and reduced to
+SHA256 before retaining the next input. No manifest/configuration content or paths,
+Cargo package selectors, raw argv or environment values enter the record. Cargo
+remains responsible for dependency/source freshness; this is scheduling provenance.
+Configuration locations/overrides are conservatively significant, not proof that
+all otherwise identical worktree configurations have identical semantics.
+
+Namespace usage walks metadata with bounded streaming directory iteration, never
+following links, with at most 200,000 entries and 32 levels. Partial observations carry
+`complete:false`; free bytes are an observation at that instant, not reserved headroom.
+Copied executables are compared by streaming SHA256/size and refused if they are the
+same underlying file, so caller-supplied `exact:true` cannot establish independent
+copies. The record retains only output lengths and SHA256, never filenames or paths.
+These checks operate within the helper's cooperative management lease; they do not
+isolate against hostile same-user writers that can change source/control files.
+
+One atomically replaced, maximum 64 KiB `managed-observation.json` lives in each
+compatibility namespace. Unknown existing files are refused rather than overwritten.
+Per-command IDs do not create accumulating history directories. The record itself
+is evidence, not authority: an opaque in-process observation plus a fresh branded
+native completion receipt for the same live lease is required for publication.
+Serialized observations, boolean fields, replayed handles and foreign-lease receipts
+are refused. Existing record JSON is never used as process or deletion proof.
+The measured byte count explicitly precedes replacement of this small record.
+
+Crucially, the accumulated `shared` directory remains **legacy-shared and
+unevictable**. Completing one command does not retroactively prove generation
+ownership for its older contents, runtime copies, or pending handoffs elsewhere.
+The existing pure planner receives current-success-unproved and cannot promote or
+evict that lane; its returned decision still has `apply:false`. The observer does not
+resolve the current protected-namespace overage or establish a hard storage bound.
+
+Temporary-fixture tests cover actual helper adoption/default-off behavior, native
+receipt/observation forgery and replay, disk-derived input changes, exact versus
+mismatched/hard-linked copies, record replacement/refusal, private-field absence,
+bounded walks and linked outside sentinels. No real cache was scanned or changed by
+those tests. Actual opt-in observation validation, managed generation creation,
+trusted persisted-generation activation, the bounded executor, measured cold cost
+and reserved headroom remain required before rotation can be enabled. Privacy-safe
+records are not automatically published or uploaded.
+
+[Cargo configuration hierarchy](https://doc.rust-lang.org/cargo/reference/config.html#hierarchical-structure)
+is the source for repository/ancestor/Cargo-home lookup; unsupported configuration
+mechanisms are deliberately unproved.

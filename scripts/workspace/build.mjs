@@ -8,6 +8,7 @@ import { guarded, managedDirectory } from "./paths.mjs";
 import { leased, UncertainProcessTreeError } from "./lease.mjs";
 import { cacheBudget, enforceHighWater } from "./storage.mjs";
 import { cargoTreeMode, ownedCargo, verifiedCargoCompletion } from "./cargo-tree.mjs";
+import { managedRetentionMode, beginRetention, finishRetention } from "./retention/observe.mjs";
 
 function reportCacheOverage(report) {
   if (report.overageBytes > 0) process.stderr.write(`Build cache remains ${report.overageBytes} bytes over its ${report.maxBytes}-byte soft limit (${report.bytes} bytes retained); current namespace is protected.\n`);
@@ -72,10 +73,11 @@ function consumeCargo(ctx, args, env, onArtifact = () => {}, { spawnProcess = sp
 }
 
 /** Only helpers acquire this lease. Direct Cargo/IDE builds must not use this lane. */
-export async function cargo(ctx, command, args = [], { execute = cargoProcess, env = process.env, key, reportMaintenance = reportCacheOverage } = {}) {
+export async function cargo(ctx, command, args = [], { execute = cargoProcess, env = process.env, key, reportMaintenance = reportCacheOverage, readRetentionInput } = {}) {
   if (!["build", "check", "clippy", "test", "nextest", "generate-lockfile"].includes(command)) throw new Error("Unsupported Cargo command");
   validateCargoArgs(args);
   cargoTreeMode(env);
+  const retentionMode = managedRetentionMode(env);
   if (command === "nextest" && !["run", "list"].includes(args[0])) throw new Error("Use nextest run or list");
   const maxCacheBytes = cacheBudget(env);
   const buildEnv = { ...env, LIBSQLITE3_FLAGS: [env.LIBSQLITE3_FLAGS ?? "", "-DSQLITE_ENABLE_QPSG"].join(" ").trim() };
@@ -91,12 +93,15 @@ export async function cargo(ctx, command, args = [], { execute = cargoProcess, e
     buildEnv.CARGO_TARGET_DIR = join(lane, "target");
     buildEnv.CARGO_BUILD_TARGET_DIR = buildEnv.CARGO_TARGET_DIR;
     buildEnv.CARGO_BUILD_BUILD_DIR = join(lane, "intermediates");
-    const artifacts = [];
+    const observation = retentionMode === "observe"
+      ? await beginRetention(ctx, { namespace, command, args, env: buildEnv }, lease, { read: readRetentionInput }) : null;
+    const artifacts = [], copies = observation ? [] : null;
     const json = ["build", "check", "clippy", "test"].includes(command);
     const format = buildEnv.RBIT_WORKSPACE_JSON === "1" ? "json" : "json-render-diagnostics";
     const completion = await execute(ctx, [command, ...(json ? [`--message-format=${format}`] : []), ...args], buildEnv, (item) => artifacts.push(item), { lease });
     const result = { executables: [], environment: buildEnv, namespace };
     if (verifiedCargoCompletion(completion, lease)) result.completion = completion;
+    if (observation && !result.completion) throw new Error("Managed observation requires verified native Cargo completion");
     if (command === "build") {
       const binaries = new Map();
       for (const item of artifacts.filter((entry) => entry.target.kind.includes("bin"))) {
@@ -112,6 +117,7 @@ export async function cargo(ctx, command, args = [], { execute = cargoProcess, e
         await guarded(lane, item.executable);
         const destination = join(generation, basename(item.executable));
         await copyFile(item.executable, destination);
+        copies?.push({ source: item.executable, destination });
         result.executables.push({ name: item.target.name, path: destination });
       }
       await writeFile(join(generation, "build.json"), JSON.stringify({ namespace, executables: result.executables }, null, 2));
@@ -124,6 +130,7 @@ export async function cargo(ctx, command, args = [], { execute = cargoProcess, e
       result.cache = await enforceHighWater(ctx, maxCacheBytes, namespace, lease);
       await reportMaintenance(result.cache);
     }
+    if (observation) result.retention = await finishRetention(observation, completion, copies, maxCacheBytes, lease);
     return result;
   });
 }
