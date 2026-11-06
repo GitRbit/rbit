@@ -61,7 +61,7 @@ pub(super) fn computed(html: &str, rules: &[CssRule]) -> Vec<(char, Vec<(String,
     computed_with_keyword_weight(html, rules, None)
 }
 
-/// The default token is initial (an invalid custom-property value), so var() uses
+/// The default token is initial (an invalid custom-property value), so `var()` uses
 /// its inherit fallback. Contrast themes deliberately supply a numeric weight.
 pub(super) fn computed_with_keyword_weight(
     html: &str,
