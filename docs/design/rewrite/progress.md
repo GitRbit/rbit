@@ -2,6 +2,8 @@
 
 The rewrite is active on `feature/ground-up-rewrite`, starting from GitHub main `39f932a00b7aa35b324e06a9ff2343a57d4bed76`. Changes are kept in atomic commits. The [delivery plan](../ground-up-rewrite-plan.md) remains the completion contract; the foundation work below does not mean the platform rewrite is complete.
 
+Public development and review continue in [draft PR #53](https://github.com/GitRbit/rbit/pull/53), opened by ChaseTheCode against main. It supersedes [PR #47](https://github.com/GitRbit/rbit/pull/47), which is closed in its favor. The [update on issue #46](https://github.com/GitRbit/rbit/issues/46#issuecomment-6673779981) explains how the modularity and localization direction fits into this broader rewrite; the issue remains open.
+
 ## Implemented foundations
 
 | Area | Current implementation |
@@ -30,7 +32,7 @@ The current kernel is a work-admission foundation. Full module lifecycle, identi
 - Rendering probe: all six semantic/CLI tests and strict Clippy passed for inherited, segmented and block composition at eight distinct contexts. Exact HTML, escaping and buffer reuse are checked; scaling and compiler-memory measurements remain pending.
 - Dependency security: `pulldown-cmark` minimum and lockfile raised to 0.13.6 for RUSTSEC-2026-0433. Advisories and licenses pass, with no new advisory exception or unrelated external upgrade.
 - Real worktree check: a second source checkout passed all ten kernel tests using the same compatibility namespace and was removed cleanly. No checkout-local compiler tree was created.
-- CI configuration is committed; no hosted CI result is claimed for unpublished local commits.
+- CI configuration is committed and published with the draft PR; the validation results above describe local checks, without claiming hosted CI completion.
 
 ## Validated production slice
 
