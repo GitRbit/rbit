@@ -32,6 +32,17 @@ impl PasswordWork {
         self.budget.try_reserve().map(PasswordAttempt::new)
     }
 
+    /// Configured maximum of reserved, queued and running password attempts.
+    pub fn capacity(&self) -> std::num::NonZeroUsize {
+        self.budget.capacity()
+    }
+
+    /// Snapshot of reserved, queued and running attempts, for shutdown diagnostics.
+    /// This can change immediately and must never be used for admission decisions.
+    pub fn admitted(&self) -> usize {
+        self.capacity().get() - self.budget.available()
+    }
+
     /// Stops admission across clones. Already-admitted attempts may still finish.
     ///
     /// The host owns worker drain/runtime shutdown; this does not interrupt Argon2.

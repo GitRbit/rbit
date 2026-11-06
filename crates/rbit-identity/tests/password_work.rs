@@ -14,14 +14,20 @@ fn work(capacity: usize) -> (PasswordWork, BlockingBudget) {
 fn clones_share_admission_and_shutdown_without_account_or_password_inputs() {
     let (work, budget) = work(1);
     let other_consumer = work.clone();
+    assert_eq!(work.capacity().get(), 1);
+    assert_eq!(work.admitted(), 0);
     let admitted = work.begin().unwrap();
+    assert_eq!(other_consumer.admitted(), 1);
     assert_eq!(other_consumer.begin().unwrap_err(), AdmissionError::Busy);
     drop(admitted);
+    assert_eq!(work.admitted(), 0);
     assert_eq!(budget.available(), 1);
     let admitted = other_consumer.begin().unwrap();
     work.close();
+    assert_eq!(work.admitted(), 1);
     assert_eq!(other_consumer.begin().unwrap_err(), AdmissionError::Closed);
     drop(admitted);
+    assert_eq!(other_consumer.admitted(), 0);
     assert_eq!(budget.available(), 1);
 }
 
