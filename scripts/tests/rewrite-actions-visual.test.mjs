@@ -58,9 +58,16 @@ test("sandbox diagnostic never upgrades launch or diagnostic failure to success"
       close: async () => { closed = true; },
     }),
   };
-  await assert.rejects(verifySandbox(browser), /unsupported host/);
+  await assert.rejects(verifySandbox(browser), error => {
+    assert.equal(error.evidence.stage, "internal-navigation");
+    assert.equal(error.evidence.code, "UNCLASSIFIED");
+    assert.doesNotMatch(JSON.stringify(error), /unsupported host/);
+    return true;
+  });
   assert.equal(closed, true);
-  await assert.rejects(verifySandbox({ version: () => "unexpected" }), /VERSION_MISMATCH/);
+  await assert.rejects(verifySandbox({ version: () => "unexpected" }), error => {
+    assert.equal(error.evidence.code, "BROWSER_VERSION_MISMATCH"); return true;
+  });
 });
 
 test("capture matrix has 18 base images plus explicit bounded state/permission cases", () => {

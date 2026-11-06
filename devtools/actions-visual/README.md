@@ -189,3 +189,11 @@ probe stderr or paths are retained. The child and its scratch directory are owne
 and cleaned within the disposable container. Actual Chromium namespace/PID/network
 and seccomp proof remains mandatory before screenshots; successful CI capture and
 human visual acceptance are still pending.
+
+The next retained CI result passed both namespace probes and returned from browser
+launch, then failed during sandbox verification before any capture. This advances
+the observed phase without establishing browser sandbox acceptance. Verification
+evidence now identifies fixed version/CDP/context/page/navigation/table/proof stages,
+allowlisted failure categories and cleanup booleans. Only the four known sandbox
+row labels and fixed status values may be retained; unknown text, flags and paths
+are discarded. Missing, negative or unknown proof still prevents screenshots.

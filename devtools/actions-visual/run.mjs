@@ -6,7 +6,7 @@ import { performance } from "node:perf_hooks";
 import { preview } from "../../docs/design/prototypes/actions/server.mjs";
 import { origin, image, cases, artifactBudget } from "./policy.mjs";
 import { revision, sourceDigest, digest } from "./provenance.mjs";
-import { verifySandbox } from "./sandbox.mjs";
+import { verifySandbox, SandboxVerificationError } from "./sandbox.mjs";
 import { contain } from "./containment.mjs";
 import { setupFailure } from "./diagnostics.mjs";
 import { launchEvidence } from "./launch-evidence.mjs";
@@ -109,6 +109,7 @@ try {
   catch { report.failures.push({ fixture: "interactions", code: "INTERACTION_ASSERTION_FAILED" }); }
   report.status = report.failures.length ? "failed" : "candidate-review-required";
 } catch (error) {
+  if (error instanceof SandboxVerificationError) report.sandboxVerification = error.evidence;
   if (setupStage === "browser-launch") report.launch = launchEvidence(error);
   report.failures.push({ fixture: "setup", stage: setupStage, code: setupFailure(setupStage, error) });
 } finally {
