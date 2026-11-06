@@ -35,7 +35,7 @@ owner is introduced. There is one shared password owner per composed service
 instance as before. Workflow has no core/identity dependency, and runner depends
 on workflow plus its own existing runtime; neither receives a new identity edge.
 
-The five existing password integration binaries require password-work explicitly.
+Password/application integration binaries require password-work explicitly.
 Cargo skips them when that feature is absent. A successful model-only run therefore
 proves only model behavior and dependency isolation, never crypto/cancellation
 acceptance. Credentials-only builds must still exercise their applicable unit tests;

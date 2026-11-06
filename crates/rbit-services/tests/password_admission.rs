@@ -154,3 +154,5 @@ fn concurrent_password_replacement_cannot_overwrite_a_newer_hash() {
         assert_eq!(fixture.database.accounts().find_login("alice").await.unwrap().unwrap().password_hash, concurrent);
     });
 }
+
+mod workflows;

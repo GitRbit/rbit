@@ -9,7 +9,7 @@ license.workspace = true
 [features]
 default = ["password-work"]
 credentials = ["dep:argon2", "dep:thiserror", "dep:tokio"]
-password-work = ["credentials", "dep:rbit-kernel", "dep:zeroize"]
+password-work = ["credentials", "dep:rbit-kernel", "dep:zeroize", "dep:subtle", "dep:getrandom"]
 
 [dependencies]
 rbit-contracts.workspace = true
@@ -19,6 +19,8 @@ argon2 = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 zeroize = { workspace = true, optional = true }
+subtle = { workspace = true, optional = true }
+getrandom = { workspace = true, optional = true }
 
 [dev-dependencies]
 serde_json.workspace = true
@@ -45,4 +47,8 @@ required-features = ["password-work"]
 
 [[test]]
 name = "password_work"
+required-features = ["password-work"]
+
+[[test]]
+name = "account_workflows"
 required-features = ["password-work"]

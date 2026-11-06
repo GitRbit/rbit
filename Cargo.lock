@@ -4277,11 +4277,13 @@ name = "rbit-identity"
 version = "0.1.5"
 dependencies = [
  "argon2",
+ "getrandom 0.4.3",
  "postcard",
  "rbit-contracts",
  "rbit-kernel",
  "serde",
  "serde_json",
+ "subtle",
  "thiserror",
  "tokio",
  "zeroize",
@@ -4467,6 +4469,7 @@ dependencies = [
  "metrics-exporter-prometheus",
  "postcard",
  "rbit-core",
+ "rbit-identity",
  "redb",
  "serde",
  "serde_json",

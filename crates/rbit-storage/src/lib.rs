@@ -10,6 +10,7 @@
 //! Stores speak in `rbit-core` domain types; SQL rows never leak out of this crate.
 
 pub mod error;
+mod identity_accounts;
 pub mod kv;
 pub mod sealing;
 pub mod sqlite;

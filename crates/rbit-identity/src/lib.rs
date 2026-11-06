@@ -6,6 +6,7 @@
 //! global budget, performs startup or imports a concrete store/protocol implementation.
 
 pub mod account;
+pub mod accounts;
 pub mod names;
 
 #[cfg(feature = "credentials")]

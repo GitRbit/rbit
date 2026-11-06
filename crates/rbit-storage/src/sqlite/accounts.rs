@@ -4,7 +4,7 @@
 //! refused, and [`AccountStore::find_active_user`] never resolves a suspended user.
 
 use super::pool::Pool;
-use rbit_core::{Account, AccountId, AccountKind, AccountName, Email, Timestamp, User};
+use rbit_core::{Account, AccountId, AccountKind, AccountName, Timestamp, User};
 
 use super::rows::{AccountRow, UserRow};
 use crate::StorageError;
@@ -51,29 +51,13 @@ struct SessionUserRow {
     has_unread_notifications: bool,
 }
 
-/// A login candidate: the user, their stored password hash and whether they are suspended.
-#[derive(Debug)]
-pub struct LoginRecord {
-    pub user: User,
-    pub password_hash: String,
-    pub suspended: bool,
-}
+pub use rbit_identity::accounts::{LoginRecord, NewUser};
 
 #[derive(Debug, sqlx::FromRow)]
 struct LoginRow {
     #[sqlx(flatten)]
     user: UserRow,
     suspended_at: Option<i64>,
-}
-
-/// Everything needed to register a user. The password must already be hashed.
-#[derive(Debug)]
-pub struct NewUser {
-    pub name: AccountName,
-    pub email: Email,
-    pub display_name: Option<String>,
-    pub password_hash: String,
-    pub is_admin: bool,
 }
 
 #[derive(Debug, Clone)]

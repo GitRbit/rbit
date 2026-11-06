@@ -9,6 +9,7 @@ license.workspace = true
 autotests = false
 
 [dependencies]
+rbit-identity.workspace = true
 rbit-core.workspace = true
 sqlx.workspace = true
 redb.workspace = true

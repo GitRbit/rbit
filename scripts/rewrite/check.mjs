@@ -24,6 +24,7 @@ const ADDED_EDGES = {
   "rbit-core": ["rbit-contracts", "rbit-access", "rbit-identity"], "rbit-web": ["rbit-localization"],
   "rbit-auth": ["rbit-identity", "rbit-access"], "rbit-services": ["rbit-identity", "rbit-kernel"],
   "rbit-server": ["rbit-kernel"],
+  "rbit-storage": ["rbit-identity"],
 };
 // HTTP acceptance fixtures may inject the shared owner without adding production edges.
 const DEV_EDGES = { "rbit-web": ["rbit-identity", "rbit-kernel"] };

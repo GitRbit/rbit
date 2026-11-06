@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 
 const consumers = {
   "rbit-core": { normal: [] },
+  "rbit-storage": { normal: [] },
   "rbit-auth": { normal: ["credentials"] },
   "rbit-services": { normal: ["password-work"] },
   "rbit-web": { dev: ["password-work"] },

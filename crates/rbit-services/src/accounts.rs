@@ -27,7 +27,6 @@ use rbit_core::{Account, AccountId, Config, RegistrationMode, Timestamp, User};
 use rbit_identity::PasswordWork;
 pub use rbit_storage::SessionUser;
 use rbit_storage::{AccountStore, SessionRecord, SessionStore, kv::StoredSession};
-use subtle::ConstantTimeEq;
 use tokio::sync::broadcast::{self, error::TryRecvError};
 
 use crate::{
@@ -35,27 +34,16 @@ use crate::{
     audit::{AuditAction, AuditEntry, AuditService},
 };
 
+pub(crate) mod application_error;
 mod password_authentication;
 mod registration;
 pub use registration::create_user_offline;
-pub(crate) use registration::prepare_user;
 
-/// Upper bound on password length: Argon2 accepts more, but unbounded input invites denial of service.
-const MAX_PASSWORD_LEN: usize = 256;
 /// `last_seen_at` is rewritten at most this often, to keep most requests write-free.
 const LAST_SEEN_RESOLUTION_SECONDS: i64 = 5 * 60;
 /// Bytes of the token digest used as a session's public identifier.
 const SESSION_ID_BYTES: usize = 12;
-/// Random bytes in a generated setup token (hex-encoded, so twice as many characters).
-const SETUP_TOKEN_BYTES: usize = 16;
-
-/// Raw sign-up input, exactly as submitted.
-#[derive(Debug, Clone, Default)]
-pub struct SignUp {
-    pub username: String,
-    pub email: String,
-    pub password: String,
-}
+pub use rbit_identity::accounts::SignUp;
 
 /// Where a request comes from, recorded with new sessions and audit entries.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -139,13 +127,16 @@ impl AccountService {
     /// change at runtime). The very first account can always be created so that a fresh
     /// instance can be bootstrapped.
     pub async fn registration_open(&self) -> Result<bool, ServiceError> {
-        Ok(self.instance.current().registration == RegistrationMode::Open || self.setup_required().await?)
+        self.registration()
+            .registration_open(self.instance.current().registration == RegistrationMode::Open)
+            .await
+            .map_err(application_error::registration)
     }
 
     /// Whether the instance has no user yet, so the next sign-up creates its administrator
     /// and needs the [setup token](Self::setup_token).
     pub async fn setup_required(&self) -> Result<bool, ServiceError> {
-        Ok(self.accounts.count_users().await? == 0)
+        self.registration().setup_required().await.map_err(application_error::registration)
     }
 
     /// The token the first account's sign-up needs, while the instance started without
@@ -156,35 +147,34 @@ impl AccountService {
 
     /// Registers a user. The first user of an instance becomes its administrator, and
     /// needs `setup_token` (ignored for every later sign-up).
-    pub async fn sign_up(&self, input: SignUp, setup_token: &str) -> Result<User, ServiceError> {
-        let first = self.setup_required().await?;
-        let open = self.instance.current().registration == RegistrationMode::Open;
-        if !open && !first {
-            return Err(ServiceError::RegistrationClosed);
+    pub fn sign_up<'a>(&'a self, input: SignUp, setup_token: &'a str) -> impl Future<Output = Result<User, ServiceError>> + Send + 'a {
+        let operation =
+            self.registration().sign_up(input, setup_token, move || self.instance.current().registration == RegistrationMode::Open);
+        async move {
+            let user = operation.await.map_err(application_error::registration)?;
+            self.events.publish(DomainEvent::UserSignedUp { user: user.id() });
+            Ok(user)
         }
-        if first && !self.setup_token_matches(setup_token) {
-            return Err(ServiceError::Invalid(SETUP_TOKEN_REQUIRED.to_owned()));
-        }
-        let new = prepare_user(&self.config, &self.passwords, input, false).await?;
-        let user = self.accounts.register_user(new, open).await?;
-        self.events.publish(DomainEvent::UserSignedUp { user: user.id() });
-        Ok(user)
     }
 
-    /// Compares in constant time. Never matches without a token (the instance started with
-    /// users that were deleted since: a restart generates one).
-    fn setup_token_matches(&self, given: &str) -> bool {
-        let Some(expected) = &self.setup_token else { return false };
-        let given = given.trim();
-        expected.len() == given.len() && bool::from(expected.as_bytes().ct_eq(given.as_bytes()))
+    fn registration(&self) -> rbit_identity::accounts::AccountRegistration<'_, AccountStore> {
+        rbit_identity::accounts::AccountRegistration::new(
+            &self.accounts,
+            &self.passwords,
+            self.config.security.min_password_length,
+            self.setup_token.as_deref(),
+        )
     }
 
     /// Creates a user regardless of the registration setting (admin CLI, admin panel).
     /// `is_admin = None` applies the "first user is admin" rule.
-    pub async fn create_user(&self, input: SignUp, is_admin: Option<bool>) -> Result<User, ServiceError> {
-        let user = registration::create_user(&self.config, &self.accounts, &self.passwords, input, is_admin).await?;
-        self.events.publish(DomainEvent::UserSignedUp { user: user.id() });
-        Ok(user)
+    pub fn create_user(&self, input: SignUp, is_admin: Option<bool>) -> impl Future<Output = Result<User, ServiceError>> + Send + '_ {
+        let operation = registration::create_user(&self.config, &self.accounts, &self.passwords, input, is_admin);
+        async move {
+            let user = operation.await?;
+            self.events.publish(DomainEvent::UserSignedUp { user: user.id() });
+            Ok(user)
+        }
     }
 
     /// Whether an administrator has suspended the user. Credentials resolved elsewhere
@@ -485,24 +475,11 @@ impl PasswordChangeLedger {
     }
 }
 
-/// Why the first account's sign-up was refused.
-const SETUP_TOKEN_REQUIRED: &str = "enter the setup token printed in the server log";
-
-/// The setup token of an instance without users (configured, or else random); `None`
-/// once it has users.
+/// Resolves the exact feature-owned bootstrap policy using only the relational store.
 pub(crate) async fn bootstrap_setup_token(config: &Config, accounts: &AccountStore) -> Result<Option<String>, ServiceError> {
-    if accounts.count_users().await? > 0 {
-        return Ok(None);
-    }
-    if let Some(token) = config.security.setup_token.as_deref().map(str::trim).filter(|token| !token.is_empty()) {
-        return Ok(Some(token.to_owned()));
-    }
-    let mut bytes = [0_u8; SETUP_TOKEN_BYTES];
-    getrandom::fill(&mut bytes).map_err(|error| ServiceError::internal(std::io::Error::other(error.to_string())))?;
-    Ok(Some(bytes.iter().fold(String::with_capacity(SETUP_TOKEN_BYTES * 2), |mut hex, byte| {
-        let _ = write!(hex, "{byte:02x}");
-        hex
-    })))
+    rbit_identity::accounts::bootstrap_setup_token(accounts, config.security.setup_token.as_deref())
+        .await
+        .map_err(application_error::registration)
 }
 
 /// e.g. `Mozilla/5.0 … from 192.0.2.1`, for audit details.

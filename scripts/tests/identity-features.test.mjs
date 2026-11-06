@@ -12,7 +12,12 @@ test("renamed and target-specific identity edges cannot silently enable crypto d
   dependency.uses_default_features = false;
   dependency.features = ["credentials"];
   assert.match(checkIdentityFeatures(metadata)[0], /exactly \[\]/);
+  pkg.name = "rbit-storage";
+  assert.match(checkIdentityFeatures(metadata)[0], /exactly \[\]/);
+  dependency.features = [];
+  assert.deepEqual(checkIdentityFeatures(metadata), []);
   pkg.name = "rbit-auth";
+  dependency.features = ["credentials"];
   assert.deepEqual(checkIdentityFeatures(metadata), []);
   dependency.features = ["password-work"];
   assert.match(checkIdentityFeatures(metadata)[0], /exactly \[credentials\]/);
