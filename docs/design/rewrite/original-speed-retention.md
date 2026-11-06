@@ -90,3 +90,79 @@ No optimization replacement is accepted solely because it passes compatibility t
 Investigate any regression against the plan's performance gates, including the cost of
 new abstractions, background work, allocation, request-time parsing and localization.
 Unmeasured alternatives remain experiments until the relevant gates pass.
+
+
+## Follow-up source audit at91bb328
+
+This review compared pinned main39f932a with91bb328 and read the four historical
+performance notes against actual call sites. No Cargo, browser, live application,
+allocation profiler or elapsed-time experiment ran. No removed original fast path was
+found in the reviewed areas; this is a scoped source conclusion, not runtime parity.
+
+| Area | Retained implementation and call-path evidence |
+| --- | --- |
+| Directory metadata | All28 tracked files under rbit-git/src are identical, including pinned reader/full-ID path and last_commit tree-cache/work budgets. repo routes, insights and insights_recent are unchanged; selected-page names still form repository/commit/path/sorted-name keys, with32 slots,4 worker permits,512KiB estimated slot budget and30s reuse. Workers retain permits after waiter cancellation; incomplete results stay out of complete persistent cache. Services composes one Arc-backed recent cache, not a new cache per request. |
+| Bounded lists/ref picker | routes/repo.rs, routes/history.rs, routes/ref_picker.rs, views/pagination.rs, views/ref_picker.rs and language-files/graph templates are unchanged. Lists remain100/page, picker50/page; search precedes slicing, ref detail/protection matching is page-selected, graph requests201 then truncates200 and limits visible branch labels to8. Ref enumeration/language classification costs are still present, as the original docs acknowledge. |
+| Calendar/graphs | services/contributions.rs, views/branch_graph.rs, views/contributions.rs, contributions.js and activity/calendar templates are unchanged. Activity still defers scanning unless calendar is requested; commit history does not implicitly load it. Day totals retain32-tip/25,000-day bounds, exact partial-day fallback and requested-day ranges. Graph ordering still uses BinaryHeap and one destination HashMap per row, not repeated edge-wide lane searches. |
+| Virtualization/navigation | app.js, blocks.js, diff.js, preload.js, repo-navigation-cache.js, repo-navigation-bar.js and app.css are unchanged. Source/blame/diff blocks retain128-row geometry, containment and shared highlighting; diff indexes/delegated review handlers and preload cancellation/cache rules remain. views/blame.rs changed only its test Page fixture, not rendering. No DOM-windowing replacement or experimental segmented layout is active in production; representative probes are cfg(test). |
+| Compression/assets | routes/mod.rs and assets.rs are unchanged, including route-layer order: Brotli HTML quality5 without zstd, ETag before compression, cached release asset Brotli quality11, content hashes and style/CSP caches. Static/Git/streaming routes keep their distinct policies. Debug still rereads/hashes assets and skips cached asset compression; source equality does not make a debug run comparable to an optimized release. |
+| Page/SQL work | listing.rs, repositories service, AppState and views/components remain shared optimized paths. AppState is still a one-Arc clone. The exact work_counts.rs budgets remain unchanged (e.g. home3/5 statements anonymous/signed-in, repository home2/3); no budget increase was hidden in extraction. SESSION_USER SQL text and find_session_user call are unchanged and supply both flags in the one account query. |
+
+### Changed paths and concrete added work
+
+- **Session resolution retains its original backend work.** AccountService now creates
+  a stack SessionApplication holding store references and copied policy. Static
+  repository adapters forward get_live/get and find_session_user directly. The live
+  path still does one redb read and one SQL projection, renews only after a strict
+  greater-than-one-day expiry movement or at-least300s last-seen age, and deletes on
+  absolute-age/missing-user refusal. New wrappers contain no Box, request-time store
+  clones or added SQL call. The same postcard decode/materialization still owns its
+  strings; extraction alone is not an allocation benchmark. Tracking/ledger admission
+  applies to password mutations/guards, not ordinary GET session resolution.
+- **Explore has an avoidable full header clone.** Its new HeaderMap parameter uses
+  the locked axum-core0.5.6 HeaderMap extractor, whose implementation returns
+  parts.headers.clone(). Only four response-shape checks require those headers.
+  Borrowed response-shape extraction is the minimal removal, preserving duplicate,
+  boost/history and privacy rules; prepared patch5e4a485 is outside this audited head.
+- **Explore has small new dynamic text materialization.** English static labels use
+  borrowed Cow and catalogs are compiled. However subtitle and PageOf are eagerly
+  made into owned text even for a results fragment/single-page result; Stars creates
+  an owned string per positive-star row where the old macro wrote count+literal
+  directly to the Askama writer. CountForQuery replaces an already-allocating old
+  total_label, so its entire cost must not be counted as new. These are bounded but
+  real source-level extra operations; allocation-free/lazy formatting requires exact
+  English/pseudo/escaping equivalence tests, not a claim of measured slowdown.
+- **Locale work is scoped.** RequestLocale borrows and bounds preference parsing and
+  memoizes it once on Explore, adds no preference SQL and does not run on every page.
+  Page::new elsewhere sets an English enum; extract.rs is unchanged. The new language/
+  cookie/shape Vary dimensions intentionally partition Explore cache entries. They
+  can affect cache reuse, but removing them to obtain a faster sample would lose
+  privacy/response-shape correctness. English/RTL document attributes add bytes;
+  there is no source-wide new translation parser or full-platform localization pass.
+- **Visible footer timing changed meaning at this checkpoint.** timing.rs itself is
+  unchanged, but the new initial-navigation script selects total render timing where
+  old initial HTML displayed the earlier SSR footer interval. This can change the
+  displayed number without proving lost backend optimization. The subsequent view-
+  metric correction must be judged separately; compare raw SSR with raw SSR and total
+  with total, retain304 semantics, and use the exact executable's source contract.
+
+### Historical notes are leads, not current regression evidence
+
+rendering-review.md describes older branches with unbounded directories/refs; those
+statements are stale for pinned main39f and91bb328, which contain the paged code above.
+Its remaining explicit block-observer unobserve/cleanup concern and theme-picker
+one-rAF-per-scroll path are still visible in unchanged blocks.js/theme-picker.js.
+They are inherited opportunities, not optimizations removed by this rewrite; source
+alone does not establish a browser leak or scrolling regression. Keep the existing
+no-JavaScript paths and correctness tests when investigating them later.
+
+The lock comparison also found pulldown-cmark0.13.5 ->0.13.6 despite unchanged
+Markdown render/cache source; keep that dependency difference in README/rendering
+comparisons rather than attributing every delta to crate extraction. Additional
+thiserror/Windows version families were added; their actual target/feature activation
+needs resolved-graph evidence, not an assumption from package presence alone.
+
+Runtime effects still depend on actual release flags/QPSG, cache configuration/state,
+permissions, seed size, auth/theme/language, background work and contention. The first
+acceptance evidence remains unchanged work-count tests plus paired idle release runs;
+this audit neither re-ran those tests nor turns identical blobs into a speed claim.
