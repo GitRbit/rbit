@@ -10,7 +10,9 @@ import { verifySandbox } from "./sandbox.mjs";
 import { contain } from "./containment.mjs";
 import { setupFailure } from "./diagnostics.mjs";
 import { launchEvidence } from "./launch-evidence.mjs";
-import { environment } from "./environment.mjs";
+import { initialNamespaceChroot, childNamespaceChroot } from "./namespace-probe.mjs";
+import { browserSeccompPolicy } from "./seccomp.mjs";
+import { environment, namespaceStartupReady } from "./environment.mjs";
 import { keyboard, logControls, noJavascript } from "./interactions.mjs";
 const output = "/artifacts";
 const source = "/work/docs/design/prototypes/actions";
@@ -85,6 +87,15 @@ try {
   if (!report.environment.home.owned || !report.environment.home.writable) throw new Error("OWNED_HOME_NOT_READY");
   if (!report.environment.executable.exists || !report.environment.executable.executable
     || !report.environment.executable.bundled) throw new Error("BUNDLED_EXECUTABLE_NOT_READY");
+  if (!namespaceStartupReady(report.environment)) throw new Error("CONTAINER_CONTROLS_UNPROVED");
+  report.seccompPolicySha256 = digest(JSON.stringify(await browserSeccompPolicy()));
+  report.seccompDelta = "namespace-chroot-only-v1";
+  setupStage = "initial-namespace-probe";
+  report.initialNamespaceChroot = await initialNamespaceChroot();
+  if (!report.initialNamespaceChroot.denied) throw new Error("INITIAL_NAMESPACE_CHROOT_UNPROVED");
+  setupStage = "child-namespace-probe";
+  report.childNamespaceChroot = await childNamespaceChroot();
+  if (!report.childNamespaceChroot.confirmed) throw new Error("CHILD_NAMESPACE_CHROOT_UNPROVED");
   setupStage = "browser-launch";
   browser = await chromium.launch({ channel: "chromium", chromiumSandbox: true, headless: true, timeout: 15000 });
   setupStage = "sandbox-proof";

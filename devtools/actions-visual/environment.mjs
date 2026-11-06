@@ -35,10 +35,14 @@ export function integerSetting(text, maximum = 2147483647) {
 }
 export function processSettings(text) {
   const field = name => text.match(new RegExp(`^${name}:\\s*([^\\r\\n]+)$`, "m"))?.[1];
-  const capabilities = field("CapEff");
+  const zero = name => {
+    const value = field(name);
+    return /^[0-9a-f]{1,16}$/i.test(value ?? "") ? BigInt(`0x${value}`) === 0n : null;
+  };
   return { noNewPrivileges: integerSetting(field("NoNewPrivs"), 1), seccomp: integerSetting(field("Seccomp"), 2),
     seccompFilters: integerSetting(field("Seccomp_filters")),
-    effectiveCapabilitiesZero: /^[0-9a-f]{1,16}$/i.test(capabilities ?? "") ? BigInt(`0x${capabilities}`) === 0n : null };
+    effectiveCapabilitiesZero: zero("CapEff"), boundingCapabilitiesZero: zero("CapBnd"),
+    permittedCapabilitiesZero: zero("CapPrm"), ambientCapabilitiesZero: zero("CapAmb") };
 }
 async function knownText(path) {
   try { return (await readFile(path, "utf8")).slice(0, 16384); } catch { return ""; }
@@ -67,4 +71,11 @@ export async function environment(expectedExecutable) {
     ["apparmorRestrictUnprivilegedUserns", "/proc/sys/kernel/apparmor_restrict_unprivileged_userns", 1],
   ]) kernel[key] = integerSetting(await knownText(path), maximum);
   return { uid, home, executable, status, kernel };
+}
+
+export function namespaceStartupReady(facts) {
+  const status = facts?.status;
+  return Number.isInteger(facts?.uid) && facts.uid > 0 && status?.noNewPrivileges === 1 && status.seccomp === 2
+    && status.effectiveCapabilitiesZero === true && status.boundingCapabilitiesZero === true
+    && status.permittedCapabilitiesZero === true && status.ambientCapabilitiesZero === true;
 }

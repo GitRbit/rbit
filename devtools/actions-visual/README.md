@@ -68,7 +68,12 @@ The `seccomp/` JSON fragments are a readability-only split of Microsoft's
 [Playwright 1.65.0 policy](https://github.com/microsoft/playwright/blob/v1.65.0/utils/docker/seccomp_profile.json),
 Copyright Microsoft Corporation, Apache-2.0 (see the repository's
 [Apache license](../../LICENSE-APACHE)). `seccomp.mjs` reconstructs the original
-object and verifies its canonical SHA-256 before use; no syscall rule is changed.
+object and verifies its canonical SHA-256 before use. The upstream digest is
+`8e3abd795acf8d96f90d4f2103f2b9665c21ab645df244d4eedcc5c95ceac3a2`.
+The browser policy appends exactly one unconditional `chroot` allow rule; all
+upstream rules, conditions and default action remain identical. Its canonical
+digest is `106b9b2b44d775c324f57bd196bf6b6a46add952e8955804cfc6e2e97b75813c`.
+Both evidence files record this digest and the `namespace-chroot-only-v1` delta.
 The official [Docker guidance](https://playwright.dev/docs/docker) describes the
 nonroot namespace/seccomp requirement. Host support is deliberately not assumed.
 
@@ -115,8 +120,9 @@ Before launching, the runner creates its fixed ephemeral HOME with mode 0700,
 checks ownership and lack of links, and performs an exclusive write/read/delete
 probe. It records only readiness booleans, numeric UID and expected executable
 existence/executability/bundled-root booleans, never paths. Known container-visible
-kernel observations are NoNewPrivs, Seccomp/filter count, whether effective
-capabilities are zero, maximum user namespaces, unprivileged-userns setting and
+kernel observations are NoNewPrivs, Seccomp/filter count, whether effective,
+permitted, bounding and ambient capabilities are zero, maximum user namespaces,
+unprivileged-userns setting and
 AppArmor userns restriction. Missing/unreadable/invalid fields are null; these
 observations alone do not prove Chromium's sandbox and do not identify an LSM
 profile. Actual browser proof is still required before any capture.
@@ -134,8 +140,8 @@ The [glibc 2.39 wrapper](https://github.com/bminor/glibc/blob/glibc-2.39/sysdeps
 only falls back from clone3 on ENOSYS. The current [Moby policy](https://github.com/moby/profiles/blob/main/seccomp/default.json)
 explicitly denies clone3 with errno 38 without CAP_SYS_ADMIN. This is a plausible
 compatibility difference, not an established cause of the failed CI launches.
-This diagnostic atom changes no syscall rule. Any later narrowly justified errno
-compatibility adjustment needs separate review and exact-delta tests; permitting
+The chroot compatibility delta leaves clone3 unchanged. Any later narrowly justified
+errno compatibility adjustment needs separate review and exact-delta tests; permitting
 clone3, disabling sandbox controls or broadening host privileges is not a fallback.
 
 The latest retained failure reached browser launch with a nonroot UID, private
@@ -146,5 +152,40 @@ boot/hello/premature-exit categories and bounded numeric known-source locations
 now distinguish these failure sites; a known child exit may identify namespace
 versus setuid mode. Numeric source lines correspond to the pinned
 [Chromium zygote host](https://github.com/chromium/chromium/blob/158.0.8127.18/content/browser/zygote_host/zygote_host_impl_linux.cc),
-not copied private paths. No host or syscall policy change follows from an
-unclassified abort, and no setuid or sandbox-disabling fallback is enabled.
+not copied private paths. No setuid or sandbox-disabling fallback is enabled.
+
+## Namespace filesystem compatibility
+
+The observed hello failure precedes any accepted browser sandbox proof. Source
+inspection identifies a concrete policy incompatibility: the upstream `chroot`
+allow depends on configured `CAP_SYS_CHROOT`, excluded by `--cap-drop ALL` even
+after Chromium creates its own user namespace. Chromium sends its boot message
+before entering the [layer-one sandbox](https://github.com/chromium/chromium/blob/158.0.8127.18/content/zygote/zygote_main_linux.cc),
+whose [filesystem isolation](https://github.com/chromium/chromium/blob/158.0.8127.18/sandbox/linux/services/credentials.cc)
+uses chroot before the hello message. This source incompatibility motivates the
+single-rule correction; it does not establish that no other launch blocker exists.
+
+Allowing this syscall is an explicit outer seccomp surface expansion. Classic
+seccomp cannot constrain the pointed-to pathname. Kernel namespace capability
+checks still apply: no host or container capability is granted, and network,
+mounts, read-only root, NNP and every other seccomp rule remain unchanged.
+This is not a claim of zero added attack surface or syscall-trace attribution.
+
+Before either probe or Chromium, nonroot identity, NNP, seccomp filtering and all
+four zero capability sets are mandatory. A fixed chroot probe against a fresh
+private empty directory must fail with exit125 and EPERM in the initial namespace.
+EPERM alone cannot distinguish a kernel capability check from seccomp or an LSM.
+A separate fixed `unshare --user --map-root-user --root` child must successfully chroot,
+then fail to execute its deliberately absent command with the specific exit127
+and ENOENT diagnostic. This proves namespace-local operation, not host privilege.
+The [util-linux implementation](https://github.com/util-linux/util-linux/blob/v2.39/sys-utils/unshare.c)
+chroots before exec in that same process, avoiding an intervening exec that could
+discard its namespace capabilities under the zero bounding set. No capability
+retention flag or additional helper executable runs inside the new root.
+The probe does not fork: timeout kills the owned unshare process directly.
+It needs no pidfd syscall allowance or detached-worker cleanup.
+Probe tools, unknown results or timeout failures prevent browser launch. No raw
+probe stderr or paths are retained. The child and its scratch directory are owned
+and cleaned within the disposable container. Actual Chromium namespace/PID/network
+and seccomp proof remains mandatory before screenshots; successful CI capture and
+human visual acceptance are still pending.

@@ -18,7 +18,26 @@ export async function seccompPolicy() {
   }
   return policy;
 }
+// Explicit reviewed compatibility delta: the upstream capability condition excludes
+// chroot under cap-drop ALL, even inside Chromium's new user namespace. The kernel
+// still rejects this syscall in the outer namespace with no capabilities.
+const namespaceChroot = {
+  names: ["chroot"], action: "SCMP_ACT_ALLOW", args: [],
+  comment: "Allow namespace-local Chromium filesystem isolation; kernel capability checks remain enforced.",
+  includes: {}, excludes: {},
+};
+export function assertBrowserSeccompDelta(policy, upstream) {
+  const expected = { ...upstream, syscalls: [...upstream.syscalls, namespaceChroot] };
+  if (JSON.stringify(policy) !== JSON.stringify(expected)) throw new Error("Unexpected browser seccomp delta");
+}
+export async function browserSeccompPolicy() {
+  const upstream = await seccompPolicy();
+  const policy = structuredClone(upstream);
+  policy.syscalls.push(structuredClone(namespaceChroot));
+  assertBrowserSeccompDelta(policy, upstream);
+  return policy;
+}
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   if (process.argv.length !== 3) throw new Error("Expected one output file");
-  await writeFile(process.argv[2], JSON.stringify(await seccompPolicy()), { flag: "wx" });
+  await writeFile(process.argv[2], JSON.stringify(await browserSeccompPolicy()), { flag: "wx" });
 }

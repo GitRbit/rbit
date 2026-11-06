@@ -5,8 +5,8 @@ import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { performance } from "node:perf_hooks";
 import { image } from "./policy.mjs";
-import { revision } from "./provenance.mjs";
-import { seccompPolicy } from "./seccomp.mjs";
+import { digest, revision } from "./provenance.mjs";
+import { browserSeccompPolicy } from "./seccomp.mjs";
 import { checkedMount } from "./mounts.mjs";
 import { docker, interruptDocker } from "./docker.mjs";
 import { createOwnership, cleanupOwned } from "./ownership.mjs";
@@ -19,7 +19,9 @@ const artifacts = join(root, "actions-visual-artifacts");
 await mkdir(artifacts, { recursive: false });
 await chmod(artifacts, 0o700);
 const policy = join(temporary, "seccomp.json");
-await writeFile(policy, JSON.stringify(await seccompPolicy()), { flag: "wx", mode: 0o600 });
+const serializedPolicy = JSON.stringify(await browserSeccompPolicy());
+const seccompPolicySha256 = digest(serializedPolicy);
+await writeFile(policy, serializedPolicy, { flag: "wx", mode: 0o600 });
 const sources = await Promise.all([
   "docs/design/prototypes/actions", "crates/rbit-web/assets/app.css",
   "crates/rbit-web/assets/logo-384.avif", "devtools/actions-visual",
@@ -65,7 +67,8 @@ try {
 } finally {
   await finalize(); // Verify exact CID ownership before removal; errors remain failures.
   await writeFile(join(artifacts, "container.json"), JSON.stringify({
-    schema: 1, revision: commit, image, pullMs,
+    schema: 1, revision: commit, image, pullMs, seccompPolicySha256,
+    seccompDelta: "namespace-chroot-only-v1",
     testMs: Math.round(performance.now() - started), succeeded,
     note: "Pull wall time is measured; actual network bytes and peak RSS are unmeasured.",
   }, null, 2) + "\n");

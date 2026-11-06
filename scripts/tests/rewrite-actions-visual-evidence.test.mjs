@@ -38,10 +38,10 @@ test("unknown and malformed exit data cannot become arbitrary retained fields", 
 });
 
 test("kernel observations parse only expected numeric fields and omit unrelated process text", () => {
-  assert.deepEqual(processSettings("Name:\tprivate-process\nNoNewPrivs:\t1\nSeccomp:\t2\nSeccomp_filters:\t1\nCapEff:\t0000000000000000\n"),
-    { noNewPrivileges: 1, seccomp: 2, seccompFilters: 1, effectiveCapabilitiesZero: true });
+  assert.deepEqual(processSettings("Name:\tprivate-process\nNoNewPrivs:\t1\nSeccomp:\t2\nSeccomp_filters:\t1\nCapEff:\t0000000000000000\nCapBnd:\t0000000000000000\nCapPrm:\t0000000000000000\nCapAmb:\t0000000000000000\n"),
+    { noNewPrivileges: 1, seccomp: 2, seccompFilters: 1, effectiveCapabilitiesZero: true, boundingCapabilitiesZero: true, permittedCapabilitiesZero: true, ambientCapabilitiesZero: true });
   assert.deepEqual(processSettings("NoNewPrivs:\t99\nSeccomp:\tprivate\nCapEff:\tunknown\n"),
-    { noNewPrivileges: null, seccomp: null, seccompFilters: null, effectiveCapabilitiesZero: null });
+    { noNewPrivileges: null, seccomp: null, seccompFilters: null, effectiveCapabilitiesZero: null, boundingCapabilitiesZero: null, permittedCapabilitiesZero: null, ambientCapabilitiesZero: null });
   for (const value of ["-1", "999999999999999999999", "1 credential=private", "", undefined]) assert.equal(integerSetting(value), null);
   assert.equal(integerSetting("6191584\n"), 6191584);
   assert.equal(integerSetting("2", 1), null);
