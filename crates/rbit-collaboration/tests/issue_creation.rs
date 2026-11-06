@@ -35,6 +35,7 @@ impl Bridge {
     }
 }
 
+#[allow(clippy::unused_async_trait_impl, reason = "scripted persistence effects stay lazy until poll for cancellation and ordering tests")]
 impl IssueCreationPort for Bridge {
     type Error = &'static str;
     async fn labels(&self, ids: &[LabelId]) -> Result<Vec<Label>, Self::Error> {

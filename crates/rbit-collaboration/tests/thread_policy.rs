@@ -15,6 +15,7 @@ use std::sync::Mutex;
 struct Store {
     calls: Mutex<Vec<&'static str>>,
 }
+#[allow(clippy::unused_async_trait_impl, reason = "scripted persistence effects stay lazy until poll like the database adapter")]
 impl ThreadRepository for Store {
     type Error = &'static str;
     async fn create(&self, new: &NewIssue) -> Result<Issue, Self::Error> {

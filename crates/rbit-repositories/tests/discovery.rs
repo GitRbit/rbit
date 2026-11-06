@@ -41,21 +41,21 @@ struct Catalog {
 impl PublicRepositoryCatalog for Catalog {
     type Error = Failure;
 
-    async fn count_public(&self, text: &str, archived: ArchivedFilter) -> Result<i64, Failure> {
+    fn count_public(&self, text: &str, archived: ArchivedFilter) -> impl Future<Output = Result<i64, Failure>> {
         self.calls.lock().unwrap().push(Call::Count(text.into(), archived));
-        if self.fail_count { Err(Failure::Count) } else { Ok(self.total) }
+        std::future::ready(if self.fail_count { Err(Failure::Count) } else { Ok(self.total) })
     }
 
-    async fn search_public(
+    fn search_public(
         &self,
         text: &str,
         sort: RepoSort,
         archived: ArchivedFilter,
         limit: u32,
         offset: u32,
-    ) -> Result<Vec<OwnedRepository>, Failure> {
+    ) -> impl Future<Output = Result<Vec<OwnedRepository>, Failure>> {
         self.calls.lock().unwrap().push(Call::Rows(text.into(), sort, archived, limit, offset));
-        if self.fail_rows { Err(Failure::Rows) } else { Ok(Vec::new()) }
+        std::future::ready(if self.fail_rows { Err(Failure::Rows) } else { Ok(Vec::new()) })
     }
 }
 

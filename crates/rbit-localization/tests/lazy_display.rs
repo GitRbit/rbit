@@ -33,7 +33,7 @@ fn lazy_output_is_byte_equivalent_to_owned_text_including_escaping_and_fallback(
         }
     }
 }
-/// The destination need not be a heap String. This exercises ordinary fmt::Write
+/// The destination need not be a heap String. This exercises ordinary `fmt::Write`
 /// without unsafe/global allocator instrumentation or claims about measured speed.
 struct Fixed {
     bytes: [u8; 256],

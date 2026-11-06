@@ -51,7 +51,7 @@ async fn catalog_mutations_and_reads_keep_statement_counts_and_publish_no_catalo
     assert_eq!(named.unwrap().len(), 1);
     assert_eq!(work.statements, 1);
     let (empty, work) = count_work(issues.labels_named(&repo, &[])).await;
-    assert!(empty.unwrap().is_empty());
+    assert_eq!(empty.unwrap(), Vec::<rbit_collaboration::labels::Label>::new());
     assert_eq!(work.statements, 0);
     let (deleted, work) = count_work(issues.delete_label(&repo, created.id)).await;
     assert_eq!(deleted.unwrap().id, created.id);

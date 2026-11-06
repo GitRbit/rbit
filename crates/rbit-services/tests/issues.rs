@@ -18,7 +18,7 @@ use rbit_storage::{Database, KvStore, NewUser};
 use tokio::sync::broadcast::{Receiver, error::TryRecvError};
 
 struct Fixture {
-    _dir: tempfile::TempDir,
+    directory: tempfile::TempDir,
     database: Database,
     services: Services,
     alice: User,
@@ -46,7 +46,7 @@ impl Fixture {
         let carol = user(&database, "carol").await;
         let input = CreateRepository { name: "demo".to_owned(), description: String::new(), visibility: Visibility::Public };
         services.repositories.create(&alice, input).await.unwrap();
-        Self { _dir: dir, database, services, alice, bob, carol }
+        Self { directory: dir, database, services, alice, bob, carol }
     }
 
     async fn repo(&self, viewer: &User) -> RepoContext {

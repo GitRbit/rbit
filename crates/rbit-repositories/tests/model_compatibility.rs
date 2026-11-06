@@ -52,7 +52,7 @@ fn owner_projection_archive_and_full_name_remain_unchanged() {
         bio: None,
         created_at: Timestamp(1),
     };
-    let mut owned = OwnedRepository {
+    let mut listing = OwnedRepository {
         owner,
         repo: Repository {
             id: RepoId(9),
@@ -67,10 +67,10 @@ fn owner_projection_archive_and_full_name_remain_unchanged() {
             archived_at: None,
         },
     };
-    assert_eq!(owned.full_name(), "Forge/MyRepo");
-    assert!(!owned.repo.is_archived());
-    owned.repo.archived_at = Some(Timestamp(0));
-    assert!(owned.repo.is_archived());
+    assert_eq!(listing.full_name(), "Forge/MyRepo");
+    assert!(!listing.repo.is_archived());
+    listing.repo.archived_at = Some(Timestamp(0));
+    assert!(listing.repo.is_archived());
     assert!(ArchivedFilter::Include.shows(true));
     assert!(!ArchivedFilter::Exclude.shows(true));
     assert!(ArchivedFilter::Only.shows(true));

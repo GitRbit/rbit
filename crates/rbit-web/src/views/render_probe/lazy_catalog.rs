@@ -23,6 +23,7 @@ impl Deref for OwnedResults<'_> {
     }
 }
 impl OwnedResults<'_> {
+    #[allow(clippy::trivially_copy_pass_by_ref, reason = "match the borrowed numeric argument in the actual Askama template")]
     fn star_label(&self, count: &i64) -> LocalizedText {
         Catalog::new(self.locale).text(Message::Stars { count: *count })
     }

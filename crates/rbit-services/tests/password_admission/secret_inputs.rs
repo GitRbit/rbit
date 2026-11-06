@@ -32,7 +32,7 @@ async fn unpolled_outer_password_entries_have_no_admission_proof_or_store_side_e
 }
 
 struct ConversionMustNotRun;
-impl<'a> From<ConversionMustNotRun> for SecondFactorProof<'a> {
+impl From<ConversionMustNotRun> for SecondFactorProof<'_> {
     fn from(_: ConversionMustNotRun) -> Self {
         panic!("proof conversion ran before missing passkey lookup");
     }

@@ -185,6 +185,6 @@ async fn a_new_attempt_reads_only_the_jobs_current_task_even_when_old_files_rema
         .unwrap();
     let current = actions.job_log_detail(&repo, run.number, claimed.job.id, LIMITS).await.unwrap();
     assert_eq!(current.detail.job.task_id, Some(next.task.id));
-    assert!(current.logs[0].as_ref().unwrap().lines.is_empty());
+    assert_eq!(current.logs[0].as_ref().unwrap().lines, Vec::<String>::new());
     assert!(fixture.dir.path().join(format!("data/actions/logs/{}/{}.log", repo.repo.repo.id.0, claimed.task.id.0)).exists());
 }

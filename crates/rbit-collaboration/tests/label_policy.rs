@@ -33,6 +33,7 @@ impl Catalog {
     }
 }
 
+#[allow(clippy::unused_async_trait_impl, reason = "scripted persistence effects stay lazy until poll like the database adapter")]
 impl LabelRepository for Catalog {
     type Error = &'static str;
 

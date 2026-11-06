@@ -37,6 +37,7 @@ impl Catalog {
     }
 }
 
+#[allow(clippy::unused_async_trait_impl, reason = "scripted persistence effects stay lazy until poll like the database adapter")]
 impl MilestoneRepository for Catalog {
     type Error = &'static str;
     async fn milestones(&self, _: RepoId, state: Option<IssueState>) -> Result<Vec<MilestoneProgress>, Self::Error> {

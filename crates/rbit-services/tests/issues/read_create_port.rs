@@ -101,7 +101,7 @@ async fn metadata_transaction_failure_keeps_existing_committed_row_gap_without_o
     let fixture = Fixture::new().await;
     let repo = fixture.repo(&fixture.alice).await;
     let label = fixture.label("bug").await;
-    let options = sqlx::sqlite::SqliteConnectOptions::new().filename(fixture._dir.path().join("rbit.db"));
+    let options = sqlx::sqlite::SqliteConnectOptions::new().filename(fixture.directory.path().join("rbit.db"));
     let mut connection = sqlx::SqliteConnection::connect_with(&options).await.unwrap();
     sqlx::query(
         "CREATE TRIGGER fixture_reject_metadata BEFORE INSERT ON issue_labels BEGIN SELECT RAISE(ABORT, 'fixture metadata failure'); END",
@@ -116,8 +116,11 @@ async fn metadata_transaction_failure_keeps_existing_committed_row_gap_without_o
     assert_eq!(work.statements, 4);
     let row = fixture.database.issues().find_by_number(repo.repo.repo.id, IssueNumber::new(1).unwrap()).await.unwrap().unwrap();
     assert_eq!(row.title.as_str(), "committed before metadata");
-    assert!(fixture.database.issue_meta().labels_of(&[row.id]).await.unwrap().is_empty());
-    assert!(fixture.events_of(&fixture.alice, row.number).await.is_empty());
+    assert_eq!(
+        fixture.database.issue_meta().labels_of(&[row.id]).await.unwrap(),
+        Vec::<(rbit_core::IssueId, rbit_core::issue::LabelSnapshot)>::new()
+    );
+    assert_eq!(fixture.events_of(&fixture.alice, row.number).await, Vec::<rbit_core::TimelineEvent>::new());
     assert!(matches!(events.try_recv(), Err(TryRecvError::Empty)));
     connection.close().await.unwrap();
 }
