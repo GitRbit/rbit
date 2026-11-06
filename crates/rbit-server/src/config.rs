@@ -85,6 +85,9 @@ fn provider_env(vars: impl Iterator<Item = (String, String)>) -> Vec<(String, St
 }
 
 #[cfg(test)]
+mod password_policy_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -105,11 +108,13 @@ mod tests {
         base.mail.smtp_password = "smtp-value".into();
         // Saved secrets are sealed with the key file in the data directory.
         let mut document = serde_json::to_value(&base).unwrap();
+        document["security"].as_object_mut().unwrap().remove("max_password_jobs");
         database.sealing_key().seal_secret_fields(&mut document).unwrap();
         assert!(!document.to_string().contains("smtp-value"));
         database.instance_settings().save(&[("deployment_config", &document.to_string())]).await.unwrap();
         let effective = load(Some(&file)).await.unwrap();
         assert_eq!(effective.mail.smtp_password, "smtp-value");
+        assert_eq!(effective.security.password_job_capacity().unwrap().get(), 2, "old saved documents retain the default");
         assert_eq!(effective.repository.default_branch, "develop");
         assert_eq!(effective.server.site_name, "Acme Forge");
         assert_eq!(effective.storage.data_dir, directory.path().join("data"));

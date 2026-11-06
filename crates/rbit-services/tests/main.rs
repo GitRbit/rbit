@@ -44,6 +44,7 @@ mod notification_email;
 mod notifications;
 mod orgs;
 mod passkeys;
+mod password_policy;
 mod preferences;
 mod profiles;
 mod protection;
