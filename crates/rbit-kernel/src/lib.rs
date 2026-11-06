@@ -10,6 +10,8 @@
 
 mod blocking;
 mod blocking_reservation;
+mod task_lifecycle;
 
 pub use blocking::{AdmissionError, BlockingBudget};
 pub use blocking_reservation::BlockingReservation;
+pub use task_lifecycle::{TaskLifecycle, TaskState, TaskStop};
