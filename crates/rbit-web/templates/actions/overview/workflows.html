@@ -1,10 +1,21 @@
-  <nav class="md:w-56 md:shrink-0" aria-label="Workflows">
-    <h2 class="mb-2 text-[13px] font-medium text-ink-muted">Workflows</h2>
-    <ul class="box divide-y divide-line">
-      <li><a class="flex min-h-11 items-center gap-2 px-3 text-[13px] hover:bg-subtle {% if workflow.is_none() %}font-medium text-ink{% else %}text-ink-muted{% endif %}" href="{{ all_url }}" {% if workflow.is_none() %}aria-current="page"{% endif %}>All workflows</a></li>
-      {% for link in workflows %}
-      <li><a class="flex min-h-11 min-w-0 items-center gap-2 px-3 text-[13px] hover:bg-subtle {% if link.is_current %}font-medium text-ink{% else %}text-ink-muted{% endif %}" href="{{ link.url }}" title="{{ link.file }}" {% if link.is_current %}aria-current="page"{% endif %}><span class="truncate">{{ link.name }}</span></a></li>
-      {% endfor %}
-    </ul>
-  </nav>
+<nav class="md:w-56 md:shrink-0" aria-label="{{ text.workflows }}">
+  <h2 class="mb-2 flex items-center justify-between gap-2 text-[13px] font-medium text-ink-muted">
+    {{ text.workflows }} <span class="tabular-nums">{{ workflows.len() }}</span>
+  </h2>
+  <ul class="box divide-y divide-line">
+    <li>
+      <a class="flex min-h-11 items-center gap-2 px-3 text-[13px] hover:bg-subtle {% if workflow.is_none() %}font-medium text-ink{% else %}text-ink-muted{% endif %}"
+         href="{{ all_url }}" {% if workflow.is_none() %}aria-current="page"{% endif %}>{{ text.all_workflows }}</a>
+    </li>
+    {% for link in workflows %}
+    <li>
+      <a class="flex min-h-11 min-w-0 items-center gap-2 px-3 py-2 text-[13px] hover:bg-subtle {% if link.is_current %}font-medium text-ink{% else %}text-ink-muted{% endif %}"
+         href="{{ link.url }}" title="{{ link.file }}" {% if link.is_current %}aria-current="page"{% endif %}>
+        {% call ui::icon("file", "size-3.5 shrink-0 text-ink-muted") %}{% endcall %}
+        <bdi class="min-w-0 break-words">{{ link.name }}</bdi>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+</nav>
 

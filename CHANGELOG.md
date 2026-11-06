@@ -32,6 +32,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Actions overview pages use responsive workflow navigation and visible native
+  filter labels, with typed localized empty states and page counts. Existing
+  dispatch, workflow controls, filter queries and result-only polling remain intact.
+
 - Actions run pages group existing workflow, commit, timing and attempt details in a
   responsive summary, with typed localized presentation labels. Review input and
   keyboard focus survive live refreshes only while the server still grants access

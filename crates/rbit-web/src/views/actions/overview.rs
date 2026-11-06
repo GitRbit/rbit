@@ -130,3 +130,9 @@ pub fn runs_refresh(runs: &[Run], newest: bool) -> Option<&'static str> {
         None
     }
 }
+
+impl RunsPage {
+    pub fn labels(&self) -> super::OverviewText {
+        super::OverviewText::new(self.page.locale, self.runs.len())
+    }
+}

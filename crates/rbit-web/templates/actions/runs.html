@@ -3,8 +3,9 @@
 {% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
+{% let text = self.labels() %}
 {#- Workflows stack above the runs on phones and sit beside them from `md` up. -#}
-<div class="flex flex-col gap-6 md:flex-row md:items-start">
+<div class="flex flex-col gap-6 md:flex-row md:items-start" lang="{{ page.locale.tag() }}" dir="{{ page.locale.direction().as_str() }}">
 {% include "actions/overview/workflows.html" %}  <div class="min-w-0 flex-1">
 {% include "actions/overview/controls.html" %}{% include "actions/overview/results.html" %}  </div>
 </div>

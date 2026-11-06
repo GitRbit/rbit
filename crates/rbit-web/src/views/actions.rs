@@ -28,6 +28,8 @@ use crate::{
     },
 };
 
+mod overview_text;
+pub use overview_text::OverviewText;
 mod overview;
 pub use overview::{FilterOption, RunFilters, RunRow, RunsPage, WorkflowLink, runs_refresh};
 mod dispatch;

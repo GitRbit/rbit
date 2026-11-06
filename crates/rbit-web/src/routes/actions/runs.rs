@@ -14,6 +14,8 @@ use axum::{
 };
 use std::collections::BTreeMap;
 
+mod overview_page;
+pub use overview_page::{list, workflow};
 mod run_page;
 pub use run_page::show;
 
@@ -86,28 +88,6 @@ impl ListQuery {
 fn non_empty(value: &str) -> Option<String> {
     let value = value.trim();
     (!value.is_empty()).then(|| value.to_owned())
-}
-
-/// `GET /{owner}/{repo}/actions`
-pub async fn list(
-    State(state): State<AppState>,
-    viewer: Viewer,
-    page: Page,
-    Path((owner, repo)): Path<(String, String)>,
-    Query(query): Query<ListQuery>,
-) -> WebResult<RunsPage> {
-    runs_page(&state, &viewer, page, &owner, &repo, None, &query, None).await
-}
-
-/// `GET /{owner}/{repo}/actions/workflows/{workflow}`: the runs of one workflow file.
-pub async fn workflow(
-    State(state): State<AppState>,
-    viewer: Viewer,
-    page: Page,
-    Path((owner, repo, workflow)): Path<(String, String, String)>,
-    Query(query): Query<ListQuery>,
-) -> WebResult<RunsPage> {
-    runs_page(&state, &viewer, page, &owner, &repo, Some(&workflow), &query, None).await
 }
 
 // Actions: dispatch form.
@@ -276,6 +256,7 @@ pub async fn dispatch(
     SignedIn(user): SignedIn,
     viewer: Viewer,
     page: Page,
+    locale: crate::localization::RequestLocale,
     Path((owner, repo, workflow)): Path<(String, String, String)>,
     Form(fields): Form<Vec<(String, String)>>,
 ) -> WebResult<axum::response::Response> {
@@ -300,8 +281,18 @@ pub async fn dispatch(
         }
         Err(ServiceError::Invalid(error)) => {
             let submitted = Submitted { reference, inputs, error };
-            let page = runs_page(&state, &viewer, page, &owner, &repo, Some(&workflow), &ListQuery::default(), Some(&submitted)).await?;
-            Ok((axum::http::StatusCode::UNPROCESSABLE_ENTITY, page).into_response())
+            let page = runs_page(
+                &state,
+                &viewer,
+                page.with_locale(locale.0.locale),
+                &owner,
+                &repo,
+                Some(&workflow),
+                &ListQuery::default(),
+                Some(&submitted),
+            )
+            .await?;
+            Ok(locale.response((axum::http::StatusCode::UNPROCESSABLE_ENTITY, page).into_response()))
         }
         Err(error) => Err(error.into()),
     }

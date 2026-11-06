@@ -19,6 +19,8 @@ use tower::ServiceExt;
 
 #[path = "actions_pages/control_parity.rs"]
 mod control_parity;
+#[path = "actions_pages/overview_presentation.rs"]
+mod overview_presentation;
 #[path = "actions_pages/run_presentation.rs"]
 mod run_presentation;
 
@@ -288,7 +290,8 @@ async fn writers_run_dispatch_workflows_from_their_page() {
     assert!(page.contains(r#"<option value="stable" selected>stable</option>"#), "the default is chosen");
     assert!(page.contains(r#"type="checkbox" id="dispatch-input-2" name="inputs[dry-run]" value="true""#));
     assert!(page.contains(r#"id="dispatch-ref" name="ref" value="main""#), "the default branch");
-    assert!(page.contains(">Release</h1>") && page.contains("<title>Release · Actions"), "the workflow's own name, not its file's");
+    let heading = page.split("<h1 ").nth(1).unwrap().split("</h1>").next().unwrap();
+    assert!(heading.contains("<bdi>Release</bdi>") && page.contains("<title>Release · Actions"), "the workflow's own name, not its file's");
     assert!(page.contains("use Run workflow above"), "no runs yet, and no \"add a workflow file\"");
     assert!(!fixture.page(url, &fixture.reader).await.contains("Run workflow"), "readers cannot run it");
     assert!(!fixture.page("/alice/rocket/actions/workflows/ci.yml", &fixture.owner).await.contains("Run workflow"));
