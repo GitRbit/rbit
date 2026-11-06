@@ -22,6 +22,7 @@
 mod creation;
 pub mod hooks;
 pub mod json;
+mod label_attachments;
 mod labels;
 mod milestones;
 
@@ -496,46 +497,6 @@ impl IssueService {
             users.push(user);
         }
         Ok(users)
-    }
-
-    /// Adds and removes labels (`add` wins over `remove` for the same label). Each real
-    /// change is recorded and published once; at most 25 labels remain.
-    pub async fn change_labels(&self, actor: &User, ctx: &IssueContext, add: &[LabelId], remove: &[LabelId]) -> Result<(), ServiceError> {
-        Self::require_triage(actor, ctx)?;
-        let repo = ctx.repo.repo.repo.id;
-        let add = self.repo_labels(repo, &distinct(add)).await?;
-        let remove: Vec<LabelId> = distinct(remove).into_iter().filter(|id| !add.iter().any(|l| l.id == *id)).collect();
-        let store = self.ctx.database.issue_meta();
-        let current = store.labels_of(&[ctx.issue.id]).await?;
-        let kept = current.iter().filter(|(_, label)| !remove.contains(&label.id)).count();
-        let added = add.iter().filter(|label| !current.iter().any(|(_, l)| l.id == label.id)).count();
-        if kept + added > MAX_LABELS_PER_ISSUE {
-            return Err(invalid(format!("an issue can have at most {MAX_LABELS_PER_ISSUE} labels")));
-        }
-        self.spend(actor)?;
-        let now = Timestamp::now();
-        for (_, label) in current.iter().filter(|(_, label)| remove.contains(&label.id)) {
-            if store.remove_label(ctx.issue.id, label.id).await? {
-                self.timeline.record(ctx.issue.id, Some(actor.id()), TimelineEvent::Unlabeled { label: label.clone() }).await?;
-                self.publish(&ctx.issue, Some(actor.id()), IssueAction::Unlabeled { label: label.clone() });
-            }
-        }
-        for label in &add {
-            if store.add_label(ctx.issue.id, label.id, now).await? {
-                let snapshot = label.snapshot();
-                self.timeline.record(ctx.issue.id, Some(actor.id()), TimelineEvent::Labeled { label: snapshot.clone() }).await?;
-                self.publish(&ctx.issue, Some(actor.id()), IssueAction::Labeled { label: snapshot });
-            }
-        }
-        Ok(())
-    }
-
-    /// Makes the thread's labels exactly `labels`.
-    pub async fn set_labels(&self, actor: &User, ctx: &IssueContext, labels: &[LabelId]) -> Result<(), ServiceError> {
-        Self::require_triage(actor, ctx)?;
-        let current = self.ctx.database.issue_meta().labels_of(&[ctx.issue.id]).await?;
-        let remove: Vec<LabelId> = current.iter().map(|(_, l)| l.id).filter(|id| !labels.contains(id)).collect();
-        self.change_labels(actor, ctx, labels, &remove).await
     }
 
     /// Assigns and unassigns (`add` wins over `remove`). Assignees must be able to push;

@@ -1,4 +1,4 @@
-//! Label catalog ownership shared by issues and pull requests.
+//! Label catalogs and thread assignments shared by issues and pull requests.
 
 mod models;
 mod validation;
@@ -16,3 +16,12 @@ mod repository;
 pub use application::{LabelAccess, LabelApplication, LabelError};
 #[cfg(feature = "applications")]
 pub use repository::LabelRepository;
+
+#[cfg(feature = "applications")]
+mod attachment_port;
+#[cfg(feature = "applications")]
+mod attachments;
+#[cfg(feature = "applications")]
+pub use attachment_port::{LabelAttachmentKind, LabelAttachmentMutation, LabelAttachmentPort};
+#[cfg(feature = "applications")]
+pub use attachments::{LabelAttachmentAccess, LabelAttachmentError, LabelAttachments};

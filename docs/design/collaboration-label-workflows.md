@@ -1,9 +1,10 @@
 # Collaboration-owned label catalog workflows
 
 This slice activates the complete existing repository label catalog in
-`rbit-collaboration`, as assigned by the rewrite plan. Issues, pull requests,
-timeline changes, label attachment/removal, milestones and assignees retain their
-existing implementations; this does not retire the whole collaboration domain.
+`rbit-collaboration`, as assigned by the rewrite plan. Thread label assignment is
+activated separately through `LabelAttachments`, retaining its existing service
+timeline/event translations. Other issue/pull workflows and assignee/milestone
+attachments remain separate; this does not retire the whole collaboration domain.
 
 ## Ownership and compatibility
 

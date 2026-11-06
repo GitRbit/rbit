@@ -189,3 +189,5 @@ async fn labels_have_limits_uniqueness_and_events() {
     issues.delete_label(&empty, foreign).await.unwrap();
     assert_eq!(issues.create_default_labels(&fixture.alice, &empty).await.unwrap(), 9);
 }
+
+mod attachments;
