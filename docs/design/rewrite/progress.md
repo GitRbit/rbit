@@ -27,7 +27,49 @@ Public development and review continue in [draft PR #53](https://github.com/GitR
 
 The kernel now coordinates password admission and its first statically owned background workers. Full module lifecycle and the remaining feature ports are still pending. Existing services remain the behavior authority during the transition.
 
-## Validation checkpoint
+## Latest published checkpoint
+
+`fcdd2f95` adds repository discovery, collaboration label/milestone catalogs and
+issue read/create applications through static ports. Existing SQL and event ordering
+remain the compatibility authority. Issue creation still spans separate durable
+transactions; its partial-commit limitation is covered rather than presented as
+crash-atomic behavior. These ports do not retire their complete feature groups.
+
+The feature-free `rbit-identity-models` package separates model consumers from
+globally unified credential/session application features. The boundary check now
+examines the full enabled application graph, in addition to isolated model graphs.
+Credential inputs gain eager zeroizing ownership and redacted form diagnostics.
+The new offline credential-inventory tool reports bounded aggregate metadata from
+an explicit stopped copy; no live user database has been inspected and no new
+password-cost rejection policy is activated.
+
+Actions job logs retain original step limits while sharing one bounded indexed
+decode across requested windows. A default-off real-page shared-shell experiment
+retains the original production renderer. Explore dynamic labels now defer
+formatting until rendering. New Rust and feature-equivalence validation remains
+required for this integrated batch.
+
+- Main CI passed at `ec57e0ac`: [run 42188842556](https://github.com/GitRbit/rbit/actions/runs/42188842556).
+  The full [run 42182650192](https://github.com/GitRbit/rbit/actions/runs/42182650192)
+  also passed at `7326e563`. Both precede the latest domain-port batch.
+- Local Node checks pass: 362 tests, four platform skips. Source policy reports
+  1,326 authored files and no violations; formatting passes. The previous integrated
+  workspace run reached E2E with 109 passed and one failed import-progress assertion.
+  Its focused rerun and latest broad Rust, structural AST and strict Clippy gates
+  are pending. No complete latest-candidate pass is claimed.
+- The [matched release footer comparison](measurements/footer-small-pages.md)
+  retains four valid runs and 1,800 measured responses against pinned main.
+  Both revisions have sub-500-microsecond medians for the six small page cases.
+  Tail differences remain investigation items; later ports and operational workloads
+  require fresh evidence.
+- The separate [visual review run](https://github.com/GitRbit/rbit/actions/runs/42188842595)
+  passed the initial-namespace denial and isolated namespace chroot probes, then
+  returned from browser launch before failing sandbox-proof setup. No images or
+  browser acceptance resulted. The new checkpoint adds bounded stage diagnostics.
+
+## Historical validation checkpoints
+
+The records below describe their named revisions, not the latest candidate.
 
 - The model/transport checkpoint `04ce49f1` passes the full Windows workspace test command, including doctests, and strict workspace/all-target Clippy after a test assertion correction. Later account application integration has its own focused results below; those do not imply a new full-workspace or hosted pass.
 - Account applications: models-only (seven tests), credentials-only (nine tests) and the combined identity/core/auth/storage/services test command pass. This includes 535 service and 249 storage tests. Strict all-target Clippy, formatting, source/type boundaries and advisories/licenses pass. All eight application-port tests also pass after fixture corrections. Existing SQL bootstrap races, events, audit, session and migration acceptance remain authoritative.
