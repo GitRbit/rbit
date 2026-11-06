@@ -1,0 +1,513 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "scope": "Windows owned native synthetic compiler-cache correctness fixture",
+  "helperRevision": "67a2be069858eac25a6fc41766651ac4f45e4ff9",
+  "helperUnchanged": true,
+  "stepCount": 22,
+  "fixture": {
+    "worktrees": [
+      "A",
+      "B",
+      "C"
+    ],
+    "packages": 2,
+    "standardLibraryOnly": true,
+    "backdatedSources": true,
+    "buildScriptAndGeneratedSource": true,
+    "profiles": [
+      "dev",
+      "release"
+    ],
+    "sharedCompilerLane": true,
+    "checkoutLocalCompilerDirectories": 0
+  },
+  "readOnlyExistingCacheObservation": {
+    "localPackages": 25,
+    "localCargoUnitsScanned": 1324,
+    "compilerExecuted": false,
+    "cacheMutated": false
+  },
+  "freshPrimaryExportCreationObserved": true,
+  "steps": [
+    {
+      "step": 1,
+      "case": "Initial A",
+      "worktree": "A",
+      "mode": "guarded",
+      "profile": "dev",
+      "alternateFeature": false,
+      "outputTag": "one:11",
+      "nativeCompleted": true,
+      "sourceProof": {
+        "trusted": true,
+        "approved": 4,
+        "invalidated": 4,
+        "reusable": 0,
+        "fresh": 0,
+        "rebuilt": 3
+      },
+      "cargoFrames": {
+        "fresh": 0,
+        "rebuilt": 3,
+        "scripts": 1
+      }
+    },
+    {
+      "step": 2,
+      "case": "Warm A",
+      "worktree": "A",
+      "mode": "guarded",
+      "profile": "dev",
+      "alternateFeature": false,
+      "outputTag": "one:11",
+      "nativeCompleted": true,
+      "sourceProof": {
+        "trusted": true,
+        "approved": 4,
+        "invalidated": 0,
+        "reusable": 4,
+        "fresh": 3,
+        "rebuilt": 0
+      },
+      "cargoFrames": {
+        "fresh": 3,
+        "rebuilt": 0,
+        "scripts": 1
+      }
+    },
+    {
+      "step": 3,
+      "case": "Primary library A",
+      "worktree": "A",
+      "mode": "primary-library",
+      "profile": "dev",
+      "nativeCompleted": true,
+      "primaryExportWasPresent": true,
+      "sourceProof": {
+        "trusted": true,
+        "approved": 4,
+        "invalidated": 1,
+        "reusable": 3,
+        "fresh": 1,
+        "rebuilt": 1
+      }
+    },
+    {
+      "step": 4,
+      "case": "Warm primary library A",
+      "worktree": "A",
+      "mode": "primary-library",
+      "profile": "dev",
+      "nativeCompleted": true,
+      "primaryExportWasPresent": true,
+      "sourceProof": {
+        "trusted": true,
+        "approved": 4,
+        "invalidated": 0,
+        "reusable": 4,
+        "fresh": 2,
+        "rebuilt": 0
+      }
+    },
+    {
+      "step": 5,
+      "case": "Alternate A",
+      "worktree": "A",
+      "mode": "guarded",
+      "profile": "dev",
+      "alternateFeature": true,
+      "outputTag": "one:111",
+      "nativeCompleted": true,
+      "sourceProof": {
+        "trusted": true,
+        "approved": 7,
+        "invalidated": 0,
+        "reusable": 4,
+        "fresh": 0,
+        "rebuilt": 3
+      },
+      "cargoFrames": {
+        "fresh": 0,
+        "rebuilt": 3,
+        "scripts": 1
+      }
+    },
+    {
+      "step": 6,
+      "case": "Switch to B",
+      "worktree": "B",
+      "mode": "guarded",
+      "profile": "dev",
+      "alternateFeature": false,
+      "outputTag": "two:22",
+      "nativeCompleted": true,
+      "sourceProof": {
+        "trusted": true,
+        "approved": 4,
+        "invalidated": 7,
+        "reusable": 0,
+        "fresh": 0,
+        "rebuilt": 3
+      },
+      "cargoFrames": {
+        "fresh": 0,
+        "rebuilt": 3,
+        "scripts": 1
+      }
+    },
+    {
+      "step": 7,
+      "case": "Alternate B",
+      "worktree": "B",
+      "mode": "guarded",
+      "profile": "dev",
+      "alternateFeature": true,
+      "outputTag": "two:222",
+      "nativeCompleted": true,
+      "sourceProof": {
+        "trusted": true,
+        "approved": 7,
+        "invalidated": 0,
+        "reusable": 4,
+        "fresh": 0,
+        "rebuilt": 3
+      },
+      "cargoFrames": {
+        "fresh": 0,
+        "rebuilt": 3,
+        "scripts": 1
+      }
+    },
+    {
+      "step": 8,
+      "case": "Return to A",
+      "worktree": "A",
+      "mode": "guarded",
+      "profile": "dev",
+      "alternateFeature": false,
+      "outputTag": "one:11",
+      "nativeCompleted": true,
+      "sourceProof": {
+        "trusted": true,
+        "approved": 4,
+        "invalidated": 7,
+        "reusable": 0,
+        "fresh": 0,
+        "rebuilt": 3
+      },
+      "cargoFrames": {
+        "fresh": 0,
+        "rebuilt": 3,
+        "scripts": 1
+      }
+    },
+    {
+      "step": 9,
+      "case": "Switch to C",
+      "worktree": "C",
+      "mode": "guarded",
+      "profile": "dev",
+      "alternateFeature": false,
+      "outputTag": "tri:33",
+      "nativeCompleted": true,
+      "sourceProof": {
+        "trusted": true,
+        "approved": 4,
+        "invalidated": 4,
+        "reusable": 0,
+        "fresh": 0,
+        "rebuilt": 3
+      },
+      "cargoFrames": {
+        "fresh": 0,
+        "rebuilt": 3,
+        "scripts": 1
+      }
+    },
+    {
+      "step": 10,
+      "case": "Return to alternate A",
+      "worktree": "A",
+      "mode": "guarded",
+      "profile": "dev",
+      "alternateFeature": true,
+      "outputTag": "one:111",
+      "nativeCompleted": true,
+      "sourceProof": {
+        "trusted": true,
+        "approved": 4,
+        "invalidated": 4,
+        "reusable": 0,
+        "fresh": 0,
+        "rebuilt": 3
+      },
+      "cargoFrames": {
+        "fresh": 0,
+        "rebuilt": 3,
+        "scripts": 1
+      }
+    },
+    {
+      "step": 11,
+      "case": "Expected compiler failure B",
+      "worktree": "B",
+      "mode": "expected-compiler-failure",
+      "rejected": true,
+      "expectedCargoExitCode": 101
+    },
+    {
+      "step": 12,
+      "case": "Recover B",
+      "worktree": "B",
+      "mode": "guarded",
+      "profile": "dev",
+      "alternateFeature": false,
+      "outputTag": "two:22",
+      "nativeCompleted": true,
+      "sourceProof": {
+        "trusted": true,
+        "approved": 4,
+        "invalidated": 2,
+        "reusable": 0,
+        "fresh": 0,
+        "rebuilt": 3
+      },
+      "cargoFrames": {
+        "fresh": 0,
+        "rebuilt": 3,
+        "scripts": 1
+      }
+    },
+    {
+      "step": 13,
+      "case": "Return to A",
+      "worktree": "A",
+      "mode": "guarded",
+      "profile": "dev",
+      "alternateFeature": false,
+      "outputTag": "one:11",
+      "nativeCompleted": true,
+      "sourceProof": {
+        "trusted": true,
+        "approved": 4,
+        "invalidated": 4,
+        "reusable": 0,
+        "fresh": 0,
+        "rebuilt": 3
+      },
+      "cargoFrames": {
+        "fresh": 0,
+        "rebuilt": 3,
+        "scripts": 1
+      }
+    },
+    {
+      "step": 14,
+      "case": "Trusted warm A before overwrite",
+      "worktree": "A",
+      "mode": "guarded",
+      "profile": "dev",
+      "alternateFeature": false,
+      "outputTag": "one:11",
+      "nativeCompleted": true,
+      "sourceProof": {
+        "trusted": true,
+        "approved": 4,
+        "invalidated": 0,
+        "reusable": 4,
+        "fresh": 3,
+        "rebuilt": 0
+      },
+      "cargoFrames": {
+        "fresh": 3,
+        "rebuilt": 0,
+        "scripts": 1
+      }
+    },
+    {
+      "step": 15,
+      "case": "Legacy writer C",
+      "worktree": "C",
+      "mode": "legacy-out-of-band-writer",
+      "profile": "dev",
+      "alternateFeature": false,
+      "outputTag": "tri:33",
+      "nativeCompleted": true
+    },
+    {
+      "step": 16,
+      "case": "Recover matching-root A after overwrite",
+      "worktree": "A",
+      "mode": "guarded",
+      "profile": "dev",
+      "alternateFeature": false,
+      "outputTag": "one:11",
+      "nativeCompleted": true,
+      "sourceProof": {
+        "trusted": true,
+        "approved": 4,
+        "invalidated": 3,
+        "reusable": 1,
+        "fresh": 1,
+        "rebuilt": 2
+      },
+      "cargoFrames": {
+        "fresh": 1,
+        "rebuilt": 2,
+        "scripts": 1
+      }
+    },
+    {
+      "step": 17,
+      "case": "Alternate A after recovery",
+      "worktree": "A",
+      "mode": "guarded",
+      "profile": "dev",
+      "alternateFeature": true,
+      "outputTag": "one:111",
+      "nativeCompleted": true,
+      "sourceProof": {
+        "trusted": true,
+        "approved": 7,
+        "invalidated": 0,
+        "reusable": 4,
+        "fresh": 0,
+        "rebuilt": 3
+      },
+      "cargoFrames": {
+        "fresh": 0,
+        "rebuilt": 3,
+        "scripts": 1
+      }
+    },
+    {
+      "step": 18,
+      "case": "Release A",
+      "worktree": "A",
+      "mode": "guarded",
+      "profile": "release",
+      "alternateFeature": false,
+      "outputTag": "one:11",
+      "nativeCompleted": true,
+      "sourceProof": {
+        "trusted": true,
+        "approved": 11,
+        "invalidated": 0,
+        "reusable": 7,
+        "fresh": 0,
+        "rebuilt": 3
+      },
+      "cargoFrames": {
+        "fresh": 0,
+        "rebuilt": 3,
+        "scripts": 1
+      }
+    },
+    {
+      "step": 19,
+      "case": "Release B",
+      "worktree": "B",
+      "mode": "guarded",
+      "profile": "release",
+      "alternateFeature": false,
+      "outputTag": "two:22",
+      "nativeCompleted": true,
+      "sourceProof": {
+        "trusted": true,
+        "approved": 4,
+        "invalidated": 11,
+        "reusable": 0,
+        "fresh": 0,
+        "rebuilt": 3
+      },
+      "cargoFrames": {
+        "fresh": 0,
+        "rebuilt": 3,
+        "scripts": 1
+      }
+    },
+    {
+      "step": 20,
+      "case": "Return to release A",
+      "worktree": "A",
+      "mode": "guarded",
+      "profile": "release",
+      "alternateFeature": false,
+      "outputTag": "one:11",
+      "nativeCompleted": true,
+      "sourceProof": {
+        "trusted": true,
+        "approved": 4,
+        "invalidated": 4,
+        "reusable": 0,
+        "fresh": 0,
+        "rebuilt": 3
+      },
+      "cargoFrames": {
+        "fresh": 0,
+        "rebuilt": 3,
+        "scripts": 1
+      }
+    },
+    {
+      "step": 21,
+      "case": "First release primary export",
+      "worktree": "A",
+      "mode": "primary-library",
+      "profile": "release",
+      "nativeCompleted": true,
+      "primaryExportWasPresent": false,
+      "sourceProof": {
+        "trusted": true,
+        "approved": 4,
+        "invalidated": 0,
+        "reusable": 4,
+        "fresh": 2,
+        "rebuilt": 0
+      }
+    },
+    {
+      "step": 22,
+      "case": "Warm release primary export",
+      "worktree": "A",
+      "mode": "primary-library",
+      "profile": "release",
+      "nativeCompleted": true,
+      "primaryExportWasPresent": true,
+      "sourceProof": {
+        "trusted": true,
+        "approved": 4,
+        "invalidated": 0,
+        "reusable": 4,
+        "fresh": 2,
+        "rebuilt": 0
+      }
+    }
+  ],
+  "notEstablished": [
+    "Whole application correctness",
+    "Original release comparison validity",
+    "Linux or macOS native completion",
+    "Hermetic build inputs",
+    "Hostile local writer resistance",
+    "Cache hard size bound",
+    "Compile speed or memory improvement"
+  ],
+  "windowsDefaultOwnership": {
+    "helperRevision": "fa275da9e6f638dd2b7cca899a8cd01968d77001",
+    "explicitOwnershipEnvironment": false,
+    "nativeMethod": "windows-job",
+    "nativeTreeStopped": true,
+    "sourceProof": {
+      "trusted": true,
+      "approved": 4,
+      "invalidated": 0,
+      "reusable": 4,
+      "fresh": 3,
+      "rebuilt": 0
+    },
+    "output": "one:11",
+    "checkoutLocalCompilerDirectories": 0
+  }
+}
