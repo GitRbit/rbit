@@ -1,0 +1,22 @@
+[package]
+name = "rbit-process-tree-probe"
+description = "Development-only evidence for native process-tree ownership."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+tokio.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+win32job = "=2.0.3"
+processkit = { version = "=3.3.4", default-features = false, features = ["process-control"] }
+
+[lints]
+workspace = true

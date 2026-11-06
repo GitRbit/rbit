@@ -11,6 +11,7 @@ const GENERATED = new Set([
   "crates/rbit-web/assets/app.bundle.js", "crates/rbit-web/src/themes/catalog.rs",
 ]);
 const FEATURE_EDGES = {
+  "rbit-process-tree-probe": [],
   "rbit-kernel": [], "rbit-contracts": [], "rbit-localization": [], "rbit-rewrite-check": [], "rbit-render-probe": [],
   "rbit-identity": ["rbit-contracts", "rbit-kernel"],
   "rbit-access": [],

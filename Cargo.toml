@@ -21,6 +21,7 @@ members = [
     "crates/rbit-access",
     "tools/rewrite-check",
     "tools/render-probe",
+    "tools/process-tree-probe",
 ]
 default-members = ["crates/rbit-server"]
 
