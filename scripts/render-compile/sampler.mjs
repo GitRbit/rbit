@@ -27,12 +27,12 @@ export class ObserverLifecycleError extends Error {
 }
 
 export async function sampler(directory, config, { spawnObserver = spawn, startupMs = 15_000,
-  stopMs = 5000 + config["sample-ms"], killMs = 5000, writeStop = writeFile } = {}) {
+  stopMs = 5000 + config["sample-ms"], killMs = 5000, writeStop = writeFile, compilerIdentity } = {}) {
   if (config.memory === "none") return { attach() {}, async finish() { return new OwnedMemory({ pid: 0, beforeMs: 0 }).finish(["memory-not-requested"]); } };
   const stop = join(directory, `${randomUUID()}.stop`);
   const observer = spawnObserver("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
     fileURLToPath(new URL("sample-processes.ps1", import.meta.url)), "-ObserverParentPid", String(process.pid),
-    "-IntervalMs", String(config["sample-ms"]), "-StopFile", stop], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    "-IntervalMs", String(config["sample-ms"]), "-StopFile", stop, ...(compilerIdentity?.observerArguments() ?? [])], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
   const errors = new Set(), stderr = createHash("sha256");
   observer.stderr.on("data", (chunk) => stderr.update(chunk));
   let memory, readyResolve, closedResolve, isReady = false, isClosed = false, shutdown;
@@ -54,7 +54,7 @@ export async function sampler(directory, config, { spawnObserver = spawn, startu
     if (code !== 0 || signal) errors.add("observer-exited-abnormally");
     readyResolve(); closedResolve();
   });
-  const report = (confirmed) => ({ ...(memory ?? new OwnedMemory({ pid: 0, beforeMs: 0 })).finish([...errors]),
+  const report = (confirmed) => ({ compilerIdentity: compilerIdentity?.provenance ?? { policy: "actual-executable-v1", verifiedCandidate: false, reason: "compiler-memory-identity-unverified" }, ...(memory ?? new OwnedMemory({ pid: 0, beforeMs: 0 })).finish([...errors]),
     observerStopped: confirmed, observerStderrSha256: confirmed ? stderr.digest("hex") : null,
     fields: { workingSetBytes: "Win32_Process.WorkingSetSize", privateBytes: "Win32_Process.PrivatePageCount" } });
   const finish = () => shutdown ??= (async () => {

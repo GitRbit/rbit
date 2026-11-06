@@ -1,4 +1,4 @@
-# Only metadata is enumerated globally. Query arguments for a proved rustc identity.
+# Only metadata is enumerated globally. Query arguments/path for a proved rustc identity.
 function Census {
     $start = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     $script:CreationDates = @{}
@@ -15,13 +15,13 @@ function Census {
             }
             @{ pid = [int]$_.ProcessId; parentPid = [int]$_.ParentProcessId;
                createdMs = ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds(); kind = $kind;
-               workingSetBytes = $working; privateBytes = $private; crateName = $null; targetTriple = $null }
+               workingSetBytes = $working; privateBytes = $private; crateName = $null; targetTriple = $null; actualCompilerMatch = $false }
         }
     })
     return @{ kind = 'census'; startMs = $start; endMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); rows = $rows }
 }
 
-function Add-OwnedRustcIdentifiers($frame, [int]$ownerPid, [long]$ownerCreated) {
+function Add-OwnedRustcIdentifiers($frame, [int]$ownerPid, [long]$ownerCreated, [string]$expectedCompilerPath) {
     $byPid = @{}; foreach ($row in $frame.rows) { $byPid[$row.pid] = $row }
     foreach ($row in $frame.rows) {
         if ($row.kind -ne 'rustc') { continue }
@@ -39,9 +39,17 @@ function Add-OwnedRustcIdentifiers($frame, [int]$ownerPid, [long]$ownerCreated) 
         # a reused PID must not expose an unrelated application's arguments.
         $date = [System.Management.ManagementDateTimeConverter]::ToDmtfDateTime($script:CreationDates[$row.pid])
         $filter = "ProcessId = $($row.pid) AND CreationDate = '$date'"
-        $target = @(Get-CimInstance Win32_Process -Filter $filter -Property ProcessId,ParentProcessId,CreationDate,CommandLine)
+        $target = @(Get-CimInstance Win32_Process -Filter $filter -Property ProcessId,ParentProcessId,CreationDate,CommandLine,ExecutablePath)
         if ($target.Count -ne 1 -or $target[0].ProcessId -ne $row.pid -or $target[0].ParentProcessId -ne $row.parentPid -or
             ([DateTimeOffset]$target[0].CreationDate).ToUnixTimeMilliseconds() -ne $row.createdMs) { continue }
+        # A rustup proxy inherits --crate-name too. Only the actual executable may
+        # establish compiler memory. Missing paths/aliases fail closed; never emit paths.
+        if ($expectedCompilerPath -and $target[0].ExecutablePath -and [IO.Path]::IsPathRooted($target[0].ExecutablePath)) {
+            try {
+                $actual = [IO.Path]::GetFullPath($target[0].ExecutablePath)
+                $row.actualCompilerMatch = [string]::Equals($actual, $expectedCompilerPath, [StringComparison]::OrdinalIgnoreCase)
+            } catch { $row.actualCompilerMatch = $false }
+        }
         $arguments = $target[0].CommandLine
         if ($arguments -match '(?:^|\s)--crate-name(?:=|\s+)"?([A-Za-z_][A-Za-z0-9_]*)"?(?:\s|$)') { $row.crateName = $Matches[1] }
         if ($arguments -match '(?:^|\s)--target(?:=|\s+)"?([A-Za-z0-9_-]+)"?(?:\s|$)') { $row.targetTriple = $Matches[1] }

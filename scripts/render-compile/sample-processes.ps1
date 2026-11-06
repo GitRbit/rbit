@@ -1,4 +1,4 @@
-param([int]$ObserverParentPid, [int]$IntervalMs, [string]$StopFile)
+param([int]$ObserverParentPid, [int]$IntervalMs, [string]$StopFile, [string]$ExpectedCompilerPath)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'process-identities.ps1')
 function Emit($record) { [Console]::Out.WriteLine(($record | ConvertTo-Json -Compress -Depth 5)) }
@@ -12,7 +12,7 @@ try {
         $frame = Census
         $sameOwner = @($frame.rows | Where-Object { $_.pid -eq $ObserverParentPid -and $_.createdMs -eq $created })
         if ($sameOwner.Count -ne 1) { break }
-        Add-OwnedRustcIdentifiers $frame $ObserverParentPid $created
+        Add-OwnedRustcIdentifiers $frame $ObserverParentPid $created $ExpectedCompilerPath
         Emit $frame
         Start-Sleep -Milliseconds $IntervalMs
     }

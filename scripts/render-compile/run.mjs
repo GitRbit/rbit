@@ -41,7 +41,7 @@ export async function measuredJob(ctx, config, job, baseline, control, write, en
         clean = { exit: cleanExit, output: cleanOutput.result(), argv: cleanArgs(config) };
       }
       const before = await identifySource(ctx);
-      const observer = await observe(control, phase === "sample" ? config : { ...config, memory: "none" });
+      const observer = await observe(control, phase === "sample" ? config : { ...config, memory: "none" }, { compilerIdentity: dependencies.compilerIdentity });
       const artifacts = [], output = digestSink();
       let exit, failure;
       const started = performance.now();

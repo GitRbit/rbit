@@ -9,6 +9,7 @@ import { options, measurementEnv } from "../render-compile/options.mjs";
 import { sourceIdentity, flagIdentity, toolIdentity, cargoConfigIdentity, sha } from "../render-compile/identity.mjs";
 import { measuredJob } from "../render-compile/run.mjs";
 import { sequence } from "../render-compile/sequence.mjs";
+import { compilerIdentity } from "../render-compile/compiler-identity.mjs";
 import { sampleCounts } from "../render-compile/summary.mjs";
 
 async function main() {
@@ -23,8 +24,9 @@ async function main() {
     control = await managedDirectory(ctx, join(ctx.state, "render-compile", randomUUID()));
     const baseline = await sourceIdentity(ctx);
     const { tools, packages } = toolIdentity(ctx, env);
+    const compiler = config.memory === "windows" ? compilerIdentity(ctx, env) : null;
     config.compatibilityKey = compatibility({ ...env, LIBSQLITE3_FLAGS: [env.LIBSQLITE3_FLAGS ?? "", "-DSQLITE_ENABLE_QPSG"].join(" ").trim() }, tools.rustc);
-    await write({ kind: "identity", schema: 1, source: baseline, tools, flags: flagIdentity(env), cargoConfigs: await cargoConfigIdentity(ctx, env),
+    await write({ kind: "identity", schema: 2, compilerIdentity: compiler?.provenance ?? null, source: baseline, tools, flags: flagIdentity(env), cargoConfigs: await cargoConfigIdentity(ctx, env),
       config: { ...config, output: undefined }, runtime: process.version,
       machine: { platform: process.platform, arch: process.arch, release: release(), logicalCpus: cpus().length,
         cpuModel: cpus()[0]?.model, totalMemoryBytes: totalmem() },
@@ -33,7 +35,7 @@ async function main() {
       await measuredJob(ctx, config, job, baseline, control, async (record) => {
         await write(record);
         summary.observe(record);
-      }, env, packages, phase);
+      }, env, packages, phase, { compilerIdentity: compiler });
     });
     complete = true;
   } catch (error) {

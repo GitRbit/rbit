@@ -71,7 +71,7 @@ test("summary distinguishes valid timing from entirely missed memory", () => {
 
 test("observing only build-script rustc cannot prove probe library memory", () => {
   const memory = new OwnedMemory({ pid: 1, parentPid: 0, beforeMs: 100, afterMs: 101 });
-  const row = (pid, parentPid, createdMs, kind, crateName) => ({ pid, parentPid, createdMs, kind, crateName, workingSetBytes: 100, privateBytes: 100 });
+  const row = (pid, parentPid, createdMs, kind, crateName) => ({ pid, parentPid, createdMs, kind, crateName, actualCompilerMatch: true, workingSetBytes: 100, privateBytes: 100 });
   memory.observe({ startMs: 110, endMs: 120, rows: [row(1, 0, 100, "cargo"), row(2, 1, 101, "rustc", "build_script_build")] });
   const artifacts = [{ package: "rbit-render-probe", targetKinds: ["lib"], fresh: false, features: ["blocks", "count-8"] }];
   const validity = sampleValidity(artifacts, { mode: "blocks", count: 8 }, { code: 0 }, { fingerprint: "x" }, { fingerprint: "x" }, memory.finish());
@@ -86,4 +86,26 @@ test("observing only build-script rustc cannot prove probe library memory", () =
 test("Windows provider queries arguments only for creation-filtered owned rustc", { skip: process.platform !== "win32" }, () => {
   const output = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", fileURLToPath(new URL("render-observer-fixture.ps1", import.meta.url))], { encoding: "utf8", windowsHide: true });
   assert.equal(output.trim(), "Query policy validated");
+});
+
+
+test("private compiler path reaches only observer launch, never its serialized report", async () => {
+  const child = fake(); queueMicrotask(child.ready);
+  const privatePath = "C:/private-compiler-location/bin/rustc.exe";
+  const compilerIdentity = { observerArguments: () => ["-ExpectedCompilerPath", privatePath], provenance: { policy: "actual-executable-v1", verifiedCandidate: true, binarySha256: "a".repeat(64) } };
+  let observed = false;
+  const observer = await sampler("control", config, deps(child, {
+    compilerIdentity,
+    spawnObserver: (_command, args) => { observed = args.includes(privatePath); return child; },
+    writeStop: async () => child.stop(),
+  }));
+  observer.attach({ pid: 10 }, 100, 101);
+  child.stdout.write(`${JSON.stringify({ kind: "census", startMs: 110, endMs: 120, rows: [
+    { pid: 10, parentPid: process.pid, createdMs: 100, kind: "cargo", workingSetBytes: 1, privateBytes: 1 },
+    { pid: 11, parentPid: 10, createdMs: 105, kind: "rustc", crateName: "rbit_render_probe", actualCompilerMatch: true, executablePath: privatePath, workingSetBytes: 20, privateBytes: 20 },
+  ] })}\n`);
+  const report = await observer.finish();
+  assert.equal(observed, true);
+  assert.equal(report.perProcessSampledPeaks[1].actualCompilerMatch, true);
+  assert.ok(!JSON.stringify(report).includes("private-compiler-location"));
 });

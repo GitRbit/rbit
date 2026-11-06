@@ -37,7 +37,7 @@ export class OwnedMemory {
     const compilers = [...owned.values()].filter((row) => row.kind !== "other").map((row) => {
       const crateName = typeof row.crateName === "string" && /^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(row.crateName) ? row.crateName : null;
       const targetTriple = typeof row.targetTriple === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(row.targetTriple) ? row.targetTriple : null;
-      return { pid: row.pid, parentPid: row.parentPid, createdMs: row.createdMs, kind: row.kind, crateName, targetTriple,
+      return { pid: row.pid, parentPid: row.parentPid, createdMs: row.createdMs, kind: row.kind, crateName, targetTriple, actualCompilerMatch: row.actualCompilerMatch === true,
         workingSetBytes: row.workingSetBytes, privateBytes: row.privateBytes };
     });
     const externalCompilerCount = [...rows.values()].filter((row) => row.kind !== "other" && !owned.has(row.pid)).length;
@@ -51,14 +51,15 @@ export class OwnedMemory {
     if (!this.anchored) this.reasons.add("cargo-root-not-observed");
     const peaks = new Map();
     for (const frame of this.frames) for (const row of frame.owned) {
-      const prior = peaks.get(key(row)) ?? { pid: row.pid, createdMs: row.createdMs, kind: row.kind, crateName: row.crateName, targetTriple: row.targetTriple, workingSetBytes: 0, privateBytes: 0 };
+      const prior = peaks.get(key(row)) ?? { pid: row.pid, createdMs: row.createdMs, kind: row.kind, crateName: row.crateName, targetTriple: row.targetTriple, actualCompilerMatch: row.actualCompilerMatch, workingSetBytes: 0, privateBytes: 0 };
       prior.crateName ??= row.crateName; prior.targetTriple ??= row.targetTriple;
+      prior.actualCompilerMatch ||= row.actualCompilerMatch;
       prior.workingSetBytes = Math.max(prior.workingSetBytes, row.workingSetBytes);
       prior.privateBytes = Math.max(prior.privateBytes, row.privateBytes);
       peaks.set(key(row), prior);
     }
     if (![...peaks.values()].some((row) => row.kind === "rustc")) this.reasons.add("rustc-not-observed-short-lived-processes-may-be-missed");
-    return { frames: this.frames, perProcessSampledPeaks: [...peaks.values()], reasons: [...this.reasons],
+    return { compilerIdentityPolicy: "actual-executable-v1", frames: this.frames, perProcessSampledPeaks: [...peaks.values()], reasons: [...this.reasons],
       sampledPeaksAreLowerBounds: true, completeLifetimeCoverage: false, atomicSnapshot: false,
       concurrentTreePeakBytes: null, scope: "owned Cargo/rustc only; per-process peaks are never summed" };
   }

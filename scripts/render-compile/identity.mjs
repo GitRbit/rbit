@@ -84,5 +84,11 @@ export function sampleValidity(artifacts, job, exit, sourceBefore, sourceAfter, 
   if (memory.reasons.includes("external-compiler-observed")) reasons.push("external-compiler-contamination");
   const memoryReasons = [...memory.reasons];
   if (!memory.perProcessSampledPeaks?.some((process) => process.kind === "rustc" && process.crateName === "rbit_render_probe")) memoryReasons.push("probe-library-rustc-not-observed");
+  if (memory.compilerIdentity?.verifiedCandidate === false) memoryReasons.push(memory.compilerIdentity.reason || "compiler-memory-identity-unverified");
+  const actualProbe = memory.compilerIdentityPolicy === "actual-executable-v1" && memory.perProcessSampledPeaks?.some((process) => process.kind === "rustc" && process.crateName === "rbit_render_probe" && process.actualCompilerMatch === true);
+  if (!actualProbe) {
+    memoryReasons.push("probe-library-actual-compiler-not-observed");
+    if (memory.compilerIdentity?.customDriver) memoryReasons.push("custom-rustc-memory-identity-unverified");
+  }
   return { compileComparable: reasons.length === 0, memoryComparable: reasons.length === 0 && memoryReasons.length === 0, reasons, memoryReasons };
 }

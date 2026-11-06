@@ -58,7 +58,8 @@ and [incremental environment override](https://doc.rust-lang.org/cargo/reference
 Ensure sufficient free disk space before running. Normal helper cache policy
 resumes for subsequent ordinary commands. Do not run direct Cargo concurrently.
 
-Reports are append-only JSONL, flushed after each record. Identity records include
+Reports are append-only JSONL, flushed after each record. Schema2 identity records include compiler identity policy and a candidate binary
+hash, plus
 source/lock/helper/runner hashes, revision, ancestor/home Cargo config content
 hashes, effective-environment hash, rustc/Cargo versions, selected feature/profile/
 job identity, machine memory/CPU/OS and Node version. Absolute paths, environment
@@ -88,7 +89,7 @@ The Windows observer reads process metadata without changing compiler processes.
 Ownership requires Cargo's parent/creation identity and an observed chain of
 descendants; PID reuse and unknown ancestry cannot establish ownership. Only
 owned cargo/rustc identities enter reports. The global census never requests
-command lines. Separate argument queries require a proved Node/Cargo/rustc chain,
+command lines or executable paths. Separate argument/path queries require a proved Node/Cargo/rustc chain,
 filter by PID AND creation time at the provider and revalidate identity on return.
 Strict crate-name/target-triple tokens are extracted locally from these rustc
 arguments; full command lines never leave the observer. Other compiler processes contribute only an anonymous contamination
@@ -98,7 +99,38 @@ sampled maxima are lower bounds; different process lifetime peaks are NEVER adde
 No concurrent-tree peak is claimed. Missing Cargo/rustc or observer failure makes
 memory comparisons invalid; external compilers invalidate timing comparisons too.
 Library memory comparability specifically requires observing an owned
-`rbit_render_probe` rustc process. Observing only `build_script_build` is insufficient.
+`rbit_render_probe` process whose executable matches the actual compiler under
+`actual-executable-v1`. A rustup proxy can inherit the same `--crate-name` arguments;
+a matching name alone never proves actual compiler memory. Proxy rows remain in
+raw frames and per-process peaks, with `actualCompilerMatch:false`, and are never
+silently discarded or added to real compiler peaks. Observing only the proxy or
+`build_script_build` is insufficient. Compile-time validity remains independent
+of missing actual-compiler memory evidence.
+
+Before the matrix, the effective RUSTC is queried using
+[`--print sysroot`](https://doc.rust-lang.org/rustc/print.html#sysroot).
+The canonical `sysroot/bin/rustc.exe` candidate is privately resolved and hashed.
+Its private path is passed only as a sampler argument, never added to the public
+config or report. Creation-filtered, owned-only CIM queries request ExecutablePath
+alongside CommandLine, revalidate PID/parent/creation identity, and compare the
+absolute executable path case-insensitively. Only the resulting boolean leaves
+the observer; no executable path or full command line is emitted. Unavailable
+paths and unrecognized path aliases fail closed for memory. This is trusted
+installed-toolchain provenance, not attestation against malicious binary replacement.
+
+A custom RUSTC driver is supported only when its real compiler uses that reported
+sysroot binary. Missing/nonstandard layouts or an observed compiler at a different
+path leave memory unsuitable, with an explicit unverified/custom-driver reason;
+they do not turn successful timing samples into failed timing samples. The binary
+hash describes the resolved candidate, and a per-process match is still required.
+`--memory none` does not query a compiler candidate.
+
+Earlier reports without actual executable identity must retain their original raw
+records and counts. Their name-only memory flags are not trustworthy evidence of
+compiler memory. Report the limitation in a separate companion analysis; never
+rewrite old records to imply executable verification. New experiments use schema2
+and explicit identity policy. No memory measurements from the old policy are
+silently upgraded by this code.
 
 Unmeasured: true lifetime or concurrent-tree memory peaks, linkers/other children,
 CPU time, OS-cold dependencies, incremental edit builds, test/doctest compilation,
