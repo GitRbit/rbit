@@ -271,11 +271,11 @@ fn require_admin(actor: &User) -> Result<(), ServiceError> {
 
 /// The sign-up password rules.
 fn validate_password(min: usize, password: &str) -> Result<(), ServiceError> {
-    let length = password.chars().count();
-    if length < min {
+    let length = rbit_identity::classify_password_length(password, min, MAX_PASSWORD_LEN);
+    if length == rbit_identity::PasswordLength::TooShort {
         return Err(ServiceError::Invalid(format!("password must be at least {min} characters")));
     }
-    if length > MAX_PASSWORD_LEN {
+    if length == rbit_identity::PasswordLength::TooLong {
         return Err(ServiceError::Invalid(format!("password must be at most {MAX_PASSWORD_LEN} characters")));
     }
     Ok(())

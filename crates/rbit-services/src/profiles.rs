@@ -67,16 +67,24 @@ impl ProfileService {
 
     /// Renames the authenticated user's own account without changing its identity or
     /// credentials. Old names redirect until reclaimed; they never become login aliases.
-    pub async fn change_username(&self, user: &User, current_password: String, new_name: &str) -> Result<(), ServiceError> {
-        self.throttle.check(ThrottleScope::AccountRename, &user.id().0.to_string())?;
-        let name: AccountName = new_name.trim().parse()?;
-        let verified = self.verify_password(user, current_password).await?;
-        if !self.ctx.database.accounts().rename_if_password(user.id(), &name, &verified).await? {
-            return Err(ServiceError::InvalidCredentials);
+    pub fn change_username(
+        &self,
+        user: &User,
+        current_password: String,
+        new_name: &str,
+    ) -> impl std::future::Future<Output = Result<(), ServiceError>> {
+        let mut current_password = zeroize::Zeroizing::new(current_password);
+        async move {
+            self.throttle.check(ThrottleScope::AccountRename, &user.id().0.to_string())?;
+            let name: AccountName = new_name.trim().parse()?;
+            let verified = self.verify_password(user, std::mem::take(&mut *current_password)).await?;
+            if !self.ctx.database.accounts().rename_if_password(user.id(), &name, &verified).await? {
+                return Err(ServiceError::InvalidCredentials);
+            }
+            tracing::info!(account = user.id().0, new_name = %name, "account renamed");
+            AuditService::new(self.ctx.clone()).record(AuditEntry::new(AuditAction::UsernameChanged).by(user).on(name.to_string())).await;
+            Ok(())
         }
-        tracing::info!(account = user.id().0, new_name = %name, "account renamed");
-        AuditService::new(self.ctx.clone()).record(AuditEntry::new(AuditAction::UsernameChanged).by(user).on(name.to_string())).await;
-        Ok(())
     }
 
     /// Validates and replaces every profile field.
@@ -96,24 +104,32 @@ impl ProfileService {
     ///
     /// [`ServiceError::InvalidCredentials`] for a wrong password, [`ServiceError::Conflict`]
     /// if another account uses the address.
-    pub async fn change_email(&self, user: &User, current_password: String, new_email: &str) -> Result<Email, ServiceError> {
-        let email: Email = new_email.trim().parse()?;
-        let verified = self.verify_password(user, current_password).await?;
-        if !self.store().set_email_if_password(user.id(), &email, &verified).await? {
-            return Err(ServiceError::InvalidCredentials);
+    pub fn change_email(
+        &self,
+        user: &User,
+        current_password: String,
+        new_email: &str,
+    ) -> impl std::future::Future<Output = Result<Email, ServiceError>> {
+        let mut current_password = zeroize::Zeroizing::new(current_password);
+        async move {
+            let email: Email = new_email.trim().parse()?;
+            let verified = self.verify_password(user, std::mem::take(&mut *current_password)).await?;
+            if !self.store().set_email_if_password(user.id(), &email, &verified).await? {
+                return Err(ServiceError::InvalidCredentials);
+            }
+            tracing::info!(user = %user.name(), "email changed");
+            self.ctx.events.publish(DomainEvent::EmailChanged { user: user.id(), previous: user.email.to_string() });
+            Ok(email)
         }
-        tracing::info!(user = %user.name(), "email changed");
-        self.ctx.events.publish(DomainEvent::EmailChanged { user: user.id(), previous: user.email.to_string() });
-        Ok(email)
     }
 
     fn validate_new_password(&self, password: &str) -> Result<(), ServiceError> {
         let min = self.ctx.config.security.min_password_length;
-        let length = password.chars().count();
-        if length < min {
+        let length = rbit_identity::classify_password_length(password, min, MAX_PASSWORD_LEN);
+        if length == rbit_identity::PasswordLength::TooShort {
             return Err(ServiceError::Invalid(format!("new password must be at least {min} characters")));
         }
-        if length > MAX_PASSWORD_LEN {
+        if length == rbit_identity::PasswordLength::TooLong {
             return Err(ServiceError::Invalid(format!("new password must be at most {MAX_PASSWORD_LEN} characters")));
         }
         Ok(())
