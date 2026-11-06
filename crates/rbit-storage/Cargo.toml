@@ -10,7 +10,7 @@ autotests = false
 
 [dependencies]
 rbit-collaboration = { workspace = true, default-features = false, features = ["applications"] }
-rbit-identity.workspace = true
+rbit-identity-models.workspace = true
 rbit-repositories.workspace = true
 rbit-core.workspace = true
 sqlx.workspace = true

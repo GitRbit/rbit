@@ -2,7 +2,7 @@
 
 use std::future::Future;
 
-use rbit_identity::{
+use rbit_identity_models::{
     User,
     accounts::{AccountRepository, LoginRecord, NewUser},
 };

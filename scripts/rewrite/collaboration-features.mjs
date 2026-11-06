@@ -2,7 +2,7 @@
 import { execFileSync } from "node:child_process";
 
 const consumers = { "rbit-core": [], "rbit-services": ["applications"], "rbit-storage": ["applications"] };
-const forbidden = ["rbit-core", "rbit-storage", "rbit-services", "rbit-kernel", "tokio", "tokio-util", "argon2", "zeroize", "base64", "sha2", "getrandom", "subtle"];
+const forbidden = ["rbit-core", "rbit-storage", "rbit-services", "rbit-identity", "rbit-kernel", "tokio", "tokio-util", "argon2", "zeroize", "base64", "sha2", "getrandom", "subtle"];
 
 export function checkCollaborationFeatures(metadata) {
   const violations = [];

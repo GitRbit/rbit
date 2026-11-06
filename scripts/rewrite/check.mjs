@@ -6,6 +6,7 @@ import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkIdentityFeatures, checkIdentityModelGraphs, checkIdentityTokenGraph, checkIdentitySessionGraph, checkInventoryGraph } from "./identity-features.mjs";
 import { checkCollaborationFeatures, checkCollaborationGraphs } from "./collaboration-features.mjs";
+import { checkUnifiedModelBoundary } from "./identity-model-boundary.mjs";
 
 export const LIMIT = 400;
 const GENERATED = new Set([
@@ -15,19 +16,20 @@ const FEATURE_EDGES = {
   "rbit-credential-inventory": ["rbit-identity"],
   "rbit-process-tree-probe": [],
   "rbit-kernel": [], "rbit-contracts": [], "rbit-localization": [], "rbit-rewrite-check": [], "rbit-render-probe": [],
-  "rbit-identity": ["rbit-contracts", "rbit-kernel"],
+  "rbit-identity-models": ["rbit-contracts"],
+  "rbit-identity": ["rbit-identity-models", "rbit-contracts", "rbit-kernel"],
   "rbit-access": [],
-  "rbit-repositories": ["rbit-contracts", "rbit-identity"],
-  "rbit-collaboration": ["rbit-identity", "rbit-contracts", "rbit-access", "rbit-repositories", "rbit-kernel"],
+  "rbit-repositories": ["rbit-contracts", "rbit-identity-models"],
+  "rbit-collaboration": ["rbit-identity-models", "rbit-contracts", "rbit-access", "rbit-repositories", "rbit-kernel"],
   "rbit-actions": ["rbit-contracts", "rbit-access", "rbit-workflow", "rbit-kernel"],
   "rbit-presentation": ["rbit-contracts", "rbit-localization"],
 };
 // Reviewed seams added to legacy adapters during incremental replacement.
 const ADDED_EDGES = {
-  "rbit-core": ["rbit-contracts", "rbit-access", "rbit-identity", "rbit-repositories", "rbit-collaboration"], "rbit-web": ["rbit-localization"],
+  "rbit-core": ["rbit-contracts", "rbit-access", "rbit-identity-models", "rbit-repositories", "rbit-collaboration"], "rbit-web": ["rbit-localization"],
   "rbit-auth": ["rbit-identity", "rbit-access"], "rbit-services": ["rbit-identity", "rbit-kernel", "rbit-repositories", "rbit-collaboration"],
   "rbit-server": ["rbit-kernel"],
-  "rbit-storage": ["rbit-identity", "rbit-repositories", "rbit-collaboration"],
+  "rbit-storage": ["rbit-identity-models", "rbit-repositories", "rbit-collaboration"],
 };
 // HTTP acceptance fixtures may inject the shared owner without adding production edges.
 const DEV_EDGES = { "rbit-web": ["rbit-identity", "rbit-kernel"] };
@@ -135,6 +137,7 @@ export function check(root) {
   return { files: files.length, violations: [...checkSizes(files, baseline), ...checkEdges(metadata, baseline),
     ...checkIdentityFeatures(metadata), ...checkIdentityModelGraphs(root), ...checkIdentityTokenGraph(root), ...checkIdentitySessionGraph(root), ...checkInventoryGraph(root),
     ...checkCollaborationFeatures(metadata), ...checkCollaborationGraphs(root),
+    ...checkUnifiedModelBoundary(root, metadata),
     ...checkMigrations(root, baseline), ...checkLedger(root, ledger)] };
 }
 

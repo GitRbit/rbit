@@ -1,7 +1,7 @@
 //! Metadata for a bare Git repository, independent of persistence and Git I/O.
 
 use rbit_contracts::{AccountId, RepoId, Timestamp};
-use rbit_identity::Account;
+use rbit_identity_models::Account;
 
 use crate::{RepoName, Visibility};
 

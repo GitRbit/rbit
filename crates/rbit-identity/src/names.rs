@@ -1,10 +1,3 @@
-//! Feature-owned account names and email values. Construction preserves existing rules.
+//! Compatibility paths for names and email models.
 
-mod account_name;
-mod email;
-
-pub use account_name::AccountName;
-pub use email::Email;
-
-#[cfg(test)]
-mod tests;
+pub use rbit_identity_models::names::{AccountName, Email};

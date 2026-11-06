@@ -3,7 +3,7 @@
 use super::{IssueKind, IssueNumber, IssueText, IssueTitle, StateReason};
 use crate::IssueState;
 use rbit_contracts::{AccountId, RepoId, Timestamp};
-use rbit_identity::User;
+use rbit_identity_models::User;
 use serde::{Deserialize, Serialize};
 
 /// Database id of an issue or pull request (the `issues` row).

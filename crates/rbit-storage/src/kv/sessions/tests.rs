@@ -156,8 +156,8 @@ async fn purge_spans_multiple_batches_without_missing_keys_or_indexes() {
 #[test]
 fn storage_paths_reexport_the_exact_feature_record_types() {
     use std::any::TypeId;
-    assert_eq!(TypeId::of::<SessionRecord>(), TypeId::of::<rbit_identity::sessions::SessionRecord>());
-    assert_eq!(TypeId::of::<StoredSession>(), TypeId::of::<rbit_identity::sessions::StoredSession>());
-    assert_eq!(TypeId::of::<crate::SessionRecord>(), TypeId::of::<rbit_identity::sessions::SessionRecord>());
-    assert_eq!(TypeId::of::<crate::SessionUser>(), TypeId::of::<rbit_identity::sessions::SessionUser>());
+    assert_eq!(TypeId::of::<SessionRecord>(), TypeId::of::<rbit_identity_models::sessions::SessionRecord>());
+    assert_eq!(TypeId::of::<StoredSession>(), TypeId::of::<rbit_identity_models::sessions::StoredSession>());
+    assert_eq!(TypeId::of::<crate::SessionRecord>(), TypeId::of::<rbit_identity_models::sessions::SessionRecord>());
+    assert_eq!(TypeId::of::<crate::SessionUser>(), TypeId::of::<rbit_identity_models::sessions::SessionUser>());
 }

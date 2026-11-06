@@ -1,6 +1,6 @@
 //! Fixed-width bearer values. Digest models do not enable any crypto dependency.
 
-pub type TokenDigest = [u8; 32];
+pub use rbit_identity_models::token::TokenDigest;
 
 /// Exact 32-byte random/encoding/hash operations shared with legacy token adapters.
 #[cfg(feature = "session-tokens")]

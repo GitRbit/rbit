@@ -4235,7 +4235,7 @@ name = "rbit-collaboration"
 version = "0.1.5"
 dependencies = [
  "rbit-contracts",
- "rbit-identity",
+ "rbit-identity-models",
  "serde",
  "serde_json",
  "tokio",
@@ -4261,7 +4261,7 @@ dependencies = [
  "rbit-access",
  "rbit-collaboration",
  "rbit-contracts",
- "rbit-identity",
+ "rbit-identity-models",
  "rbit-repositories",
  "serde",
  "serde_json",
@@ -4331,6 +4331,7 @@ dependencies = [
  "getrandom 0.4.3",
  "postcard",
  "rbit-contracts",
+ "rbit-identity-models",
  "rbit-kernel",
  "serde",
  "serde_json",
@@ -4340,6 +4341,16 @@ dependencies = [
  "tokio",
  "tokio-util",
  "zeroize",
+]
+
+[[package]]
+name = "rbit-identity-models"
+version = "0.1.5"
+dependencies = [
+ "postcard",
+ "rbit-contracts",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -4397,7 +4408,7 @@ name = "rbit-repositories"
 version = "0.1.5"
 dependencies = [
  "rbit-contracts",
- "rbit-identity",
+ "rbit-identity-models",
  "serde",
  "serde_json",
 ]
@@ -4549,7 +4560,7 @@ dependencies = [
  "postcard",
  "rbit-collaboration",
  "rbit-core",
- "rbit-identity",
+ "rbit-identity-models",
  "rbit-repositories",
  "redb",
  "serde",

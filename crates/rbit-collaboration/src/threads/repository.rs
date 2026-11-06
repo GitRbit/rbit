@@ -3,7 +3,7 @@
 use std::future::Future;
 
 use rbit_contracts::RepoId;
-use rbit_identity::Account;
+use rbit_identity_models::Account;
 
 use super::{Issue, IssueNumber, NewIssue};
 

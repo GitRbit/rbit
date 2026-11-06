@@ -30,13 +30,13 @@ export function checkIdentityFeatures(metadata) {
 
 export function modelGraphViolations(name, tree) {
   const packages = new Set(tree.trim().split(/\r?\n/).filter(Boolean).map((line) => line.trim().split(/\s+/)[0]));
-  if (!packages.has(name) || !packages.has("rbit-identity")) return [`${name}: model dependency graph is missing its expected root or identity edge`];
+  if (!packages.has(name) || !packages.has("rbit-identity-models")) return [`${name}: model dependency graph is missing its expected root or identity edge`];
   return [...packages].filter((pkg) => runtime.has(pkg)).map((pkg) => `${name}: model-only normal graph unexpectedly includes ${pkg}`);
 }
 
 /** Cargo tree is read-only: no compiler, build script, target directory or lock update. */
 export function checkIdentityModelGraphs(root) {
-  return ["rbit-identity", "rbit-core", "rbit-repositories"].flatMap((name) => {
+  return ["rbit-identity-models", "rbit-identity", "rbit-core", "rbit-repositories"].flatMap((name) => {
     const tree = execFileSync("cargo", ["tree", "--package", name, "--no-default-features", "--edges", "normal", "--prefix", "none", "--locked"], {
       cwd: root, encoding: "utf8", windowsHide: true, stdio: ["pipe", "pipe", "pipe"], maxBuffer: 8 * 1024 * 1024,
     });

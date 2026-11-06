@@ -8,7 +8,7 @@ license.workspace = true
 
 [dependencies]
 rbit-contracts = { workspace = true, default-features = false }
-rbit-identity = { workspace = true, default-features = false }
+rbit-identity-models = { workspace = true, default-features = false }
 serde.workspace = true
 
 [dev-dependencies]

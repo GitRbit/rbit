@@ -9,7 +9,7 @@ license.workspace = true
 [dependencies]
 rbit-collaboration = { workspace = true, default-features = false }
 rbit-repositories.workspace = true
-rbit-identity.workspace = true
+rbit-identity-models.workspace = true
 rbit-access.workspace = true
 rbit-contracts.workspace = true
 serde.workspace = true

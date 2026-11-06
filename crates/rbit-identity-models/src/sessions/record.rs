@@ -25,7 +25,9 @@ impl SessionRecord {
         Self::at(account_id, expires_at, ip_address, user_agent, Timestamp::now())
     }
 
-    pub(crate) fn at(account_id: AccountId, expires_at: Timestamp, ip_address: Option<String>, user_agent: &str, now: Timestamp) -> Self {
+    /// Constructs a record using the application clock, preserving the same client bound.
+    /// Fields remain public; this is a deterministic construction seam, not authorization.
+    pub fn at(account_id: AccountId, expires_at: Timestamp, ip_address: Option<String>, user_agent: &str, now: Timestamp) -> Self {
         let end = user_agent.char_indices().nth(MAX_USER_AGENT_LEN).map_or(user_agent.len(), |(index, _)| index);
         Self { account_id, expires_at, created_at: now, last_seen_at: now, ip_address, user_agent: user_agent[..end].to_owned() }
     }

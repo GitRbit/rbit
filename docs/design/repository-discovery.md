@@ -1,7 +1,8 @@
 # Repository model ownership and public discovery
 
 `rbit-repositories` owns repository names, metadata, visibility and listing selectors.
-Account projections come from identity's model-only dependency surface. Core's
+Account projections come directly from `rbit-identity-models`, independent of
+identity application's globally enabled features. Core's
 existing public paths reexport the same types, preserving validation, derives,
 JSON variant names, field visibility and storage conversion identity.
 

@@ -15,6 +15,7 @@ password-work = ["credentials", "dep:rbit-kernel", "dep:subtle", "dep:getrandom"
 
 [dependencies]
 rbit-contracts.workspace = true
+rbit-identity-models = { workspace = true, default-features = false }
 serde.workspace = true
 base64 = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }

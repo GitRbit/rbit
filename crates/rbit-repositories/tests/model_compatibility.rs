@@ -1,7 +1,7 @@
 //! Stable public model behavior, including the distinction between JSON and query values.
 
 use rbit_contracts::{AccountId, NameError, Timestamp};
-use rbit_identity::{Account, AccountKind};
+use rbit_identity_models::{Account, AccountKind};
 use rbit_repositories::{ArchivedFilter, OwnedRepository, RepoId, RepoName, RepoSort, Repository, Visibility};
 
 #[test]

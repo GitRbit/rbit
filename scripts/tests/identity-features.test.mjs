@@ -41,7 +41,7 @@ test("renamed and target-specific identity edges cannot silently enable crypto d
 });
 
 test("isolated normal graphs reject transitive runtime work and missing evidence", () => {
-  const core = "rbit-core v0.1.5 (private/source)\nrbit-identity v0.1.5\nrbit-contracts v0.1.5\nserde v1.0.0\n";
+  const core = "rbit-core v0.1.5 (private/source)\nrbit-identity-models v0.1.5\nrbit-contracts v0.1.5\nserde v1.0.0\n";
   assert.deepEqual(modelGraphViolations("rbit-core", core), []);
   for (const dependency of ["argon2", "tokio", "tokio-util", "rbit-kernel", "zeroize", "base64", "sha2", "getrandom", "subtle"]) {
     assert.match(modelGraphViolations("rbit-core", `${core}${dependency} v1.0.0 (*)\n`)[0], /unexpectedly includes/);

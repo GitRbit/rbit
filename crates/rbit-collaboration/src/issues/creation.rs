@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 
 use rbit_contracts::AccountId;
-use rbit_identity::User;
+use rbit_identity_models::User;
 
 use super::{IssueCreationPort, MAX_ASSIGNEES, MAX_LABELS_PER_ISSUE, MetadataCreated, NewIssueInput};
 use crate::{labels::LabelId, threads::Issue};

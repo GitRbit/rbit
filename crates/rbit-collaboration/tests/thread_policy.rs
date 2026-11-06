@@ -8,7 +8,7 @@ use rbit_collaboration::threads::{
     Issue, IssueKind, IssueNumber, NewIssue, ThreadAccess, ThreadApplication, ThreadDraft, ThreadError, ThreadRepository,
 };
 use rbit_contracts::{AccountId, RepoId, Timestamp};
-use rbit_identity::Account;
+use rbit_identity_models::Account;
 use std::sync::Mutex;
 
 #[derive(Default)]

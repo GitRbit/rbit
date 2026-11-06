@@ -1,6 +1,8 @@
 //! Identity-owned account models and explicitly layered credential functionality.
 //!
-//! Account models always compile with contracts/Serde only. The `credentials` feature
+//! Pure model ownership lives in `rbit-identity-models`, with compatibility reexports here.
+//! Model consumers depend there directly to avoid application feature unification.
+//! The `credentials` feature
 //! provides the legacy password facade; `password-work` adds explicitly injected bounded
 //! work. Defaults retain the complete historical credential API. No feature creates a
 //! global budget, performs startup or imports a concrete store/protocol implementation.

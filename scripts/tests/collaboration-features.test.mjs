@@ -19,10 +19,10 @@ test("core model aliases cannot silently activate collaboration applications or 
 });
 
 test("model and application graphs reject transitive runtime, crypto and legacy adapters", () => {
-  const graph = "rbit-collaboration v0.1.5\nrbit-contracts v0.1.5\nrbit-identity v0.1.5\nserde v1.0.0\n";
+  const graph = "rbit-collaboration v0.1.5\nrbit-contracts v0.1.5\nrbit-identity-models v0.1.5\nserde v1.0.0\n";
   assert.deepEqual(collaborationGraphViolations(graph), []);
   assert.match(collaborationGraphViolations("")[0], /missing/);
-  for (const name of ["rbit-core", "rbit-storage", "rbit-services", "rbit-kernel", "tokio", "tokio-util", "argon2", "zeroize", "base64", "sha2", "getrandom", "subtle"]) {
+  for (const name of ["rbit-core", "rbit-storage", "rbit-services", "rbit-identity", "rbit-kernel", "tokio", "tokio-util", "argon2", "zeroize", "base64", "sha2", "getrandom", "subtle"]) {
     assert.match(collaborationGraphViolations(`${graph}${name} v1.0.0\n`)[0], /runtime\/adapter dependency/);
   }
 });

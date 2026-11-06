@@ -1,10 +1,6 @@
 //! Feature-owned account persistence contract and password-work-gated applications.
 
-mod records;
-mod repository;
-
-pub use records::{LoginRecord, NewUser, SignUp};
-pub use repository::AccountRepository;
+pub use rbit_identity_models::accounts::{AccountRepository, LoginRecord, NewUser, SignUp};
 
 #[cfg(feature = "password-work")]
 mod authentication;

@@ -3,7 +3,7 @@
 use std::future::Future;
 
 use rbit_contracts::AccountId;
-use rbit_identity::User;
+use rbit_identity_models::User;
 
 use crate::{
     labels::{Label, LabelId, LabelSnapshot},

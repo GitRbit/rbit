@@ -25,7 +25,7 @@ const LEGACY_SESSIONS: TableDefinition<'_, &[u8; 32], &[u8; 16]> = TableDefiniti
 /// Expiry scanning is read-only; each cleanup transaction touches at most this many keys.
 const PURGE_BATCH_SIZE: usize = 256;
 
-pub use rbit_identity::sessions::{SessionRecord, StoredSession};
+pub use rbit_identity_models::sessions::{SessionRecord, StoredSession};
 
 #[derive(Debug, Clone)]
 pub struct SessionStore {

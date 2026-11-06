@@ -1,7 +1,7 @@
 //! Shared row creation/read policy for numbered threads.
 
 use rbit_contracts::{AccountId, RepoId, Timestamp};
-use rbit_identity::Account;
+use rbit_identity_models::Account;
 
 use super::{Issue, IssueKind, IssueNumber, IssueText, IssueTextError, IssueTitle, NewIssue, ThreadRepository};
 

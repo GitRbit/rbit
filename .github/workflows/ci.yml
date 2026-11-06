@@ -42,12 +42,13 @@ jobs:
       # Separate invocations prevent workspace feature unification from hiding a
       # missing model-only or credentials-only dependency/compile contract.
       - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --locked
+      - run: node scripts/workspace.mjs test --package rbit-identity-models --no-default-features --locked
       - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --features credentials --locked
       - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --features session-tokens --locked
       - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --features sessions --locked
       - run: node scripts/workspace.mjs test --package rbit-collaboration --no-default-features --locked
       - run: node scripts/workspace.mjs test --package rbit-collaboration --no-default-features --features applications --locked
-      - run: node scripts/workspace.mjs test --package rbit-contracts --package rbit-core --package rbit-repositories --package rbit-kernel --package rbit-localization --package rbit-identity --package rbit-auth --package rbit-rewrite-check --locked
+      - run: node scripts/workspace.mjs test --package rbit-contracts --package rbit-core --package rbit-repositories --package rbit-kernel --package rbit-localization --package rbit-identity-models --package rbit-identity --package rbit-collaboration --package rbit-auth --package rbit-rewrite-check --features rbit-identity/password-work,rbit-identity/sessions,rbit-collaboration/applications --locked
       - run: node scripts/workspace.mjs test --package rbit-render-probe --no-default-features --features inheritance,segments,blocks,count-8 --locked
       - run: node scripts/rewrite/check-types.mjs
 

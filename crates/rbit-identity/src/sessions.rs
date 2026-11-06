@@ -1,17 +1,8 @@
 //! Session data contracts without runtime, crypto, or persistence dependencies.
 
-mod record;
-mod repository;
-mod user;
-mod view;
-
-pub use record::{SessionRecord, StoredSession};
-pub use repository::{SessionRepository, SessionUserRepository};
-pub use user::SessionUser;
-pub use view::{ActiveSession, ClientInfo, session_id};
-
-#[cfg(test)]
-mod tests;
+pub use rbit_identity_models::sessions::{
+    ActiveSession, ClientInfo, SessionRecord, SessionRepository, SessionUser, SessionUserRepository, StoredSession, session_id,
+};
 
 #[cfg(feature = "sessions")]
 mod application;

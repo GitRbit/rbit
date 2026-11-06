@@ -2,7 +2,7 @@
 
 use crate::{AccountStore, SessionStore, StorageError};
 use rbit_core::{AccountId, Timestamp};
-use rbit_identity::{
+use rbit_identity_models::{
     TokenDigest,
     sessions::{SessionRecord, SessionRepository, SessionUser, SessionUserRepository, StoredSession},
 };

@@ -12,7 +12,7 @@ use rbit_collaboration::{
     threads::{Issue, IssueId},
 };
 use rbit_contracts::{AccountId, RepoId, Timestamp};
-use rbit_identity::User;
+use rbit_identity_models::User;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},

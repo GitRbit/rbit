@@ -16,10 +16,10 @@ and enum representations, variant order, validation, display and error messages
 remain compatible. The simple text error implements equivalent Display/Error
 directly rather than adding a registry dependency.
 
-The exact existing inherent `Issue::is_author(&User)` signature requires a models-only
-identity dependency. An extension trait or different actor argument would change
+The exact existing inherent `Issue::is_author(&User)` signature requires a direct
+`rbit-identity-models` dependency. An extension trait or different actor argument would change
 the public API. This edge explicitly disables defaults, as repository models already
-do; identity never imports collaboration. Isolated model/application graphs and
+do; identity never imports collaboration. Isolated and feature-unified model/application graphs and
 consumer feature guards reject password, crypto, runtime and adapter leakage.
 There are no new registry packages, tasks, boxed futures, migrations or SQL changes.
 

@@ -1,7 +1,7 @@
 //! Compatibility paths for feature-owned validated names.
 
 pub use rbit_contracts::NameError;
-pub use rbit_identity::{AccountName, Email};
+pub use rbit_identity_models::{AccountName, Email};
 pub use rbit_repositories::RepoName;
 
 #[cfg(test)]

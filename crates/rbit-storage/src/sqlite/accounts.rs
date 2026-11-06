@@ -32,7 +32,7 @@ const SESSION_USER: &str = "SELECT a.id, a.kind, a.name, a.display_name, a.bio, 
      AS has_unread_notifications \
      FROM accounts a JOIN user_logins l ON l.account_id = a.id WHERE a.id = ?1 AND l.suspended_at IS NULL";
 
-pub use rbit_identity::sessions::SessionUser;
+pub use rbit_identity_models::sessions::SessionUser;
 
 #[derive(Debug, sqlx::FromRow)]
 struct SessionUserRow {
@@ -42,7 +42,7 @@ struct SessionUserRow {
     has_unread_notifications: bool,
 }
 
-pub use rbit_identity::accounts::{LoginRecord, NewUser};
+pub use rbit_identity_models::accounts::{LoginRecord, NewUser};
 
 #[derive(Debug, sqlx::FromRow)]
 struct LoginRow {

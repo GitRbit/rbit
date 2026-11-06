@@ -18,6 +18,7 @@ members = [
     "crates/rbit-contracts",
     "crates/rbit-localization",
     "crates/rbit-identity",
+    "crates/rbit-identity-models",
     "crates/rbit-access",
     "crates/rbit-repositories",
     "crates/rbit-collaboration",
@@ -40,6 +41,7 @@ repository = "https://github.com/GitRbit/rbit"
 rbit-kernel = { path = "crates/rbit-kernel" }
 rbit-contracts = { path = "crates/rbit-contracts", default-features = false }
 rbit-localization = { path = "crates/rbit-localization" }
+rbit-identity-models = { path = "crates/rbit-identity-models", default-features = false }
 rbit-identity = { path = "crates/rbit-identity", default-features = false }
 rbit-access = { path = "crates/rbit-access" }
 rbit-repositories = { path = "crates/rbit-repositories", default-features = false }

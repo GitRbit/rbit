@@ -1,6 +1,6 @@
 //! Compatibility paths for identity-owned account entities and shared account IDs.
 
-pub use rbit_identity::{Account, AccountId, AccountKind, User};
+pub use rbit_identity_models::{Account, AccountId, AccountKind, User};
 
 #[cfg(test)]
 mod identity_compatibility {
@@ -23,17 +23,17 @@ mod model_compatibility {
 
     #[test]
     fn legacy_account_and_name_paths_reexport_the_exact_identity_types() {
-        assert_eq!(TypeId::of::<super::Account>(), TypeId::of::<rbit_identity::Account>());
-        assert_eq!(TypeId::of::<crate::Account>(), TypeId::of::<rbit_identity::Account>());
-        assert_eq!(TypeId::of::<crate::User>(), TypeId::of::<rbit_identity::User>());
-        assert_eq!(TypeId::of::<super::AccountKind>(), TypeId::of::<rbit_identity::AccountKind>());
-        assert_eq!(TypeId::of::<crate::names::AccountName>(), TypeId::of::<rbit_identity::AccountName>());
-        assert_eq!(TypeId::of::<crate::AccountName>(), TypeId::of::<rbit_identity::AccountName>());
-        assert_eq!(TypeId::of::<crate::names::Email>(), TypeId::of::<rbit_identity::Email>());
-        assert_eq!(TypeId::of::<crate::Email>(), TypeId::of::<rbit_identity::Email>());
-        let account: crate::names::AccountName = rbit_identity::AccountName::try_from("Alice".to_owned()).unwrap();
+        assert_eq!(TypeId::of::<super::Account>(), TypeId::of::<rbit_identity_models::Account>());
+        assert_eq!(TypeId::of::<crate::Account>(), TypeId::of::<rbit_identity_models::Account>());
+        assert_eq!(TypeId::of::<crate::User>(), TypeId::of::<rbit_identity_models::User>());
+        assert_eq!(TypeId::of::<super::AccountKind>(), TypeId::of::<rbit_identity_models::AccountKind>());
+        assert_eq!(TypeId::of::<crate::names::AccountName>(), TypeId::of::<rbit_identity_models::AccountName>());
+        assert_eq!(TypeId::of::<crate::AccountName>(), TypeId::of::<rbit_identity_models::AccountName>());
+        assert_eq!(TypeId::of::<crate::names::Email>(), TypeId::of::<rbit_identity_models::Email>());
+        assert_eq!(TypeId::of::<crate::Email>(), TypeId::of::<rbit_identity_models::Email>());
+        let account: crate::names::AccountName = rbit_identity_models::AccountName::try_from("Alice".to_owned()).unwrap();
         assert_eq!(account.to_string(), "Alice");
-        let email: crate::names::Email = rbit_identity::Email::try_from(" alice@example.com ".to_owned()).unwrap();
+        let email: crate::names::Email = rbit_identity_models::Email::try_from(" alice@example.com ".to_owned()).unwrap();
         assert_eq!(email.as_str(), "alice@example.com");
     }
 }
