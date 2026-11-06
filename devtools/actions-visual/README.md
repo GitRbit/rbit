@@ -92,3 +92,20 @@ sandbox, AppArmor, seccomp, no-new-privileges or capability restrictions to pass
 A dedicated ephemeral supported Linux runner can be evaluated with the same
 positive proof before accepting screenshots; host support remains unproven until
 that launch succeeds. The present failure does not establish its cause by itself.
+
+## Avoiding repeated heavy captures
+
+GitHub pull-request path filters compare the whole PR's three-dot diff, so an
+older prototype change can trigger a workflow on later unrelated rewrite pushes.
+The lightweight relevance job additionally compares the synchronize event's exact
+validated `before` and `after` commits. Renames expose both added and removed paths.
+Only a proved irrelevant event delta skips the browser/image job. Initial/reopened
+PRs, first workflow additions, manual/main events, unavailable commits, malformed
+identity and Git errors conservatively capture. A failed lightweight job also
+causes the heavy job to run rather than silently accepting a missing decision.
+
+There is no workflow-wide cancellation group. Only the heavy capture job has a
+per-ref group, with cancellation disabled, so a new irrelevant skipped run cannot
+cancel an older real capture. GitHub may still replace a pending job with a newer
+pending relevant job; running captures are preserved. Cleanup belongs to the heavy
+job and runs even during its cancellation, using its private ownership evidence.
