@@ -1,4 +1,5 @@
 {% import "macros.html" as ui %}
+{% import "repo/diff_counts.html" as stats %}
 {#- The header's theme picker: a dialog fetched by theme-picker.js the first time the palette
     button is pressed (without scripts that button is a link to the gallery). Rows are plain
     submit buttons of a theme form; each row's chip carries its own `data-theme`, so it renders
@@ -85,7 +86,7 @@
 <span class="pv-ln">8</span>}</pre>
           </div>
           <div class="pv-box">
-            <div class="pv-box-head"><span>lib.rs</span><span><b class="pv-add">+2</b> <b class="pv-del">−1</b></span></div>
+            <div class="pv-box-head"><span>lib.rs</span>{% call stats::counts(2, 1, "") %}{% endcall %}</div>
             <pre class="pv-code pv-diff"><span class="pv-del-line">-    <span class="pv-k">let</span> name = <span class="pv-s">"world"</span>;</span><span class="pv-add-line">+    <span class="pv-k">let</span> name = <span class="pv-f">env</span>(<span class="pv-s">"USER"</span>);</span><span class="pv-add-line">+    <span class="pv-k">let</span> times = <span class="pv-n">3</span>;</span></pre>
           </div>
           <div class="pv-row">

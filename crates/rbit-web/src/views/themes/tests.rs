@@ -36,13 +36,16 @@ fn families_cover_every_theme_once() {
 fn defaults_come_first_and_the_current_theme_is_marked() {
     let gallery = Gallery::new(&page(Theme::Dark), GALLERY_URL, VariantFilter::All, None);
     let slugs: Vec<_> = gallery.defaults.iter().map(|card| card.slug).collect();
-    assert_eq!(slugs, ["system", "dna-day", "dna-dark"]);
-    assert_eq!(gallery.defaults.iter().map(|card| card.name).collect::<Vec<_>>(), ["System", "rbit Light", "rbit Dark"]);
+    assert_eq!(slugs, ["system", "dna-day", "dna-dark", "colorblind-light", "colorblind-dark"]);
+    assert_eq!(
+        gallery.defaults.iter().map(|card| card.name).collect::<Vec<_>>(),
+        ["System", "rbit Light", "rbit Dark", "rbit Light Colorblind", "rbit Dark Colorblind"]
+    );
     let classic: Vec<_> = gallery.classic.iter().map(|card| (card.slug, card.counterpart)).collect();
     assert_eq!(classic, [("light", "dark"), ("dark", "light")]);
     let current: Vec<_> = all_cards(&gallery).filter(|card| card.is_current).map(|card| card.slug).collect();
     assert_eq!(current, ["dark"]);
-    assert_eq!(gallery.shown, themes::tinted().len() + 4);
+    assert_eq!(gallery.shown, themes::tinted().len() + 6);
     assert!(all_cards(&gallery).all(|card| !card.hidden));
 }
 
@@ -113,4 +116,20 @@ fn renders_live_preview_cards() {
     assert!(html.contains(&format!("<style data-theme-stylesheet data-theme=\"{}\">", tinted.slug)), "the active theme's own sheet");
     assert!(html.contains("<form method=\"post\" action=\"/themes\""), "works without scripts");
     assert!(!html.contains("style="), "no inline styles under the CSP");
+}
+
+#[test]
+fn colorblind_themes_are_searchable_and_render_their_own_toggle_pair() {
+    for theme in [Theme::ColorblindLight, Theme::ColorblindDark] {
+        let gallery = Gallery::new(&page(theme), GALLERY_URL, VariantFilter::All, Some("colorblind"));
+        let visible: Vec<_> = gallery.defaults.iter().filter(|card| !card.hidden).collect();
+        assert_eq!(visible.len(), 2);
+        let current = visible.iter().find(|card| card.is_current).unwrap();
+        assert_eq!(current.slug, theme.slug());
+        assert_eq!(current.counterpart, theme.toggled().slug());
+        let html = ThemesPage::new(page(theme), VariantFilter::All, None).render().unwrap();
+        assert_eq!(root_attribute(&html, "data-theme"), Some(theme.slug()));
+        assert_eq!(root_attribute(&html, "data-scheme"), theme.scheme());
+        assert!(html.contains(&format!("value=\"{}\" data-theme-toggle", theme.toggled().slug())));
+    }
 }

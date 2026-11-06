@@ -72,6 +72,33 @@
  * commit ids and diff hunk headers.
  * `src/themes/mod.rs` mirrors the two canvas colours for `<meta name="theme-color">`.
  */
+/* Reset optional accessibility cues at each theme boundary, including preview cards. */
+:root, [data-theme] {
+  --diff-add-fill: initial;
+  --diff-del-fill: initial;
+  --diff-add-rail: initial;
+  --diff-del-rail: initial;
+  --status-border: initial;
+  --deleted-border-style: initial;
+  --syntax-keyword-weight: initial;
+  --graph-color-0: initial;
+  --graph-dash-0: initial;
+  --graph-color-1: initial;
+  --graph-dash-1: initial;
+  --graph-color-2: initial;
+  --graph-dash-2: initial;
+  --graph-color-3: initial;
+  --graph-dash-3: initial;
+  --graph-color-4: initial;
+  --graph-dash-4: initial;
+  --graph-color-5: initial;
+  --graph-dash-5: initial;
+  --graph-color-6: initial;
+  --graph-dash-6: initial;
+  --graph-color-7: initial;
+  --graph-dash-7: initial;
+}
+
 :root,
 [data-theme="system"],
 [data-theme="light"],
@@ -199,6 +226,112 @@
   --syntax-type: #8e5400;
   --syntax-tag: #be2f2c;
   --syntax-attribute: #007187;
+}
+
+/* Colorblind variants retain rbit surfaces, with stronger blue actions, blue additions,
+ * amber deletions and violet warnings. Opaque diff fills, solid/dashed rails and deletion
+ * hatching reinforce the existing text and icons without requiring hue recognition.
+ * Full tokens and boundary resets keep gallery previews isolated. */
+[data-theme="colorblind-light"] {
+  color-scheme: light;
+  --canvas: #f5f7f9;
+  --surface: #ffffff;
+  --subtle: #f9fafc;
+  --hover: #eef0f3;
+  --line: #7c8899;
+  --line-strong: #707e90;
+  --ink: #13161b;
+  --ink-muted: #354052;
+  --ink-faint: #4c5668;
+  --inverted: #004c9b;
+  --inverted-hover: #003875;
+  --inverted-ink: #ffffff;
+  --success: #003b70;
+  --danger: #783900;
+  --danger-subtle: #ffe0a3;
+  --warning: #642d83;
+  --syntax-comment: #4c5668;
+  --syntax-keyword: #003b70;
+  --syntax-string: #653100;
+  --syntax-number: #642d83;
+  --syntax-function: #004d66;
+  --syntax-type: #653100;
+  --syntax-tag: #003b70;
+  --syntax-attribute: #642d83;
+  --diff-add-fill: #e3efff;
+  --diff-del-fill: #ffe0a3;
+  --diff-add-rail: inset 3px 0 0 var(--success);
+  --diff-del-rail: repeating-linear-gradient(to bottom, var(--danger) 0 5px, transparent 5px 9px);
+  --status-border: currentColor;
+  --deleted-border-style: dashed;
+  --syntax-keyword-weight: 700;
+  --graph-color-0: var(--success);
+  --graph-dash-0: none;
+  --graph-color-1: var(--danger);
+  --graph-dash-1: 8 3;
+  --graph-color-2: var(--warning);
+  --graph-dash-2: 2 3;
+  --graph-color-3: var(--syntax-function);
+  --graph-dash-3: 8 3 2 3;
+  --graph-color-4: var(--ink);
+  --graph-dash-4: 12 4;
+  --graph-color-5: var(--ink-muted);
+  --graph-dash-5: 1 3;
+  --graph-color-6: var(--syntax-string);
+  --graph-dash-6: 6 2 1 2;
+  --graph-color-7: var(--syntax-attribute);
+  --graph-dash-7: 12 3 1 3 1 3;
+}
+
+[data-theme="colorblind-dark"] {
+  color-scheme: dark;
+  --canvas: #141516;
+  --surface: #1d1e20;
+  --subtle: #1f2024;
+  --hover: #222429;
+  --line: #718096;
+  --line-strong: #8c9bb0;
+  --ink: #eceff1;
+  --ink-muted: #c0c7d1;
+  --ink-faint: #acb6c4;
+  --inverted: #a8cdff;
+  --inverted-hover: #c8dfff;
+  --inverted-ink: #101c2b;
+  --success: #8ac4ff;
+  --danger: #ffdc83;
+  --danger-subtle: #493716;
+  --warning: #d8baff;
+  --syntax-comment: #acb6c4;
+  --syntax-keyword: #8ac4ff;
+  --syntax-string: #ffdc83;
+  --syntax-number: #d8baff;
+  --syntax-function: #9bdfea;
+  --syntax-type: #ffdc83;
+  --syntax-tag: #8ac4ff;
+  --syntax-attribute: #d8baff;
+  --diff-add-fill: #172b42;
+  --diff-del-fill: #493716;
+  --diff-add-rail: inset 3px 0 0 var(--success);
+  --diff-del-rail: repeating-linear-gradient(to bottom, var(--danger) 0 5px, transparent 5px 9px);
+  --status-border: currentColor;
+  --deleted-border-style: dashed;
+  --syntax-keyword-weight: 700;
+  --graph-color-0: var(--success);
+  --graph-dash-0: none;
+  --graph-color-1: var(--danger);
+  --graph-dash-1: 8 3;
+  --graph-color-2: var(--warning);
+  --graph-dash-2: 2 3;
+  --graph-color-3: var(--syntax-function);
+  --graph-dash-3: 8 3 2 3;
+  --graph-color-4: var(--ink);
+  --graph-dash-4: 12 4;
+  --graph-color-5: var(--ink-muted);
+  --graph-dash-5: 1 3;
+  --graph-color-6: var(--syntax-string);
+  --graph-dash-6: 6 2 1 2;
+  --graph-color-7: var(--syntax-attribute);
+  --graph-dash-7: 12 3 1 3 1 3;
 }
 
 @theme {
@@ -669,7 +802,7 @@
 :where(.line-code) .c { color: var(--syntax-comment); }
 :where(.line-code) .s { color: var(--syntax-string); }
 :where(.line-code) .n { color: var(--syntax-number); }
-:where(.line-code) .k { color: var(--syntax-keyword); }
+:where(.line-code) .k { color: var(--syntax-keyword); font-weight: var(--syntax-keyword-weight, inherit); }
 :where(.line-code) .f { color: var(--syntax-function); }
 :where(.line-code) .t { color: var(--syntax-type); }
 :where(.line-code) .g { color: var(--syntax-tag); }
@@ -868,7 +1001,7 @@
 }
 
 .diff-toolbar {
-  @apply mb-3 flex min-h-8 items-center gap-3;
+  @apply mb-3 flex flex-wrap min-h-8 items-center gap-3;
 }
 
 .diff-columns {
@@ -992,14 +1125,14 @@
 /* A file's change type: a small square in its status colour with a glyph inside. */
 .status-mark {
   @apply grid size-3.5 shrink-0 place-items-center rounded-[3px] border font-mono text-[10px] leading-none font-bold;
-  border-color: color-mix(in oklab, currentColor 55%, transparent);
+  border-color: var(--status-border, color-mix(in oklab, currentColor 55%, transparent));
   background: color-mix(in oklab, currentColor 10%, transparent);
 }
 
 .status-mark::before { content: "•"; }
 .status-added { color: var(--success); }
 .status-added::before { content: "+"; }
-.status-deleted { color: var(--danger); }
+.status-deleted { color: var(--danger); border-style: var(--deleted-border-style, solid); }
 .status-deleted::before { content: "−"; }
 .status-modified { color: var(--warning); }
 .status-renamed,
@@ -1054,18 +1187,34 @@
   @apply block;
 }
 
-/* Five blocks splitting the changed lines into additions and deletions. */
-.diffstat {
-  @apply hidden shrink-0 gap-px sm:flex;
+/* Visible labels replace the color-only five-block change bar. */
+.change-counts {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-size: 11px;
 }
-
-.diffstat > span {
-  @apply size-2 rounded-[1px];
+.change-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 3px 6px;
+  line-height: 1.25;
+  font-weight: 500;
 }
-
-.diffstat-add { background: var(--success); }
-.diffstat-del { background: var(--danger); }
-.diffstat-none { background: var(--line-strong); }
+.change-count b { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.change-count-added { color: var(--success); background: var(--diff-add-fill, transparent); }
+.change-count-deleted {
+  color: var(--danger);
+  background: var(--diff-del-fill, transparent);
+  border-style: var(--deleted-border-style, solid);
+}
+.diff-file-counts { display: none; }
+@media (min-width: 640px) { .diff-file-counts { display: inline-flex; } }
 
 .diff-placeholder {
   @apply truncate px-4 text-center text-[13px] text-ink-muted;
@@ -1163,7 +1312,8 @@
 }
 
 .diff-view .diff-add {
-  background: color-mix(in oklab, var(--success) 11%, transparent);
+  background: var(--diff-add-fill, color-mix(in oklab, var(--success) 11%, transparent));
+  box-shadow: var(--diff-add-rail, none);
 }
 
 .diff-view .diff-add::before {
@@ -1176,7 +1326,10 @@
 }
 
 .diff-view .diff-del {
-  background: color-mix(in oklab, var(--danger) 11%, transparent);
+  background: var(--diff-del-fill, color-mix(in oklab, var(--danger) 11%, transparent));
+  background-image: var(--diff-del-rail, none);
+  background-size: 3px 100%;
+  background-repeat: no-repeat;
 }
 
 .diff-view .diff-del::before {
@@ -1478,7 +1631,7 @@ html:has(.tpk[open]) { overflow: hidden; }
 
 .pv-code { @apply overflow-hidden whitespace-pre px-2.5 py-1.5 font-mono text-[10.5px] leading-[1.15rem]; }
 .pv-ln { @apply inline-block w-5 select-none text-ink-faint; }
-.pv-k { color: var(--syntax-keyword); }
+.pv-k { color: var(--syntax-keyword); font-weight: var(--syntax-keyword-weight, inherit); }
 .pv-s { color: var(--syntax-string); }
 .pv-n { color: var(--syntax-number); }
 .pv-f { color: var(--syntax-function); }
@@ -1489,14 +1642,24 @@ html:has(.tpk[open]) { overflow: hidden; }
 .pv-diff > span { @apply block px-2.5; }
 .pv-add { @apply font-semibold text-success; }
 .pv-del { @apply font-semibold text-danger; }
-.pv-add-line { background: color-mix(in oklab, var(--success) 14%, transparent); }
-.pv-del-line { background: color-mix(in oklab, var(--danger) 14%, transparent); }
+.pv-add-line { background: var(--diff-add-fill, color-mix(in oklab, var(--success) 14%, transparent)); box-shadow: var(--diff-add-rail, none); }
+.pv-del-line {
+  background: var(--diff-del-fill, color-mix(in oklab, var(--danger) 14%, transparent));
+  background-image: var(--diff-del-rail, none);
+  background-size: 3px 100%;
+  background-repeat: no-repeat;
+}
 
 .pv-row { @apply flex flex-wrap gap-1.5; }
 .pv-pill { @apply inline-flex h-5.5 items-center gap-1 rounded-full border px-2 text-[10px] font-medium; }
-.pv-ok { @apply border-success/40 text-success; }
+.pv-ok { @apply border-success/40 text-success; background: var(--diff-add-fill, transparent); border-color: var(--status-border, color-mix(in oklab, var(--success) 40%, transparent)); }
 .pv-warn { @apply border-warning/40 text-warning; }
-.pv-bad { @apply border-danger/40 text-danger; }
+.pv-bad {
+  @apply border-danger/40 text-danger;
+  background: var(--diff-del-fill, transparent);
+  border-color: var(--status-border, color-mix(in oklab, var(--danger) 40%, transparent));
+  border-style: var(--deleted-border-style, solid);
+}
 
 .pv-text { @apply text-ink-muted; }
 .pv-link { @apply text-ink underline decoration-line-strong underline-offset-2; }

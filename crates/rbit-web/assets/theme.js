@@ -34,7 +34,7 @@
     return;
   }
   root.dataset.theme = theme;
-  const builtIn = { light: "light", dark: "dark", "dna-day": "light", "dna-dark": "dark" };
+  const builtIn = { light: "light", dark: "dark", "colorblind-light": "light", "colorblind-dark": "dark", "dna-day": "light", "dna-dark": "dark" };
   if (theme in builtIn) {
     root.dataset.scheme = builtIn[theme];
     return;

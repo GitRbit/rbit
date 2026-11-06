@@ -16,14 +16,22 @@
 .commit-graph-merge { color: var(--ink-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
 .commit-graph-summary { display: block; font-weight: 500; }
 .commit-graph-meta { display: flex; flex-wrap: wrap; gap: .15rem .75rem; margin-top: .25rem; color: var(--ink-muted); font-size: 11px; }
-.graph-color-0 { color: light-dark(#2563eb, #7aa2ff); }
-.graph-color-1 { color: light-dark(#15803d, #65d995); }
-.graph-color-2 { color: light-dark(#7c3aed, #bb9aff); }
-.graph-color-3 { color: light-dark(#c2410c, #ffae77); }
-.graph-color-4 { color: light-dark(#be185d, #ff8fbc); }
-.graph-color-5 { color: light-dark(#0e7490, #66d9ed); }
-.graph-color-6 { color: light-dark(#a16207, #edcf6d); }
-.graph-color-7 { color: light-dark(#0f766e, #6ae3c7); }
+.graph-color-0 { color: var(--graph-color-0, light-dark(#2563eb, #7aa2ff)); }
+path.graph-color-0 { stroke-dasharray: var(--graph-dash-0, none); }
+.graph-color-1 { color: var(--graph-color-1, light-dark(#15803d, #65d995)); }
+path.graph-color-1 { stroke-dasharray: var(--graph-dash-1, none); }
+.graph-color-2 { color: var(--graph-color-2, light-dark(#7c3aed, #bb9aff)); }
+path.graph-color-2 { stroke-dasharray: var(--graph-dash-2, none); }
+.graph-color-3 { color: var(--graph-color-3, light-dark(#c2410c, #ffae77)); }
+path.graph-color-3 { stroke-dasharray: var(--graph-dash-3, none); }
+.graph-color-4 { color: var(--graph-color-4, light-dark(#be185d, #ff8fbc)); }
+path.graph-color-4 { stroke-dasharray: var(--graph-dash-4, none); }
+.graph-color-5 { color: var(--graph-color-5, light-dark(#0e7490, #66d9ed)); }
+path.graph-color-5 { stroke-dasharray: var(--graph-dash-5, none); }
+.graph-color-6 { color: var(--graph-color-6, light-dark(#a16207, #edcf6d)); }
+path.graph-color-6 { stroke-dasharray: var(--graph-dash-6, none); }
+.graph-color-7 { color: var(--graph-color-7, light-dark(#0f766e, #6ae3c7)); }
+path.graph-color-7 { stroke-dasharray: var(--graph-dash-7, none); }
 .commit-graph[data-graph-selected] [data-graph-lane] { opacity: .15; }
 .commit-graph[data-graph-selected] [data-graph-lane].graph-highlight { opacity: 1; stroke-width: 3; }
 .commit-graph[data-graph-selected] tr.graph-highlight .commit-graph-details { background: var(--surface); }
@@ -34,3 +42,6 @@
 
 .commit-graph[data-graph-selected] [data-graph-node].graph-highlight { stroke-width: 10; }
 @media (min-width: 481px) { .commit-graph-column-compact { width: 112px; } }
+
+/* Commit dots stay solid while accessible track edges carry distinct dash patterns. */
+path[data-graph-node] { stroke-dasharray: none; }

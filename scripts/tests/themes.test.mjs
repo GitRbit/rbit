@@ -94,3 +94,88 @@ test('legacy preferences retain Classic palettes and are migrated without relabe
     assert.equal(fallback(`rustit-theme=${slug}`).root.dataset.theme, slug);
   }
 });
+
+for (const [slug, scheme, sibling] of [
+  ['colorblind-light', 'light', 'colorblind-dark'],
+  ['colorblind-dark', 'dark', 'colorblind-light'],
+]) {
+  test(`${slug} restores offline and retains its sibling through toggles and navigation`, () => {
+    const restored = fallback(`rbit-theme=${slug}`);
+    assert.equal(restored.root.dataset.theme, slug);
+    assert.equal(restored.root.dataset.scheme, scheme);
+    assert.equal(restored.links.length, 0);
+    const page = picker();
+    page.choose(slug);
+    assert.equal(page.root.dataset.scheme, scheme);
+    assert.equal(page.toggle.value, sibling);
+    assert.equal(page.manifest.href, `/manifest.webmanifest?theme=${slug}`);
+    page.submit();
+    assert.equal(page.root.dataset.theme, sibling);
+    page.settle();
+    page.submit();
+    assert.equal(page.root.dataset.theme, slug);
+    assert.match(page.document.cookie, new RegExp(`rbit-theme=${slug};`));
+  });
+}
+
+const css = await readFile(new URL('../../crates/rbit-web/styles/app.css', import.meta.url), 'utf8');
+const tokens = (slug) => Object.fromEntries([...css.match(new RegExp(`\\[data-theme="${slug}"\\] \\{([^}]+)\\}`))[1].matchAll(/--([a-z-]+): (#[0-9a-f]{6});/g)].map(([, key, value]) => [key, value]));
+function luminance(hex) {
+  const channels = hex.slice(1).match(/../g).map((c) => parseInt(c, 16) / 255).map((c) => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4);
+  return channels.reduce((sum, c, i) => sum + c * [.2126, .7152, .0722][i], 0);
+}
+function contrast(a, b) {
+  const [x, y] = [luminance(a), luminance(b)].sort((a, b) => b - a);
+  return (x + .05) / (y + .05);
+}
+for (const [slug, parent] of [['colorblind-light', 'dna-day'], ['colorblind-dark', 'dna-dark']]) {
+  test(`${slug} preserves rbit surfaces and readable text, syntax and status colours`, () => {
+    const t = tokens(slug), original = tokens(parent);
+    for (const name of ['canvas', 'surface', 'subtle', 'hover']) assert.equal(t[name], original[name]);
+    for (const name of ['ink', 'ink-muted', 'ink-faint', 'success', 'danger', 'warning', ...Object.keys(t).filter((name) => name.startsWith('syntax-'))]) {
+      for (const background of ['canvas', 'surface', 'subtle', 'hover']) assert.ok(contrast(t[name], t[background]) >= 4.5, `${name} on ${background}: ${contrast(t[name], t[background])}`);
+    }
+    for (const background of ['diff-add-fill', 'diff-del-fill']) {
+      for (const name of ['ink', 'ink-faint', 'success', 'danger', ...Object.keys(t).filter((name) => name.startsWith('syntax-'))]) {
+        assert.ok(contrast(t[name], t[background]) >= 4.5, `${name} on ${background}: ${contrast(t[name], t[background])}`);
+      }
+    }
+    for (const background of ['canvas', 'surface', 'subtle', 'hover']) {
+      assert.ok(contrast(t['ink-muted'], t[background]) >= 7);
+      for (const border of ['line', 'line-strong']) assert.ok(contrast(t[border], t[background]) >= 3, `${border} on ${background}`);
+    }
+    assert.ok(contrast(t.danger, t['danger-subtle']) >= 4.5);
+    assert.ok(contrast(t['inverted-ink'], t.inverted) >= 4.5);
+    assert.ok(contrast(t['inverted-ink'], t['inverted-hover']) >= 4.5);
+    assert.notEqual(t.success, original.success);
+    assert.notEqual(t.danger, original.danger);
+  });
+}
+
+// Full-severity red/green transforms from Machado, Oliveira & Fernandes (2009).
+// https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html
+// A screening check, not a substitute for feedback from people using the themes.
+const redGreenSimulations = {
+  protanopia: [[.152286, 1.052583, -.204868], [.114503, .786281, .099216], [-.003882, -.048116, 1.051998]],
+  deuteranopia: [[.367322, .860646, -.227968], [.280085, .672501, .047413], [-.011820, .042940, .968881]],
+};
+function simulate(hex, matrix) {
+  const rgb = hex.slice(1).match(/../g).map((c) => parseInt(c, 16) / 255).map((c) => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4);
+  return '#' + matrix.map((row) => {
+    const linear = Math.max(0, Math.min(1, row.reduce((sum, weight, i) => sum + weight * rgb[i], 0)));
+    const srgb = linear <= .0031308 ? 12.92 * linear : 1.055 * linear ** (1 / 2.4) - .055;
+    return Math.round(srgb * 255).toString(16).padStart(2, '0');
+  }).join('');
+}
+for (const slug of ['colorblind-light', 'colorblind-dark']) {
+  for (const [name, matrix] of Object.entries(redGreenSimulations)) {
+    test(`${slug} keeps text readable under the ${name} screening transform`, () => {
+      const t = Object.fromEntries(Object.entries(tokens(slug)).map(([key, value]) => [key, simulate(value, matrix)]));
+      for (const background of ['canvas', 'surface', 'subtle', 'hover', 'diff-add-fill', 'diff-del-fill']) {
+        for (const foreground of ['ink', 'ink-faint', 'success', 'danger', 'warning', ...Object.keys(t).filter((key) => key.startsWith('syntax-'))]) {
+          assert.ok(contrast(t[foreground], t[background]) >= 4.5, `${foreground} on ${background}: ${contrast(t[foreground], t[background])}`);
+        }
+      }
+    });
+  }
+}

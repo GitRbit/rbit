@@ -28,7 +28,7 @@ const HOVER_DELAY_MS = 200;
 /** Matches the `data-theme-fade` transition in app.css, with a little slack. */
 const FADE_MS = 350;
 /** Themes whose tokens live in app.css, with their schemes; others link their own sheet. */
-const BUILT_IN = { system: null, light: "light", dark: "dark", "dna-dark": "dark", "dna-day": "light" };
+const BUILT_IN = { system: null, light: "light", dark: "dark", "dna-dark": "dark", "dna-day": "light", "colorblind-light": "light", "colorblind-dark": "dark" };
 
 const root = document.documentElement;
 let applied = { slug: root.dataset.theme ?? "system", scheme: root.dataset.scheme ?? null };
@@ -156,6 +156,7 @@ function aimAfterChoosing(button, slug, scheme) {
   if (slug === "system") aimToggle(defaultSlug(opposite(deviceScheme())), opposite(deviceScheme()));
   else if (button.dataset.counterpart) aimToggle(button.dataset.counterpart, opposite(scheme));
   else if (slug === "light" || slug === "dark") aimToggle(opposite(scheme), opposite(scheme));
+  else if (slug === "colorblind-light" || slug === "colorblind-dark") aimToggle(`colorblind-${opposite(scheme)}`, opposite(scheme));
   else if (slug in BUILT_IN) aimToggle(defaultSlug(opposite(scheme)), opposite(scheme));
 }
 
