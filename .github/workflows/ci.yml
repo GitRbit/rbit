@@ -37,8 +37,12 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-      - run: node --test scripts/tests/rewrite-*.test.mjs scripts/tests/workspace*.test.mjs
+      - run: node --test scripts/tests/rewrite-*.test.mjs scripts/tests/identity-features.test.mjs scripts/tests/workspace*.test.mjs
       - run: node scripts/rewrite/check.mjs
+      # Separate invocations prevent workspace feature unification from hiding a
+      # missing model-only or credentials-only dependency/compile contract.
+      - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --locked
+      - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --features credentials --locked
       - run: node scripts/workspace.mjs test --package rbit-contracts --package rbit-core --package rbit-kernel --package rbit-localization --package rbit-identity --package rbit-auth --package rbit-rewrite-check --locked
       - run: node scripts/workspace.mjs test --package rbit-render-probe --no-default-features --features inheritance,segments,blocks,count-8 --locked
       - run: node scripts/rewrite/check-types.mjs
@@ -101,12 +105,13 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci && npm run build
-      # nextest runs every test binary in parallel, each test in its own process. The
-      # workspace has no doctests, which nextest does not run.
+      # nextest runs test binaries in parallel; Rust documentation examples need
+      # their own command because nextest does not execute doctests.
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2
         with:
           tool: cargo-nextest
       - run: cargo nextest run --workspace --locked --profile ci
+      - run: cargo test --workspace --doc --locked
 
   assets:
     name: Front-end build
