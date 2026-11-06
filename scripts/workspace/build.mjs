@@ -7,6 +7,7 @@ import { createInterface } from "node:readline";
 import { guarded, managedDirectory } from "./paths.mjs";
 import { leased, UncertainProcessTreeError } from "./lease.mjs";
 import { cacheBudget, enforceHighWater } from "./storage.mjs";
+import { cargoTreeMode, ownedCargo, verifiedCargoCompletion } from "./cargo-tree.mjs";
 
 function reportCacheOverage(report) {
   if (report.overageBytes > 0) process.stderr.write(`Build cache remains ${report.overageBytes} bytes over its ${report.maxBytes}-byte soft limit (${report.bytes} bytes retained); current namespace is protected.\n`);
@@ -26,38 +27,46 @@ export function validateCargoArgs(args) {
   }
 }
 
-export function cargoProcess(ctx, args, env, onArtifact = () => {}, { spawnProcess = spawn, output = process.stdout, diagnostics = process.stderr, onMessage = () => {}, captureStderr = false } = {}) {
+export function cargoProcess(ctx, args, env, onArtifact = () => {}, options = {}) {
+  if (cargoTreeMode(env) === "windows-job") return ownedCargo(ctx, args, env, onArtifact, options, consumeCargo);
+  return consumeCargo(ctx, args, env, onArtifact, options);
+}
+
+function consumeCargo(ctx, args, env, onArtifact = () => {}, { spawnProcess = spawn, output = process.stdout, diagnostics = process.stderr, onMessage = () => {}, captureStderr = false, verifyCompletion } = {}) {
   return new Promise((done, reject) => {
     const child = spawnProcess("cargo", args, { cwd: ctx.checkout, env, windowsHide: true, stdio: ["inherit", "pipe", captureStderr ? "pipe" : "inherit"] });
-    if (captureStderr) child.stderr?.on("data", (chunk) => diagnostics.write(chunk));
-    const lines = createInterface({ input: child.stdout });
     let parseError, spawnError;
-    lines.on("line", (line) => {
-      let message;
-      try { message = JSON.parse(line); }
-      catch { output.write(`${line}\n`); return; }
+    if (captureStderr) child.stderr?.on("data", chunk => { try { diagnostics.write(chunk); } catch (error) { parseError = error; } });
+    const lines = createInterface({ input: child.stdout });
+    const drained = new Promise(resolve => lines.once("close", resolve));
+    child.stdout.on("error", error => { parseError ??= error; });
+    child.stderr?.on("error", error => { parseError ??= error; });
+    lines.on("error", error => { parseError ??= error; lines.close(); });
+    lines.on("line", line => {
       try {
+        let message;
+        try { message = JSON.parse(line); } catch { output.write(`${line}\n`); return; }
         if (!message || typeof message !== "object" || !message.reason) { output.write(`${line}\n`); return; }
         onMessage(message);
         if (env.RBIT_WORKSPACE_JSON === "1") output.write(`${line}\n`);
         if (message.reason === "compiler-artifact" && message.executable) onArtifact(message);
         else if (env.RBIT_WORKSPACE_JSON !== "1" && message.reason === "compiler-message" && message.message.rendered) diagnostics.write(message.message.rendered);
-      } catch (error) {
-        parseError = error;
-      }
+      } catch (error) { parseError ??= error; }
     });
-    // Default interruption deliberately leaves the lease behind. This prevents another
-    // build from reusing output while orphaned compiler descendants may still be alive.
-    // Even spawn errors settle on close, after stdio handles/children have closed.
-    child.on("error", (error) => { spawnError = error; });
+    child.on("error", error => { spawnError = error; });
     child.on("close", (code, signal) => {
-      // Windows taskkill can report code1 with no signal, while rustc descendants
-      // survive. Only Cargo's documented normal success/error exits prove completion.
-      if (signal || (!spawnError && code !== 0 && code !== 101) || (spawnError && child.pid)) {
-        reject(new UncertainProcessTreeError(`Cargo terminated abnormally (${signal ?? code}); compiler descendants may still be writing`));
-      } else if (spawnError || parseError) reject(spawnError ?? parseError);
-      else if (code !== 0) reject(new Error(`Cargo ${signal ?? `exited ${code}`}`));
-      else done();
+      void (async () => {
+        // close follows native stdio closure. Also drain the readline decoder before
+        // resolving, so the final JSON line/callback failure cannot race publication.
+        await drained;
+        const receipt = verifyCompletion ? await verifyCompletion(child) : undefined;
+        if (!receipt && (signal || (!spawnError && code !== 0 && code !== 101) || (spawnError && child.pid))) {
+          throw new UncertainProcessTreeError(`Cargo terminated abnormally (${signal ?? code}); compiler descendants may still be writing`);
+        }
+        if (spawnError || parseError) throw spawnError ?? parseError;
+        if (code !== 0) throw new Error(`Cargo ${signal ?? `exited ${code}`}`);
+        return receipt;
+      })().then(done, reject);
     });
   });
 }
@@ -66,6 +75,7 @@ export function cargoProcess(ctx, args, env, onArtifact = () => {}, { spawnProce
 export async function cargo(ctx, command, args = [], { execute = cargoProcess, env = process.env, key, reportMaintenance = reportCacheOverage } = {}) {
   if (!["build", "check", "clippy", "test", "nextest", "generate-lockfile"].includes(command)) throw new Error("Unsupported Cargo command");
   validateCargoArgs(args);
+  cargoTreeMode(env);
   if (command === "nextest" && !["run", "list"].includes(args[0])) throw new Error("Use nextest run or list");
   const maxCacheBytes = cacheBudget(env);
   const buildEnv = { ...env, LIBSQLITE3_FLAGS: [env.LIBSQLITE3_FLAGS ?? "", "-DSQLITE_ENABLE_QPSG"].join(" ").trim() };
@@ -84,8 +94,9 @@ export async function cargo(ctx, command, args = [], { execute = cargoProcess, e
     const artifacts = [];
     const json = ["build", "check", "clippy", "test"].includes(command);
     const format = buildEnv.RBIT_WORKSPACE_JSON === "1" ? "json" : "json-render-diagnostics";
-    await execute(ctx, [command, ...(json ? [`--message-format=${format}`] : []), ...args], buildEnv, (item) => artifacts.push(item));
+    const completion = await execute(ctx, [command, ...(json ? [`--message-format=${format}`] : []), ...args], buildEnv, (item) => artifacts.push(item), { lease });
     const result = { executables: [], environment: buildEnv, namespace };
+    if (verifiedCargoCompletion(completion, lease)) result.completion = completion;
     if (command === "build") {
       const binaries = new Map();
       for (const item of artifacts.filter((entry) => entry.target.kind.includes("bin"))) {

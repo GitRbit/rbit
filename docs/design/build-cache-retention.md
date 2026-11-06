@@ -173,3 +173,48 @@ new cache generation directories are enabled by this policy implementation.
 
 Argument semantics are grounded in the official [Cargo test options](https://doc.rust-lang.org/cargo/commands/cargo-test.html)
 and [nextest Cargo/runner options](https://nexte.st/docs/running/).
+
+
+## Opt-in Cargo completion foundation
+
+The managed-retention planner cannot treat ordinary Cargo close as proof of all
+compiler descendants stopping. `RBIT_WORKSPACE_CARGO_TREE=windows-job` now selects
+a strict Windows-only execution path in the shared helper; absent or `off` retains
+the existing behavior. Unknown values and unsupported operating systems fail before
+execution, with no process-group/PID fallback. This mode remains off by default and
+is not automatic cache rotation, compaction, pruning or a storage-budget guarantee.
+
+The path requires the actual management lease and reuses the existing Windows
+JOB_LIST launcher: the Cargo proxy is associated at creation, KILL_ON_JOB_CLOSE
+remains enabled, and the launcher acknowledges only a verified empty job. JSON
+stdout, optional captured diagnostics, test output, cwd/environment and proxy
+invocation name are preserved. All success/error decisions wait for native close,
+readline drain and the completion proof. Missing/unreadable proof or an uncertain
+launch retains private per-run controls and blocks the lease, even if diagnostics
+cannot be written. A proved compiler failure remains an ordinary failure and cannot
+publish executables. Callback, output and pipe failures also prevent publication.
+
+An in-process receipt is bound to the current lease by private WeakMap identity.
+Serialized booleans or copied receipt JSON are not proof. This is a prerequisite
+for trusted retention observation, not deletion authority: the stdin planner stays
+simulation-only. Existing protected namespaces, runtime copies and exact binary
+handoffs retain their current rules. The launcher is an ownership mechanism for
+cooperative developer workloads, not isolation against hostile same-user code that
+can modify control files or stop the controlling host. Abrupt host/launcher failure
+without proof requires investigation; no certainty is reconstructed from PID absence.
+
+Focused fake-process tests cover actual lease exclusion/blocking, proof and launch
+failures, compiler and callback/output/pipe errors, final JSON drain and receipt
+forgery/reuse. A real native Node fixture (no Cargo or rustc; its launcher may compile C#) is explicitly gated:
+
+```powershell
+$env:RBIT_RUN_NATIVE_CARGO_PROOF = '1'
+node --test scripts/tests/workspace-cargo-native.test.mjs
+```
+
+After the compiler lane is available, Windows acceptance must run that fixture and
+an existing small Cargo command through the shared helper with strict mode enabled,
+checking IDE/Cargo JSON and descendant completion. Native acceptance, Linux ownership,
+trusted persisted generation records, a retention executor, cold-build cost/headroom
+measurement and an activation decision remain pending. No actual cache mutation or
+native test execution is implied by source/fake-process fixture acceptance.

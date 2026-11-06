@@ -41,7 +41,7 @@ export async function cacheReport(ctx) {
   return { bytes: entries.reduce((sum, entry) => sum + entry.bytes, 0), entries };
 }
 
-async function requireLease(ctx, lease) {
+export async function requireLease(ctx, lease) {
   const path = join(ctx.cache, ".lease");
   const current = await owner(path);
   if (typeof lease?.path !== "string" || typeof lease.token !== "string" || resolve(lease.path) !== resolve(path) || current?.token !== lease.token || current?.pid !== process.pid || current?.host !== hostname()) {
