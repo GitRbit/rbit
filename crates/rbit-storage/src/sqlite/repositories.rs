@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use super::pool::Pool;
 use rbit_core::{
-    Account, AccountId, OrgRole, RepoId, RepoName, RepoSort, Repository, Timestamp, Visibility,
+    Account, AccountId, OrgRole, RepoId, RepoSort, Repository, Timestamp, Visibility,
     membership::{BasePermission, Permission},
     mirror::Mirror,
     repository::{ArchivedFilter, OwnedRepository},
@@ -384,14 +384,7 @@ fn contains_pattern(text: &str) -> String {
     pattern
 }
 
-#[derive(Debug)]
-pub struct NewRepository {
-    pub owner_id: AccountId,
-    pub name: RepoName,
-    pub description: Option<String>,
-    pub visibility: Visibility,
-    pub default_branch: String,
-}
+pub use rbit_repositories::creation::NewRepository;
 
 #[derive(Debug, Clone)]
 pub struct RepositoryStore {

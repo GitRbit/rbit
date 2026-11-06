@@ -12,30 +12,21 @@
 use std::{path::PathBuf, sync::Arc};
 
 use rbit_auth::{Grants, repo_access};
-use rbit_core::{
-    Account, AccountId, Config, OrgRole, Permission, RepoAccess, RepoId, RepoName, User, Visibility, mirror::Mirror,
-    repository::OwnedRepository,
-};
+use rbit_core::{Account, AccountId, Config, Permission, RepoAccess, RepoId, User, mirror::Mirror, repository::OwnedRepository};
 use rbit_git::{RepositoryReader, RepositoryStorage};
 use rbit_storage::{
-    NewRepository, RepositoryStore,
+    RepositoryStore,
     sqlite::{ForkParent, RepositoryPage, collaborators::ViewerGrants},
 };
 
-use crate::{DomainEvent, EventBus, ServiceContext, ServiceError, StarSummary, timeline::OpenCounts};
+use crate::{EventBus, ServiceContext, ServiceError, StarSummary, timeline::OpenCounts};
 
-const MAX_DESCRIPTION_LEN: usize = 350;
 /// Upper bound on the dashboard list; it is a jumping-off point, not an archive.
 const DASHBOARD_LIMIT: u32 = 100;
 pub use rbit_repositories::discovery::{EXPLORE_PAGE_SIZE, RepoSearch, RepoSearchResults};
 
-/// Raw "new repository" input, exactly as submitted.
-#[derive(Debug, Clone, Default)]
-pub struct CreateRepository {
-    pub name: String,
-    pub description: String,
-    pub visibility: Visibility,
-}
+pub use rbit_repositories::creation::CreateRepository;
+mod creation;
 
 /// A repository the viewer is allowed to see, with what they may do to it.
 #[derive(Debug, Clone)]
@@ -118,54 +109,6 @@ pub struct RepositoryService {
 impl RepositoryService {
     pub(crate) fn new(config: Arc<Config>, store: RepositoryStore, storage: RepositoryStorage, events: EventBus) -> Self {
         Self { config, store, storage, events }
-    }
-
-    /// Creates a repository owned by `actor` personally. See [`Self::create_in`].
-    pub async fn create(&self, actor: &User, input: CreateRepository) -> Result<OwnedRepository, ServiceError> {
-        self.create_in(actor, actor.name().as_str(), input).await
-    }
-
-    /// Creates a repository owned by the account called `owner`: `actor` themselves, or
-    /// an organisation `actor` belongs to (site administrators may use any organisation).
-    ///
-    /// Creates the metadata row and the bare repository. If the on-disk step fails the
-    /// row is removed again, so the two never drift apart.
-    pub async fn create_in(&self, actor: &User, owner: &str, input: CreateRepository) -> Result<OwnedRepository, ServiceError> {
-        let owner = self.owner_for_new_repository(actor, owner.trim()).await?;
-        let name: RepoName = input.name.trim().parse()?;
-        let description = input.description.trim();
-        if description.chars().count() > MAX_DESCRIPTION_LEN {
-            return Err(ServiceError::Invalid(format!("description must be at most {MAX_DESCRIPTION_LEN} characters")));
-        }
-
-        let default_branch = self.config.repository.default_branch.clone();
-        let repo = self
-            .store
-            .create(NewRepository {
-                owner_id: owner.id,
-                name,
-                description: (!description.is_empty()).then(|| description.to_owned()),
-                visibility: input.visibility,
-                default_branch: default_branch.clone(),
-            })
-            .await?;
-
-        if let Err(error) = self.storage.create(owner.id, repo.id, &default_branch).await {
-            tracing::error!(%error, repo = %repo.name, "failed to initialise repository on disk; rolling back");
-            self.store.delete(repo.id).await?;
-            return Err(error.into());
-        }
-
-        // A member who is not an owner would otherwise depend on the organisation's base
-        // permission to reach the repository they just created (with `none`, not at all),
-        // so the creator administers it as a collaborator, as on other forges.
-        if owner.is_organization() && !actor.is_admin && self.store.org_role(owner.id, actor.id()).await? == Some(OrgRole::Member) {
-            self.store.grant_collaborator(repo.id, actor.id(), Permission::Admin).await?;
-        }
-
-        tracing::info!(actor = %actor.name(), owner = %owner.name, repo = %repo.name, "repository created");
-        self.events.publish(DomainEvent::RepositoryCreated { repo: repo.id, actor: actor.id() });
-        Ok(OwnedRepository { owner, repo })
     }
 
     /// Resolves and authorises the owner of a new repository (also used for forks).
@@ -293,15 +236,7 @@ impl RepositoryService {
 /// `owner` is empty), or an organisation they belong to (site administrators: any
 /// organisation). Shared by repository creation, forks and transfers.
 pub(crate) async fn authorised_owner(store: &RepositoryStore, actor: &User, owner: &str) -> Result<Account, ServiceError> {
-    if owner.is_empty() || owner.eq_ignore_ascii_case(actor.name().as_str()) {
-        return Ok(actor.account.clone());
-    }
-    let not_allowed = || ServiceError::Invalid(format!("you cannot create repositories for {owner}"));
-    let account = store.find_owner(owner).await?.ok_or_else(not_allowed)?;
-    if !account.is_organization() {
-        return Err(not_allowed());
-    }
-    if actor.is_admin || store.org_role(account.id, actor.id()).await?.is_some() { Ok(account) } else { Err(not_allowed()) }
+    rbit_repositories::creation::RepositoryOwnership::resolve(store, actor, owner).await.map_err(creation::owner_error)
 }
 
 /// What `viewer` was granted on `repo`, for [`repo_access`]. Skips the query when the

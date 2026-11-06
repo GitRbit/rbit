@@ -20,6 +20,7 @@ pub mod error;
 mod identity_accounts;
 mod identity_sessions;
 pub mod kv;
+mod repository_creation;
 mod repository_discovery;
 pub mod sealing;
 pub mod sqlite;

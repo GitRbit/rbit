@@ -42,8 +42,7 @@ fn unchanged_head_and_narrowed_visibility_skip_ancestor_and_git_but_still_write_
 fn private_ancestor_rejection_precedes_branch_lookup_and_sql() {
     let mut repo = repo();
     repo.repo.visibility = Visibility::Private;
-    let mut port = Bridge::default();
-    port.private_ancestor = true;
+    let port = Bridge { private_ancestor: true, ..Bridge::default() };
     let binding = &port;
     assert!(matches!(
         run(RepositorySettings::new(&repo, true).update(&binding, general(Visibility::Public, Some("other")))),
