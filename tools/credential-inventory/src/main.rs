@@ -12,16 +12,15 @@ async fn main() -> ExitCode {
         }
     };
     match rbit_credential_inventory::scan_snapshot(&snapshot).await {
-        Ok(report) => match serde_json::to_string_pretty(&report) {
-            Ok(json) => {
+        Ok(report) => {
+            if let Ok(json) = serde_json::to_string_pretty(&report) {
                 println!("{json}");
                 if report.complete { ExitCode::SUCCESS } else { ExitCode::from(3) }
-            }
-            Err(_) => {
+            } else {
                 eprintln!("REPORT_ENCODING_FAILED");
                 ExitCode::FAILURE
             }
-        },
+        }
         Err(error) => {
             eprintln!("{}", error.code());
             ExitCode::FAILURE

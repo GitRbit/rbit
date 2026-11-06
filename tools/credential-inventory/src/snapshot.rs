@@ -51,10 +51,10 @@ pub(crate) fn fingerprint(path: &Path) -> Result<Fingerprint, ScanError> {
         return Err(ScanError::Input);
     }
     let mut hasher = Sha256::new();
-    let mut buffer = zeroize::Zeroizing::new([0; 64 * 1024]);
+    let mut buffer = zeroize::Zeroizing::new(vec![0; 64 * 1024]);
     let mut length = 0_u64;
     loop {
-        let read = file.read(&mut *buffer).map_err(|_| ScanError::Input)?;
+        let read = file.read(&mut buffer).map_err(|_| ScanError::Input)?;
         if read == 0 {
             break;
         }

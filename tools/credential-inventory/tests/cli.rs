@@ -19,7 +19,7 @@ fn explicit_snapshot_is_required_and_errors_do_not_echo_paths() {
     ] {
         let output = run(&arguments);
         assert!(!output.status.success());
-        assert!(output.stdout.is_empty());
+        assert_eq!(output.stdout.as_slice(), b"");
         assert!(!String::from_utf8(output.stderr).unwrap().contains("private-identity"));
         assert!(!missing.exists());
     }
@@ -36,7 +36,7 @@ async fn cli_json_is_only_metadata_and_creates_no_sidecars() {
     let modified = fs::metadata(&path).unwrap().modified().unwrap();
     let output = run(&[std::ffi::OsStr::new("--snapshot"), path.as_os_str()]);
     assert!(output.status.success());
-    assert!(output.stderr.is_empty());
+    assert_eq!(output.stderr.as_slice(), b"");
     let json = String::from_utf8(output.stdout).unwrap();
     assert!(!json.contains("private"));
     let value: serde_json::Value = serde_json::from_str(&json).unwrap();
