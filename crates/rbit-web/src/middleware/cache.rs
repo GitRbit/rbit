@@ -99,7 +99,9 @@ pub async fn html_caching(request: Request, next: Next) -> Response {
         return (StatusCode::INTERNAL_SERVER_ERROR, "failed to read the response body").into_response();
     };
     // The footer's render time changes on every request; leave it out of the ETag.
-    let etag = weak_etag(crate::timing::without_render_time(&bytes));
+    let [before, after] = crate::timing::without_render_time(&bytes);
+    let catalog = parts.headers.get(crate::localization::CATALOG_HEADER).map_or(&[][..], HeaderValue::as_bytes);
+    let etag = weak_etag([catalog, before, after]);
     let cache_control = if preloaded { format!("private, max-age={PRELOAD_MAX_AGE_SECONDS}") } else { "private, no-cache".to_owned() };
     parts.headers.insert(header::CACHE_CONTROL, HeaderValue::from_str(&cache_control).unwrap_or(HeaderValue::from_static("no-cache")));
     if let Ok(value) = HeaderValue::from_str(&etag) {
@@ -138,7 +140,7 @@ pub(crate) fn is_immutable(headers: &HeaderMap) -> bool {
         .is_some_and(|v| v.split(',').any(|d| d.trim().eq_ignore_ascii_case("immutable")))
 }
 
-pub(super) fn weak_etag(body: [&[u8]; 2]) -> String {
+pub(super) fn weak_etag<const N: usize>(body: [&[u8]; N]) -> String {
     use std::fmt::Write;
 
     use sha2::{Digest, Sha256};

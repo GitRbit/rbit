@@ -3,6 +3,7 @@
 
 // Theme menu and gallery: instant switching, live previews, filtering.
 import "./theme-picker.js";
+import "./locale.js";
 
 // Preloading, partial swaps, progress and focus for boosted navigation.
 import "./nav.js";

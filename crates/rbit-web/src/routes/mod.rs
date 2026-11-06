@@ -170,6 +170,7 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .merge(if state.services.actions.is_some() { actions::routes() } else { Router::new() })
         .fallback(|| async { WebError::NotFound })
         .layer(from_fn_with_state(state.clone(), middleware::error_pages))
+        .layer(from_fn(crate::localization::page_locale))
         .layer(from_fn_with_state(state.clone(), middleware::session))
         .layer(from_fn_with_state(state.clone(), middleware::rate_limit))
         .layer(from_fn(middleware::csrf_origin_check))

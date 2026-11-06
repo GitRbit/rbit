@@ -1,5 +1,5 @@
   {% if awaiting_approval %}
-  <div class="mt-6 rounded-(--radius-ui) border border-warning/40 px-3 py-3 text-[13px]" role="status">
+  <div class="mt-6 rounded-(--radius-ui) border border-warning/40 px-3 py-3 text-[13px]" role="status" lang="en" dir="ltr">
     <p class="flex items-start gap-2 font-medium">{% call ui::icon("shield", "mt-px size-4 shrink-0 text-warning") %}{% endcall %}This run waits for approval</p>
     <p class="mt-1 text-ink-muted">It comes from a fork or from someone without write access. Its workflow may run code you have not reviewed, so a writer has to approve it first. Even approved, it runs with a read-only token and without secrets or variables.</p>
     {% if can_write %}
@@ -10,11 +10,11 @@
     {% endif %}
   </div>
   {% else if run.untrusted %}
-  <p class="mt-6 flex items-start gap-2 text-[13px] text-ink-muted">{% call ui::icon("lock", "mt-px size-4 shrink-0") %}{% endcall %}<span>This run comes from a fork or an outside author: it has a read-only token and no secrets or variables{% if let Some(approver) = run.approved_by %}, and was approved by {{ approver }}{% endif %}.</span></p>
+  <p lang="en" dir="ltr" class="mt-6 flex items-start gap-2 text-[13px] text-ink-muted">{% call ui::icon("lock", "mt-px size-4 shrink-0") %}{% endcall %}<span>This run comes from a fork or an outside author: it has a read-only token and no secrets or variables{% if let Some(approver) = run.approved_by %}, and was approved by {{ approver }}{% endif %}.</span></p>
   {% endif %}
 
   {% for deployment in deployments %}
-  <div class="mt-6 rounded-(--radius-ui) border border-warning/40 px-3 py-3 text-[13px]" role="status">
+  <div class="mt-6 rounded-(--radius-ui) border border-warning/40 px-3 py-3 text-[13px]" role="status" lang="en" dir="ltr">
     <p class="flex items-start gap-2 font-medium">{% call ui::icon("shield", "mt-px size-4 shrink-0 text-warning") %}{% endcall %}<span>Waiting for review: <span class="font-mono">{{ deployment.environment }}</span></span></p>
     <p class="mt-1 text-ink-muted">{{ deployment.jobs }} {% if deployment.jobs.contains(", ") %}deploy{% else %}deploys{% endif %} to {{ deployment.environment }}, whose reviewers must approve it first.</p>
     {% if deployment.can_review %}

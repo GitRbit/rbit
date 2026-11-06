@@ -101,7 +101,7 @@ fn vary(headers: &HeaderMap) -> String {
 async fn full_page_and_direct_fragment_share_localized_results_and_private_cache_contracts() {
     let fixture = Fixture::new(true).await;
     let path = "/explore?sort=name&archived=false";
-    for (language, direction) in [("en", "ltr"), ("en-XA", "ltr"), ("ar-XB", "rtl")] {
+    for (language, direction) in [("en", "ltr"), ("es", "ltr"), ("en-XA", "ltr"), ("ar-XB", "rtl")] {
         let (full_headers, full) = fixture.get(path, &[("Accept-Language", language)]).await;
         let (fragment_headers, fragment) =
             fixture.get(path, &[("Accept-Language", language), ("HX-Request", "true"), ("HX-Target", "explore-results")]).await;
@@ -128,8 +128,8 @@ async fn full_page_and_direct_fragment_share_localized_results_and_private_cache
     assert!(!signed_in.contains("private-secret"), "Explore stays public even for the private repository owner");
     let (login_headers, login) = fixture.get("/login", &[("Accept-Language", "ar-XB"), ("Cookie", "rbit-locale=en-XA")]).await;
     assert!(login.contains("<html lang=\"en\" dir=\"ltr\""), "diagnostic preferences do not partially localize unrelated pages");
-    assert!(!login_headers.contains_key(header::CONTENT_LANGUAGE));
-    assert!(!vary(&login_headers).contains("Accept-Language"), "untranslated pages do not negotiate a locale");
+    assert_eq!(login_headers[header::CONTENT_LANGUAGE], "en");
+    assert!(vary(&login_headers).contains("Accept-Language"), "shared chrome negotiates while legacy content is explicitly English");
 }
 
 #[tokio::test]

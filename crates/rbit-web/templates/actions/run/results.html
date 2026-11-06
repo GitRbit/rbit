@@ -19,7 +19,7 @@
     <div class="min-w-0 flex-1">
       <a class="block break-words text-[13px] font-medium hover:underline hover:underline-offset-4" href="{{ job.url }}">{{ job.name }}</a>
       {% if !job.needs.is_empty() %}
-      <p class="mt-1 break-words text-xs text-ink-faint">{{ job.needs }}</p>
+      <p class="mt-1 break-words text-xs text-ink-faint"><span lang="en">{{ job.needs }}</span></p>
       {% endif %}
       {% if let Some(environment) = job.environment %}
       <p class="mt-1 break-words text-xs text-ink-muted">
@@ -57,7 +57,7 @@
     <a class="shrink-0 text-xs text-ink-faint hover:text-ink hover:underline hover:underline-offset-4"
        href="{{ artifact.url }}/tar.gz" hx-boost="false" download title="{{ text.download_tar }}">tar.gz</a>
     <span class="shrink-0 whitespace-nowrap text-xs tabular-nums text-ink-faint">
-      {{ artifact.size }} · {{ text.expires }} <time datetime="{{ artifact.expires_iso }}">{{ artifact.expires }}</time>
+      {{ artifact.size }} · {{ text.expires }} <time lang="en" dir="ltr" datetime="{{ artifact.expires_iso }}">{{ artifact.expires }}</time>
     </span>
   </li>
   {% endfor %}

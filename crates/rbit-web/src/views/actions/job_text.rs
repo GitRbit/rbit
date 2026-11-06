@@ -31,6 +31,13 @@ pub struct LocalizedState {
     pub key: &'static str,
     pub tone: &'static str,
     pub label: LocalizedText,
+    locale: Locale,
+}
+
+impl LocalizedState {
+    pub const fn language(&self) -> &'static str {
+        self.locale.tag()
+    }
 }
 
 impl JobText {
@@ -71,7 +78,7 @@ impl JobText {
             "approval" => Message::Approval,
             _ => Message::WorkflowError,
         };
-        LocalizedState { key: look.key, tone: look.tone, label: self.catalog.job(message) }
+        LocalizedState { key: look.key, tone: look.tone, label: self.catalog.job(message), locale: self.catalog.locale() }
     }
 }
 

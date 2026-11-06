@@ -1,8 +1,8 @@
 //! Request-scoped presentation locale; no preference writes or database reads.
 //!
-//! Production supports English. Embedded composition/tests may inject an immutable
-//! `LocaleResolver` extension to enable diagnostics explicitly. Saved account choices
-//! will be supplied by the identity adapter once that migration is implemented.
+//! Production supports English/Spanish with an English default. The session adapter
+//! supplies the saved account choice through its existing lookup. Embedded tests may
+//! inject an immutable `LocaleResolver` to enable diagnostics for selected features.
 
 use std::convert::Infallible;
 
@@ -11,14 +11,23 @@ use axum::{
     http::{HeaderMap, HeaderValue, header, request::Parts},
     response::Response,
 };
+use rbit_identity_models::AccountLocale;
 use rbit_localization::{Locale, LocalePreferences, LocaleResolver, ResolvedLocale};
+
+#[path = "localization/pipeline.rs"]
+mod pipeline;
+pub use pipeline::page_locale;
+pub(crate) const CATALOG_HEADER: &str = "rbit-catalog-key";
+#[cfg(test)]
+#[path = "localization/pipeline_tests.rs"]
+mod pipeline_tests;
 
 /// Trusted typed preferences supplied by a locale-setting or identity adapter.
 /// Incoming arbitrary headers never populate this extension.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LocaleChoices {
     pub explicit: Option<Locale>,
-    pub account: Option<Locale>,
+    pub account: Option<AccountLocale>,
 }
 
 /// The supported presentation locale and provenance, resolved once per request.
@@ -36,7 +45,7 @@ impl<S: Send + Sync> FromRequestParts<S> for RequestLocale {
         let choices = parts.extensions.get::<LocaleChoices>().copied().unwrap_or_default();
         let locale = Self(resolver.resolve(LocalePreferences {
             explicit: choices.explicit.map(Locale::tag),
-            account: choices.account.map(Locale::tag),
+            account: choices.account.map(AccountLocale::tag),
             anonymous: preference_cookie(&parts.headers),
             accept_language: single_header(&parts.headers, "accept-language"),
         }));
@@ -46,13 +55,53 @@ impl<S: Send + Sync> FromRequestParts<S> for RequestLocale {
 }
 
 impl RequestLocale {
+    /// Diagnostics remain feature-owned opt-ins, never a global shell default.
+    pub const fn document_locale(self) -> Locale {
+        match self.0.locale {
+            Locale::English | Locale::Spanish => self.0.locale,
+            Locale::PseudoExpanded | Locale::PseudoRtl => Locale::English,
+        }
+    }
+
     /// Adds language/cache dimensions without replacing privacy or existing Vary.
-    pub fn response(self, mut response: Response) -> Response {
-        response.headers_mut().insert(header::CONTENT_LANGUAGE, HeaderValue::from_static(self.0.locale.tag()));
-        response
-            .headers_mut()
-            .append(header::VARY, HeaderValue::from_static("Accept-Language, Cookie, HX-Target, HX-History-Restore-Request, HX-Boosted"));
-        response
+    pub fn response(self, response: Response) -> Response {
+        response_for(self.0.locale, response)
+    }
+}
+
+fn response_for(locale: Locale, mut response: Response) -> Response {
+    let first = !response.headers().contains_key(CATALOG_HEADER);
+    response.headers_mut().insert(header::CONTENT_LANGUAGE, HeaderValue::from_static(locale.tag()));
+    response.headers_mut().insert(CATALOG_HEADER, HeaderValue::from_static(locale.catalog_key()));
+    if first {
+        const DIMENSIONS: &str = "Accept-Language, Cookie, HX-Target, HX-History-Restore-Request, HX-Boosted, Rbit-Document-Locale";
+        // Outer partial/cache layers read one Vary value. Preserve every pre-existing
+        // dimension in that value rather than append a second field they could lose.
+        let value = if response.headers().contains_key(header::VARY) {
+            let mut combined = String::new();
+            for existing in response.headers().get_all(header::VARY) {
+                if let Ok(existing) = existing.to_str() {
+                    combined.push_str(existing);
+                    combined.push_str(", ");
+                }
+            }
+            combined.push_str(DIMENSIONS);
+            HeaderValue::from_str(&combined).expect("existing HTTP header values remain valid")
+        } else {
+            HeaderValue::from_static(DIMENSIONS)
+        };
+        response.headers_mut().insert(header::VARY, value);
+    }
+    response
+}
+
+/// Account choice from the session's existing SQL projection, not another lookup.
+#[derive(Clone, Copy, Debug)]
+pub struct AccountLanguage(pub Option<AccountLocale>);
+impl<S: Send + Sync> FromRequestParts<S> for AccountLanguage {
+    type Rejection = Infallible;
+    fn from_request_parts(parts: &mut Parts, _state: &S) -> impl std::future::Future<Output = Result<Self, Self::Rejection>> + Send {
+        std::future::ready(Ok(Self(parts.extensions.get::<LocaleChoices>().and_then(|choices| choices.account))))
     }
 }
 
@@ -91,6 +140,19 @@ mod tests {
     use super::*;
     use axum::{body::Body, http::Request};
     use rbit_localization::PreferenceSource;
+
+    #[test]
+    fn locale_dimensions_preserve_all_existing_vary_fields_for_outer_layers() {
+        let mut original = Response::new(Body::empty());
+        original.headers_mut().append(header::VARY, HeaderValue::from_static("Cookie"));
+        original.headers_mut().append(header::VARY, HeaderValue::from_static("Accept-Encoding"));
+        let response = response_for(Locale::Spanish, original);
+        assert_eq!(response.headers().get_all(header::VARY).iter().count(), 1);
+        let vary = response.headers()[header::VARY].to_str().unwrap();
+        for dimension in ["Cookie", "Accept-Encoding", "Accept-Language", "Rbit-Document-Locale", "HX-Target"] {
+            assert!(vary.contains(dimension), "{dimension}");
+        }
+    }
 
     #[tokio::test]
     async fn production_defaults_ignore_diagnostic_and_untrusted_override_headers() {

@@ -45,6 +45,10 @@ pub struct StateLook {
 }
 
 impl StateLook {
+    pub const fn language(&self) -> &'static str {
+        "en"
+    }
+
     pub const fn of(status: Status) -> Self {
         let (key, label, tone) = match status {
             Status::Success => ("success", "Success", "text-success"),

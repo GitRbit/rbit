@@ -45,6 +45,9 @@ pub async fn session(State(state): State<AppState>, jar: CookieJar, mut request:
                     return ([(header::CACHE_CONTROL, "no-store")], Redirect::to("/settings/account")).into_response();
                 }
                 request.extensions_mut().insert(UnreadNotifications(signed_in.has_unread_notifications));
+                let mut choices = request.extensions().get::<crate::localization::LocaleChoices>().copied().unwrap_or_default();
+                choices.account = signed_in.locale;
+                request.extensions_mut().insert(choices);
                 current = Some((signed_in.user.id(), token));
                 viewer = Viewer(Some(Arc::new(signed_in.user)));
             }

@@ -1,6 +1,7 @@
 //! Account settings: `/settings/…`.
 
 mod credential_forms;
+mod language;
 mod password_commands;
 pub use credential_forms::{EmailFormInput, PasswordFormInput, UsernameFormInput};
 pub use password_commands::{change_email, change_password, change_username};
@@ -41,6 +42,7 @@ pub fn routes() -> Router<AppState> {
         .route("/settings/profile", get(profile).post(update_profile))
         .route("/settings/account", get(account))
         .route("/settings/appearance", get(appearance))
+        .route("/settings/language", get(language::show).post(language::save))
         .route("/settings/account/email", post(change_email))
         .route("/settings/account/username", post(change_username))
         .route("/settings/account/password", post(change_password))

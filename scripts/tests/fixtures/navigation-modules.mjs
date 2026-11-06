@@ -5,6 +5,7 @@ import vm from "node:vm";
 export async function navigationModules() {
   const assets = new URL("../../../crates/rbit-web/assets/", import.meta.url);
   const modules = [
+    ["locale-key.js", "catalogKey, documentCatalogKey"],
     ["repo-navigation-cache.js", "clearNavigationResponses, hasNavigationResponse, isCachedNavigationResponse, rememberNavigationResponse, reuseNavigationResponse, trackNavigationPreload"],
     ["repo-navigation-bar.js", "reconcileRepositoryBar"],
     ["update-notice.js", "installUpdateNotice"],

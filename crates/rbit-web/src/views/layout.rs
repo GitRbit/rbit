@@ -5,11 +5,17 @@ use rbit_localization::Locale;
 
 use crate::{AppState, assets, themes::Theme, views::components::Avatar};
 
+#[path = "layout/chrome.rs"]
+mod chrome;
+pub use chrome::PageChrome;
+
 /// Data every full page needs: rendered by `templates/base.html`.
 #[derive(Debug, Clone)]
 pub struct Page {
     /// Supported document language/direction; defaults to English outside adapters.
     pub locale: Locale,
+    /// Legacy feature content remains explicitly English until its catalog opts in.
+    pub content_locale: Locale,
     pub updates: rbit_services::updates::UpdateStatus,
     pub site_name: String,
     pub branding: rbit_core::config::BrandingConfig,
@@ -38,11 +44,16 @@ pub struct NavUser {
 }
 
 impl Page {
+    pub const fn chrome(&self) -> PageChrome {
+        PageChrome::new(self.locale)
+    }
+
     pub fn new(state: &AppState, viewer: Option<&User>, path: &str) -> Self {
         let mut settings = state.services.instance.current();
         settings.branding.show_version &= state.config.updates.report_version;
         Self {
             locale: Locale::default(),
+            content_locale: Locale::English,
             updates: state.services.updates.status(),
             site_name: settings.site_name,
             branding: settings.branding,
@@ -64,6 +75,13 @@ impl Page {
     /// The supported document language and direction for this request.
     #[must_use]
     pub fn with_locale(mut self, locale: Locale) -> Self {
+        self.locale = locale;
+        self.content_locale = locale;
+        self
+    }
+
+    #[must_use]
+    pub fn with_document_locale(mut self, locale: Locale) -> Self {
         self.locale = locale;
         self
     }
@@ -144,6 +162,7 @@ mod tests {
         for slug in ["system", "dark", "base24-berlin"] {
             let page = Page {
                 locale: rbit_localization::Locale::default(),
+                content_locale: rbit_localization::Locale::English,
                 updates: rbit_services::updates::UpdateStatus::default(),
                 site_name: "rbit".into(),
                 branding: rbit_core::config::BrandingConfig::default(),
@@ -174,6 +193,7 @@ mod tests {
         let branding = rbit_core::config::BrandingConfig { show_version: false, ..rbit_core::config::BrandingConfig::default() };
         let page = Page {
             locale: rbit_localization::Locale::default(),
+            content_locale: rbit_localization::Locale::English,
             updates: rbit_services::updates::UpdateStatus {
                 revision: 1,
                 state: rbit_services::updates::UpdateState::Available,

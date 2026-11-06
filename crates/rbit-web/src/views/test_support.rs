@@ -8,6 +8,7 @@ use super::layout::Page;
 pub(crate) fn page(path: &str) -> Page {
     Page {
         locale: rbit_localization::Locale::default(),
+        content_locale: rbit_localization::Locale::English,
         updates: rbit_services::updates::UpdateStatus::default(),
         site_name: "rbit".to_owned(),
         branding: rbit_core::config::BrandingConfig::default(),

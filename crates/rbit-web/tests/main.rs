@@ -30,6 +30,7 @@ mod archives;
 mod contributions;
 mod explore_localization;
 mod listings;
+mod locale_preferences;
 mod markdown_preview;
 mod mirror_progress;
 mod notification_settings;

@@ -2,13 +2,14 @@
 
 `rbit-localization` is a pure presentation foundation with no I/O, HTTP, account,
 database, HTML, async runtime or production dependency. It supplies typed compiled
-English messages for the first repository-list slice. Catalogs are never parsed per
-request. English is the only supported translated language; `en-XA` and `ar-XB` are
-opt-in expansion/RTL diagnostics, not actual translations or Arabic grammar.
+English and Spanish messages for the shared shell, language settings, Explore and
+Actions presentation. Catalogs are never parsed per request. Untranslated feature
+regions explicitly retain English. `en-XA` and `ar-XB` remain opt-in expansion/RTL
+diagnostics, not translations or Arabic grammar. See [account activation](account-locale-activation.md).
 
 ## Negotiation
 
-Construct `LocaleResolver::default()` for English production behavior, or
+Construct `LocaleResolver::default()` for English-default production behavior with Spanish negotiation, or
 `LocaleResolver::new(default, true)` to enable diagnostic catalogs. Configuration
 rejects a pseudo default if diagnostics are disabled. Resolve borrowed
 `LocalePreferences` in this order: explicit request, authenticated account,
@@ -46,8 +47,10 @@ and [language lookup](https://www.rfc-editor.org/rfc/rfc4647.html#section-3.4).
 `Catalog::new(locale).text(Message::RepositoryCount { count })` formats a complete
 typed message. Stable IDs such as `repositories.count` are separate from wording.
 Counts are unsigned typed values; visibility is an exhaustive selector, not a string.
-The current compiled catalog uses English cardinal singular only for integer 1 and
-plural otherwise. Pseudo catalogs deliberately use the same English source grammar.
+English integer count nouns retain their existing behavior. Spanish count nouns use
+singular for 1 (absolute 1 for signed stars), otherwise plural. These particular nouns
+share the plural form across CLDR Spanish many/other categories; this is no general
+plural/date/number engine. Pseudo catalogs retain the English source grammar.
 This is not a universal plural engine: no other translated language may be added by
 copying that rule.
 
@@ -79,7 +82,7 @@ vary header-negotiated responses appropriately. Explicit locale changes must ref
 the relevant full/fragment/history state. Domain errors and protocol fields remain
 stable codes with arguments. Do not persist only localized output as event history.
 
-Before shipping a real second language, evaluate a Fluent-backed adapter behind the
+The compiled Spanish activation does not resolve the planned comparative catalog gate. Evaluate a Fluent-backed adapter behind the
 same typed `Message` contract. [Fluent selectors](https://projectfluent.org/fluent/guide/selectors.html)
 support grammatical forms beyond English. Load/validate catalogs once at startup;
 require message/argument completeness and deterministic English fallback; benchmark
@@ -92,20 +95,19 @@ reviewed grammar, fallback policy and RTL/accessibility acceptance before enable
 ## Web adapter status
 
 `rbit_web::localization::RequestLocale` resolves and memoizes one locale in request
-extensions. Its production default enables English only. Tests/embedded composition
-can inject a `LocaleResolver` explicitly; incoming locale headers cannot enable
-diagnostic catalogs. Trusted `LocaleChoices` extensions provide explicit/account
-preferences. No persisted account-locale schema or locale-setting endpoint exists
-yet; the identity/preference migration slice owns those integrations. The adapter
-accepts one bounded `rbit-locale` cookie value and one Accept-Language header;
-duplicate headers/cookie choices are disregarded rather than selected ambiguously.
-`Page` defaults to English and offers an explicit `with_locale` builder. Only Explore
-currently assigns its negotiated request locale and language/cache response headers.
-The generic Page extractor does not negotiate: unrelated pages such as login stay
-English/LTR even when diagnostic catalogs are injected into a host. This avoids
-partially changing document direction without a matching response/cache contract.
-This foundation does not claim that existing platform chrome or other routes have
-translated messages.
+extensions after the existing session lookup. Production supports English/Spanish,
+with an English default. Saved canonical account preference comes from the existing
+login-row session projection. Native `/settings/language` reads that extension and
+persists the choice through the preference service. Diagnostics require an explicit
+trusted resolver extension and remain selected-feature opt-ins.
+
+The shared Page extractor assigns the document locale, while legacy content stays
+explicitly English. Localized feature constructors select their own content locale.
+The shared HTML response boundary adds language/catalog/cache dimensions before
+partial slicing and ETags. Raw/download/sandbox/immutable-fragment exclusions,
+native settings navigation and catalog-scoped browser history are specified in
+[account activation](account-locale-activation.md). This is intentionally partial
+translation coverage, not a claim that all feature text has been translated.
 
 ## Explore production slice
 
@@ -113,7 +115,7 @@ Explore continues to use the existing public-only repository search service and 
 query values/URLs for search, sort, archive filters and paging. Feature-owned typed
 messages cover its title, description, controls, result count, empty states, archive
 badge, star label and pagination. Repository names/descriptions remain user content.
-Existing core relative timestamps and platform navigation chrome are still English;
+Existing core relative timestamps and untranslated feature regions are still English;
 locale-aware date/relative-time formatting remains a later presentation contract.
 
 Full documents include `home/explore_results.html`. A live search with exactly one

@@ -18,6 +18,7 @@ import { clearNavigationResponses, isCachedNavigationResponse, rememberNavigatio
 import { reconcileRepositoryBar } from "./repo-navigation-bar.js";
 import { installUpdateNotice } from "./update-notice.js";
 import { installRenderTiming } from "./render-time.js";
+import { documentCatalogKey } from "./locale-key.js";
 
 installUpdateNotice(document);
 installRenderTiming(document);
@@ -57,6 +58,8 @@ function partialScope(url) {
  */
 export function navigationHeaders(url) {
   const headers = { "HX-Request": "true", [EPOCH_HEADER]: epoch };
+  const catalog = documentCatalogKey(document);
+  if (catalog) headers["Rbit-Document-Locale"] = catalog;
   const scope = partialScope(url);
   if (scope) headers[PARTIAL_HEADER] = scope;
   return headers;
@@ -104,6 +107,11 @@ function seedCurrentTab() {
   const copy = bar.cloneNode(true);
   copy.setAttribute("hx-swap-oob", "true");
   const headers = { "content-type": "text/html", "rbit-partial": "true", "cache-control": "private, max-age=30" };
+  const catalog = documentCatalogKey(document);
+  if (catalog) {
+    headers["rbit-catalog-key"] = catalog;
+    headers["content-language"] = document.documentElement.lang;
+  }
   rememberNavigationResponse(current.href, navigationHeaders(current.href), {
     status: 200, url: current.href, text: `${title.outerHTML}\n${main.outerHTML}\n${copy.outerHTML}`,
     getHeader: name => headers[name.toLowerCase()] ?? null,

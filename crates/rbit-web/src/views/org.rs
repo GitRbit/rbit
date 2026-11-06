@@ -284,6 +284,7 @@ mod tests {
         let html = OrgSettingsPage {
             page: Page {
                 locale: rbit_localization::Locale::default(),
+                content_locale: rbit_localization::Locale::English,
                 updates: rbit_services::updates::UpdateStatus::default(),
                 site_name: "rbit".into(),
                 branding: rbit_core::config::BrandingConfig::default(),

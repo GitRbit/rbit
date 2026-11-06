@@ -1,0 +1,21 @@
+{% extends "settings/layout.html" %}
+{% block settings_content %}
+{% let text = self.labels() %}
+<section id="language" lang="{{ page.locale.tag() }}" dir="{{ page.locale.direction().as_str() }}" aria-labelledby="language-title">
+  <h2 id="language-title" class="text-xl font-semibold tracking-tight">{{ text.title }}</h2>
+  <p class="mt-2 text-[13px] leading-relaxed text-ink-muted">{{ text.coverage }}</p>
+  {% if saved %}<p class="mt-4 text-[13px] text-success" role="status">{{ text.saved }}</p>{% endif %}
+  {% if invalid %}<p class="mt-4 text-[13px] text-danger" role="alert">{{ text.invalid }}</p>{% endif %}
+  {#- A full native navigation changes the entire document and resets in-memory navigation state. -#}
+  <form class="box mt-5 p-4" method="post" action="/settings/language" hx-boost="false">
+    <label class="label" for="preferred-language">{{ text.label }}</label>
+    <select class="input mt-2 w-full max-w-sm" id="preferred-language" name="locale" aria-describedby="language-help">
+      <option value="" {% if selected.is_empty() %}selected{% endif %}>{{ text.browser }}</option>
+      <option value="en" lang="en" {% if selected == "en" %}selected{% endif %}>{{ text.english }}</option>
+      <option value="es" lang="es" {% if selected == "es" %}selected{% endif %}>{{ text.spanish }}</option>
+    </select>
+    <p id="language-help" class="mt-2 max-w-prose text-xs leading-relaxed text-ink-muted">{{ text.help }}</p>
+    <button class="btn btn-primary mt-4 h-10 sm:h-9" type="submit">{{ text.save }}</button>
+  </form>
+</section>
+{% endblock %}

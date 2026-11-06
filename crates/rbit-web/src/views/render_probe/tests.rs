@@ -72,7 +72,7 @@ async fn explore_candidates_are_byte_identical_across_real_page_axes() {
     let tinted = Theme::Tinted(&themes::tinted()[0]);
     for actor in [Actor::Anonymous, Actor::Member, Actor::Admin] {
         for theme in [Theme::System, Theme::Light, Theme::Dark, Theme::DnaDay, Theme::DnaDark, tinted] {
-            for locale in [Locale::English, Locale::PseudoExpanded, Locale::PseudoRtl] {
+            for locale in [Locale::English, Locale::Spanish, Locale::PseudoExpanded, Locale::PseudoRtl] {
                 let view = fixtures::explore(actor, theme, locale, false);
                 for include in [false, true] {
                     assets::with_head_styles(include, async {
