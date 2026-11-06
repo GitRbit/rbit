@@ -16,7 +16,7 @@ import { environment, namespaceStartupReady } from "./environment.mjs";
 import { keyboard } from "./interactions.mjs";
 import { interactionChecks } from "./interaction-checks.mjs";
 import { InteractionFailure } from "./interaction-evidence.mjs";
-import { captureGeometry, assertCaptureGeometry } from "./capture-geometry.mjs";
+import { captureGeometry, assertCaptureGeometry, normalizeCaptureOrigin } from "./capture-geometry.mjs";
 const output = "/artifacts";
 const source = "/work/docs/design/prototypes/actions";
 const started = performance.now();
@@ -47,6 +47,9 @@ async function fixture(model) {
     report.captureGeometry ??= [];
     report.captureGeometry.push({ id: model.id, ...geometry });
     assertCaptureGeometry(geometry);
+    const captureOrigin = await normalizeCaptureOrigin(page);
+    report.captureOrigins ??= [];
+    report.captureOrigins.push({ id: model.id, ...captureOrigin });
     const screenshot = await page.screenshot({ animations: "disabled", fullPage: true });
     artifactBudget([...report.captures.map(item => ({ name: `${item.id}.png`, bytes: item.bytes })),
       { name: `${model.id}.png`, bytes: screenshot.length }, { name: "reserved.json", bytes: 65536 }]);

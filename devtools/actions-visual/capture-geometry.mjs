@@ -29,3 +29,14 @@ export function assertCaptureGeometry(evidence) {
   assert.ok(evidence.skipTop !== null && evidence.skipBottom !== null
     && evidence.skipTop <= evidence.skipBottom && evidence.skipBottom <= 0, "SKIP_LINK_VIEWPORT_VISIBLE");
 }
+
+// Full-page capture must start at the document origin after the keyboard proof.
+// Scrolling preserves the focused main element; changing focus would hide a failure.
+export async function normalizeCaptureOrigin(page) {
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const evidence = await captureGeometry(page);
+  assertCaptureGeometry(evidence);
+  assert.equal(evidence.scrollX, 0, "CAPTURE_ORIGIN_X_UNSTABLE");
+  assert.equal(evidence.scrollY, 0, "CAPTURE_ORIGIN_Y_UNSTABLE");
+  return evidence;
+}
