@@ -21,7 +21,7 @@ async fn addition_dedup_add_wins_and_noop_removal_keep_original_work_and_events(
     let (result, work) = count_work(issues.change_labels(&fixture.alice, &ctx, &[label, label], &[])).await;
     result.unwrap();
     assert_eq!((work.acquisitions, work.statements), (3, 3));
-    assert!(issue_actions(&mut events).is_empty());
+    assert_eq!(issue_actions(&mut events).len(), 0);
     let (result, work) = count_work(issues.change_labels(&fixture.alice, &ctx, &[], &[label, label])).await;
     result.unwrap();
     assert_eq!((work.acquisitions, work.statements), (3, 4));
@@ -29,7 +29,7 @@ async fn addition_dedup_add_wins_and_noop_removal_keep_original_work_and_events(
     let (result, work) = count_work(issues.change_labels(&fixture.alice, &ctx, &[], &[label])).await;
     result.unwrap();
     assert_eq!((work.acquisitions, work.statements), (1, 1));
-    assert!(issue_actions(&mut events).is_empty());
+    assert_eq!(issue_actions(&mut events).len(), 0);
 }
 
 #[tokio::test]
@@ -48,7 +48,7 @@ async fn exact_set_retains_initial_and_delegated_reads_and_replacement_order() {
     let (result, work) = count_work(issues.set_labels(&fixture.alice, &ctx, &[first])).await;
     result.unwrap();
     assert_eq!((work.acquisitions, work.statements), (4, 4));
-    assert!(issue_actions(&mut events).is_empty());
+    assert_eq!(issue_actions(&mut events).len(), 0);
     let (result, work) = count_work(issues.set_labels(&fixture.alice, &ctx, &[second])).await;
     result.unwrap();
     assert_eq!((work.acquisitions, work.statements), (7, 9));
@@ -126,13 +126,13 @@ async fn failed_timeline_after_committed_add_retains_existing_gap_and_retry_is_n
     assert!(matches!(result, Err(ServiceError::Internal(_))));
     assert_eq!((work.acquisitions, work.statements), (4, 4));
     assert_eq!(fixture.database.issue_meta().labels_of(&[ctx.issue.id]).await.unwrap().len(), 1);
-    assert!(fixture.events_of(&fixture.alice, number).await.is_empty());
+    assert_eq!(fixture.events_of(&fixture.alice, number).await.len(), 0);
     assert!(matches!(events.try_recv(), Err(TryRecvError::Empty)));
     sqlx::query("DROP TRIGGER fixture_reject_label_event").execute(&mut connection).await.unwrap();
     let (result, work) = count_work(issues.change_labels(&fixture.alice, &ctx, &[label], &[])).await;
     result.unwrap();
     assert_eq!((work.acquisitions, work.statements), (3, 3));
-    assert!(fixture.events_of(&fixture.alice, number).await.is_empty());
+    assert_eq!(fixture.events_of(&fixture.alice, number).await.len(), 0);
     assert!(matches!(events.try_recv(), Err(TryRecvError::Empty)));
     connection.close().await.unwrap();
 }

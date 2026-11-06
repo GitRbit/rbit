@@ -24,7 +24,7 @@ async fn edit_changed_and_unchanged_fast_paths_keep_exact_work_and_event_payload
     let (unchanged, work) = count_work(timeline.edit(&fixture.alice, &current, Some("Updated"), None)).await;
     assert_eq!(unchanged.unwrap(), updated);
     assert_eq!((work.acquisitions, work.statements), (1, 2));
-    assert!(drain(&mut events).is_empty());
+    assert_eq!(drain(&mut events).len(), 0);
     let (changed, work) = count_work(timeline.edit(&fixture.alice, &current, None, Some("a\r\nb"))).await;
     assert_eq!(changed.unwrap().body.as_str(), "a\nb");
     assert_eq!((work.acquisitions, work.statements), (1, 3));
@@ -84,7 +84,7 @@ async fn rename_event_insert_failure_rolls_back_title_atomically_and_publishes_n
     let fixture = Fixture::new(|_| {}).await;
     let number = fixture.seed(&fixture.alice, IssueKind::Issue, "Original").await;
     let ctx = fixture.open(&fixture.alice, number).await;
-    let options = sqlx::sqlite::SqliteConnectOptions::new().filename(fixture._dir.path().join("rbit.db"));
+    let options = sqlx::sqlite::SqliteConnectOptions::new().filename(fixture.directory.path().join("rbit.db"));
     let mut connection = sqlx::SqliteConnection::connect_with(&options).await.unwrap();
     sqlx::query(
         "CREATE TRIGGER fixture_reject_rename BEFORE INSERT ON issue_events BEGIN SELECT RAISE(ABORT, 'fixture rename failure'); END",
@@ -98,8 +98,8 @@ async fn rename_event_insert_failure_rolls_back_title_atomically_and_publishes_n
     assert_eq!((work.acquisitions, work.statements), (1, 3));
     let row = fixture.database.issues().find(ctx.issue.id).await.unwrap().unwrap();
     assert_eq!(row, ctx.issue);
-    assert!(drain(&mut events).is_empty());
-    assert!(fixture.services.timeline.timeline(Some(&fixture.alice), &ctx, None, 50).await.unwrap().entries.is_empty());
+    assert_eq!(drain(&mut events).len(), 0);
+    assert_eq!(fixture.services.timeline.timeline(Some(&fixture.alice), &ctx, None, 50).await.unwrap().entries.len(), 0);
     connection.close().await.unwrap();
 }
 

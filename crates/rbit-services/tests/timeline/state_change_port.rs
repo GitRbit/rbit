@@ -28,7 +28,7 @@ async fn changed_noop_and_missing_states_retain_exact_work_and_original_reason()
     let (same, work) = count_work(timeline.set_state(&fixture.bob, &ctx, StateChange::Close(StateReason::Completed))).await;
     assert_eq!(same.unwrap(), closed);
     assert_eq!((work.acquisitions, work.statements), (2, 2));
-    assert!(drain(&mut events).is_empty());
+    assert_eq!(drain(&mut events).len(), 0);
     let (reopened, work) = count_work(timeline.set_state(&fixture.bob, &ctx, StateChange::Reopen)).await;
     let reopened = reopened.unwrap();
     assert_eq!((work.acquisitions, work.statements), (1, 3));
@@ -72,7 +72,7 @@ async fn already_open_pull_still_runs_existing_reopen_lookup_before_noop_fallbac
     let (result, work) = count_work(fixture.services.timeline.set_state(&fixture.alice, &ctx, StateChange::Reopen)).await;
     assert_eq!(result.unwrap(), ctx.issue);
     assert_eq!((work.acquisitions, work.statements), (3, 3));
-    assert!(drain(&mut events).is_empty());
+    assert_eq!(drain(&mut events).len(), 0);
 }
 
 #[tokio::test]
@@ -81,7 +81,7 @@ async fn event_failure_rolls_back_state_and_close_fields_without_publishing() {
     let fixture = Fixture::new(|_| {}).await;
     let number = fixture.seed(&fixture.alice, IssueKind::Issue, "Original").await;
     let ctx = fixture.open(&fixture.alice, number).await;
-    let options = sqlx::sqlite::SqliteConnectOptions::new().filename(fixture._dir.path().join("rbit.db"));
+    let options = sqlx::sqlite::SqliteConnectOptions::new().filename(fixture.directory.path().join("rbit.db"));
     let mut connection = sqlx::SqliteConnection::connect_with(&options).await.unwrap();
     sqlx::query(
         "CREATE TRIGGER fixture_reject_state BEFORE INSERT ON issue_events BEGIN SELECT RAISE(ABORT, 'fixture state failure'); END",
@@ -95,7 +95,7 @@ async fn event_failure_rolls_back_state_and_close_fields_without_publishing() {
     assert!(matches!(result, Err(ServiceError::Internal(_))));
     assert_eq!((work.acquisitions, work.statements), (1, 2));
     assert_eq!(fixture.database.issues().find(ctx.issue.id).await.unwrap().unwrap(), ctx.issue);
-    assert!(drain(&mut events).is_empty());
+    assert_eq!(drain(&mut events).len(), 0);
     connection.close().await.unwrap();
 }
 

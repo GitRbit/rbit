@@ -34,6 +34,7 @@ fn label(id: LabelId) -> Label {
 fn snapshot(id: i64) -> (IssueId, LabelSnapshot) {
     (IssueId(1), label(LabelId(id)).snapshot())
 }
+#[allow(clippy::unused_async_trait_impl, reason = "scripted persistence effects stay lazy until poll like the database adapter")]
 impl<'a> LabelAttachmentPort for Port<'a> {
     type Error = &'static str;
     type Mutation = Mutation<'a>;
@@ -49,6 +50,7 @@ impl<'a> LabelAttachmentPort for Port<'a> {
         Mutation(self.0)
     }
 }
+#[allow(clippy::unused_async_trait_impl, reason = "scripted persistence effects stay lazy until poll like the database adapter")]
 impl LabelAttachmentMutation for Mutation<'_> {
     type Error = &'static str;
     async fn current(&self) -> Result<Vec<(IssueId, LabelSnapshot)>, Self::Error> {
@@ -100,7 +102,7 @@ async fn denied_and_archived_requests_create_no_view_or_reads_and_unknown_adds_w
             assert!(matches!(result, Err(LabelAttachmentError::Forbidden)));
         }
     }
-    assert!(state.lock().unwrap().calls.is_empty());
+    assert_eq!(state.lock().unwrap().calls.len(), 0);
     let result = LabelAttachments::new(&port, access(true, false))
         .change(&[LabelId(-1)], &[], || -> Result<(), ()> { panic!("spend") }, || panic!("clock"))
         .await;

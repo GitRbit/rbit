@@ -20,6 +20,7 @@ impl Store {
         Self { calls: Mutex::new(Vec::new()), result: Some(ThreadStateResult { issue: fixtures::issue(), changed }), fail: false }
     }
 }
+#[allow(clippy::unused_async_trait_impl, reason = "scripted persistence effects stay lazy until poll like the database adapter")]
 impl ThreadStateRepository for Store {
     type Error = &'static str;
     async fn change_state(

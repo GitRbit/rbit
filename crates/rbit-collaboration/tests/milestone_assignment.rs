@@ -34,6 +34,7 @@ fn milestone(id: MilestoneId) -> Milestone {
         updated_at: Timestamp(1),
     }
 }
+#[allow(clippy::unused_async_trait_impl, reason = "scripted persistence effects stay lazy until poll like the database adapter")]
 impl MilestoneAttachmentPort for Port<'_> {
     type Error = &'static str;
     async fn find(&self, id: MilestoneId) -> Result<Option<Milestone>, Self::Error> {
