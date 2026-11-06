@@ -7,6 +7,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+rbit-collaboration = { workspace = true, default-features = false }
 rbit-repositories.workspace = true
 rbit-identity.workspace = true
 rbit-access.workspace = true

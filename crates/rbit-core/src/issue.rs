@@ -28,9 +28,7 @@ pub struct CommentId(pub i64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct EventId(pub i64);
 
-/// Database id of a label.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct LabelId(pub i64);
+pub use rbit_collaboration::labels::LabelId;
 
 /// Database id of a milestone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -388,14 +386,7 @@ impl CommentSource {
     }
 }
 
-/// A label as it was when an event happened (labels can be renamed or deleted later).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct LabelSnapshot {
-    pub id: LabelId,
-    pub name: String,
-    /// `#rrggbb`, lower case.
-    pub color: String,
-}
+pub use rbit_collaboration::labels::LabelSnapshot;
 
 // ------------------------------------------------------------------ timeline
 

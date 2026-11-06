@@ -163,66 +163,7 @@ async fn writers_open_issues_with_metadata_and_opened_is_published_once() {
     assert!(matches!(fixture.services.issues.create(&fixture.alice, &repo, input).await, Err(ServiceError::Invalid(_))));
 }
 
-#[tokio::test]
-async fn labels_have_limits_uniqueness_and_events() {
-    let fixture = Fixture::new().await;
-    let repo = fixture.repo(&fixture.alice).await;
-    let issues = &fixture.services.issues;
-    let bug = fixture.label("bug").await;
-    let input = LabelInput { name: "BUG".into(), color: "#000000".into(), description: String::new() };
-    assert!(matches!(issues.create_label(&fixture.alice, &repo, &input).await, Err(ServiceError::Conflict(_))));
-    let input = LabelInput { name: "x".into(), color: "nope".into(), description: String::new() };
-    assert!(matches!(issues.create_label(&fixture.alice, &repo, &input).await, Err(ServiceError::Invalid(_))));
-    let reader = fixture.repo(&fixture.bob).await;
-    let input = LabelInput { name: "mine".into(), color: "#000000".into(), description: String::new() };
-    assert!(matches!(issues.create_label(&fixture.bob, &reader, &input).await, Err(ServiceError::Forbidden)));
-
-    let number = fixture.create(&fixture.bob, "Crash", "").await;
-    let as_bob = fixture.open(&fixture.bob, number).await;
-    assert!(
-        matches!(issues.change_labels(&fixture.bob, &as_bob, &[bug], &[]).await, Err(ServiceError::Forbidden)),
-        "authors cannot triage"
-    );
-
-    let ctx = fixture.open(&fixture.alice, number).await;
-    let mut events = fixture.services.events.subscribe();
-    issues.change_labels(&fixture.alice, &ctx, &[bug], &[]).await.unwrap();
-    issues.change_labels(&fixture.alice, &ctx, &[bug], &[]).await.unwrap();
-    issues.change_labels(&fixture.alice, &ctx, &[], &[bug]).await.unwrap();
-    issues.change_labels(&fixture.alice, &ctx, &[], &[bug]).await.unwrap();
-    let actions = issue_actions(&mut events);
-    assert!(matches!(actions.as_slice(), [IssueAction::Labeled { .. }, IssueAction::Unlabeled { .. }]), "once per change: {actions:?}");
-    assert_eq!(fixture.events_of(&fixture.alice, number).await.len(), 2);
-
-    let other = CreateRepository { name: "other".into(), description: String::new(), visibility: Visibility::Public };
-    fixture.services.repositories.create(&fixture.alice, other).await.unwrap();
-    let foreign = {
-        let other_repo = fixture.services.repositories.open(Some(&fixture.alice), "alice", "other").await.unwrap();
-        let input = LabelInput { name: "theirs".into(), color: "#000000".into(), description: String::new() };
-        issues.create_label(&fixture.alice, &other_repo, &input).await.unwrap().id
-    };
-    assert!(
-        matches!(issues.change_labels(&fixture.alice, &ctx, &[foreign], &[]).await, Err(ServiceError::Invalid(_))),
-        "labels of other repositories"
-    );
-
-    let mut many = Vec::new();
-    for i in 0..26 {
-        many.push(fixture.label(&format!("l{i}")).await);
-    }
-    assert!(matches!(issues.set_labels(&fixture.alice, &ctx, &many).await, Err(ServiceError::Invalid(_))), "25 per issue");
-    issues.set_labels(&fixture.alice, &ctx, &many[..25]).await.unwrap();
-    issues.set_labels(&fixture.alice, &ctx, &many[1..3]).await.unwrap();
-    assert_eq!(issues.metadata(&[ctx.issue.id]).await.unwrap()[&ctx.issue.id].labels.len(), 2);
-
-    issues.delete_label(&repo, many[1]).await.unwrap();
-    assert_eq!(issues.metadata(&[ctx.issue.id]).await.unwrap()[&ctx.issue.id].labels.len(), 1, "deleting a label removes it");
-
-    let empty = fixture.services.repositories.open(Some(&fixture.alice), "alice", "other").await.unwrap();
-    assert_eq!(issues.create_default_labels(&fixture.alice, &repo).await.unwrap(), 0, "only when there are none");
-    issues.delete_label(&empty, foreign).await.unwrap();
-    assert_eq!(issues.create_default_labels(&fixture.alice, &empty).await.unwrap(), 9);
-}
+mod labels_port;
 
 #[tokio::test]
 async fn assignees_must_be_writers_and_at_most_ten() {

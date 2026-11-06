@@ -21,6 +21,7 @@
 
 pub mod hooks;
 pub mod json;
+mod labels;
 
 use std::{
     collections::{BTreeSet, HashMap},
@@ -40,7 +41,9 @@ use rbit_core::{
     references,
     repository::OwnedRepository,
 };
-use rbit_storage::sqlite::issue_meta::{LabelFields, MilestoneFields};
+#[cfg(test)]
+use rbit_storage::sqlite::issue_meta::LabelFields;
+use rbit_storage::sqlite::issue_meta::MilestoneFields;
 pub use rbit_storage::sqlite::{
     issue_meta::{Label, LabelUsage, Milestone, MilestoneProgress},
     issue_search::{DashboardRelation, DashboardScope, SearchFilter},
@@ -56,8 +59,6 @@ use crate::{
     repositories::viewer_grants,
 };
 
-/// Most labels in one repository.
-pub const MAX_LABELS_PER_REPO: u64 = 200;
 /// Most labels on one thread.
 pub const MAX_LABELS_PER_ISSUE: usize = 25;
 /// Most assignees of one thread.
@@ -66,10 +67,6 @@ pub const MAX_ASSIGNEES: usize = 10;
 pub const MAX_ASSIGNABLE: u32 = 100;
 /// Threads per page of a list.
 pub const ISSUES_PER_PAGE: u32 = 25;
-/// Longest label name, in characters.
-pub const MAX_LABEL_NAME_CHARS: usize = 50;
-/// Longest label description, in characters.
-pub const MAX_LABEL_DESCRIPTION_CHARS: usize = 100;
 /// Longest milestone title, in characters.
 pub const MAX_MILESTONE_TITLE_CHARS: usize = 100;
 /// Longest milestone description, in bytes.
@@ -78,18 +75,7 @@ pub const MAX_MILESTONE_DESCRIPTION_BYTES: usize = 10_000;
 /// How long shutdown waits for the subscriber.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 
-/// The labels "Create default labels" adds: name, colour, description.
-pub const DEFAULT_LABELS: [(&str, &str, &str); 9] = [
-    ("bug", "#d73a4a", "Something does not work as intended"),
-    ("documentation", "#0075ca", "Docs need writing or fixing"),
-    ("duplicate", "#cfd3d7", "Already reported elsewhere"),
-    ("enhancement", "#a2eeef", "A new feature or an improvement"),
-    ("good first issue", "#7057ff", "A gentle start for newcomers"),
-    ("help wanted", "#008672", "Extra hands are welcome"),
-    ("invalid", "#e4e669", "Not a real problem"),
-    ("question", "#d876e3", "More information is needed"),
-    ("wontfix", "#ffffff", "Will not be worked on"),
-];
+pub use rbit_collaboration::labels::{DEFAULT_LABELS, MAX_LABEL_DESCRIPTION_CHARS, MAX_LABEL_NAME_CHARS, MAX_LABELS_PER_REPO};
 
 /// Labels, assignees and milestone of one issue or pull request, for lists, payloads and
 /// the API.
@@ -118,13 +104,7 @@ pub struct NewIssueInput {
     pub milestone: Option<MilestoneId>,
 }
 
-/// A label as submitted (colour with or without `#`, any case).
-#[derive(Debug, Clone, Default)]
-pub struct LabelInput {
-    pub name: String,
-    pub color: String,
-    pub description: String,
-}
+pub use rbit_collaboration::labels::LabelInput;
 
 /// A milestone as submitted (`due_on`: `YYYY-MM-DD` or empty).
 #[derive(Debug, Clone, Default)]
@@ -181,33 +161,12 @@ fn invalid(message: impl Into<String>) -> ServiceError {
 
 /// `#rrggbb` (lower case) from `#RRGGBB` or `rrggbb`.
 pub fn normalise_color(color: &str) -> Result<String, ServiceError> {
-    let trimmed = color.trim();
-    let hex = trimmed.strip_prefix('#').unwrap_or(trimmed);
-    if hex.len() != 6 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return Err(invalid("colour must be six hexadecimal digits, like #d73a4a"));
-    }
-    Ok(format!("#{}", hex.to_ascii_lowercase()))
+    rbit_collaboration::labels::normalise_color(color).map_err(ServiceError::Invalid)
 }
 
+#[cfg(test)]
 fn label_fields(input: &LabelInput) -> Result<LabelFields, ServiceError> {
-    let name = input.name.trim();
-    if name.is_empty() {
-        return Err(invalid("label name must not be empty"));
-    }
-    if name.chars().count() > MAX_LABEL_NAME_CHARS {
-        return Err(invalid(format!("label name must be at most {MAX_LABEL_NAME_CHARS} characters")));
-    }
-    if name.chars().any(char::is_control) {
-        return Err(invalid("label name must not contain control characters"));
-    }
-    let description = input.description.trim();
-    if description.chars().count() > MAX_LABEL_DESCRIPTION_CHARS {
-        return Err(invalid(format!("label description must be at most {MAX_LABEL_DESCRIPTION_CHARS} characters")));
-    }
-    if description.chars().any(char::is_control) {
-        return Err(invalid("label description must not contain control characters"));
-    }
-    Ok(LabelFields { name: name.to_owned(), color: normalise_color(&input.color)?, description: description.to_owned() })
+    rbit_collaboration::labels::label_fields(input).map_err(ServiceError::Invalid)
 }
 
 /// Whether `value` is a real calendar day written `YYYY-MM-DD`.
@@ -786,76 +745,6 @@ impl IssueService {
             return Err(ServiceError::Forbidden);
         }
         repo.ensure_writable()
-    }
-
-    /// The labels of `repo`, by name.
-    pub async fn labels(&self, repo: &RepoContext) -> Result<Vec<Label>, ServiceError> {
-        Ok(self.ctx.database.issue_meta().labels(repo.repo.repo.id).await?)
-    }
-
-    /// The labels of `repo` with their open issues.
-    pub async fn label_usage(&self, repo: &RepoContext) -> Result<Vec<LabelUsage>, ServiceError> {
-        Ok(self.ctx.database.issue_meta().label_usage(repo.repo.repo.id, IssueKind::Issue.as_str()).await?)
-    }
-
-    /// The label of `repo` called `name` (case-insensitively).
-    pub async fn label_named(&self, repo: &RepoContext, name: &str) -> Result<Label, ServiceError> {
-        self.ctx.database.issue_meta().find_label_by_name(repo.repo.repo.id, name).await?.ok_or(ServiceError::NotFound)
-    }
-
-    /// The labels of `repo` among `names`; unknown names are invalid.
-    pub async fn labels_named(&self, repo: &RepoContext, names: &[String]) -> Result<Vec<Label>, ServiceError> {
-        let labels = self.ctx.database.issue_meta().labels_named(repo.repo.repo.id, names).await?;
-        if let Some(missing) = names.iter().find(|name| !labels.iter().any(|label| label.name.eq_ignore_ascii_case(name))) {
-            return Err(invalid(format!("there is no label called “{missing}”")));
-        }
-        Ok(labels)
-    }
-
-    /// Creates a label (writers; at most 200 per repository; names unique ignoring case).
-    pub async fn create_label(&self, actor: &User, repo: &RepoContext, input: &LabelInput) -> Result<Label, ServiceError> {
-        Self::require_writer(repo)?;
-        let fields = label_fields(input)?;
-        let store = self.ctx.database.issue_meta();
-        if store.count_labels(repo.repo.repo.id).await? >= MAX_LABELS_PER_REPO {
-            return Err(invalid(format!("a repository can have at most {MAX_LABELS_PER_REPO} labels")));
-        }
-        self.spend(actor)?;
-        Ok(store.create_label(repo.repo.repo.id, &fields, Timestamp::now()).await?)
-    }
-
-    /// Changes label `id` of `repo` (writers).
-    pub async fn update_label(&self, actor: &User, repo: &RepoContext, id: LabelId, input: &LabelInput) -> Result<Label, ServiceError> {
-        Self::require_writer(repo)?;
-        let fields = label_fields(input)?;
-        self.spend(actor)?;
-        self.ctx.database.issue_meta().update_label(repo.repo.repo.id, id, &fields, Timestamp::now()).await?.ok_or(ServiceError::NotFound)
-    }
-
-    /// Deletes label `id` of `repo` (writers): it disappears from every thread, without
-    /// timeline events.
-    pub async fn delete_label(&self, repo: &RepoContext, id: LabelId) -> Result<Label, ServiceError> {
-        Self::require_writer(repo)?;
-        self.ctx.database.issue_meta().delete_label(repo.repo.repo.id, id).await?.ok_or(ServiceError::NotFound)
-    }
-
-    /// Adds [`DEFAULT_LABELS`] when `repo` has no labels at all; returns how many were added.
-    pub async fn create_default_labels(&self, actor: &User, repo: &RepoContext) -> Result<u64, ServiceError> {
-        Self::require_writer(repo)?;
-        let store = self.ctx.database.issue_meta();
-        if store.count_labels(repo.repo.repo.id).await? > 0 {
-            return Ok(0);
-        }
-        self.spend(actor)?;
-        let labels: Vec<LabelFields> = DEFAULT_LABELS
-            .iter()
-            .map(|(name, color, description)| LabelFields {
-                name: (*name).to_owned(),
-                color: (*color).to_owned(),
-                description: (*description).to_owned(),
-            })
-            .collect();
-        Ok(store.create_missing_labels(repo.repo.repo.id, &labels, Timestamp::now()).await?)
     }
 
     // ------------------------------------------------------------------ milestones

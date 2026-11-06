@@ -4231,6 +4231,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbit-collaboration"
+version = "0.1.5"
+dependencies = [
+ "rbit-contracts",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "rbit-contracts"
 version = "0.1.5"
 dependencies = [
@@ -4245,6 +4255,7 @@ dependencies = [
 name = "rbit-core"
 version = "0.1.5"
 dependencies = [
+ "rbit-collaboration",
  "proptest",
  "pulldown-cmark",
  "rbit-access",
@@ -4452,6 +4463,7 @@ dependencies = [
 name = "rbit-services"
 version = "0.1.5"
 dependencies = [
+ "rbit-collaboration",
  "aes-gcm",
  "aho-corasick",
  "axum",
@@ -4513,6 +4525,7 @@ dependencies = [
 name = "rbit-storage"
 version = "0.1.5"
 dependencies = [
+ "rbit-collaboration",
  "aes-gcm",
  "base64 0.23.1",
  "futures-util",

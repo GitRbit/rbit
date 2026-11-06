@@ -5,6 +5,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkIdentityFeatures, checkIdentityModelGraphs, checkIdentityTokenGraph, checkIdentitySessionGraph } from "./identity-features.mjs";
+import { checkCollaborationFeatures, checkCollaborationGraphs } from "./collaboration-features.mjs";
 
 export const LIMIT = 400;
 const GENERATED = new Set([
@@ -22,10 +23,10 @@ const FEATURE_EDGES = {
 };
 // Reviewed seams added to legacy adapters during incremental replacement.
 const ADDED_EDGES = {
-  "rbit-core": ["rbit-contracts", "rbit-access", "rbit-identity", "rbit-repositories"], "rbit-web": ["rbit-localization"],
-  "rbit-auth": ["rbit-identity", "rbit-access"], "rbit-services": ["rbit-identity", "rbit-kernel", "rbit-repositories"],
+  "rbit-core": ["rbit-contracts", "rbit-access", "rbit-identity", "rbit-repositories", "rbit-collaboration"], "rbit-web": ["rbit-localization"],
+  "rbit-auth": ["rbit-identity", "rbit-access"], "rbit-services": ["rbit-identity", "rbit-kernel", "rbit-repositories", "rbit-collaboration"],
   "rbit-server": ["rbit-kernel"],
-  "rbit-storage": ["rbit-identity", "rbit-repositories"],
+  "rbit-storage": ["rbit-identity", "rbit-repositories", "rbit-collaboration"],
 };
 // HTTP acceptance fixtures may inject the shared owner without adding production edges.
 const DEV_EDGES = { "rbit-web": ["rbit-identity", "rbit-kernel"] };
@@ -132,6 +133,7 @@ export function check(root) {
   }));
   return { files: files.length, violations: [...checkSizes(files, baseline), ...checkEdges(metadata, baseline),
     ...checkIdentityFeatures(metadata), ...checkIdentityModelGraphs(root), ...checkIdentityTokenGraph(root), ...checkIdentitySessionGraph(root),
+    ...checkCollaborationFeatures(metadata), ...checkCollaborationGraphs(root),
     ...checkMigrations(root, baseline), ...checkLedger(root, ledger)] };
 }
 

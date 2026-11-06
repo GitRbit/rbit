@@ -77,40 +77,7 @@ const MENTION_CANDIDATES: &str = "SELECT id, kind, name, display_name, bio, crea
 
 // ------------------------------------------------------------------ types
 
-/// A repository's label.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Label {
-    pub id: LabelId,
-    pub repo_id: RepoId,
-    pub name: String,
-    /// `#rrggbb`, lower case.
-    pub color: String,
-    pub description: String,
-    pub created_at: Timestamp,
-    pub updated_at: Timestamp,
-}
-
-impl Label {
-    /// The label as timeline events and payloads record it.
-    pub fn snapshot(&self) -> LabelSnapshot {
-        LabelSnapshot { id: self.id, name: self.name.clone(), color: self.color.clone() }
-    }
-}
-
-/// A label's fields, already validated.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LabelFields {
-    pub name: String,
-    pub color: String,
-    pub description: String,
-}
-
-/// A label with the number of open threads carrying it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LabelUsage {
-    pub label: Label,
-    pub open_issues: u64,
-}
+pub use rbit_collaboration::labels::{Label, LabelFields, LabelUsage};
 
 /// A repository's milestone.
 #[derive(Debug, Clone, PartialEq, Eq)]
