@@ -77,3 +77,10 @@ pub(super) struct Progress {
     pub bytes: u64,
     pub truncated: bool,
 }
+
+/// Maximum retained lines and bytes for one step, with at least one stored line.
+#[derive(Debug, Clone, Copy)]
+pub struct LogLimits {
+    pub lines: usize,
+    pub bytes: usize,
+}

@@ -1,5 +1,10 @@
 //! Indexed plaintext/gzip window reader; no authorization or database access.
-use super::{LogRange, LogWindow, types::LogFiles};
+use super::{
+    LogLimits, LogRange, LogWindow,
+    plan::WindowRequest,
+    types::LogFiles,
+    work::{Inflated, ReadWork},
+};
 use std::{
     fs::File,
     io::{Read, Seek, SeekFrom},
@@ -30,6 +35,22 @@ pub(super) fn read_window(
     max_bytes: usize,
     window: &mut LogWindow,
 ) -> std::io::Result<()> {
+    let request = WindowRequest { start, end, range, limits: LogLimits { lines: max_lines, bytes: max_bytes } };
+    let mut work = ReadWork::default();
+    let result = read_window_counted(files, gzip, request, window, &mut work);
+    work.record();
+    result
+}
+
+pub(super) fn read_window_counted(
+    files: &LogFiles,
+    gzip: bool,
+    request: WindowRequest,
+    window: &mut LogWindow,
+    work: &mut ReadWork,
+) -> std::io::Result<()> {
+    let WindowRequest { start, end, range, limits: LogLimits { lines: max_lines, bytes: max_bytes } } = request;
+    work.index_opens += 1;
     let mut index = match File::open(&files.index) {
         Ok(index) => index,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -73,10 +94,16 @@ pub(super) fn read_window(
     };
     let finish = ends.last().copied().unwrap_or(begin);
     let mut bytes = vec![0u8; usize::try_from(finish - begin).unwrap_or_default()];
+    work.data_opens += 1;
     if gzip {
-        let mut decoder = flate2::read::GzDecoder::new(File::open(&files.gzip)?);
-        std::io::copy(&mut (&mut decoder).take(begin), &mut std::io::sink())?;
-        decoder.read_exact(&mut bytes)?;
+        work.decoders += 1;
+        let mut decoder = Inflated { reader: flate2::read::GzDecoder::new(File::open(&files.gzip)?), bytes: 0 };
+        let result = (|| {
+            std::io::copy(&mut (&mut decoder).take(begin), &mut std::io::sink())?;
+            decoder.read_exact(&mut bytes)
+        })();
+        work.inflated_bytes = work.inflated_bytes.saturating_add(decoder.bytes);
+        result?;
     } else {
         let mut log = File::open(&files.log)?;
         log.seek(SeekFrom::Start(begin))?;

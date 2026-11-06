@@ -16,7 +16,7 @@ use axum::{
 use rbit_core::actions::{JobId, Step, TaskId};
 use rbit_services::{
     ActionsService, RepoContext,
-    actions::logs::{LogRange, RawLog, STEP_VIEW_BYTES, STEP_VIEW_LINES},
+    actions::logs::{LogLimits, LogRange, RawLog, STEP_VIEW_BYTES, STEP_VIEW_LINES},
 };
 use serde::Deserialize;
 use tokio_util::io::ReaderStream;
@@ -70,21 +70,23 @@ pub async fn show(
     let actions = actions(&state)?;
     let (number, job) = ids(&run, &job)?;
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
-    let detail = actions.job_detail(&loaded.ctx, job).await?;
-    if detail.run.number != number {
-        return Err(WebError::NotFound);
-    }
+    let read =
+        actions.job_log_detail(&loaded.ctx, number, job, LogLimits { lines: JOB_PAGE_STEP_LINES, bytes: JOB_PAGE_STEP_BYTES }).await?;
+    let detail = read.detail;
     let urls = ActionsUrls::new(&loaded.urls.home());
     let job_url = urls.job(number, detail.job.id.0);
     let mut steps = Vec::with_capacity(detail.steps.len());
-    if let Some(task) = detail.job.task_id {
-        for step in &detail.steps {
-            let log = step_log(actions, &loaded.ctx, task, step, JOB_PAGE_STEP_LINES, JOB_PAGE_STEP_BYTES).await?;
-            steps.push(StepView::new(step, log, format!("{job_url}/logs?step={}", step.number)));
+    for (index, (step, window)) in detail.steps.iter().zip(read.logs).enumerate() {
+        let log = window.map(|window| StepLog::new(&window, u64::try_from(step.log_index).unwrap_or_default()));
+        steps.push(StepView::new(step, log, format!("{job_url}/logs?step={}", step.number)));
+        // Batch I/O removes the old per-step await. Retain cooperative scheduling
+        // while constructing large existing view models, without spawning more work.
+        if (index + 1).is_multiple_of(16) {
+            tokio::task::yield_now().await;
         }
     }
     open_one(&mut steps);
-    let people = actions.run_detail(&loaded.ctx, number).await?.people;
+    let people = read.people;
     let finished = detail.job.status.is_done();
     let can_rerun = loaded.ctx.can_write_content() && finished && detail.run.status.is_done();
     Ok(JobPage {
