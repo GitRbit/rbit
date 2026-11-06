@@ -19,7 +19,7 @@ const FEATURE_EDGES = {
   "rbit-presentation": ["rbit-contracts", "rbit-localization"],
 };
 // Reviewed seams added to legacy adapters during incremental replacement.
-const ADDED_EDGES = { "rbit-core": ["rbit-contracts"], "rbit-web": ["rbit-localization"] };
+const ADDED_EDGES = { "rbit-core": ["rbit-contracts"], "rbit-web": ["rbit-localization"], "rbit-auth": ["rbit-identity"] };
 
 export function authored(path) {
   return /\.(rs|html|mjs|js|ps1|cs)$/.test(path) && !GENERATED.has(path)

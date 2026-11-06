@@ -4191,6 +4191,7 @@ dependencies = [
  "hmac",
  "p256",
  "rbit-core",
+ "rbit-identity",
  "rsa",
  "serde",
  "serde_json",
@@ -4259,6 +4260,15 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "rbit-identity"
+version = "0.1.5"
+dependencies = [
+ "argon2",
+ "thiserror",
+ "tokio",
 ]
 
 [[package]]
