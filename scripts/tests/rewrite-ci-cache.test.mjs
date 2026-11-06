@@ -17,11 +17,13 @@ function saveExpression(body) {
 function saves(expression, event, ref) {
   // Execute the actual workflow expression against event/ref fixtures. Only the
   // two context fields, fixed string comparisons and prefix/suffix calls are legal.
+  assert.ok(expression.length <= 4096, "bounded cache-policy expression required");
   const tokens = expression.match(/github\.(?:event_name|ref)|startsWith|endsWith|'[^'\\]*'|\s+|&&|\|\||==|[(),]/g);
   assert.equal(tokens?.join(""), expression, "unsupported cache-policy expression");
+  assert.ok(tokens.length <= 512, "bounded cache-policy token count required");
   return new Script(expression).runInNewContext({ github: { event_name: event, ref },
     startsWith: (value, prefix) => value.startsWith(prefix), endsWith: (value, suffix) => value.endsWith(suffix),
-  }, { timeout: 50 });
+  }, { timeout: 1000 });
 }
 function dependencyPolicy(source) {
   const steps = cacheSteps(source);
@@ -63,6 +65,9 @@ test("policy refuses workspace outputs, tools, failure saves and privileged-trig
   assert.throws(() => dependencyPolicy(source.replace("github.event_name == 'pull_request' && startsWith", "github.event_name == 'workflow_run' && startsWith")));
   assert.throws(() => dependencyPolicy(source.replace("key: release", "shared-key: release")));
   assert.throws(() => dependencyPolicy(source.replace("contents: read", "contents: write")));
+  const expression = saveExpression(cacheSteps(source)[0].body);
+  assert.throws(() => dependencyPolicy(source.replace(expression, "(".repeat(2048) + expression + ")".repeat(2048))), /bounded cache-policy expression/);
+  assert.throws(() => dependencyPolicy(source.replace(expression, "(".repeat(300) + expression + ")".repeat(300))), /bounded cache-policy token count/);
 });
 
 test("tag publication and privileged follow-up workflows cannot consume PR compiler caches", async () => {
