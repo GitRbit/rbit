@@ -16,7 +16,8 @@
         "lib::references::ports::ReferenceView",
         "lib::references::ports::RemoteView",
         "lib::references::suggestions::SuggestionThreads",
-        "lib::issues::reader::IssueReader"
+        "lib::issues::reader::IssueReader",
+        "lib::issues::deletion::DeletionEffects"
       ]
     },
     {

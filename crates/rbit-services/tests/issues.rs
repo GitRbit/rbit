@@ -115,6 +115,7 @@ fn git(dir: &Path, args: &[&str]) -> String {
     String::from_utf8_lossy(&output.stdout).trim().to_owned()
 }
 
+mod deletion_port;
 mod listing_port;
 mod read_create_port;
 

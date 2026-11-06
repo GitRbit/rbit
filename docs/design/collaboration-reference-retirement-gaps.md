@@ -87,4 +87,6 @@ aliases, original statements, distinct HTML/API paths, active-user reload and se
 page hydration are covered by policy and real-store fixtures. See
 [filtered thread read ownership](collaboration-filtered-thread-reads.md). Rust/HTTP
 acceptance is pending; this does not retire the broader ledger groups or background
-controller. The separate deletion improvement remains next.
+controller. The separate deletion application is now prepared in source; see
+[issue deletion](collaboration-issue-deletion.md) for the moved-snapshot improvement,
+SQL/audit/event parity and still-existing cancellation gap.

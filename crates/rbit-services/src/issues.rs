@@ -10,7 +10,7 @@
 //! Labels, milestones and assignees attach to the shared `issues` row, so they work on
 //! pull requests too: every change records its timeline event and publishes
 //! `DomainEvent::Issue` with the thread's own kind. Triage (labels, milestone, assignees)
-//! needs `can_triage` from [`issue_permissions`], recomputed for the actor on every call.
+//! needs `can_triage` from [`rbit_core::issue::issue_permissions`], recomputed for the actor on every call.
 //! Creating and changing things spends the actor's [`ThrottleScope::Content`] budget.
 //!
 //! The background subscriber ([`IssueService::spawn_background`]) turns references into
@@ -21,6 +21,7 @@
 
 mod assignee_attachments;
 mod creation;
+mod deletion;
 mod reader;
 pub use reader::IssueReader;
 pub mod hooks;
@@ -41,9 +42,7 @@ use std::{
 use rbit_auth::repo_access;
 use rbit_core::{
     Account, AccountId, Issue, IssueId, IssueKind, IssueNumber, LabelId, RepoAccess, RepoId, StateReason, Timestamp, User,
-    issue::{IssueAction, issue_permissions},
-    references,
-    repository::OwnedRepository,
+    issue::IssueAction, references, repository::OwnedRepository,
 };
 #[cfg(test)]
 use rbit_storage::sqlite::issue_meta::LabelFields;
@@ -57,11 +56,8 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
-    DomainEvent, IssueContext, RepoContext, ServiceContext, ServiceError, ThrottleScope, ThrottleService, TimelineService,
-    audit::{AuditAction, AuditEntry, AuditService},
-    events::RefUpdate,
-    references::ReferenceService,
-    repositories::viewer_grants,
+    DomainEvent, RepoContext, ServiceContext, ServiceError, ThrottleScope, ThrottleService, TimelineService, audit::AuditService,
+    events::RefUpdate, references::ReferenceService, repositories::viewer_grants,
 };
 
 pub use rbit_collaboration::issues::{MAX_ASSIGNEES, MAX_LABELS_PER_ISSUE};
@@ -150,22 +146,6 @@ impl IssueService {
     async fn access_of(&self, user: &User, repo: &OwnedRepository) -> Result<RepoAccess, ServiceError> {
         let grants = viewer_grants(&self.ctx.database.repositories(), Some(user), repo).await?;
         Ok(repo_access(Some(user), repo, &grants))
-    }
-
-    // ------------------------------------------------------------------ issues
-
-    /// Deletes an issue (repository administrators only; pull requests cannot be
-    /// deleted): audited, and `Deleted` is published with what it was.
-    pub async fn delete(&self, actor: &User, ctx: &IssueContext) -> Result<(), ServiceError> {
-        if !issue_permissions(Some(actor), ctx.repo.access, &ctx.issue).can_delete {
-            return Err(ServiceError::Forbidden);
-        }
-        ctx.repo.ensure_writable()?;
-        let Some(snapshot) = self.ctx.database.issues().delete(ctx.issue.id).await? else { return Err(ServiceError::NotFound) };
-        let target = format!("{}#{}", ctx.repo.repo.full_name(), snapshot.number.get());
-        self.audit.record(AuditEntry::new(AuditAction::IssueDeleted).by(actor).on(target).detail(snapshot.title.to_string())).await;
-        self.publish(&snapshot.clone(), Some(actor.id()), IssueAction::Deleted { snapshot: Box::new(snapshot) });
-        Ok(())
     }
 
     /// The users among `names` (case-insensitively); an unknown name is invalid.

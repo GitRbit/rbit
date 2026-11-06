@@ -38,3 +38,8 @@ pub use listing::IssueListing;
 pub use metadata::IssueMetadataReader;
 #[cfg(feature = "applications")]
 pub use read_port::{IssueMetadataPort, IssueReadAccess, IssueReadError, IssueReadPort, IssueSearchPort};
+
+#[cfg(feature = "applications")]
+mod deletion;
+#[cfg(feature = "applications")]
+pub use deletion::{IssueDeletion, IssueDeletionError, IssueDeletionPort};

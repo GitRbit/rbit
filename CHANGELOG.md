@@ -124,6 +124,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Performance
 
+- Issue deletion moves its returned event snapshot without copying its title and
+  body, preserving administrator authorization and existing audit/event ordering.
+
 - Text-based reference suggestions avoid constructing an unused issue-store handle;
   numeric suggestions retain the existing indexed lookup and SQL work.
 
