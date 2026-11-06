@@ -15,8 +15,13 @@ export function contains(root, path) {
 
 /** Reject symlink/reparse traversal, including an existing leaf, before a mutation. */
 export async function guarded(root, path) {
-  root = await realpath(root);
+  const requestedRoot = resolve(root);
   path = resolve(path);
+  root = await realpath(requestedRoot);
+  // Windows TEMP may name the same root through an 8.3 alias. Translate only
+  // descendants of the supplied root; resolving the whole candidate would hide
+  // symlinks below it before the traversal checks have inspected them.
+  if (contains(requestedRoot, path)) path = resolve(root, relative(requestedRoot, path));
   if (!contains(root, path)) throw new Error(`Path is outside managed root: ${path}`);
   let cursor = root;
   for (const part of relative(root, path).split(sep)) {
