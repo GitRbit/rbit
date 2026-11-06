@@ -1,0 +1,714 @@
+{
+  "schema": 1,
+  "scope": "synthetic render-loop screening; shared desktop; no production performance or compiler-memory conclusion",
+  "source_commit": "e8e5dba098d5185258232b497da0d478a9d96e0a",
+  "lockfile_sha256": "c1cb7c66efb8c6bda8b62af4770812260d44a9d36b6b2d6388a11c907c8b7093",
+  "binary_sha256": "ba01e2b16895d500c528935e710d65df13ed08f3128415af01aca15351b81759",
+  "toolchain": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-pc-windows-msvc\nrelease: 1.99.1\nLLVM version: 23.1.1",
+  "machine": {
+    "platform": "win32",
+    "release": "10.0.26200",
+    "cpu": "Intel(R) Core(TM) i7-14700F",
+    "logical_cpus": 28,
+    "memory_bytes": 34126196736
+  },
+  "build": {
+    "profile": "release",
+    "features": "inheritance,segments,blocks,count-8",
+    "rustflags": "",
+    "jobs": "Cargo default"
+  },
+  "started_at": "2026-11-06T01:08:00.886Z",
+  "samples": [
+    {
+      "round": 1,
+      "buffer_capacity": 4096,
+      "buffer_reused": true,
+      "build": {
+        "askama_requested_features": [
+          "derive",
+          "std"
+        ],
+        "askama_version": "0.16.1",
+        "compiled_modes": [
+          "inheritance",
+          "segments",
+          "blocks"
+        ],
+        "debug_assertions": false,
+        "debug_info": "false",
+        "opt_level": "3",
+        "package_version": "0.1.5",
+        "profile": "release",
+        "target": "x86_64-pc-windows-msvc",
+        "target_features": "cmpxchg16b,fxsr,sse,sse2,sse3"
+      },
+      "compile_wall_ns": null,
+      "compiler_peak_memory_bytes": null,
+      "count": 8,
+      "elapsed_ns": 160375400,
+      "iterations": 100000,
+      "label": "count-8 release synthetic screen",
+      "mode": "inheritance",
+      "recipe_version": 2,
+      "rendered_bytes": 598400000,
+      "rendered_documents": 800000,
+      "sample_html": null,
+      "scope": "synthetic rendering only; no production adoption or compiler-memory claim",
+      "warmup_rounds": 1000
+    },
+    {
+      "round": 1,
+      "buffer_capacity": 4096,
+      "buffer_reused": true,
+      "build": {
+        "askama_requested_features": [
+          "derive",
+          "std"
+        ],
+        "askama_version": "0.16.1",
+        "compiled_modes": [
+          "inheritance",
+          "segments",
+          "blocks"
+        ],
+        "debug_assertions": false,
+        "debug_info": "false",
+        "opt_level": "3",
+        "package_version": "0.1.5",
+        "profile": "release",
+        "target": "x86_64-pc-windows-msvc",
+        "target_features": "cmpxchg16b,fxsr,sse,sse2,sse3"
+      },
+      "compile_wall_ns": null,
+      "compiler_peak_memory_bytes": null,
+      "count": 8,
+      "elapsed_ns": 148198600,
+      "iterations": 100000,
+      "label": "count-8 release synthetic screen",
+      "mode": "segments",
+      "recipe_version": 2,
+      "rendered_bytes": 598400000,
+      "rendered_documents": 800000,
+      "sample_html": null,
+      "scope": "synthetic rendering only; no production adoption or compiler-memory claim",
+      "warmup_rounds": 1000
+    },
+    {
+      "round": 1,
+      "buffer_capacity": 4096,
+      "buffer_reused": true,
+      "build": {
+        "askama_requested_features": [
+          "derive",
+          "std"
+        ],
+        "askama_version": "0.16.1",
+        "compiled_modes": [
+          "inheritance",
+          "segments",
+          "blocks"
+        ],
+        "debug_assertions": false,
+        "debug_info": "false",
+        "opt_level": "3",
+        "package_version": "0.1.5",
+        "profile": "release",
+        "target": "x86_64-pc-windows-msvc",
+        "target_features": "cmpxchg16b,fxsr,sse,sse2,sse3"
+      },
+      "compile_wall_ns": null,
+      "compiler_peak_memory_bytes": null,
+      "count": 8,
+      "elapsed_ns": 149493800,
+      "iterations": 100000,
+      "label": "count-8 release synthetic screen",
+      "mode": "blocks",
+      "recipe_version": 2,
+      "rendered_bytes": 598400000,
+      "rendered_documents": 800000,
+      "sample_html": null,
+      "scope": "synthetic rendering only; no production adoption or compiler-memory claim",
+      "warmup_rounds": 1000
+    },
+    {
+      "round": 2,
+      "buffer_capacity": 4096,
+      "buffer_reused": true,
+      "build": {
+        "askama_requested_features": [
+          "derive",
+          "std"
+        ],
+        "askama_version": "0.16.1",
+        "compiled_modes": [
+          "inheritance",
+          "segments",
+          "blocks"
+        ],
+        "debug_assertions": false,
+        "debug_info": "false",
+        "opt_level": "3",
+        "package_version": "0.1.5",
+        "profile": "release",
+        "target": "x86_64-pc-windows-msvc",
+        "target_features": "cmpxchg16b,fxsr,sse,sse2,sse3"
+      },
+      "compile_wall_ns": null,
+      "compiler_peak_memory_bytes": null,
+      "count": 8,
+      "elapsed_ns": 148580400,
+      "iterations": 100000,
+      "label": "count-8 release synthetic screen",
+      "mode": "blocks",
+      "recipe_version": 2,
+      "rendered_bytes": 598400000,
+      "rendered_documents": 800000,
+      "sample_html": null,
+      "scope": "synthetic rendering only; no production adoption or compiler-memory claim",
+      "warmup_rounds": 1000
+    },
+    {
+      "round": 2,
+      "buffer_capacity": 4096,
+      "buffer_reused": true,
+      "build": {
+        "askama_requested_features": [
+          "derive",
+          "std"
+        ],
+        "askama_version": "0.16.1",
+        "compiled_modes": [
+          "inheritance",
+          "segments",
+          "blocks"
+        ],
+        "debug_assertions": false,
+        "debug_info": "false",
+        "opt_level": "3",
+        "package_version": "0.1.5",
+        "profile": "release",
+        "target": "x86_64-pc-windows-msvc",
+        "target_features": "cmpxchg16b,fxsr,sse,sse2,sse3"
+      },
+      "compile_wall_ns": null,
+      "compiler_peak_memory_bytes": null,
+      "count": 8,
+      "elapsed_ns": 149140800,
+      "iterations": 100000,
+      "label": "count-8 release synthetic screen",
+      "mode": "segments",
+      "recipe_version": 2,
+      "rendered_bytes": 598400000,
+      "rendered_documents": 800000,
+      "sample_html": null,
+      "scope": "synthetic rendering only; no production adoption or compiler-memory claim",
+      "warmup_rounds": 1000
+    },
+    {
+      "round": 2,
+      "buffer_capacity": 4096,
+      "buffer_reused": true,
+      "build": {
+        "askama_requested_features": [
+          "derive",
+          "std"
+        ],
+        "askama_version": "0.16.1",
+        "compiled_modes": [
+          "inheritance",
+          "segments",
+          "blocks"
+        ],
+        "debug_assertions": false,
+        "debug_info": "false",
+        "opt_level": "3",
+        "package_version": "0.1.5",
+        "profile": "release",
+        "target": "x86_64-pc-windows-msvc",
+        "target_features": "cmpxchg16b,fxsr,sse,sse2,sse3"
+      },
+      "compile_wall_ns": null,
+      "compiler_peak_memory_bytes": null,
+      "count": 8,
+      "elapsed_ns": 159789800,
+      "iterations": 100000,
+      "label": "count-8 release synthetic screen",
+      "mode": "inheritance",
+      "recipe_version": 2,
+      "rendered_bytes": 598400000,
+      "rendered_documents": 800000,
+      "sample_html": null,
+      "scope": "synthetic rendering only; no production adoption or compiler-memory claim",
+      "warmup_rounds": 1000
+    },
+    {
+      "round": 3,
+      "buffer_capacity": 4096,
+      "buffer_reused": true,
+      "build": {
+        "askama_requested_features": [
+          "derive",
+          "std"
+        ],
+        "askama_version": "0.16.1",
+        "compiled_modes": [
+          "inheritance",
+          "segments",
+          "blocks"
+        ],
+        "debug_assertions": false,
+        "debug_info": "false",
+        "opt_level": "3",
+        "package_version": "0.1.5",
+        "profile": "release",
+        "target": "x86_64-pc-windows-msvc",
+        "target_features": "cmpxchg16b,fxsr,sse,sse2,sse3"
+      },
+      "compile_wall_ns": null,
+      "compiler_peak_memory_bytes": null,
+      "count": 8,
+      "elapsed_ns": 148221000,
+      "iterations": 100000,
+      "label": "count-8 release synthetic screen",
+      "mode": "segments",
+      "recipe_version": 2,
+      "rendered_bytes": 598400000,
+      "rendered_documents": 800000,
+      "sample_html": null,
+      "scope": "synthetic rendering only; no production adoption or compiler-memory claim",
+      "warmup_rounds": 1000
+    },
+    {
+      "round": 3,
+      "buffer_capacity": 4096,
+      "buffer_reused": true,
+      "build": {
+        "askama_requested_features": [
+          "derive",
+          "std"
+        ],
+        "askama_version": "0.16.1",
+        "compiled_modes": [
+          "inheritance",
+          "segments",
+          "blocks"
+        ],
+        "debug_assertions": false,
+        "debug_info": "false",
+        "opt_level": "3",
+        "package_version": "0.1.5",
+        "profile": "release",
+        "target": "x86_64-pc-windows-msvc",
+        "target_features": "cmpxchg16b,fxsr,sse,sse2,sse3"
+      },
+      "compile_wall_ns": null,
+      "compiler_peak_memory_bytes": null,
+      "count": 8,
+      "elapsed_ns": 158761200,
+      "iterations": 100000,
+      "label": "count-8 release synthetic screen",
+      "mode": "inheritance",
+      "recipe_version": 2,
+      "rendered_bytes": 598400000,
+      "rendered_documents": 800000,
+      "sample_html": null,
+      "scope": "synthetic rendering only; no production adoption or compiler-memory claim",
+      "warmup_rounds": 1000
+    },
+    {
+      "round": 3,
+      "buffer_capacity": 4096,
+      "buffer_reused": true,
+      "build": {
+        "askama_requested_features": [
+          "derive",
+          "std"
+        ],
+        "askama_version": "0.16.1",
+        "compiled_modes": [
+          "inheritance",
+          "segments",
+          "blocks"
+        ],
+        "debug_assertions": false,
+        "debug_info": "false",
+        "opt_level": "3",
+        "package_version": "0.1.5",
+        "profile": "release",
+        "target": "x86_64-pc-windows-msvc",
+        "target_features": "cmpxchg16b,fxsr,sse,sse2,sse3"
+      },
+      "compile_wall_ns": null,
+      "compiler_peak_memory_bytes": null,
+      "count": 8,
+      "elapsed_ns": 149883600,
+      "iterations": 100000,
+      "label": "count-8 release synthetic screen",
+      "mode": "blocks",
+      "recipe_version": 2,
+      "rendered_bytes": 598400000,
+      "rendered_documents": 800000,
+      "sample_html": null,
+      "scope": "synthetic rendering only; no production adoption or compiler-memory claim",
+      "warmup_rounds": 1000
+    },
+    {
+      "round": 4,
+      "buffer_capacity": 4096,
+      "buffer_reused": true,
+      "build": {
+        "askama_requested_features": [
+          "derive",
+          "std"
+        ],
+        "askama_version": "0.16.1",
+        "compiled_modes": [
+          "inheritance",
+          "segments",
+          "blocks"
+        ],
+        "debug_assertions": false,
+        "debug_info": "false",
+        "opt_level": "3",
+        "package_version": "0.1.5",
+        "profile": "release",
+        "target": "x86_64-pc-windows-msvc",
+        "target_features": "cmpxchg16b,fxsr,sse,sse2,sse3"
+      },
+      "compile_wall_ns": null,
+      "compiler_peak_memory_bytes": null,
+      "count": 8,
+      "elapsed_ns": 148233500,
+      "iterations": 100000,
+      "label": "count-8 release synthetic screen",
+      "mode": "blocks",
+      "recipe_version": 2,
+      "rendered_bytes": 598400000,
+      "rendered_documents": 800000,
+      "sample_html": null,
+      "scope": "synthetic rendering only; no production adoption or compiler-memory claim",
+      "warmup_rounds": 1000
+    },
+    {
+      "round": 4,
+      "buffer_capacity": 4096,
+      "buffer_reused": true,
+      "build": {
+        "askama_requested_features": [
+          "derive",
+          "std"
+        ],
+        "askama_version": "0.16.1",
+        "compiled_modes": [
+          "inheritance",
+          "segments",
+          "blocks"
+        ],
+        "debug_assertions": false,
+        "debug_info": "false",
+        "opt_level": "3",
+        "package_version": "0.1.5",
+        "profile": "release",
+        "target": "x86_64-pc-windows-msvc",
+        "target_features": "cmpxchg16b,fxsr,sse,sse2,sse3"
+      },
+      "compile_wall_ns": null,
+      "compiler_peak_memory_bytes": null,
+      "count": 8,
+      "elapsed_ns": 158669300,
+      "iterations": 100000,
+      "label": "count-8 release synthetic screen",
+      "mode": "inheritance",
+      "recipe_version": 2,
+      "rendered_bytes": 598400000,
+      "rendered_documents": 800000,
+      "sample_html": null,
+      "scope": "synthetic rendering only; no production adoption or compiler-memory claim",
+      "warmup_rounds": 1000
+    },
+    {
+      "round": 4,
+      "buffer_capacity": 4096,
+      "buffer_reused": true,
+      "build": {
+        "askama_requested_features": [
+          "derive",
+          "std"
+        ],
+        "askama_version": "0.16.1",
+        "compiled_modes": [
+          "inheritance",
+          "segments",
+          "blocks"
+        ],
+        "debug_assertions": false,
+        "debug_info": "false",
+        "opt_level": "3",
+        "package_version": "0.1.5",
+        "profile": "release",
+        "target": "x86_64-pc-windows-msvc",
+        "target_features": "cmpxchg16b,fxsr,sse,sse2,sse3"
+      },
+      "compile_wall_ns": null,
+      "compiler_peak_memory_bytes": null,
+      "count": 8,
+      "elapsed_ns": 148786200,
+      "iterations": 100000,
+      "label": "count-8 release synthetic screen",
+      "mode": "segments",
+      "recipe_version": 2,
+      "rendered_bytes": 598400000,
+      "rendered_documents": 800000,
+      "sample_html": null,
+      "scope": "synthetic rendering only; no production adoption or compiler-memory claim",
+      "warmup_rounds": 1000
+    },
+    {
+      "round": 5,
+      "buffer_capacity": 4096,
+      "buffer_reused": true,
+      "build": {
+        "askama_requested_features": [
+          "derive",
+          "std"
+        ],
+        "askama_version": "0.16.1",
+        "compiled_modes": [
+          "inheritance",
+          "segments",
+          "blocks"
+        ],
+        "debug_assertions": false,
+        "debug_info": "false",
+        "opt_level": "3",
+        "package_version": "0.1.5",
+        "profile": "release",
+        "target": "x86_64-pc-windows-msvc",
+        "target_features": "cmpxchg16b,fxsr,sse,sse2,sse3"
+      },
+      "compile_wall_ns": null,
+      "compiler_peak_memory_bytes": null,
+      "count": 8,
+      "elapsed_ns": 163529500,
+      "iterations": 100000,
+      "label": "count-8 release synthetic screen",
+      "mode": "inheritance",
+      "recipe_version": 2,
+      "rendered_bytes": 598400000,
+      "rendered_documents": 800000,
+      "sample_html": null,
+      "scope": "synthetic rendering only; no production adoption or compiler-memory claim",
+      "warmup_rounds": 1000
+    },
+    {
+      "round": 5,
+      "buffer_capacity": 4096,
+      "buffer_reused": true,
+      "build": {
+        "askama_requested_features": [
+          "derive",
+          "std"
+        ],
+        "askama_version": "0.16.1",
+        "compiled_modes": [
+          "inheritance",
+          "segments",
+          "blocks"
+        ],
+        "debug_assertions": false,
+        "debug_info": "false",
+        "opt_level": "3",
+        "package_version": "0.1.5",
+        "profile": "release",
+        "target": "x86_64-pc-windows-msvc",
+        "target_features": "cmpxchg16b,fxsr,sse,sse2,sse3"
+      },
+      "compile_wall_ns": null,
+      "compiler_peak_memory_bytes": null,
+      "count": 8,
+      "elapsed_ns": 150409000,
+      "iterations": 100000,
+      "label": "count-8 release synthetic screen",
+      "mode": "blocks",
+      "recipe_version": 2,
+      "rendered_bytes": 598400000,
+      "rendered_documents": 800000,
+      "sample_html": null,
+      "scope": "synthetic rendering only; no production adoption or compiler-memory claim",
+      "warmup_rounds": 1000
+    },
+    {
+      "round": 5,
+      "buffer_capacity": 4096,
+      "buffer_reused": true,
+      "build": {
+        "askama_requested_features": [
+          "derive",
+          "std"
+        ],
+        "askama_version": "0.16.1",
+        "compiled_modes": [
+          "inheritance",
+          "segments",
+          "blocks"
+        ],
+        "debug_assertions": false,
+        "debug_info": "false",
+        "opt_level": "3",
+        "package_version": "0.1.5",
+        "profile": "release",
+        "target": "x86_64-pc-windows-msvc",
+        "target_features": "cmpxchg16b,fxsr,sse,sse2,sse3"
+      },
+      "compile_wall_ns": null,
+      "compiler_peak_memory_bytes": null,
+      "count": 8,
+      "elapsed_ns": 149796800,
+      "iterations": 100000,
+      "label": "count-8 release synthetic screen",
+      "mode": "segments",
+      "recipe_version": 2,
+      "rendered_bytes": 598400000,
+      "rendered_documents": 800000,
+      "sample_html": null,
+      "scope": "synthetic rendering only; no production adoption or compiler-memory claim",
+      "warmup_rounds": 1000
+    },
+    {
+      "round": 6,
+      "buffer_capacity": 4096,
+      "buffer_reused": true,
+      "build": {
+        "askama_requested_features": [
+          "derive",
+          "std"
+        ],
+        "askama_version": "0.16.1",
+        "compiled_modes": [
+          "inheritance",
+          "segments",
+          "blocks"
+        ],
+        "debug_assertions": false,
+        "debug_info": "false",
+        "opt_level": "3",
+        "package_version": "0.1.5",
+        "profile": "release",
+        "target": "x86_64-pc-windows-msvc",
+        "target_features": "cmpxchg16b,fxsr,sse,sse2,sse3"
+      },
+      "compile_wall_ns": null,
+      "compiler_peak_memory_bytes": null,
+      "count": 8,
+      "elapsed_ns": 148594900,
+      "iterations": 100000,
+      "label": "count-8 release synthetic screen",
+      "mode": "segments",
+      "recipe_version": 2,
+      "rendered_bytes": 598400000,
+      "rendered_documents": 800000,
+      "sample_html": null,
+      "scope": "synthetic rendering only; no production adoption or compiler-memory claim",
+      "warmup_rounds": 1000
+    },
+    {
+      "round": 6,
+      "buffer_capacity": 4096,
+      "buffer_reused": true,
+      "build": {
+        "askama_requested_features": [
+          "derive",
+          "std"
+        ],
+        "askama_version": "0.16.1",
+        "compiled_modes": [
+          "inheritance",
+          "segments",
+          "blocks"
+        ],
+        "debug_assertions": false,
+        "debug_info": "false",
+        "opt_level": "3",
+        "package_version": "0.1.5",
+        "profile": "release",
+        "target": "x86_64-pc-windows-msvc",
+        "target_features": "cmpxchg16b,fxsr,sse,sse2,sse3"
+      },
+      "compile_wall_ns": null,
+      "compiler_peak_memory_bytes": null,
+      "count": 8,
+      "elapsed_ns": 149627700,
+      "iterations": 100000,
+      "label": "count-8 release synthetic screen",
+      "mode": "blocks",
+      "recipe_version": 2,
+      "rendered_bytes": 598400000,
+      "rendered_documents": 800000,
+      "sample_html": null,
+      "scope": "synthetic rendering only; no production adoption or compiler-memory claim",
+      "warmup_rounds": 1000
+    },
+    {
+      "round": 6,
+      "buffer_capacity": 4096,
+      "buffer_reused": true,
+      "build": {
+        "askama_requested_features": [
+          "derive",
+          "std"
+        ],
+        "askama_version": "0.16.1",
+        "compiled_modes": [
+          "inheritance",
+          "segments",
+          "blocks"
+        ],
+        "debug_assertions": false,
+        "debug_info": "false",
+        "opt_level": "3",
+        "package_version": "0.1.5",
+        "profile": "release",
+        "target": "x86_64-pc-windows-msvc",
+        "target_features": "cmpxchg16b,fxsr,sse,sse2,sse3"
+      },
+      "compile_wall_ns": null,
+      "compiler_peak_memory_bytes": null,
+      "count": 8,
+      "elapsed_ns": 160607800,
+      "iterations": 100000,
+      "label": "count-8 release synthetic screen",
+      "mode": "inheritance",
+      "recipe_version": 2,
+      "rendered_bytes": 598400000,
+      "rendered_documents": 800000,
+      "sample_html": null,
+      "scope": "synthetic rendering only; no production adoption or compiler-memory claim",
+      "warmup_rounds": 1000
+    }
+  ],
+  "completed_at": "2026-11-06T01:08:10.493Z",
+  "summary": {
+    "inheritance": {
+      "samples": 6,
+      "documents_per_sample": 800000,
+      "median_ns_per_document": 200.10325,
+      "min_ns_per_document": 198.336625,
+      "max_ns_per_document": 204.411875
+    },
+    "segments": {
+      "samples": 6,
+      "documents_per_sample": 800000,
+      "median_ns_per_document": 185.8631875,
+      "min_ns_per_document": 185.24825,
+      "max_ns_per_document": 187.246
+    },
+    "blocks": {
+      "samples": 6,
+      "documents_per_sample": 800000,
+      "median_ns_per_document": 186.9509375,
+      "min_ns_per_document": 185.291875,
+      "max_ns_per_document": 188.01125
+    }
+  }
+}
