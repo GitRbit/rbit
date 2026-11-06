@@ -224,7 +224,10 @@ builds and copies exact executables into per-checkout runtime generations before
 releasing its lease, so Windows servers can keep running while another build links.
 
 New checkouts belong under `worktrees/`; compiler output lives in `.build-cache/` and
-isolated runtime data in `.worktree-state/`. Inspect usage with
+isolated runtime data in `.worktree-state/`. Successful builds and test runs prune
+inactive compiler namespaces toward a configurable 16 GiB soft limit while retaining
+the current namespace; `RBIT_BUILD_CACHE_MAX_BYTES=0` disables automatic maintenance.
+Inspect usage with
 `node scripts/workspace.mjs cache-report` and prune inactive compatibility groups to
 an explicit byte budget with `node scripts/workspace.mjs cache-prune 21474836480`.
 Do not run direct `cargo clean` against shared output. See

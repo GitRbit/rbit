@@ -6,6 +6,11 @@ import { basename, join } from "node:path";
 import { createInterface } from "node:readline";
 import { guarded, managedDirectory } from "./paths.mjs";
 import { leased, UncertainProcessTreeError } from "./lease.mjs";
+import { cacheBudget, enforceHighWater } from "./storage.mjs";
+
+function reportCacheOverage(report) {
+  if (report.overageBytes > 0) process.stderr.write(`Build cache remains ${report.overageBytes} bytes over its ${report.maxBytes}-byte soft limit (${report.bytes} bytes retained); current namespace is protected.\n`);
+}
 
 export function compatibility(env = process.env, rustc = execFileSync("rustc", ["-vV"], { encoding: "utf8", windowsHide: true })) {
   const flags = Object.fromEntries(Object.entries(env).filter(([key]) =>
@@ -56,10 +61,11 @@ export function cargoProcess(ctx, args, env, onArtifact = () => {}, { spawnProce
 }
 
 /** Only helpers acquire this lease. Direct Cargo/IDE builds must not use this lane. */
-export async function cargo(ctx, command, args = [], { execute = cargoProcess, env = process.env, key } = {}) {
+export async function cargo(ctx, command, args = [], { execute = cargoProcess, env = process.env, key, reportMaintenance = reportCacheOverage } = {}) {
   if (!["build", "check", "clippy", "test", "nextest", "generate-lockfile"].includes(command)) throw new Error("Unsupported Cargo command");
   validateCargoArgs(args);
   if (command === "nextest" && !["run", "list"].includes(args[0])) throw new Error("Use nextest run or list");
+  const maxCacheBytes = cacheBudget(env);
   const buildEnv = { ...env, LIBSQLITE3_FLAGS: [env.LIBSQLITE3_FLAGS ?? "", "-DSQLITE_ENABLE_QPSG"].join(" ").trim() };
   const namespace = key ?? compatibility(buildEnv, execFileSync("rustc", ["-vV"], {
     cwd: ctx.checkout, env: buildEnv, encoding: "utf8", windowsHide: true,
@@ -68,7 +74,7 @@ export async function cargo(ctx, command, args = [], { execute = cargoProcess, e
   const cache = await managedDirectory(ctx, ctx.cache);
   // A repository-wide lease also serializes prune and caps active developer build lanes
   // at one. Namespaces separate compiler identities, not worktrees or branches.
-  return leased(join(cache, ".lease"), async () => {
+  return leased(join(cache, ".lease"), async (lease) => {
     const lane = await managedDirectory(ctx, join(cache, namespace, "shared"));
     buildEnv.CARGO_TARGET_DIR = join(lane, "target");
     buildEnv.CARGO_BUILD_TARGET_DIR = buildEnv.CARGO_TARGET_DIR;
@@ -99,6 +105,12 @@ export async function cargo(ctx, command, args = [], { execute = cargoProcess, e
       await writeFile(join(generation, "handoff.json"), JSON.stringify({ pid: process.pid, host: (await import("node:os")).hostname() }));
     }
     await writeFile(join(cache, namespace, "last-used"), String(Date.now()));
+    // Keep hot IDE/check loops cheap: scan after builds and completed test runs, never
+    // during compilation or before exact executables have been copied out of the lane.
+    if (["build", "test"].includes(command) || (command === "nextest" && args[0] === "run")) {
+      result.cache = await enforceHighWater(ctx, maxCacheBytes, namespace, lease);
+      await reportMaintenance(result.cache);
+    }
     return result;
   });
 }

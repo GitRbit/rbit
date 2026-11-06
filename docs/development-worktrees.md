@@ -146,13 +146,31 @@ node scripts/workspace.mjs cache-prune 21474836480
 node scripts/workspace.mjs remove my-feature
 ```
 
-`cache-prune` takes a maximum total byte count and removes least-recently-used whole
-compatibility namespaces until the cache is within that high-water mark. It refuses
-an active lease, linked paths or symlink/reparse descendants. It never deletes source
+After a successful helper `build`, `test` or `nextest run`, automatic maintenance runs
+under that command's existing management lease. It removes least-recently-used inactive
+compatibility namespaces toward a **16 GiB soft high-water mark**. Configure a different
+nonnegative integer byte count with `RBIT_BUILD_CACHE_MAX_BYTES`; for example,
+`RBIT_BUILD_CACHE_MAX_BYTES=8589934592` selects 8 GiB. Invalid values fail before Cargo
+starts. Set `RBIT_BUILD_CACHE_MAX_BYTES=0` to disable automatic scans and eviction.
+
+The current command's namespace is always protected, and binary copies are published
+before eviction. If that namespace alone exceeds the budget, the helper retains it,
+reports actual retained bytes and overage in its JSON result, and prints a warning to
+stderr. It does not repeatedly delete the current build or promise a hard disk bound.
+In-progress builds, failed commands and check/Clippy/IDE loops do not trigger scans;
+those paths may grow storage until the next successful build or test maintenance.
+
+`cache-prune` remains an explicit operation: it takes a maximum total byte count and
+removes whole inactive compatibility namespaces, including the last-used namespace,
+until the cache fits. Unlike the automatic setting, `cache-prune 0` means empty the
+compiler cache. Manual pruning refuses an active lease rather than waiting. Automatic
+maintenance uses the current lease nonce directly, without nested lock acquisition.
+
+Both policies reject linked paths or symlink/reparse descendants and never delete source
 checkouts, runtime data, shared Cargo downloads or unknown entries. Reports sum logical
-file bytes, not filesystem allocation or external tool caches. Pruning is explicit;
-schedule it for your disk budget. One namespace may grow beyond the selected budget
-until the next maintenance run; no automatic eviction interrupts a build.
+bytes in recognized compiler namespaces, not filesystem allocation, runtime copies or
+external tool caches. Use `cache-report` to inspect the measured total. No automatic
+eviction interrupts compilation, test execution or exact executable handoff.
 
 `remove` refuses the current checkout, dirty/untracked files, registered locks and active
 runtime markers. Git performs the actual removal without `--force`; branches, private

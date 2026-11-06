@@ -3,7 +3,8 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { leased } from "../workspace/lease.mjs";
+import { acquire, leased } from "../workspace/lease.mjs";
+import { cargo } from "../workspace/build.mjs";
 import { cacheBudget, cacheReport, DEFAULT_CACHE_MAX_BYTES, enforceHighWater, prune } from "../workspace/storage.mjs";
 
 const old = "00000000000000000000", recent = "11111111111111111111", current = "22222222222222222222";
@@ -73,4 +74,56 @@ test("automatic maintenance requires live lease ownership and rejects stale nonc
     const report = await enforceHighWater(ctx, 2, current, lease);
     assert.equal(report.overageBytes, 4);
   });
+});
+
+test("successful binary handoff precedes automatic eviction under the same lease", async (t) => {
+  const ctx = await fixture(t);
+  await namespace(ctx, old, 1); await namespace(ctx, recent, 2);
+  let observed;
+  const build = await cargo(ctx, "build", [], {
+    key: current, env: { RBIT_BUILD_CACHE_MAX_BYTES: "1" },
+    execute: async (_ctx, _args, env, artifact) => {
+      await mkdir(env.CARGO_TARGET_DIR, { recursive: true });
+      const executable = join(env.CARGO_TARGET_DIR, "rbit.exe");
+      await writeFile(executable, "exact binary");
+      artifact({ executable, target: { name: "rbit", kind: ["bin"] } });
+    },
+    reportMaintenance: async (report) => {
+      observed = report;
+      await assert.rejects(acquire(join(ctx.cache, ".lease"), { timeout: 0 }), /Timed out/);
+    },
+  });
+  assert.equal(await readFile(build.executables[0].path, "utf8"), "exact binary");
+  assert.deepEqual(observed.removed.map((entry) => entry.name), [old, recent]);
+  assert.equal(observed.bytes, (await cacheReport(ctx)).bytes);
+  assert.equal(observed.overageBytes, observed.bytes - 1);
+  assert.equal(await readFile(join(ctx.state, "data"), "utf8"), "keep runtime data");
+});
+
+test("test and nextest-run successes prune while failed commands and check loops do not", async (t) => {
+  const ctx = await fixture(t);
+  const env = { RBIT_BUILD_CACHE_MAX_BYTES: "1" };
+  const reportMaintenance = () => {};
+  for (const [command, args] of [["test", []], ["nextest", ["run"]]]) {
+    await namespace(ctx, old, 1);
+    const result = await cargo(ctx, command, args, { key: current, env, execute: async () => {}, reportMaintenance });
+    assert.equal(result.cache.removed[0].name, old);
+  }
+  await namespace(ctx, old, 1);
+  await assert.rejects(cargo(ctx, "test", [], { key: current, env, execute: async () => { throw new Error("failed test"); }, reportMaintenance }), /failed test/);
+  assert.equal(await readFile(join(ctx.cache, old, "artifact"), "utf8"), "12345");
+  const check = await cargo(ctx, "check", [], { key: current, env, execute: async () => {}, reportMaintenance });
+  assert.equal(check.cache, undefined);
+  assert.equal(await readFile(join(ctx.cache, old, "artifact"), "utf8"), "12345");
+});
+
+test("invalid automatic configuration fails before execution; explicit zero skips eviction", async (t) => {
+  const ctx = await fixture(t);
+  let ran = false;
+  await assert.rejects(cargo(ctx, "test", [], { key: current, env: { RBIT_BUILD_CACHE_MAX_BYTES: "garbage" }, execute: async () => { ran = true; } }), /RBIT_BUILD_CACHE_MAX_BYTES/);
+  assert.equal(ran, false);
+  await namespace(ctx, old, 1);
+  const result = await cargo(ctx, "test", [], { key: current, env: { RBIT_BUILD_CACHE_MAX_BYTES: "0" }, execute: async () => {} });
+  assert.equal(result.cache.disabled, true);
+  assert.equal(await readFile(join(ctx.cache, old, "artifact"), "utf8"), "12345");
 });
