@@ -19,7 +19,11 @@ mod credential;
 #[cfg(feature = "password-work")]
 mod password_attempt;
 #[cfg(feature = "password-work")]
+mod password_input;
+#[cfg(feature = "password-work")]
 mod password_work;
+#[cfg(feature = "password-work")]
+pub use password_input::{PasswordLength, classify_password_length};
 
 pub use account::{Account, AccountId, AccountKind, User};
 #[cfg(feature = "credentials")]

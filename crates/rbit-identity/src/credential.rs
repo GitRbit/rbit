@@ -35,19 +35,25 @@ impl Passwords {
     }
 
     /// Returns a PHC string (`$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>`) with a fresh random salt.
-    pub async fn hash(password: String) -> Result<String, PasswordError> {
-        tokio::task::spawn_blocking(move || hash(&password)).await?
+    pub fn hash(password: String) -> impl std::future::Future<Output = Result<String, PasswordError>> {
+        let password = zeroize::Zeroizing::new(password);
+        async move { tokio::task::spawn_blocking(move || hash(&password)).await? }
     }
 
     /// Constant-time verification. Malformed stored hashes simply fail to verify.
-    pub async fn verify(password: String, phc_hash: String) -> Result<bool, PasswordError> {
-        Ok(tokio::task::spawn_blocking(move || verify(&password, &phc_hash)).await?)
+    pub fn verify(password: String, phc_hash: String) -> impl std::future::Future<Output = Result<bool, PasswordError>> {
+        let password = zeroize::Zeroizing::new(password);
+        let phc_hash = zeroize::Zeroizing::new(phc_hash);
+        async move { Ok(tokio::task::spawn_blocking(move || verify(&password, &phc_hash)).await?) }
     }
 
     /// A valid hash of a random password, verified against when a login name does not exist
     /// so that response timing does not reveal which usernames are registered.
-    pub async fn verify_dummy(password: String) {
-        let _ = Self::verify(password, DUMMY_HASH.to_owned()).await;
+    pub fn verify_dummy(password: String) -> impl std::future::Future<Output = ()> {
+        let mut password = zeroize::Zeroizing::new(password);
+        async move {
+            let _ = Self::verify(std::mem::take(&mut *password), DUMMY_HASH.to_owned()).await;
+        }
     }
 }
 
@@ -67,6 +73,16 @@ pub(crate) fn verify_dummy(password: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compatibility_futures_are_send_and_can_be_abandoned_without_a_runtime() {
+        fn discard(future: impl std::future::Future + Send) {
+            drop(future);
+        }
+        discard(Passwords::hash("unpolled password".into()));
+        discard(Passwords::verify("unpolled password".into(), "unpolled PHC".into()));
+        discard(Passwords::verify_dummy("unpolled password".into()));
+    }
 
     #[test]
     fn dummy_hash_is_well_formed() {

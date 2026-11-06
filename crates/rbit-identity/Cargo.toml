@@ -10,8 +10,8 @@ license.workspace = true
 sessions = ["session-tokens", "dep:tokio", "dep:tokio-util"]
 session-tokens = ["dep:base64", "dep:sha2", "dep:getrandom"]
 default = ["password-work"]
-credentials = ["dep:argon2", "dep:thiserror", "dep:tokio"]
-password-work = ["credentials", "dep:rbit-kernel", "dep:zeroize", "dep:subtle", "dep:getrandom"]
+credentials = ["dep:argon2", "dep:thiserror", "dep:tokio", "dep:zeroize"]
+password-work = ["credentials", "dep:rbit-kernel", "dep:subtle", "dep:getrandom"]
 
 [dependencies]
 rbit-contracts.workspace = true

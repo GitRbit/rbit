@@ -22,11 +22,11 @@ impl ProtectedSignUp {
     pub(super) async fn prepare<E>(mut self, passwords: &PasswordWork, minimum: usize, is_admin: bool) -> Result<NewUser, AccountError<E>> {
         let name = self.username.trim().parse().map_err(AccountError::Name)?;
         let email = self.email.trim().parse().map_err(AccountError::Name)?;
-        let length = self.password.chars().count();
-        if length < minimum {
+        let length = crate::classify_password_length(&self.password, minimum, MAX_PASSWORD_LEN);
+        if length == crate::PasswordLength::TooShort {
             return Err(AccountError::Invalid(format!("password must be at least {minimum} characters")));
         }
-        if length > MAX_PASSWORD_LEN {
+        if length == crate::PasswordLength::TooLong {
             return Err(AccountError::Invalid(format!("password must be at most {MAX_PASSWORD_LEN} characters")));
         }
         let attempt = passwords.begin().map_err(AccountError::Admission)?;
