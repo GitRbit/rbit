@@ -14,13 +14,7 @@ struct Fixture {
 
 impl Fixture {
     async fn new() -> Self {
-        let dir = tempfile::tempdir().unwrap();
-        let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
-        let kv = KvStore::open(&dir.path().join("rbit.redb")).unwrap();
-        let mut config = Config::default();
-        config.storage.data_dir = dir.path().to_path_buf();
-        let services = Services::new(Arc::new(config), &database, &kv).await.unwrap();
-        Self { dir, database, services }
+        Self::configured(None).await
     }
 
     async fn user(&self, name: &str, is_admin: bool) -> User {
@@ -337,5 +331,6 @@ async fn private_repositories_stay_hidden() {
 }
 
 mod application;
+mod fault_fixture;
 
 mod creation;

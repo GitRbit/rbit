@@ -38,21 +38,17 @@ async fn rejected_same_name_and_unchanged_branch_paths_keep_original_work() {
 }
 #[tokio::test]
 async fn changed_head_is_restored_when_actual_sql_update_fails() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::with_fault_schema("CREATE TRIGGER fixture_reject_head BEFORE UPDATE OF default_branch ON repositories WHEN NEW.default_branch <> OLD.default_branch BEGIN SELECT RAISE(ABORT,'fixture HEAD failure'); END").await;
     let alice = fixture.user("alice", false).await;
     let repo = fixture.repo(&alice, "demo", Visibility::Public).await;
     fixture.push_branches(&repo, &["main", "other"]);
     let before = head_of(&repo);
-    let options = sqlx::sqlite::SqliteConnectOptions::new().filename(fixture.dir.path().join("rbit.db"));
-    let mut connection = sqlx::SqliteConnection::connect_with(&options).await.unwrap();
-    sqlx::query("CREATE TRIGGER fixture_reject_head BEFORE UPDATE OF default_branch ON repositories WHEN NEW.default_branch <> OLD.default_branch BEGIN SELECT RAISE(ABORT,'fixture HEAD failure'); END").execute(&mut connection).await.unwrap();
     let (result, work) = count_work(fixture.services.repo_settings.update(&repo, general("new", Visibility::Public, Some("other")))).await;
-    assert!(matches!(result, Err(ServiceError::Internal(_))));
+    assert!(matches!(result, Err(ServiceError::Internal(ref error)) if error.to_string().contains("fixture HEAD failure")), "{result:?}");
     assert_eq!((work.acquisitions, work.statements), (1, 1));
     assert_eq!(head_of(&repo), before);
     let current = fixture.open(Some(&alice), "alice", "demo").await.unwrap();
     assert_eq!(current.repo.repo.description, None);
-    connection.close().await.unwrap();
 }
 #[tokio::test]
 async fn archive_race_publishes_one_sql_winner_and_stale_repeat_still_runs_one_statement() {
@@ -79,26 +75,32 @@ async fn archive_race_publishes_one_sql_winner_and_stale_repeat_still_runs_one_s
 }
 #[tokio::test]
 async fn failed_metadata_delete_retains_original_disk_first_gap_and_retry_semantics() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::with_fault_schema(
+        "CREATE TABLE fixture_delete_fault (enabled INTEGER NOT NULL CHECK(enabled IN (0,1))) STRICT; \
+         INSERT INTO fixture_delete_fault VALUES(1); \
+         CREATE TRIGGER fixture_reject_repo_delete BEFORE DELETE ON repositories \
+         WHEN (SELECT enabled FROM fixture_delete_fault)=1 \
+         BEGIN SELECT RAISE(ABORT,'fixture deletion failure'); END;",
+    )
+    .await;
     let alice = fixture.user("alice", false).await;
     let mut repo = fixture.repo(&alice, "demo", Visibility::Public).await;
     repo.repo.repo.archived_at = Some(Timestamp(1));
-    let options = sqlx::sqlite::SqliteConnectOptions::new().filename(fixture.dir.path().join("rbit.db"));
+    let options = rbit_storage::sqlite::writer_compatibility::register(
+        sqlx::sqlite::SqliteConnectOptions::new().filename(fixture.dir.path().join("rbit.db")),
+    );
     let mut connection = sqlx::SqliteConnection::connect_with(&options).await.unwrap();
-    sqlx::query(
-        "CREATE TRIGGER fixture_reject_repo_delete BEFORE DELETE ON repositories BEGIN SELECT RAISE(ABORT,'fixture deletion failure'); END",
-    )
-    .execute(&mut connection)
-    .await
-    .unwrap();
     let mut events = fixture.services.events.subscribe();
     let (result, work) = count_work(fixture.services.repo_settings.delete(&alice, &repo, "alice/demo")).await;
-    assert!(matches!(result, Err(ServiceError::Internal(_))));
+    assert!(
+        matches!(result, Err(ServiceError::Internal(ref error)) if error.to_string().contains("fixture deletion failure")),
+        "{result:?}"
+    );
     assert_eq!((work.acquisitions, work.statements), (1, 1));
     assert!(!repo.disk_path.exists());
     assert!(fixture.database.repositories().find_by_path("alice", "demo").await.unwrap().is_some());
     assert!(events.try_recv().is_err());
-    sqlx::query("DROP TRIGGER fixture_reject_repo_delete").execute(&mut connection).await.unwrap();
+    sqlx::query("UPDATE fixture_delete_fault SET enabled=0").execute(&mut connection).await.unwrap();
     let (result, work) = count_work(fixture.services.repo_settings.delete(&alice, &repo, "alice/demo")).await;
     result.unwrap();
     assert_eq!((work.acquisitions, work.statements), (1, 1));

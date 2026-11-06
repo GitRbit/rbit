@@ -1,4 +1,5 @@
-//! Repository-owned models without configuration, persistence, Git or runtime work.
+//! Repository models and statically dispatched ownership, lifecycle and discovery policy.
+//! No concrete configuration, persistence, Git or runtime dependency enters this crate.
 //!
 //! Validated names preserve their original spelling. Storage implementations retain
 //! authority over uniqueness, concurrency and row decoding; a model is not an access

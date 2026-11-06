@@ -117,6 +117,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `rbit_actions_*` metrics: finished runs and jobs, queue and job durations, runner calls,
   log bytes, workflow errors, waiting jobs and online runners.
 
+### Changed
+
+- Repository creation and settings now use modular policy components, preserving
+  existing permissions, forms, redirects, archive behavior and audit/webhook effects.
+
 ### Performance
 
 - Text-based reference suggestions avoid constructing an unused issue-store handle;

@@ -1,6 +1,6 @@
 [package]
 name = "rbit-repositories"
-description = "Repository metadata and public discovery policy independent of persistence and protocols."
+description = "Repository models, ownership, lifecycle and discovery policy independent of persistence and protocols."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -55,12 +55,12 @@ winner 2 (mutation+audit); failed/retried metadata deletion 1 each.
 Run through the shared build helper when its lane is granted:
 
 ```text
-cargo test -p rbit-repositories --test settings
-cargo test -p rbit-services --test main repo_settings
-cargo test -p rbit-services --test main archived
-cargo test -p rbit-services --test main forks
-cargo test -p rbit-services --test main transfers
-cargo clippy -p rbit-repositories -p rbit-storage -p rbit-services --all-targets -- -D warnings
+node scripts/workspace.mjs test -p rbit-repositories --test settings --locked
+node scripts/workspace.mjs test -p rbit-services --test integration --locked repo_settings
+node scripts/workspace.mjs test -p rbit-services --test integration --locked archives
+node scripts/workspace.mjs test -p rbit-services --test integration --locked forks
+node scripts/workspace.mjs test -p rbit-services --test integration --locked transfers
+node scripts/workspace.mjs clippy -p rbit-repositories -p rbit-storage -p rbit-services --all-targets --locked -- -D warnings
 ```
 
 Require repository settings/API authorization, archived write guards, native UI,
@@ -105,23 +105,39 @@ unknown-owner 1, concurrent unique-name winner, actual disk-failure compensation
 (2 statements including rollback) and member-grant failure (5 statements) preserving
 its original row/disk/no-event gap. Existing owner/access/org/fork/transfer tests stay.
 
-The entire remaining RepositoryService now measures 148 cumulative authored type lines,
-RepoSettingsService 34, SettingsEffects 61 and CreationEffects 23, and all have explicit
-legacy-component gate entries. New feature owners are bounded (settings 135, creation
-56, owner authorization 23). Source/graph guards and exact AST scans pass; Rust tests
-and runtime work counts are PREPARED, not observed passing or performance results.
+RepositoryService remains one logical type across its distributed implementations;
+it, RepoSettingsService, SettingsEffects and CreationEffects have explicit cumulative
+component-gate entries. New feature owners use bounded modules and static ports.
+Source files obey the 400-line ceiling. Cumulative AST, dependency graph, Rust and
+runtime work-count assertions must pass on the final composed workspace; these are
+PREPARED acceptance gates, not observed performance results.
 No new normal/dev dependency, registry package, Cargo feature or lock edge is required.
 
 Additional shared-lane acceptance:
 
 ```text
-cargo test -p rbit-repositories --test creation
-cargo test -p rbit-services --test main repo_settings::creation
-cargo test -p rbit-services --test main orgs
-cargo test -p rbit-services --test main access
-cargo test -p rbit-services --test main imports
+node scripts/workspace.mjs test -p rbit-repositories --test creation --locked
+node scripts/workspace.mjs test -p rbit-services --test integration --locked repo_settings::creation
+node scripts/workspace.mjs test -p rbit-services --test integration --locked orgs
+node scripts/workspace.mjs test -p rbit-services --test integration --locked access
+node scripts/workspace.mjs test -p rbit-services --test integration --locked imports
 ```
 
 All service/UI/API ingress and event consumers remain at their existing paths; keep
 full workspace, archived enforcement, native repository UI, redirects/fork visibility,
 public cache and background deletion acceptance before feature retirement.
+
+## Controlled SQL failure fixtures
+
+The settings fixtures install failure triggers before opening the application pool.
+The deletion trigger reads a test-only gate row; toggling that row permits retry
+without changing the live schema. Both HEAD rollback and disk-first deletion require
+the exact injected error, not merely any internal failure. SQL work counts, retained
+metadata/disk gaps, audit suppression and successful retry assertions remain intact.
+
+This follows an observed diagnostic on SQLite 3.51.3: after external trigger DDL,
+a pooled DELETE reported a missing repository table while a fresh registered
+connection saw the table and returned the intended trigger failure for the identical
+DELETE. The underlying difference is not established as a production SQLite fix.
+No production query, pool setting or migration is changed by the fixture correction.
+The revised fixtures still require actual shared-lane execution before acceptance.
