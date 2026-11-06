@@ -13,6 +13,7 @@ use crate::views::{
 #[derive(Template)]
 #[template(path = "render_probe/explore_body.html")]
 pub(super) struct ExploreBody<'a> {
+    page: &'a Page,
     query: &'a str,
     sort: &'static str,
     archived: Option<&'static str>,
@@ -21,7 +22,7 @@ pub(super) struct ExploreBody<'a> {
 
 impl<'a> From<&'a ExplorePage> for ExploreBody<'a> {
     fn from(view: &'a ExplorePage) -> Self {
-        Self { query: &view.query, sort: view.sort, archived: view.archived, results: &view.results }
+        Self { page: &view.page, query: &view.query, sort: view.sort, archived: view.archived, results: &view.results }
     }
 }
 

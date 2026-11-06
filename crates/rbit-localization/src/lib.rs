@@ -10,6 +10,6 @@ mod locale;
 mod negotiation;
 mod pseudo;
 
-pub use catalog::{Catalog, LocalizedText, Message, RepositoryVisibility};
+pub use catalog::{Catalog, LocalizedDisplay, LocalizedText, Message, RepositoryVisibility};
 pub use locale::{Direction, Locale};
 pub use negotiation::{LocalePreferences, LocaleResolver, PreferenceSource, ResolvedLocale, UnsupportedDefault};

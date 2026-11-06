@@ -29,7 +29,7 @@
   {% else %}
   <span class="btn pointer-events-none opacity-50" aria-hidden="true">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}{{ results.labels.previous }}</span>
   {% endif %}
-  <span class="text-xs text-ink-muted">{{ results.labels.page_of }}</span>
+  <span class="text-xs text-ink-muted">{{ results.page_of() }}</span>
   {% if let Some(url) = pager.next_url %}
   <a href="{{ url }}" class="btn" rel="next" data-preload="visible">{{ results.labels.next }}{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</a>
   {% else %}

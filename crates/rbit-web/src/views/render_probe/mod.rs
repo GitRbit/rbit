@@ -82,3 +82,5 @@ fn login_into(mode: Mode, view: &LoginPage, output: &mut String) -> askama::Resu
 mod production_candidate;
 mod protocol_tests;
 mod tests;
+
+mod lazy_catalog;

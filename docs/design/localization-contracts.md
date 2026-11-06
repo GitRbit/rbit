@@ -131,3 +131,23 @@ switching; diagnostic resolver injection does not constitute that completed feat
 HTTP regressions cover component equality, locale/direction consistency, full history
 fallback, private repositories even for their signed-in owner, malicious interpolation,
 shape-header ambiguity and existing URL/filter/pagination behavior.
+
+
+## Deferred Explore text
+
+`Catalog::display(Message)` returns plain borrowed `LocalizedDisplay`, with the same
+ordinary template escaping boundary as `LocalizedText`. English ExploreSubtitle,
+PageOf and Stars format directly into the caller's writer from shared catalog
+literals. Diagnostic locales and other messages delegate to the existing owned
+catalog path; punctuation, plural wording and RTL isolation remain byte-compatible.
+No HTML-safety trait or raw string slot is introduced. `Catalog::text` stays available
+with unchanged semantics.
+
+Explore constructs the subtitle only while rendering a full-page header, using a
+borrow of Page.site_name rather than a self-referential view. PageOf is requested
+inside the existing multi-page template conditional; star labels write on demand.
+CountForQuery retains its previous owned formatting, which also existed in the main
+listing implementation. This removes specific source-level formatting/String work;
+no allocator-count, end-to-end latency or renderer-winner claim follows without a
+controlled measurement. The default renderer and shared-shell experiment use the
+same methods and exact full/fragment owned-catalog equivalence fixtures.

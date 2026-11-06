@@ -77,7 +77,7 @@ pub async fn explore(
             is_active: option == archived,
         })
         .collect();
-    let labels = ExploreText::new(catalog, &page.site_name, found.total, &query, &pagination);
+    let labels = ExploreText::new(catalog, found.total, &query);
     let title = if query.is_empty() { labels.title.to_string() } else { format!("{query} · {}", labels.title) };
     let view = ExplorePage {
         page: page.with_locale(locale.0.locale).titled(title),

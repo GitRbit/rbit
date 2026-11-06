@@ -4,7 +4,7 @@ use askama::Template;
 use askama_web::WebTemplate;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use rbit_core::{RepoSort, repository::ArchivedFilter};
-use rbit_localization::{Catalog, LocalizedText, Message};
+use rbit_localization::{Catalog, LocalizedDisplay, LocalizedText, Message};
 
 use super::{
     components::{Pagination, RepoCard},
@@ -55,7 +55,6 @@ pub struct ExploreFragment<'a> {
 #[derive(Debug)]
 pub struct ExploreText {
     pub title: LocalizedText,
-    pub subtitle: LocalizedText,
     pub search_placeholder: LocalizedText,
     pub search_label: LocalizedText,
     pub search_button: LocalizedText,
@@ -70,14 +69,12 @@ pub struct ExploreText {
     pub pagination: LocalizedText,
     pub previous: LocalizedText,
     pub next: LocalizedText,
-    pub page_of: LocalizedText,
 }
 
 impl ExploreText {
-    pub fn new(catalog: Catalog, site: &str, total: u64, query: &str, pager: &Pagination) -> Self {
+    pub fn new(catalog: Catalog, total: u64, query: &str) -> Self {
         Self {
             title: catalog.text(Message::ExploreTitle),
-            subtitle: catalog.text(Message::ExploreSubtitle { site }),
             search_placeholder: catalog.text(Message::ExploreSearchPlaceholder),
             search_label: catalog.text(Message::SearchRepositories),
             search_button: catalog.text(Message::SearchLabel),
@@ -92,14 +89,21 @@ impl ExploreText {
             pagination: catalog.text(Message::PaginationLabel),
             previous: catalog.text(Message::PreviousPage),
             next: catalog.text(Message::NextPage),
-            page_of: catalog.text(Message::PageOf { page: pager.page, pages: pager.page_count }),
         }
     }
 }
 
 impl ExploreResults {
-    pub fn star_label(&self, count: &i64) -> LocalizedText {
-        Catalog::new(self.locale).text(Message::Stars { count: *count })
+    pub fn star_label(&self, count: &i64) -> LocalizedDisplay<'static> {
+        Catalog::new(self.locale).display(Message::Stars { count: *count })
+    }
+
+    pub fn subtitle<'a>(&self, site: &'a str) -> LocalizedDisplay<'a> {
+        Catalog::new(self.locale).display(Message::ExploreSubtitle { site })
+    }
+
+    pub fn page_of(&self) -> LocalizedDisplay<'static> {
+        Catalog::new(self.locale).display(Message::PageOf { page: self.pagination.page, pages: self.pagination.page_count })
     }
 }
 

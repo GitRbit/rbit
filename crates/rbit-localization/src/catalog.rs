@@ -3,6 +3,9 @@
 use std::{borrow::Cow, fmt, fmt::Write};
 
 use crate::{Locale, pseudo};
+mod display;
+pub use display::LocalizedDisplay;
+use display::{PAGE_OF_SEPARATOR, PAGE_PREFIX, STARS_SUFFIX, SUBTITLE_PREFIX, SUBTITLE_SUFFIX};
 
 /// Typed visibility selector. Adapters map domain values without localized strings.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -148,7 +151,7 @@ impl Catalog {
             Message::NextPage => return self.literal_text("Next"),
             Message::PreviousPage => return self.literal_text("Previous"),
             Message::PageNumber { page } => {
-                self.literal(&mut output, "Page ");
+                self.literal(&mut output, PAGE_PREFIX);
                 let _ = write!(output, "{page}");
             }
             Message::RepositoryLinkLabel { owner, name } => {
@@ -159,9 +162,9 @@ impl Catalog {
             }
             Message::ExploreTitle => return self.literal_text("Explore"),
             Message::ExploreSubtitle { site } => {
-                self.literal(&mut output, "Public repositories on ");
+                self.literal(&mut output, SUBTITLE_PREFIX);
                 self.argument(&mut output, site);
-                output.push('.');
+                output.push_str(SUBTITLE_SUFFIX);
             }
             Message::ExploreSearchPlaceholder => return self.literal_text("Search by name or description"),
             Message::SortBy => return self.literal_text("Sort by"),
@@ -187,14 +190,14 @@ impl Catalog {
             }
             Message::PaginationLabel => return self.literal_text("Pagination"),
             Message::PageOf { page, pages } => {
-                self.literal(&mut output, "Page ");
+                self.literal(&mut output, PAGE_PREFIX);
                 let _ = write!(output, "{page}");
-                self.literal(&mut output, " of ");
+                self.literal(&mut output, PAGE_OF_SEPARATOR);
                 let _ = write!(output, "{pages}");
             }
             Message::Stars { count } => {
                 let _ = write!(output, "{count}");
-                self.literal(&mut output, " stars");
+                self.literal(&mut output, STARS_SUFFIX);
             }
         }
         self.finish(output)

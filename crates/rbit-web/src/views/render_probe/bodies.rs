@@ -10,6 +10,7 @@ macro_rules! explore_body {
         #[derive(Debug, Template)]
         #[template($($template)*)]
         pub(super) struct $name<'a> {
+            page: &'a Page,
             query: &'a str,
             sort: &'static str,
             archived: Option<&'static str>,
@@ -18,7 +19,7 @@ macro_rules! explore_body {
 
         impl<'a> From<&'a ExplorePage> for $name<'a> {
             fn from(view: &'a ExplorePage) -> Self {
-                Self { query: &view.query, sort: view.sort, archived: view.archived, results: &view.results }
+                Self { page: &view.page, query: &view.query, sort: view.sort, archived: view.archived, results: &view.results }
             }
         }
     };
