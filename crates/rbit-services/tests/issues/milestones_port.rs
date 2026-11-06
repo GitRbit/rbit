@@ -181,3 +181,5 @@ async fn milestones_one_per_issue_with_events() {
     assert!(issues.metadata(&[ctx.issue.id]).await.unwrap()[&ctx.issue.id].milestone.is_none());
     assert!(matches!(issues.milestone(&repo, v2.id).await, Err(ServiceError::NotFound)));
 }
+
+mod assignment;

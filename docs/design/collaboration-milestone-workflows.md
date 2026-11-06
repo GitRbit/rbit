@@ -2,9 +2,10 @@
 
 This follows the label catalog slice and activates all eight existing milestone
 catalog entry points in `rbit-collaboration`: list, counts, lookup with progress,
-title lookup, create, update, close/reopen and delete. Thread attachment, timeline
-publication, issue/pull-request policies and metadata batching stay in their
-existing adapters; the collaboration group is not retired by this slice.
+title lookup, create, update, close/reopen and delete. Thread assignment is activated
+separately through `MilestoneAssignment`, preserving its service timeline/event
+adapter. Other issue/pull-request policies and metadata batching remain separate;
+the collaboration group is not retired by this slice.
 
 ## Model closure and public compatibility
 
@@ -15,8 +16,8 @@ pure feature model with identical derives, serde names, variant order, `ALL`,
 `as_str`, `parse` and Display behavior. No duplicate state enum or ID type is added.
 Core's root and `issue` paths reexport the exact feature types, as do the existing
 storage and service paths. Original constructors, fields and signatures remain.
-`IssueMilestone`, the storage thread-attachment record, stays in storage because
-its `IssueId` dependency belongs to the later attachment closure.
+`IssueMilestone` now belongs to the assignment model closure and its storage path
+reexports the same type; its `IssueId` dependency is already feature-owned.
 
 Both the default model graph and opt-in `applications` graph remain contracts,
 serde and credential-free identity models, without runtime, password, crypto or legacy

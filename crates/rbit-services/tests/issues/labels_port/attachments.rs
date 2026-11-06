@@ -117,7 +117,7 @@ async fn failed_timeline_after_committed_add_retains_existing_gap_and_retry_is_n
     let label = fixture.label("bug").await;
     let number = fixture.create(&fixture.alice, "Issue", "").await;
     let ctx = fixture.open(&fixture.alice, number).await;
-    let options = sqlx::sqlite::SqliteConnectOptions::new().filename(fixture._dir.path().join("rbit.db"));
+    let options = sqlx::sqlite::SqliteConnectOptions::new().filename(fixture.directory.path().join("rbit.db"));
     let mut connection = sqlx::SqliteConnection::connect_with(&options).await.unwrap();
     sqlx::query("CREATE TRIGGER fixture_reject_label_event BEFORE INSERT ON issue_events BEGIN SELECT RAISE(ABORT, 'fixture label event failure'); END").execute(&mut connection).await.unwrap();
     let mut events = fixture.services.events.subscribe();

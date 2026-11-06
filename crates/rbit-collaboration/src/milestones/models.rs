@@ -1,6 +1,6 @@
 //! Milestone catalog records; thread attachment records remain with their existing adapter.
 
-use crate::IssueState;
+use crate::{IssueState, threads::IssueId};
 use rbit_contracts::{RepoId, Timestamp};
 use serde::{Deserialize, Serialize};
 
@@ -50,6 +50,14 @@ pub struct MilestoneInput {
 /// The milestone an issue belongs to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MilestoneRef {
+    pub id: MilestoneId,
+    pub title: String,
+}
+
+/// The milestone of one thread.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IssueMilestone {
+    pub issue: IssueId,
     pub id: MilestoneId,
     pub title: String,
 }

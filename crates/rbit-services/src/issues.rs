@@ -24,6 +24,7 @@ pub mod hooks;
 pub mod json;
 mod label_attachments;
 mod labels;
+mod milestone_assignment;
 mod milestones;
 
 use std::{
@@ -37,8 +38,8 @@ use std::{
 
 use rbit_auth::repo_access;
 use rbit_core::{
-    Account, AccountId, Issue, IssueId, IssueKind, IssueNumber, IssueState, LabelId, MilestoneId, RepoAccess, RepoId, StateReason,
-    TimelineEvent, Timestamp, User,
+    Account, AccountId, Issue, IssueId, IssueKind, IssueNumber, IssueState, LabelId, RepoAccess, RepoId, StateReason, TimelineEvent,
+    Timestamp, User,
     issue::{IssueAction, LabelSnapshot, issue_permissions},
     issue_query::{IssueQuery, KindFilter, StateFilter, Who},
     references,
@@ -550,34 +551,6 @@ impl IssueService {
             return Err(ServiceError::NotFound);
         }
         Ok(self.ctx.database.issue_meta().assignable(repo.repo.repo.id, prefix.trim(), MAX_ASSIGNABLE).await?)
-    }
-
-    /// Puts the thread in `milestone` (`None`: in none). A change records `Demilestoned`
-    /// for the old one and `Milestoned` for the new one.
-    pub async fn set_milestone(&self, actor: &User, ctx: &IssueContext, milestone: Option<MilestoneId>) -> Result<(), ServiceError> {
-        Self::require_triage(actor, ctx)?;
-        let store = self.ctx.database.issue_meta();
-        let new = match milestone {
-            Some(id) => Some(store.find_milestone(ctx.repo.repo.repo.id, id).await?.ok_or_else(|| invalid("unknown milestone"))?),
-            None => None,
-        };
-        let current = store.milestones_of(&[ctx.issue.id]).await?.pop();
-        if current.as_ref().map(|m| m.id) == new.as_ref().map(|m| m.id) {
-            return Ok(());
-        }
-        self.spend(actor)?;
-        store.set_milestone(ctx.issue.id, new.as_ref().map(|m| m.id)).await?;
-        if let Some(old) = current {
-            let event = TimelineEvent::Demilestoned { milestone: old.id, title: old.title.clone() };
-            self.timeline.record(ctx.issue.id, Some(actor.id()), event).await?;
-            self.publish(&ctx.issue, Some(actor.id()), IssueAction::Demilestoned { milestone: old.id, title: old.title });
-        }
-        if let Some(new) = new {
-            let event = TimelineEvent::Milestoned { milestone: new.id, title: new.title.clone() };
-            self.timeline.record(ctx.issue.id, Some(actor.id()), event).await?;
-            self.publish(&ctx.issue, Some(actor.id()), IssueAction::Milestoned { milestone: new.id });
-        }
-        Ok(())
     }
 
     // ------------------------------------------------------------------ references in the background

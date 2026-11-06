@@ -81,13 +81,7 @@ pub use rbit_collaboration::labels::{Label, LabelFields, LabelUsage};
 
 pub use rbit_collaboration::milestones::{Milestone, MilestoneFields, MilestoneProgress};
 
-/// The milestone of one thread.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IssueMilestone {
-    pub issue: IssueId,
-    pub id: MilestoneId,
-    pub title: String,
-}
+pub use rbit_collaboration::milestones::IssueMilestone;
 
 // ------------------------------------------------------------------ rows
 
