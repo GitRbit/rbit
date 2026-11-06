@@ -5,6 +5,7 @@ import { lstat, readFile, readdir } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { homedir } from "node:os";
 import { guarded, git } from "../workspace/paths.mjs";
+import { CONTROLLED_RUSTFLAGS, hasControlledFlags } from "./flags.mjs";
 
 export const sha = (value) => createHash("sha256").update(value).digest("hex");
 
@@ -25,7 +26,9 @@ export async function sourceIdentity(ctx) {
 
 export function flagIdentity(env) {
   const selected = Object.entries(env).filter(([name]) => /^(RUST.*FLAGS|CARGO_.*FLAGS|CARGO_PROFILE_.*|CARGO_BUILD_TARGET|CC|CXX|CFLAGS|LIBSQLITE3_FLAGS)$/.test(name)).sort(([a], [b]) => a.localeCompare(b));
-  return { effectiveFlagsSha256: sha(JSON.stringify(selected)), environmentSha256: sha(JSON.stringify(Object.entries(env).sort(([a], [b]) => a.localeCompare(b)))), wrappers: "explicitly disabled", incremental: false, automaticCacheMaintenance: false };
+  const controlled = hasControlledFlags(env);
+  return { effectiveFlagsSha256: sha(JSON.stringify(selected)), environmentSha256: sha(JSON.stringify(Object.entries(env).sort(([a], [b]) => a.localeCompare(b)))), wrappers: "explicitly disabled", incremental: controlled ? false : "unverified", automaticCacheMaintenance: false,
+    rustflagsPolicy: controlled ? { name: "controlled-encoded-v1", source: "CARGO_ENCODED_RUSTFLAGS", flags: CONTROLLED_RUSTFLAGS } : { name: "unverified" } };
 }
 
 export async function cargoConfigIdentity(ctx, env) {

@@ -39,6 +39,22 @@ Compiler wrappers and incremental compilation are explicitly disabled; the
 effective Rust compiler is selected through RUSTC (default `rustc` on PATH),
 overriding a Cargo config's compiler selection. Automatic cache eviction is
 disabled for the experiment. The existing namespace and lease still apply.
+The experiment also replaces inherited rustflags with the fixed nonempty
+`CARGO_ENCODED_RUSTFLAGS=--cap-lints=allow`. Cargo selects this source before plain,
+target triple/cfg and build rustflags; these lower-precedence environment flags
+are removed (including mixed-case aliases). This suppresses compiler lint
+diagnostics for this synthetic experiment only; it
+does not set codegen/profile options or an incremental directory. `CARGO_INCREMENTAL=0`
+and `CARGO_BUILD_INCREMENTAL=false` explicitly disable profile-driven incremental
+work. User rustflags, including response-file and explicit `-Cincremental` paths,
+are therefore outside this controlled experiment. Selected dev/release profile
+settings, including inherited config and `CARGO_PROFILE_*` overrides, remain
+intact and hashed; they are not claimed to be canonical Cargo defaults. Existing Cargo configs are not rewritten;
+their hashes remain part of provenance. Identity/sample records state the exact
+`controlled-encoded-v1` policy, and execution rejects a changed policy before any
+clean/compiler process starts. See Cargo's documented
+[mutually exclusive rustflags precedence](https://doc.rust-lang.org/cargo/reference/config.html#buildrustflags)
+and [incremental environment override](https://doc.rust-lang.org/cargo/reference/environment-variables.html).
 Ensure sufficient free disk space before running. Normal helper cache policy
 resumes for subsequent ordinary commands. Do not run direct Cargo concurrently.
 

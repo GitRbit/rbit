@@ -1,4 +1,5 @@
 // Fixed probe matrix; this tool never accepts arbitrary Cargo packages or commands.
+import { controlledFlags } from "./flags.mjs";
 export const PACKAGE = "rbit-render-probe";
 export const MODES = ["inheritance", "segments", "blocks"];
 export const COUNTS = [1, 8, 32, 96];
@@ -35,6 +36,6 @@ export function cleanArgs(config) {
 }
 
 export function measurementEnv(input) {
-  return { ...input, RUSTC: input.RUSTC || "rustc", CARGO_BUILD_RUSTC: input.RUSTC || "rustc", RBIT_WORKSPACE_JSON: "1", CARGO_INCREMENTAL: "0", RUSTC_WRAPPER: "", RUSTC_WORKSPACE_WRAPPER: "",
+  return { ...controlledFlags(input), RUSTC: input.RUSTC || "rustc", CARGO_BUILD_RUSTC: input.RUSTC || "rustc", RBIT_WORKSPACE_JSON: "1", RUSTC_WRAPPER: "", RUSTC_WORKSPACE_WRAPPER: "",
     CARGO_BUILD_RUSTC_WRAPPER: "", CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER: "", RBIT_BUILD_CACHE_MAX_BYTES: "0" };
 }

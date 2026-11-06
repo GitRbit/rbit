@@ -7,6 +7,7 @@ import { cargo, cargoProcess } from "../workspace/build.mjs";
 import { artifactIdentity, flagIdentity, sampleValidity, sourceIdentity, sha } from "./identity.mjs";
 import { cargoArgs, cleanArgs } from "./options.mjs";
 import { sampler } from "./sampler.mjs";
+import { assertControlledFlags } from "./flags.mjs";
 
 function digestSink() {
   const hash = createHash("sha256"); let bytes = 0;
@@ -17,6 +18,7 @@ export async function measuredJob(ctx, config, job, baseline, control, write, en
   let recorded = false;
   try {
     return await cargo(ctx, config.command, cargoArgs(job, config), { env, key: config.compatibilityKey, execute: async (_ctx, args, effectiveEnv, onArtifact) => {
+      assertControlledFlags(effectiveEnv);
       const cleanOutput = digestSink(); let clean = null;
       if (phase === "sample") {
         let cleanExit;
