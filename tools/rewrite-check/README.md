@@ -1,9 +1,11 @@
-# Logical-type size check
+# Structural and password-boundary checks
 
-Run `cargo run -p rbit-rewrite-check -- crates/rbit-kernel crates/rbit-localization`
-through the shared build-lane helper. The command emits JSON and fails if a logical
-type exceeds 400 authored lines or its local implementation ownership is unresolved.
-The repository's physical-file and dependency checks are separate.
+Run `node scripts/rewrite/check-types.mjs` to build the development checker through the
+shared lane, check strict replacement crates, then run the password-boundary mode using
+the same exact executable. Each run completes verified process-tree cleanup before the
+next starts; disposable runtime generations are pruned afterward. The command emits JSON
+and fails if a logical type exceeds 400 authored lines or its local implementation
+ownership is unresolved. The repository's physical-file and dependency checks are separate.
 
 The checker parses conventional library/binary/integration-test/example/bench targets
 and explicit manifest target paths, follows external and inline modules, and keys types
@@ -31,3 +33,30 @@ repository policy. Comments and blanks inside the definition/impl spans count; c
 between separate items do not belong to either logical type but still count per file.
 
 This development tool has no place in the production server dependency graph.
+
+## Legacy password scheduling boundary
+
+`rbit-rewrite-check --password-boundary [repository-root]` recursively scans only
+`crates/rbit-services/src` and `crates/rbit-server/src`. Missing, malformed or linked
+source entries fail closed. Every component below the explicitly supplied repository
+anchor is checked, including `crates`, the crate directory and `src`; an alias of the
+anchor itself does not authorize linked descendants. Directory traversal does not
+follow symlinks or Windows reparse points. The link-creation regression fixtures run on
+Unix, where they do not require Windows symlink privileges; the Windows implementation
+checks the reparse-point attribute as well as symbolic-link metadata.
+Integration tests and the compatibility facades themselves are outside
+these roots and may verify legacy compatibility.
+
+The mode parses Rust and examines authored tokens, including opaque macro groups and
+cfg-gated source. It rejects the `Passwords` identifier in bare, qualified, renamed or
+raw-identifier forms. Comments, documentation text and string literals are allowed.
+Auth/identity namespace wildcards, including imported namespace aliases, are rejected
+because they can hide that facade name; use explicit imports. Alias origins are tracked
+conservatively across authored files rather than relying on compiler name resolution.
+Diagnostics include the source path and line. This policy does not ban unrelated
+`spawn_blocking` work, such as Git operations.
+
+Macros are not expanded: generated imports or concatenated identifiers are outside this
+source-token proof and require review. This is a narrow guard against accidentally
+restoring direct legacy password scheduling after activation, not a complete call-graph
+or whole-program security analysis.

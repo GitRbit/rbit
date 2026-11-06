@@ -6,6 +6,15 @@ import { context } from "../workspace/paths.mjs";
 import { cargo } from "../workspace/build.mjs";
 import { pruneGenerations, runBinary } from "../workspace/runtime.mjs";
 
+async function verifiedRun(ctx, executable, args) {
+  const child = await runBinary(ctx, executable, args);
+  const code = child.exitCode !== null || child.signalCode !== null
+    ? child.exitCode ?? 1
+    : await new Promise((done) => child.once("exit", (value) => done(value ?? 1)));
+  if (child.runtimeCompletion) await child.runtimeCompletion;
+  return code;
+}
+
 async function main() {
   const ctx = await context();
   const baseline = JSON.parse(await readFile(new URL("../../docs/design/rewrite/main-inventory.json", import.meta.url), "utf8"));
@@ -20,9 +29,8 @@ async function main() {
   const build = await cargo(ctx, "build", ["--package", "rbit-rewrite-check", "--locked"]);
   const binary = build.executables.find((item) => item.name === "rbit-rewrite-check");
   if (!binary) throw new Error("Cargo did not produce the structural checker");
-  const child = await runBinary(ctx, binary.path, roots);
-  const code = child.exitCode ?? await new Promise((done) => child.once("exit", (value) => done(value ?? 1)));
-  if (child.runtimeCompletion) await child.runtimeCompletion;
+  let code = await verifiedRun(ctx, binary.path, roots);
+  if (code === 0) code = await verifiedRun(ctx, binary.path, ["--password-boundary", ctx.checkout]);
   await pruneGenerations(ctx);
   process.exitCode = code;
 }

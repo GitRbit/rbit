@@ -5,11 +5,16 @@
 //! The Node policy check separately enforces physical file ceilings and dependency edges.
 
 mod model;
+mod password_boundary;
 mod report;
 mod resolve;
 mod scan;
 
-use std::{env, path::PathBuf, process::ExitCode};
+use std::{
+    env,
+    path::{Path, PathBuf},
+    process::ExitCode,
+};
 
 fn main() -> ExitCode {
     match run() {
@@ -29,6 +34,15 @@ fn main() -> ExitCode {
 
 fn run() -> Result<bool, String> {
     let roots: Vec<PathBuf> = env::args_os().skip(1).map(PathBuf::from).collect();
+    if roots.first().is_some_and(|root| root == Path::new("--password-boundary")) {
+        if roots.len() > 2 {
+            return Err("usage: rbit-rewrite-check --password-boundary [repository-root]".into());
+        }
+        let report = password_boundary::check(roots.get(1).map_or(Path::new("."), PathBuf::as_path));
+        let passed = report.violations.is_empty();
+        println!("{}", serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?);
+        return Ok(passed);
+    }
     if roots.is_empty() {
         return Err("usage: rbit-rewrite-check <crate-directory> [crate-directory ...]".into());
     }
