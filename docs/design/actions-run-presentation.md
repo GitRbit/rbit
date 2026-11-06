@@ -1,0 +1,57 @@
+# Actions run presentation slice
+
+This slice binds the existing prototype hierarchy to the production run document.
+It uses the existing Rust/Axum/Askama/HTMX/Tailwind stack and existing theme tokens.
+It introduces no query, storage schema, scheduler control or runtime dependency.
+
+The heading and semantic facts list use existing `RunSummary` fields. Real job
+names, dependency order, duration and environment links remain the source of the
+job list. This does not infer a matrix graph, explain a failed assertion, invent
+progress percentages or add a log-search API. Existing trust warnings, approval
+and deployment review, cancel/rerun controls, raw sanitized summaries and artifact
+ZIP/tar links retain their authorization and route contracts.
+
+Run models and dependency ordering live in `views/actions/run.rs`; typed labels
+live in `views/actions/run_text.rs` and `rbit-localization`'s Actions catalog.
+The route's used presentation adapter is `routes/actions/runs/run_page.rs`.
+Header, review and results templates have separate responsibilities. The initial
+extraction's includes expand exactly to the old template source.
+
+New metadata/control labels use the same compiled English and opt-in expanded/RTL
+pseudo catalogs as Explore. Request locale negotiation supplies document direction,
+Content-Language and Vary dimensions. This is an incremental text migration:
+existing status/event/relative-time labels, trust paragraphs and deployment prose
+still use their existing English representations. Pseudo output is a diagnostic,
+not a translated language. Dynamic title/name/ref values remain escaped Unicode
+text, with explicit bidirectional isolation for metadata and commit identifiers.
+
+## Live refresh ownership
+
+The run retains its existing `#run`, self URL, whole-section HTMX replacement and
+three-second polling. No-JavaScript navigation and native POST forms still work.
+The enhancement never cancels a poll or suppresses a returned permission update.
+
+Immediately before a successful same-run GET poll swaps, it snapshots only the
+approval checkbox and deployment-comment text, dirty state and focused selection.
+After replacement it restores dirty values only into a newly rendered form with
+the same method, action, review kind and environment, and matching enabled fields.
+It never recreates a missing form or writes hidden fields, CSRF state or actions.
+POST responses, failed/unauthorized responses, navigation, changed environments
+and disabled controls do not receive old values. It restores focus only if the
+browser is on the body, preserving a user's focus elsewhere. Snapshots are keyed
+to the request object in a WeakMap and are not persisted or transmitted.
+
+## Verification and acceptance
+
+DOM fixtures cover dirty text/checkbox/caret retention, removed authorization,
+changed environment/action, disabled controls, POST/error/navigation exclusions,
+new server defaults and unrelated focus. Real-router fixtures seed a matrix run,
+fork approval and workflow error, assert native route/method/permission contracts,
+escaping, locale cache dimensions and full/HTMX document behavior. Existing reader/
+writer, environment, artifact and sanitized-summary integration tests remain gates.
+
+No compiler was run while preparing this slice. Run the selected integration and
+localization tests and strict Clippy through the shared build helper before merge.
+Fresh matching-revision CSS/JS builds, isolated Linux visual proof, 360px overflow,
+light/dark/RTL keyboard review and human screenshot acceptance remain required.
+No screenshot acceptance or production render-speed improvement is claimed here.

@@ -32,6 +32,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Actions run pages group existing workflow, commit, timing and attempt details in a
+  responsive summary, with typed localized presentation labels. Review input and
+  keyboard focus survive live refreshes only while the server still grants access
+  to the same approval or deployment-review form.
+
 - A stable `CI required` result gate with revision, platform and validation summaries;
   skipped or unsuccessful required jobs cannot produce a passing aggregate.
 

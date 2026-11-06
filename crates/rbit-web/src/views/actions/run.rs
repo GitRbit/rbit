@@ -196,3 +196,17 @@ impl ArtifactRow {
         }
     }
 }
+
+impl RunPage {
+    pub fn labels(&self) -> super::RunText {
+        super::RunText::new(self.page.locale)
+    }
+
+    pub fn rerun_label(&self, name: &str) -> rbit_localization::LocalizedText {
+        rbit_localization::Catalog::new(self.page.locale).actions(rbit_localization::ActionsMessage::RerunJob { name })
+    }
+
+    pub fn summary_label(&self, job: &str) -> rbit_localization::LocalizedText {
+        rbit_localization::Catalog::new(self.page.locale).actions(rbit_localization::ActionsMessage::Summary { job })
+    }
+}

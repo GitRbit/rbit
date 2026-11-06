@@ -1,30 +1,71 @@
-  <div class="flex flex-wrap items-start gap-3">
+<div class="box overflow-hidden">
+  <div class="flex flex-wrap items-start gap-3 px-4 py-4 sm:px-5">
     {% let look = run.look %}
-    <span class="mt-1">{% include "actions/state.html" %}</span>
+    <span class="mt-1 shrink-0">{% include "actions/state.html" %}</span>
     <div class="min-w-0 flex-1">
-      <h1 class="break-words text-xl font-semibold tracking-tight">{{ run.title }} <span class="font-normal text-ink-muted">#{{ run.number }}</span></h1>
-      <p class="mt-1 flex flex-wrap items-center gap-x-1.5 text-[13px] text-ink-muted">
-        <span>{{ run.look.label }}</span><span aria-hidden="true">·</span><span>{{ run.event }}</span>
-        {% if !run.reference.is_empty() %}<span aria-hidden="true">·</span><span class="font-mono text-xs">{{ run.reference }}</span>{% endif %}
-        <span aria-hidden="true">·</span><a class="font-mono text-xs hover:text-ink hover:underline hover:underline-offset-4" href="{{ run.commit_url }}" title="{{ run.sha }}">{{ run.short_sha }}</a>
-        {% if let Some(actor) = run.actor %}<span aria-hidden="true">·</span><span>by {{ actor }}</span>{% endif %}
+      <h1 class="break-words text-xl font-semibold tracking-tight">
+        {{ run.title }} <span class="font-normal text-ink-muted">#{{ run.number }}</span>
+      </h1>
+      <p class="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-ink-muted">
+        <span>{{ run.look.label }}</span>
+        <span aria-hidden="true">·</span><span>{{ run.event }}</span>
+        {% if let Some(actor) = run.actor %}
+        <span aria-hidden="true">·</span><span>{{ text.triggered_by }} <bdi>{{ actor }}</bdi></span>
+        {% endif %}
         <span aria-hidden="true">·</span><time datetime="{{ run.when_iso }}">{{ run.when }}</time>
-        {% if let Some(duration) = run.duration %}<span aria-hidden="true">·</span><span class="tabular-nums">{{ duration }}</span>{% endif %}
-        {% if run.attempt > 1 %}<span aria-hidden="true">·</span><span>attempt {{ run.attempt }}</span>{% endif %}
       </p>
     </div>
     {% if can_write %}
     <div class="flex w-full flex-wrap gap-2 sm:w-auto">
       {% if let Some(cancel_url) = cancel_url %}
-      <form method="post" action="{{ cancel_url }}"><button class="btn h-10 sm:h-8" type="submit">{% call ui::icon("stop", "size-3.5") %}{% endcall %}Cancel run</button></form>
+      <form method="post" action="{{ cancel_url }}">
+        <button class="btn h-10 sm:h-8" type="submit">
+          {% call ui::icon("stop", "size-3.5") %}{% endcall %}{{ text.cancel }}
+        </button>
+      </form>
       {% endif %}
       {% if let Some(rerun_failed_url) = rerun_failed_url %}
-      <form method="post" action="{{ rerun_failed_url }}"><button class="btn h-10 sm:h-8" type="submit">{% call ui::icon("refresh", "size-3.5") %}{% endcall %}Re-run failed</button></form>
+      <form method="post" action="{{ rerun_failed_url }}">
+        <button class="btn h-10 sm:h-8" type="submit">
+          {% call ui::icon("refresh", "size-3.5") %}{% endcall %}{{ text.rerun_failed }}
+        </button>
+      </form>
       {% endif %}
       {% if let Some(rerun_url) = rerun_url %}
-      <form method="post" action="{{ rerun_url }}"><button class="btn h-10 sm:h-8" type="submit">{% call ui::icon("refresh", "size-3.5") %}{% endcall %}Re-run all</button></form>
+      <form method="post" action="{{ rerun_url }}">
+        <button class="btn h-10 sm:h-8" type="submit">
+          {% call ui::icon("refresh", "size-3.5") %}{% endcall %}{{ text.rerun_all }}
+        </button>
+      </form>
       {% endif %}
     </div>
     {% endif %}
   </div>
+  <dl class="grid grid-cols-2 gap-x-5 gap-y-4 border-t border-line bg-subtle px-4 py-4 text-[13px] sm:grid-cols-4 sm:px-5">
+    <div class="min-w-0">
+      <dt class="text-xs text-ink-muted">{{ text.workflow }}</dt>
+      <dd class="mt-1 break-words font-medium">
+        <a class="hover:underline hover:underline-offset-4" href="{{ run.workflow_url }}"><bdi>{{ run.workflow }}</bdi></a>
+      </dd>
+    </div>
+    <div class="min-w-0">
+      <dt class="text-xs text-ink-muted">{{ text.commit }}</dt>
+      <dd class="mt-1 break-words">
+        <a class="font-mono text-xs hover:underline hover:underline-offset-4"
+           href="{{ run.commit_url }}" title="{{ run.sha }}"><bdi dir="ltr">{{ run.short_sha }}</bdi></a>
+        {% if !run.reference.is_empty() %}<bdi class="mt-1 block font-mono text-xs text-ink-muted">{{ run.reference }}</bdi>{% endif %}
+      </dd>
+    </div>
+    {% if let Some(duration) = run.duration %}
+    <div class="min-w-0">
+      <dt class="text-xs text-ink-muted">{{ text.duration }}</dt>
+      <dd class="mt-1 tabular-nums">{{ duration }}</dd>
+    </div>
+    {% endif %}
+    <div class="min-w-0">
+      <dt class="text-xs text-ink-muted">{{ text.attempt }}</dt>
+      <dd class="mt-1 tabular-nums">{{ run.attempt }}</dd>
+    </div>
+  </dl>
+</div>
 
