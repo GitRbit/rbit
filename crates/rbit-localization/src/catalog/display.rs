@@ -1,4 +1,4 @@
-//! Plain lazy messages, escaped by the caller just like LocalizedText.
+//! Plain lazy messages, escaped by the caller just like `LocalizedText`.
 use super::{Catalog, Message};
 use crate::Locale;
 use std::fmt;
@@ -10,7 +10,7 @@ pub(super) const PAGE_OF_SEPARATOR: &str = " of ";
 pub(super) const STARS_SUFFIX: &str = " stars";
 
 /// A borrowed typed message, never trusted HTML. Ordinary Display interpolation
-/// preserves the template's escaping boundary; there is deliberately no as_str,
+/// preserves the template's escaping boundary; there is deliberately no `as_str`,
 /// HTML-safety implementation, parser, owned argument or pre-rendered markup.
 #[derive(Clone, Copy, Debug)]
 pub struct LocalizedDisplay<'a> {
@@ -19,8 +19,8 @@ pub struct LocalizedDisplay<'a> {
 }
 impl Catalog {
     /// Defers formatting until consumed. The three English Explore dynamic labels
-    /// write straight to the destination; all other cases retain text() semantics.
-    pub const fn display<'a>(self, message: Message<'a>) -> LocalizedDisplay<'a> {
+    /// write straight to the destination; all other cases retain `text()` semantics.
+    pub const fn display(self, message: Message<'_>) -> LocalizedDisplay<'_> {
         LocalizedDisplay { catalog: self, message }
     }
 }
