@@ -6,7 +6,7 @@ import { cargoProcess } from "../workspace/build.mjs";
 const artifact = () => ({ reason: "compiler-artifact", target: { kind: ["lib"] } });
 test("Cargo hook receives non-executable artifacts and optional diagnostics without global output", async () => {
   const messages = [], chunks = [];
-  await cargoProcess({ checkout: "." }, ["check"], {}, () => assert.fail("not executable"), {
+  await cargoProcess({ checkout: "." }, ["check"], { RBIT_WORKSPACE_CARGO_TREE: "off" }, () => assert.fail("not executable"), {
     captureStderr: true, onMessage: (message) => messages.push(message), output: { write: (chunk) => chunks.push(String(chunk)) }, diagnostics: { write: (chunk) => chunks.push(String(chunk)) },
     spawnProcess(_command, _args, config) {
       assert.equal(config.stdio[2], "pipe"); const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough();

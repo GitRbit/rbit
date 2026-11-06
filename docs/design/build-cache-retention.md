@@ -175,14 +175,17 @@ Argument semantics are grounded in the official [Cargo test options](https://doc
 and [nextest Cargo/runner options](https://nexte.st/docs/running/).
 
 
-## Opt-in Cargo completion foundation
+## Windows owned Cargo completion
 
 The managed-retention planner cannot treat ordinary Cargo close as proof of all
-compiler descendants stopping. `RBIT_WORKSPACE_CARGO_TREE=windows-job` now selects
-a strict Windows-only execution path in the shared helper; absent or `off` retains
-the existing behavior. Unknown values and unsupported operating systems fail before
-execution, with no process-group/PID fallback. This mode remains off by default and
-is not automatic cache rotation, compaction, pruning or a storage-budget guarantee.
+compiler descendants stopping. The shared helper now defaults to strict `windows-job`
+execution on Windows. `RBIT_WORKSPACE_CARGO_TREE=off` explicitly retains the prior
+unowned execution path; non-Windows defaults stay `off`. Explicit `windows-job` on
+unsupported operating systems and unknown values fail before execution, with no
+process-group/PID fallback. Unix owned-Cargo activation remains open. This Windows
+default is not automatic cache rotation, compaction, pruning, blanket unit approval
+or a storage-budget guarantee. Retention observation and candidate measurement remain
+separate default-off controls.
 
 The path requires the actual management lease and reuses the existing Windows
 JOB_LIST launcher: the Cargo proxy is associated at creation, KILL_ON_JOB_CLOSE

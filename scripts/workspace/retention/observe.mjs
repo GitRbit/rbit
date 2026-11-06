@@ -4,7 +4,7 @@ import { lstat, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { guarded } from "../paths.mjs";
 import { requireLease } from "../storage.mjs";
-import { verifiedCargoCompletion } from "../cargo-tree.mjs";
+import { cargoTreeMode, verifiedCargoCompletion } from "../cargo-tree.mjs";
 import { boundedInput, policySnapshot } from "./policy.mjs";
 import { namespaceUsage, freeBytes } from "./usage.mjs";
 import { proveHandoff } from "./handoff.mjs";
@@ -12,11 +12,11 @@ import { planRetention } from "./planner.mjs";
 const observations = new WeakMap();
 const RECORD = "managed-observation.json";
 
-export function managedRetentionMode(env) {
+export function managedRetentionMode(env, platform = process.platform) {
   const mode = env.RBIT_BUILD_MANAGED_RETENTION;
   if (mode === undefined || mode === "off") return "off";
   if (!["observe", "measure-candidate"].includes(mode)) throw new Error("RBIT_BUILD_MANAGED_RETENTION must be off, observe or measure-candidate");
-  if (env.RBIT_WORKSPACE_CARGO_TREE !== "windows-job") throw new Error("Managed observation requires owned windows-job Cargo completion");
+  if (cargoTreeMode(env, platform) !== "windows-job") throw new Error("Managed observation requires owned windows-job Cargo completion");
   return mode;
 }
 /** `read` is a filesystem seam for temporary tests, not observation/JSON authority. */

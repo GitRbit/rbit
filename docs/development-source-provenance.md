@@ -87,13 +87,20 @@ files refuse work. Signed ledger replay alone cannot hide changed artifacts or a
 different source/root. This is not protection against a malicious local user who can
 replace helper code, steal its key or bypass the writer lease.
 
-Existing ownership defaults remain unchanged. Explicit `windows-job` execution can
-approve units after verified native tree completion. Without that proof, the command
-reports `trusted:false` and no new unit approvals; subsequent commands conservatively
-invalidate untrusted local freshness. Missing/foreign proof in owned mode retains an
-uncertain blocked lease, even when ledger diagnostics also fail. No potentially active
-artifact tree is scanned after such a failure. Native ownership on other platforms is
-a separate activation task.
+On Windows the helper now defaults to strict `windows-job` ownership, allowing new
+local-unit approvals only after verified native tree completion for that invocation.
+`RBIT_WORKSPACE_CARGO_TREE=off` explicitly selects the prior unowned execution path;
+non-Windows defaults remain `off`, and requesting `windows-job` there is refused.
+Without owned proof, the command reports `trusted:false` and no new unit approvals;
+subsequent commands conservatively invalidate untrusted local freshness. Missing or
+foreign proof in Windows default/explicit owned mode retains an uncertain blocked
+lease, even when ledger diagnostics also fail. No potentially active artifact tree
+is scanned after such a failure. Unix owned-Cargo activation remains open; runtime
+process-group support is not adopted as equivalent compiler-completion proof.
+
+This default change does not automatically approve all old cache artifacts or claim
+warm reuse, faster builds, cache compaction or a bounded storage budget. Every unit
+still requires the source/layout/provenance checks above and actual owned completion.
 
 `generate-lockfile` remains a noncompiler writer under the lease. It does not require
 already-valid locked metadata and cannot approve compilation units. The next compiler

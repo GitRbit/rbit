@@ -27,12 +27,15 @@ function run(ctx,lease,child,native={},options={}) {
  return ownedCargo(ctx,["test","--message-format=json"],{},()=>{}, {
   lease,native:{resolve:async()=>"cargo.exe",launch:()=>{child.markLaunched();return child;},verify:async()=>true,...native},
   output:{write:()=>{}},diagnostics:{write:()=>{}},...options,
- },(ctx,args,env,artifact,stream)=>cargoProcess(ctx,args,env,artifact,stream));
+ },(ctx,args,env,artifact,stream)=>cargoProcess(ctx,args,{...env,RBIT_WORKSPACE_CARGO_TREE:"off"},artifact,stream));
 }
 async function close(child,code=0,signal=null) { await child.launched;child.stdout.end();child.stderr.end();await tick();child.emit("close",code,signal); }
 
-test("strict ownership is explicit and unsupported platforms never fall back",()=>{
- assert.equal(cargoTreeMode({}),"off");assert.equal(cargoTreeMode({RBIT_WORKSPACE_CARGO_TREE:"off"},"linux"),"off");
+test("Windows defaults to strict ownership; explicit off and non-Windows defaults remain unchanged",()=>{
+ assert.equal(cargoTreeMode({},"win32"),"windows-job");
+ for(const platform of ["win32","linux","darwin","freebsd"]) assert.equal(cargoTreeMode({RBIT_WORKSPACE_CARGO_TREE:"off"},platform),"off");
+ for(const platform of ["linux","darwin","freebsd"]) assert.equal(cargoTreeMode({},platform),"off");
+ assert.equal(cargoTreeMode({}),process.platform==="win32"?"windows-job":"off");
  assert.equal(cargoTreeMode({RBIT_WORKSPACE_CARGO_TREE:"windows-job"},"win32"),"windows-job");
  for(const value of ["1","true","auto",""]) assert.throws(()=>cargoTreeMode({RBIT_WORKSPACE_CARGO_TREE:value}),/must be/);
  assert.throws(()=>cargoTreeMode({RBIT_WORKSPACE_CARGO_TREE:"windows-job"},"linux"),/unsupported/);
@@ -151,7 +154,7 @@ test("actual helper cannot publish an exact executable until owned completion is
   await mkdir(env.CARGO_TARGET_DIR,{recursive:true});const executable=join(env.CARGO_TARGET_DIR,'rbit.exe');await writeFile(executable,'exact fresh binary');
   const child=fake();
   const completed=ownedCargo(ctx,args,env,artifact,{...control,native:{resolve:async()=> 'cargo.exe',launch:()=>{child.markLaunched();return child;},verify:async()=>{enteredProof();await gate;return true;}},output:{write:()=>{}},diagnostics:{write:()=>{}}},
-   (ctx,args,env,artifact,stream)=>cargoProcess(ctx,args,env,artifact,stream));
+   (ctx,args,env,artifact,stream)=>cargoProcess(ctx,args,{...env,RBIT_WORKSPACE_CARGO_TREE:"off"},artifact,stream));
   await child.launched;child.stdout.write(JSON.stringify({reason:'compiler-artifact',executable,target:{kind:['bin'],name:'rbit'}}));await close(child);return completed;
  }});
  await entered;

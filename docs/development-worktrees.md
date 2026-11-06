@@ -41,7 +41,12 @@ select a different compatibility namespace, not a per-branch directory.
 One repository-wide lease serializes builds, checks and tests through completion. This
 is deliberately one lane, rather than an unlimited target directory per worktree.
 Checks that need independent parallel capacity must use an explicitly budgeted future
-lane policy. Commands accept normal Cargo arguments except manifest, output-directory,
+lane policy. On Windows, shared Cargo execution defaults to the strict Windows Job
+Object launcher described below. `RBIT_WORKSPACE_CARGO_TREE=off` explicitly opts into
+the prior unowned path; non-Windows defaults remain unchanged. There is no silent
+PID/normal-exit fallback if owned execution fails. Unit reuse still requires the
+[source-provenance checks](development-source-provenance.md); opting out cannot approve
+new units without native proof. Unix owned-Cargo activation remains separate. Commands accept normal Cargo arguments except manifest, output-directory,
 message-format and arbitrary config overrides, which could escape shared storage.
 `--locked` is caller controlled: use it for verification; omit it only when intentionally
 updating the lockfile.

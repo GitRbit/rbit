@@ -42,7 +42,7 @@ export async function completion(ctx, lease, { code = 0, verified = true, invoca
     lease, invocation,
     native: { resolve: async () => "cargo.exe", launch: () => { launched(); return child; }, verify: async () => verified },
     output: { write: () => {} }, diagnostics: { write: () => {} },
-  }, (ctx, args, env, artifact, options) => cargoProcess(ctx, args, env, artifact, options));
+  }, (ctx, args, env, artifact, options) => cargoProcess(ctx, args, {...env,RBIT_WORKSPACE_CARGO_TREE:"off"}, artifact, options));
   await started;
   child.stdout.end();
   child.stderr.end();

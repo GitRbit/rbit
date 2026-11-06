@@ -333,3 +333,14 @@ test("absence observation terminates when even the filesystem root is missing", 
   }), /ABSENCE_UNOBSERVED/);
   assert.ok(calls < 128);
 });
+
+test("Windows default source proof refuses missing completion instead of taking the legacy off path", { skip: process.platform !== "win32" }, async t => {
+  const f = await sourceFixture(t), ctx = f.context("a");
+  await assert.rejects(leased(join(ctx.cache, ".lease"), async lease => {
+    const request = f.request();
+    delete request.env.RBIT_WORKSPACE_CARGO_TREE;
+    const guard = await beginSourceProof(ctx, request, lease, f);
+    await finishSourceProof(guard.handle, undefined, lease);
+  }), UncertainProcessTreeError);
+  await assert.rejects(acquire(join(ctx.cache, ".lease"), { timeout: 0 }), /Blocked lease/);
+});

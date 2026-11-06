@@ -118,7 +118,7 @@ test("IDE output forwards every Cargo JSON record exactly once, including non-ex
     null, { testOutput: true },
   ];
   let output = "";
-  const running = cargoProcess({ checkout: "." }, [], { RBIT_WORKSPACE_JSON: "1" }, () => {}, {
+  const running = cargoProcess({ checkout: "." }, [], { RBIT_WORKSPACE_JSON: "1", RBIT_WORKSPACE_CARGO_TREE: "off" }, () => {}, {
     spawnProcess: () => child, output: { write: (line) => { output += line; } },
     diagnostics: { write: () => assert.fail("IDE diagnostics must remain JSON") },
   });
@@ -140,7 +140,7 @@ test("process errors settle only after close, keeping the enclosing lease held",
   const child = new EventEmitter();
   child.stdout = new PassThrough();
   let settled = false;
-  const running = cargoProcess({ checkout: "." }, [], {}, () => {}, { spawnProcess: () => child });
+  const running = cargoProcess({ checkout: "." }, [], { RBIT_WORKSPACE_CARGO_TREE: "off" }, () => {}, { spawnProcess: () => child });
   const failed = assert.rejects(running, /spawn failed/).then(() => { settled = true; });
   child.emit("error", new Error("spawn failed"));
   await new Promise((done) => setImmediate(done));
@@ -155,7 +155,7 @@ test("signalled Cargo retains a blocked lease instead of admitting another write
   const child = new EventEmitter();
   child.stdout = new PassThrough();
   const execute = (_ctx, args, env, artifact) => {
-    const pending = cargoProcess(_ctx, args, env, artifact, { spawnProcess: () => child });
+    const pending = cargoProcess(_ctx, args, {...env, RBIT_WORKSPACE_CARGO_TREE: "off"}, artifact, { spawnProcess: () => child });
     setImmediate(() => { child.stdout.end(); child.emit("close", null, "SIGTERM"); });
     return pending;
   };
@@ -168,7 +168,7 @@ test("Windows-style code1 with no signal cannot release a possibly orphaned comp
   const ctx = await fixture(t);
   const execute = (_ctx, args, env, artifact) => {
     const child = new EventEmitter(); child.pid = 1234; child.stdout = new PassThrough();
-    const pending = cargoProcess(_ctx, args, env, artifact, { spawnProcess: () => child });
+    const pending = cargoProcess(_ctx, args, {...env, RBIT_WORKSPACE_CARGO_TREE: "off"}, artifact, { spawnProcess: () => child });
     setImmediate(() => { child.stdout.end(); child.emit("close", 1, null); });
     return pending;
   };

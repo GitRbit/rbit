@@ -13,9 +13,11 @@ const budget = 16 * 1024 ** 3;
 test("observation is default off and cannot silently run without owned completion mode", () => {
   assert.equal(managedRetentionMode({}), "off");
   assert.equal(managedRetentionMode({ RBIT_BUILD_MANAGED_RETENTION: "off" }), "off");
-  assert.equal(managedRetentionMode({ RBIT_BUILD_MANAGED_RETENTION: "observe", RBIT_WORKSPACE_CARGO_TREE: "windows-job" }), "observe");
+  assert.equal(managedRetentionMode({ RBIT_BUILD_MANAGED_RETENTION: "observe", RBIT_WORKSPACE_CARGO_TREE: "windows-job" }, "win32"), "observe");
+  assert.equal(managedRetentionMode({ RBIT_BUILD_MANAGED_RETENTION: "observe" }, "win32"), "observe");
   for (const mode of ["1", "true", "apply", "delete", ""]) assert.throws(() => managedRetentionMode({ RBIT_BUILD_MANAGED_RETENTION: mode }), /must be/);
-  assert.throws(() => managedRetentionMode({ RBIT_BUILD_MANAGED_RETENTION: "observe" }), /requires owned/);
+  assert.throws(() => managedRetentionMode({ RBIT_BUILD_MANAGED_RETENTION: "observe" }, "linux"), /requires owned/);
+  assert.throws(() => managedRetentionMode({ RBIT_BUILD_MANAGED_RETENTION: "observe", RBIT_WORKSPACE_CARGO_TREE: "off" }, "win32"), /requires owned/);
 });
 
 test("trusted record derives graph internally and keeps legacy shared artifacts unevictable", async t => {

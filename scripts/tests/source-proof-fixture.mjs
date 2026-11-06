@@ -38,7 +38,7 @@ export async function sourceFixture(t) {
     if (!path.startsWith(root)) { if (optional) return null; throw new Error("Fixture external input refused"); }
     return boundedInput(path, optional, maximum);
   };
-  const request = () => ({ lane, namespace, command: "check", args: ["-p", "model"], env: { CARGO_HOME: join(root, "cargo-home") } });
+  const request = () => ({ lane, namespace, command: "check", args: ["-p", "model"], env: { RBIT_WORKSPACE_CARGO_TREE: "off", CARGO_HOME: join(root, "cargo-home") } });
   async function unit(hash = "a".repeat(16), { profile = "debug", features = [], content = "A", stamp = true, kind = "lib", rootName = "model", targetName = "model" } = {}) {
     const directory = join(lane, "intermediates", profile, ".fingerprint", `${rootName}-${hash}`);
     const deps = join(lane, "intermediates", profile, "deps");

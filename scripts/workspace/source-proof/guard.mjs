@@ -1,7 +1,7 @@
 // One command's opaque proof. Disk records cannot select mutation paths or approve outputs.
 import { resolve } from "node:path";
 import { requireLease } from "../storage.mjs";
-import { verifiedCargoCompletion } from "../cargo-tree.mjs";
+import { cargoTreeMode, verifiedCargoCompletion } from "../cargo-tree.mjs";
 import { inputSnapshot, hash } from "./inputs.mjs";
 import { scanUnits, invalidateStamp } from "./units.mjs";
 import { prepareExportWitnesses, freshExportTransition } from "./exports.mjs";
@@ -64,7 +64,7 @@ export async function finishSourceProof(handle, completion, lease) {
   const value = commands.get(handle);
   if (!value || value.token !== lease?.token) throw new Error("SOURCE_PROOF_AUTHORITY_UNPROVED");
   if (!verifiedCargoCompletion(completion, lease, value.invocation)
-    && (completion !== undefined || value.request.env.RBIT_WORKSPACE_CARGO_TREE === "windows-job")) {
+    && (completion !== undefined || cargoTreeMode(value.request.env) === "windows-job")) {
     const uncertain = new UncertainProcessTreeError("Shared Cargo completion is unproved for this invocation");
     try { await failSourceProof(handle, lease); }
     catch (diagnostic) { try { uncertain.provenanceRecordError = diagnostic; } catch {} }

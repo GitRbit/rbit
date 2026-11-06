@@ -1,4 +1,4 @@
-// Strict opt-in compiler ownership. No fallback to a PID/normal-exit heuristic.
+// Strict compiler ownership, default on Windows. No PID/normal-exit proof fallback.
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { lstat, realpath, readdir, rm } from "node:fs/promises";
@@ -12,7 +12,8 @@ const receipts = new WeakMap();
 const failedReceipts = new WeakMap();
 export function cargoTreeMode(env, platform = process.platform) {
   const mode = env.RBIT_WORKSPACE_CARGO_TREE;
-  if (mode === undefined || mode === "off") return "off";
+  if (mode === undefined) return platform === "win32" ? "windows-job" : "off";
+  if (mode === "off") return "off";
   if (mode !== "windows-job") throw new Error("RBIT_WORKSPACE_CARGO_TREE must be off or windows-job");
   if (platform !== "win32") throw new Error("Owned Cargo windows-job mode is unsupported on this platform");
   return mode;

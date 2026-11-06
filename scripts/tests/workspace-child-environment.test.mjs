@@ -45,7 +45,7 @@ async function fixture(t) {
 }
 
 test('actual Cargo consumer filters only reserved controls at spawn and keeps helper JSON mode', async () => {
-  const env = environment();
+  const env = Object.freeze({ ...environment(), RBIT_WORKSPACE_CARGO_TREE: "off" });
   let output = '';
   await cargoProcess({ checkout: '.' }, ['test'], env, () => {}, {
     spawnProcess(name, args, options) {
@@ -60,24 +60,26 @@ test('actual Cargo consumer filters only reserved controls at spawn and keeps he
   assert.equal(env.RBIT_BUILD_MANAGED_RETENTION, 'off', 'input environment was not mutated');
 });
 
-test('Windows-job mode is selected before filtering and owned launch receives the filtered spawn environment',
+test('Default and explicit Windows ownership are selected before filtering the spawn environment',
   { skip: process.platform !== 'win32' }, async t => {
     const ctx = await fixture(t);
-    const env = Object.freeze({ ...environment(), RBIT_WORKSPACE_CARGO_TREE: 'windows-job' });
-    assert.equal(cargoTreeMode(env), 'windows-job');
-    await leased(join(ctx.cache, '.lease'), async lease => {
-      let launched = false;
-      const receipt = await cargoProcess(ctx, ['check'], env, () => {}, {
-        lease, native: {
-          resolve: async (_ctx, original) => { assert.equal(original, env); return 'cargo.exe'; },
-          launch(_executable, _args, options) { launched = true; assertChildEnv(options.env, env); return completedCargo(); },
-          verify: async () => true,
-        },
-        output: { write() {} }, diagnostics: { write() {} },
+    for (const controls of [{}, { RBIT_WORKSPACE_CARGO_TREE: 'windows-job' }]) {
+      const env = Object.freeze({ ...environment(), ...controls });
+      assert.equal(cargoTreeMode(env), 'windows-job');
+      await leased(join(ctx.cache, '.lease'), async lease => {
+        let launched = false;
+        const receipt = await cargoProcess(ctx, ['check'], env, () => {}, {
+          lease, native: {
+            resolve: async (_ctx, original) => { assert.equal(original, env); return 'cargo.exe'; },
+            launch(_executable, _args, options) { launched = true; assertChildEnv(options.env, env); return completedCargo(); },
+            verify: async () => true,
+          },
+          output: { write() {} }, diagnostics: { write() {} },
+        });
+        assert.ok(launched);
+        assert.ok(verifiedCargoCompletion(receipt, lease));
       });
-      assert.ok(launched);
-      assert.ok(verifiedCargoCompletion(receipt, lease));
-    });
+    }
   });
 
 test('runtime environment omits helper controls and preserves real application overrides', async t => {
