@@ -3,3 +3,4 @@
 
 mod git_over_ssh;
 mod protection;
+mod shutdown;

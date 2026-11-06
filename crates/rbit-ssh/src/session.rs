@@ -22,41 +22,33 @@
 use std::{
     collections::HashMap,
     net::SocketAddr,
-    process::ExitStatus,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::Instant,
 };
 
-use rbit_services::{
-    ConcurrencySlot, PendingPush, RepoContext, ServiceError, ThrottleScope, lfs::TokenSubject, protection::PushActor, ssh_keys::SshIdentity,
-};
-use rbit_transport::{
-    ReceiveOptions, Service, TransportError, is_safe_protocol_header,
-    receive::{self, CommandLimits, Intercept},
-};
+use rbit_services::{RepoContext, ServiceError, ThrottleScope, lfs::TokenSubject, ssh_keys::SshIdentity};
+use rbit_transport::is_safe_protocol_header;
 use russh::{
-    Channel, ChannelId, ChannelMsg, ChannelOpenFailure, Pty,
+    Channel, ChannelId, ChannelOpenFailure, Pty,
     keys::PublicKey,
     server::{Auth, ChannelOpenHandle, Handler, Msg, PublicKeyOffer, Session, VerifiedPublicKey},
 };
-use tokio::{
-    io::{AsyncRead, AsyncWrite, AsyncWriteExt, DuplexStream, duplex},
-    sync::{OwnedSemaphorePermit, Semaphore},
-    task::JoinHandle,
-};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::{
     command::{self, GitCommand, LfsAuthenticate},
     server::Shared,
 };
 
+mod channel_reply;
+mod git_exchange;
+use channel_reply::{finish_pending_with_message, finish_pending_with_output, finish_with_git_error, finish_with_message};
+use git_exchange::run_git;
+
 /// Session channels one connection may have open at once.
 const MAX_CHANNELS: usize = 4;
-/// Buffer between the SSH channel and git's stdin.
-const INPUT_BUFFER: usize = 64 * 1024;
 /// SSH extended-data type for stderr (RFC 4254 §5.2).
 const STDERR: u32 = 1;
 /// Exit status reported for refused commands and failures.
@@ -64,6 +56,7 @@ const FAILURE: u32 = 1;
 
 /// A session channel that has been opened but has not run a command yet.
 struct PendingChannel {
+    tasks: crate::tasks::SshTasks,
     channel: Channel<Msg>,
     /// The client's `GIT_PROTOCOL` (e.g. `version=2`), already filtered.
     protocol: Option<String>,
@@ -79,11 +72,14 @@ pub(crate) struct Connection {
     fingerprint: Option<String>,
     channels: HashMap<ChannelId, PendingChannel>,
     channel_slots: Arc<Semaphore>,
+    // russh spawns its own task. Its actual handler destruction is part of drain.
+    _lifetime: tokio_util::task::task_tracker::TaskTrackerToken,
 }
 
 impl Connection {
-    pub(crate) fn new(shared: Arc<Shared>, peer: SocketAddr, authenticated: Arc<AtomicBool>) -> Self {
-        Self {
+    pub(crate) fn new(shared: Arc<Shared>, peer: SocketAddr, authenticated: Arc<AtomicBool>) -> Option<Self> {
+        let lifetime = shared.tasks.handler_token()?;
+        Some(Self {
             shared,
             peer,
             authenticated,
@@ -91,7 +87,8 @@ impl Connection {
             fingerprint: None,
             channels: HashMap::new(),
             channel_slots: Arc::new(Semaphore::new(MAX_CHANNELS)),
-        }
+            _lifetime: lifetime,
+        })
     }
 
     fn throttle_key(&self) -> String {
@@ -209,77 +206,6 @@ fn internal(error: &ServiceError) -> String {
     "internal error; please try again later".to_owned()
 }
 
-/// Accepts a request, shows `message` on the client's stderr and ends the channel with
-/// `status`. Used for refusals, so the client sees *why* rather than a bare failure.
-fn finish_with_message(session: &mut Session, channel: ChannelId, message: &str, status: u32) -> Result<(), russh::Error> {
-    session.channel_success(channel)?;
-    session.extended_data(channel, STDERR, message.as_bytes().to_vec())?;
-    session.exit_status_request(channel, status)?;
-    session.eof(channel)?;
-    session.close(channel)
-}
-
-/// Accepts a request, writes `output` to stdout, and flushes before ending the channel.
-fn finish_pending_with_output(
-    session: &mut Session,
-    channel: ChannelId,
-    pending: PendingChannel,
-    output: Vec<u8>,
-) -> Result<(), russh::Error> {
-    session.channel_success(channel)?;
-    tokio::spawn(async move {
-        let PendingChannel { channel, _slot, .. } = pending;
-        let (_input, writer) = channel.split();
-        let mut stdout = writer.make_writer();
-        let _ = stdout.write_all(&output).await;
-        let _ = stdout.flush().await;
-        let _ = writer.exit_status(0).await;
-        let _ = writer.eof().await;
-        let _ = writer.close().await;
-    });
-    Ok(())
-}
-
-/// Accepts a request, writes `message` to stderr, and flushes before ending the channel.
-fn finish_pending_with_message(
-    session: &mut Session,
-    channel: ChannelId,
-    pending: PendingChannel,
-    message: String,
-    status: u32,
-) -> Result<(), russh::Error> {
-    session.channel_success(channel)?;
-    tokio::spawn(async move {
-        let PendingChannel { channel, _slot, .. } = pending;
-        let (_input, writer) = channel.split();
-        let mut stderr = writer.make_writer_ext(Some(STDERR));
-        let _ = stderr.write_all(message.as_bytes()).await;
-        let _ = stderr.flush().await;
-        let _ = writer.exit_status(status).await;
-        let _ = writer.eof().await;
-        let _ = writer.close().await;
-    });
-    Ok(())
-}
-
-/// Ends a Git service with a flushed protocol error packet, so the client does not wait
-/// for a ref advertisement that will never arrive.
-fn finish_with_git_error(session: &mut Session, channel: ChannelId, pending: PendingChannel, message: String) -> Result<(), russh::Error> {
-    session.channel_success(channel)?;
-    tokio::spawn(async move {
-        let PendingChannel { channel, _slot, .. } = pending;
-        let (_input, writer) = channel.split();
-        let mut stdout = writer.make_writer();
-        let packet = rbit_transport::pkt_line::encode(&format!("ERR {message}\n"));
-        let _ = stdout.write_all(&packet).await;
-        let _ = stdout.flush().await;
-        let _ = writer.exit_status(FAILURE).await;
-        let _ = writer.eof().await;
-        let _ = writer.close().await;
-    });
-    Ok(())
-}
-
 impl Handler for Connection {
     type Error = russh::Error;
 
@@ -333,7 +259,8 @@ impl Handler for Connection {
         let slot = if self.identity.is_some() { Arc::clone(&self.channel_slots).try_acquire_owned().ok() } else { None };
         match slot {
             Some(slot) => {
-                self.channels.insert(channel.id(), PendingChannel { channel, protocol: None, _slot: slot });
+                self.channels
+                    .insert(channel.id(), PendingChannel { tasks: self.shared.tasks.clone(), channel, protocol: None, _slot: slot });
                 reply.accept().await;
             }
             None => reply.reject(ChannelOpenFailure::ResourceShortage).await,
@@ -452,7 +379,7 @@ impl Handler for Connection {
             }
         };
         session.channel_success(channel)?;
-        tokio::spawn(run_git(Arc::clone(&self.shared), identity, command, ctx, pending, process));
+        let _ = self.shared.tasks.spawn(run_git(Arc::clone(&self.shared), identity, command, ctx, pending, process));
         Ok(())
     }
 }
@@ -466,179 +393,5 @@ fn same_key_holder(previous: &SshIdentity, current: &SshIdentity) -> bool {
             old_key == key && old.repo.id == repo.repo.id
         }
         _ => false,
-    }
-}
-
-/// Runs the Git service for an authorised `exec` request, streaming between the channel
-/// and git, then reports git's exit status and closes the channel. `_process` is the
-/// command's place within the Git process limit, held until it ends.
-async fn run_git(
-    shared: Arc<Shared>,
-    identity: SshIdentity,
-    command: GitCommand,
-    ctx: RepoContext,
-    pending: PendingChannel,
-    _process: ConcurrencySlot,
-) {
-    let PendingChannel { channel, protocol, _slot } = pending;
-    let (mut client, writer) = channel.split();
-    let mut stdout = writer.make_writer();
-    let mut stderr = writer.make_writer_ext(Some(STDERR));
-
-    // Channel messages → git's stdin. Only data is forwarded; EOF ends git's input.
-    let (input, mut feed) = duplex(INPUT_BUFFER);
-    let pump = AbortOnDrop(tokio::spawn(async move {
-        while let Some(message) = client.wait().await {
-            match message {
-                ChannelMsg::Data { data } => {
-                    if feed.write_all(&data).await.is_err() {
-                        break;
-                    }
-                }
-                ChannelMsg::Eof | ChannelMsg::Close => break,
-                _ => {}
-            }
-        }
-        let _ = feed.shutdown().await;
-    }));
-
-    let started = Instant::now();
-    let service = command.service;
-    let exchange = async {
-        if service.is_write() {
-            push(&shared, &identity, &ctx, protocol.as_deref(), input, &mut stdout, &mut stderr).await
-        } else {
-            let status =
-                shared.transport.serve_interactive(service, &ctx.disk_path, protocol.as_deref(), input, &mut stdout, &mut stderr).await?;
-            Ok(Exchanged { status: exit_code(status), push: None })
-        }
-    };
-    let outcome = tokio::time::timeout(shared.config.ssh.max_session(), exchange).await;
-    let (status, push) = match outcome {
-        Ok(Ok(Exchanged { status, push })) => (status, push),
-        Ok(Err(error)) => {
-            tracing::error!(%error, repo = %command.full_name(), %service, "failed to run git");
-            let _ = stderr.write_all(b"ERROR: internal error; please try again later\r\n").await;
-            (FAILURE, None)
-        }
-        Err(_) => {
-            tracing::warn!(repo = %command.full_name(), %service, "SSH Git operation exceeded the time limit");
-            let _ = stderr.write_all(b"ERROR: the operation took too long and was stopped\r\n").await;
-            (FAILURE, None)
-        }
-    };
-    drop(pump);
-    let _ = stdout.flush().await;
-    let _ = stderr.flush().await;
-
-    if let Some(push) = push.filter(|_| status == 0) {
-        shared.services.pushes.complete(push).await;
-    }
-
-    let _ = writer.exit_status(status).await;
-    let _ = writer.eof().await;
-    let _ = writer.close().await;
-
-    let actor = match &identity {
-        SshIdentity::User { user, .. } => user.name().to_string(),
-        SshIdentity::Deploy { key, .. } => format!("deploy key {}", key.0),
-    };
-    tracing::info!(%actor, repo = %command.full_name(), %service, status, elapsed_ms = started.elapsed().as_millis(), "SSH Git request");
-}
-
-/// How a Git exchange ended: the exit status to report, and the push to record once it
-/// succeeded.
-struct Exchanged {
-    status: u32,
-    push: Option<PendingPush>,
-}
-
-/// git's exit status as SSH reports it.
-fn exit_code(status: ExitStatus) -> u32 {
-    status.code().and_then(|code| u32::try_from(code).ok()).unwrap_or(FAILURE)
-}
-
-/// `git-receive-pack` in two steps, like smart HTTP: the ref advertisement first, then the
-/// push gate reads the client's command list and decides, and only then does
-/// `git receive-pack --stateless-rpc` run, on the replayed input. Refused pushes never
-/// start git: the client gets the refusal report (or, without `report-status`, an error
-/// on stderr and exit status 1). Messages for the client go to `stderr`; the error is
-/// for failures to talk to git.
-async fn push<O, E>(
-    shared: &Shared,
-    identity: &SshIdentity,
-    ctx: &RepoContext,
-    protocol: Option<&str>,
-    input: DuplexStream,
-    stdout: &mut O,
-    stderr: &mut E,
-) -> Result<Exchanged, TransportError>
-where
-    O: AsyncWrite + Unpin,
-    E: AsyncWrite + Unpin,
-{
-    let refused = |status| Ok(Exchanged { status, push: None });
-    let advertisement = shared.transport.advertisement(Service::ReceivePack, &ctx.disk_path, protocol).await?;
-    stdout.write_all(&advertisement).await?;
-    stdout.flush().await?;
-
-    let (user, deploy_key) = match identity {
-        SshIdentity::User { user, .. } => (Some(user), false),
-        SshIdentity::Deploy { .. } => (None, true),
-    };
-    let (input, options): (Box<dyn AsyncRead + Send + Unpin>, ReceiveOptions) =
-        match receive::intercept(input, CommandLimits::default()).await {
-            Err(error) => {
-                stderr.write_all(format!("ERROR: {error}\r\n").as_bytes()).await?;
-                return refused(FAILURE);
-            }
-            Ok(Intercept::Unread(input)) => (Box::new(input), ReceiveOptions::default()),
-            Ok(Intercept::Read { commands, input }) => {
-                if commands.is_empty() {
-                    // `Everything up-to-date`: nothing for git to do.
-                    return refused(0);
-                }
-                let actor = PushActor { user, deploy_key, access: ctx.access };
-                let mut verdict = match shared.services.protection.check_push(ctx, &actor, &commands.updates()).await {
-                    Ok(verdict) => verdict,
-                    Err(error) => {
-                        stderr.write_all(format!("ERROR: {}\r\n", internal(&error)).as_bytes()).await?;
-                        return refused(FAILURE);
-                    }
-                };
-                if deploy_key && !ctx.access.can_write() {
-                    let reason = format!("this deploy key is read-only; it cannot push to {}", ctx.repo.full_name());
-                    for refusal in &mut verdict.refusals {
-                        refusal.reason.clone_from(&reason);
-                    }
-                }
-                if verdict.is_refused() {
-                    receive::drain(input).await;
-                    let report = receive::refusal(&commands, &verdict.refusals);
-                    if report.is_empty() {
-                        let message = receive::refusal_message(&verdict.refusals).replace('\n', "\r\n");
-                        stderr.write_all(format!("ERROR: push declined\r\n{message}").as_bytes()).await?;
-                        return refused(FAILURE);
-                    }
-                    stdout.write_all(&report).await?;
-                    // Like a declining pre-receive hook: git reports and exits successfully.
-                    return refused(0);
-                }
-                (Box::new(input), ReceiveOptions { deny_non_fast_forwards: verdict.deny_non_fast_forwards })
-            }
-        };
-
-    // Taken after the verdict, before git changes anything.
-    let pending = shared.services.pushes.begin(ctx, identity.push_source()).await;
-    let status = shared.transport.receive_pack(&ctx.disk_path, protocol, options, input, stdout, stderr).await?;
-    Ok(Exchanged { status: exit_code(status), push: Some(pending) })
-}
-
-/// Aborts a background task when dropped, so it never outlives the request it serves.
-struct AbortOnDrop(JoinHandle<()>);
-
-impl Drop for AbortOnDrop {
-    fn drop(&mut self) {
-        self.0.abort();
     }
 }

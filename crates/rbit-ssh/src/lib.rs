@@ -28,6 +28,8 @@ pub mod command;
 pub mod host_key;
 mod server;
 mod session;
+mod socket;
+mod tasks;
 
 use std::net::SocketAddr;
 

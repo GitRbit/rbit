@@ -26,7 +26,7 @@ use tokio::{
     task::{JoinHandle, JoinSet},
 };
 
-use crate::{SshError, host_key, session::Connection};
+use crate::{SshError, host_key, session::Connection, tasks::SshTasks};
 
 /// How long open connections get to wind down after shutdown is requested.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
@@ -39,6 +39,7 @@ pub(crate) struct Shared {
     pub(crate) config: Arc<Config>,
     pub(crate) services: Services,
     pub(crate) transport: ProcessTransport,
+    pub(crate) tasks: SshTasks,
     connections: Arc<Semaphore>,
     per_ip: Mutex<HashMap<IpAddr, usize>>,
 }
@@ -87,7 +88,8 @@ impl Drop for ConnectionSlot {
 pub struct RunningSshServer {
     local_addr: SocketAddr,
     shutdown: watch::Sender<bool>,
-    task: JoinHandle<()>,
+    task: Option<JoinHandle<()>>,
+    tasks: SshTasks,
 }
 
 impl RunningSshServer {
@@ -96,13 +98,29 @@ impl RunningSshServer {
         self.local_addr
     }
 
-    /// Stops accepting connections, disconnects open ones and waits (briefly) for them
-    /// to finish.
-    pub async fn shutdown(self) {
+    /// Stops accepting connections and waits for owned SSH handlers and Git work.
+    /// Network grace is bounded; started process/store cleanup is still awaited.
+    /// Cancelling this wait does not establish that descendants have stopped.
+    pub async fn shutdown(mut self) {
+        self.tasks.stop();
         let _ = self.shutdown.send(true);
-        if let Err(error) = self.task.await {
+        if let Some(task) = self.task.take()
+            && let Err(error) = task.await
+        {
             tracing::warn!(%error, "SSH server task failed");
         }
+        // Even a panicked listener can have children awaiting cancellation.
+        self.tasks.close();
+        self.tasks.wait().await;
+    }
+}
+
+impl Drop for RunningSshServer {
+    fn drop(&mut self) {
+        // Dropping/unpolled-cancelling shutdown requests stop immediately. The
+        // detached listener still owns its cleanup; Drop never claims a drain.
+        self.tasks.close();
+        let _ = self.shutdown.send(true);
     }
 }
 
@@ -121,11 +139,12 @@ pub async fn start(config: Arc<Config>, services: Services) -> Result<RunningSsh
     let russh_config = Arc::new(russh_config(&config, host_key));
     let transport = ProcessTransport::new(config.repository.git_binary.clone()).with_max_push_bytes(config.repository.max_push_bytes());
     let connections = Arc::new(Semaphore::new(config.ssh.max_connections.max(1)));
-    let shared = Arc::new(Shared { config, services, transport, connections, per_ip: Mutex::new(HashMap::new()) });
+    let tasks = SshTasks::new();
+    let shared = Arc::new(Shared { config, services, transport, tasks: tasks.clone(), connections, per_ip: Mutex::new(HashMap::new()) });
 
     let (shutdown, shutdown_rx) = watch::channel(false);
     let task = tokio::spawn(accept_loop(listener, shared, russh_config, shutdown_rx));
-    Ok(RunningSshServer { local_addr, shutdown, task })
+    Ok(RunningSshServer { local_addr, shutdown, task: Some(task), tasks })
 }
 
 fn russh_config(config: &Config, host_key: PrivateKey) -> RusshConfig {
@@ -148,6 +167,7 @@ fn russh_config(config: &Config, host_key: PrivateKey) -> RusshConfig {
 }
 
 async fn accept_loop(listener: TcpListener, shared: Arc<Shared>, russh_config: Arc<RusshConfig>, mut shutdown: watch::Receiver<bool>) {
+    let _stop_on_drop = shared.tasks.stop_on_drop();
     let mut connections = JoinSet::new();
     let for_connections = shutdown.clone();
     loop {
@@ -161,7 +181,7 @@ async fn accept_loop(listener: TcpListener, shared: Arc<Shared>, russh_config: A
                         continue;
                     };
                     let connection = serve_connection(Arc::clone(&shared), Arc::clone(&russh_config), socket, peer, for_connections.clone());
-                    connections.spawn(async move {
+                    shared.tasks.connection(&mut connections, async move {
                         connection.await;
                         drop(slot);
                     });
@@ -175,10 +195,15 @@ async fn accept_loop(listener: TcpListener, shared: Arc<Shared>, russh_config: A
     }
 
     drop(listener);
+    shared.tasks.stop();
     tracing::info!(open = connections.len(), "SSH server is shutting down");
     if tokio::time::timeout(SHUTDOWN_GRACE, async { while connections.join_next().await.is_some() {} }).await.is_err() {
         connections.abort_all();
     }
+    // abort_all only requests cancellation; joins acknowledge future destruction.
+    while connections.join_next().await.is_some() {}
+    shared.tasks.close();
+    shared.tasks.wait().await;
 }
 
 /// Runs one connection to completion: handshake, authentication within the time limit,
@@ -192,7 +217,10 @@ async fn serve_connection(
 ) {
     let auth_timeout = shared.config.ssh.auth_timeout();
     let authenticated = Arc::new(AtomicBool::new(false));
-    let handler = Connection::new(Arc::clone(&shared), peer, Arc::clone(&authenticated));
+    let Some(handler) = Connection::new(Arc::clone(&shared), peer, Arc::clone(&authenticated)) else { return };
+    let stop = shared.tasks.cancellation().child_token();
+    let close_stream = crate::socket::CloseOnDrop(stop.clone());
+    let socket = crate::socket::CancellableSocket::new(socket, stop);
 
     let session = match tokio::time::timeout(auth_timeout, run_stream(russh_config, socket, handler)).await {
         Ok(Ok(session)) => session,
@@ -206,13 +234,20 @@ async fn serve_connection(
         }
     };
     let handle = session.handle();
-    let mut session = std::pin::pin!(session);
+    let (finished, mut session_done) = tokio::sync::oneshot::channel();
+    // This independent, tracked owner is never aborted with its network waiter.
+    // Awaiting RunningSession joins russh's actual internal task/future destruction.
+    shared.tasks.session(async move {
+        let _ = finished.send(session.await);
+    });
     let mut late_shutdown = shutdown.clone();
 
     let reason = tokio::select! {
-        result = &mut session => {
-            if let Err(error) = result {
-                tracing::debug!(%peer, %error, "SSH connection ended with an error");
+        result = &mut session_done => {
+            match result {
+                Ok(Ok(())) => {},
+                Ok(Err(error)) => tracing::debug!(%peer, %error, "SSH connection ended with an error"),
+                Err(error) => tracing::warn!(%peer, %error, "SSH session join owner failed"),
             }
             return;
         }
@@ -220,7 +255,7 @@ async fn serve_connection(
             if authenticated.load(Ordering::Acquire) {
                 // Authenticated just in time; keep serving until the client leaves.
                 tokio::select! {
-                    _ = &mut session => return,
+                    _ = &mut session_done => return,
                     () = stopped(&mut late_shutdown) => "the server is shutting down",
                 }
             } else {
@@ -232,7 +267,11 @@ async fn serve_connection(
     };
 
     let _ = handle.disconnect(Disconnect::ByApplication, reason.to_owned(), String::new()).await;
-    let _ = tokio::time::timeout(Duration::from_secs(5), session).await;
+    if tokio::time::timeout(Duration::from_secs(5), &mut session_done).await.is_err() {
+        // Interrupt underlying I/O, then retain ownership until the real session exits.
+        close_stream.0.cancel();
+        let _ = session_done.await;
+    }
 }
 
 /// Resolves once shutdown has been requested (or the server is gone).
