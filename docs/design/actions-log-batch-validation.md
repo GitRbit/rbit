@@ -70,3 +70,19 @@ visual acceptance is claimed by source inspection. Run the services log unit and
 `actions_log_reads` integration tests, existing web `actions_job_pages` tests, then
 strict Clippy through the shared workspace helper. Use serial paired timing/memory
 runs for any later performance claim; do not globally clean compiler or OS caches.
+
+### Executed focused validation
+
+On Windows, the shared helper completed 14 log unit tests and five service
+integration tests successfully. The integration assertions confirmed six actual
+statements/acquisitions for each 1/8/32/128/512-step batch, compared with three
+statements per step for the legacy read path. An initial counter assertion exposed
+that these legacy Actions methods bypassed the instrumented pool; the used read
+methods and enabled-repository gate now share the existing `Pool` wrapper with
+unchanged SQL, row mapping and underlying pool. This extraction shrinks both
+legacy files. Writes and transaction ownership remain unchanged. Other legacy
+Actions operations are not covered by this narrow instrumentation migration.
+
+Web tests, strict Clippy and serial paired timings remain pending; the compiler
+lane was released for the requested local server launch. Operation counts are
+measured regression evidence, not a wall-time or RSS speedup claim.
