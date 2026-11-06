@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import http from "node:http";
 import { StringDecoder } from "node:string_decoder";
-import { renderHeaderMs, footerSsrMs } from "./http-timing.mjs";
+import { renderHeaderMs, viewHeaderMs, footerSsrMs } from "./http-timing.mjs";
 import { sessionCookie, publicConfiguration } from "./http-auth.mjs";
 import { cpus, freemem, platform, release, totalmem } from "node:os";
 import { dirname, resolve } from "node:path";
@@ -25,8 +25,9 @@ export function validateConfig(input) {
   if (authenticated !== 0 && authenticated !== 2) throw new Error("both variants must use the same authentication mode");
   if (config.acceptLanguage !== undefined && (typeof config.acceptLanguage !== "string" || !/^[A-Za-z0-9,;=. *-]{1,128}$/.test(config.acceptLanguage))) throw new Error("invalid acceptLanguage");
   for (const variant of config.variants) {
-    if (Object.keys(variant).some(key => !["name", "baseUrl", "metadata", "credentialsFile"].includes(key))) throw new Error("unknown variant option; use a private credentialsFile");
+    if (Object.keys(variant).some(key => !["name", "baseUrl", "metadata", "credentialsFile", "requireViewTiming"].includes(key))) throw new Error("unknown variant option; use a private credentialsFile");
     if (variant.credentialsFile !== undefined && (typeof variant.credentialsFile !== "string" || !variant.credentialsFile)) throw new Error("invalid private credentials file path");
+    if (variant.requireViewTiming !== undefined && typeof variant.requireViewTiming !== "boolean") throw new Error("invalid requireViewTiming");
     const url = new URL(variant.baseUrl);
     if (url.protocol !== "http:" || !["127.0.0.1", "[::1]", "localhost"].includes(url.hostname) || url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
       throw new Error("baseUrl must be an HTTP loopback origin without credentials or a path");
@@ -92,13 +93,15 @@ export function requestSample(url, page, options, agent) {
         if ([204, 304].includes(status) && bytes !== 0) errors.push("empty-status response contained a body");
         const timing = response.headers["server-timing"] ?? "";
         const render = renderHeaderMs(timing);
+        const view = viewHeaderMs(timing);
+        if (options.requireViewTiming && view === null) errors.push("valid footer-interval view Server-Timing missing");
         const footer = status === 200 ? footerSsrMs(tail) : null;
         if (page.requireTiming && render === null) errors.push("valid render Server-Timing missing");
         if (page.requireFooter && status === 200 && footer === null) errors.push("valid SSR footer missing from last 64 KiB");
         if (page.mode === "revalidate" && !response.headers.etag) errors.push("304 validator missing");
         done({
           url: String(url), requestHeaders: { ...headers, ...(headers.Cookie ? { Cookie: "[redacted]" } : {}) }, status, valid: errors.length === 0, errors,
-          headersMs, totalMs, renderMs: render, footerSsrMs: footer, bodyBytes: bytes, bodySha256: hash.digest("hex"),
+          headersMs, totalMs, renderMs: render, viewMs: view, footerSsrMs: footer, bodyBytes: bytes, bodySha256: hash.digest("hex"),
           responseHeaders: Object.fromEntries(["content-type", "content-length", "content-encoding", "server-timing", "cache-control", "vary", "etag", "location"].map((name) => [name, response.headers[name] ?? null])),
         });
       });
@@ -140,7 +143,7 @@ async function main() {
             const variant = config.variants[index];
             const sample = { phase, round: round + 1, variant: variant.name, page: page.name, startedAt: new Date().toISOString() };
             try {
-              const options = { ...config, cookie: cookies[index] };
+              const options = { ...config, cookie: cookies[index], requireViewTiming: variant.requireViewTiming };
               if (page.mode === "revalidate") {
                 const key = `${index}:${page.path}`;
                 if (!validators.has(key)) {
@@ -169,7 +172,7 @@ async function main() {
     report.valid = Boolean(report.complete) && report.samples.every((sample) => sample.valid);
     report.summary = config.pages.flatMap((page) => config.variants.map((variant) => {
       const samples = report.samples.filter((sample) => sample.phase === "measured" && sample.page === page.name && sample.variant === variant.name && sample.valid);
-      return { page: page.name, variant: variant.name, ...Object.fromEntries(["headersMs", "totalMs", "renderMs", "footerSsrMs", "bodyBytes"].map((metric) => [metric, summarize(samples.map((sample) => sample[metric]))])) };
+      return { page: page.name, variant: variant.name, ...Object.fromEntries(["headersMs", "totalMs", "renderMs", "viewMs", "footerSsrMs", "bodyBytes"].map((metric) => [metric, summarize(samples.map((sample) => sample[metric]))])) };
     }));
     writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`);
     if (!report.valid) process.exitCode = 1;

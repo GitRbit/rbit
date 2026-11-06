@@ -5,7 +5,7 @@ Prepared protocol, not measured results. Baseline is pinned GitHub main
 recorded when its release build completes. The user's earlier ~500µs observation has
 unknown build/data/cache conditions and is not this baseline's measured result.
 
-## Separate the three observations
+## Separate the timing observations
 
 - `footerSsrMs` is parsed from the raw HTML footer while Askama renders it. It includes
   preceding handler/session/template work, but not later middleware finishing work.
@@ -14,13 +14,18 @@ unknown build/data/cache conditions and is not this baseline's measured result.
 - `renderMs` is Server-Timing render duration for the whole timed response pipeline,
   including work after the template/footer was rendered. Compare this to the same
   header metric, not to another revision's visible SSR footer.
+- `viewMs` is the candidate's new Server-Timing view duration, captured at the same
+  footer interval and truncated to whole microseconds. Main39f has no view metric:
+  its viewMs remains null/count0, never substituted from render. Raw SSR remains the
+  common comparison metric; candidate view provides fresh precision on revalidation.
 - The visible browser footer is a presentation contract. Main39f initial navigation
-  retains SSR text; the candidate's timing fix replaces it from the navigation entry's
-  ServerTiming, including revalidated cached HTML. HTMX responses similarly update it.
-  That presentation-policy difference can change the visible number without changing
-  execution cost. A304 has no current HTML footer at all: cached SSR text is old.
+  retains SSR text. The intermediate render-only navigation fix displayed total time;
+  ef3fee3 restores the footer interval by preferring finite view on navigation and
+  HTMX, retaining render only as a legacy/non-footer fallback. Confirm the exact
+  executable embeds that server change, not just rebuilt browser assets. A304 has
+  no current HTML footer at all: cached SSR text is old.
 
-The HTTP sampler now records both wire metrics independently, rejects required missing/
+The HTTP sampler now records raw footer, view and total metrics independently, rejects required missing/
 malformed values, keeps304 footer null, and records every cache prime separately. It
 reads a bounded tail so the real footer can follow more than64KiB of page content.
 This does not measure browser paint, JS/CSS execution, cached transfer bytes or scrolling.
@@ -102,7 +107,10 @@ but are excluded from p50/IQR/p95 summaries. Same host/case/order/header policy 
 to both; exclude all compiler/npm/browser-load overlap and record observed idle state.
 The sampler validates every sample; failed redirects/content/status/timing invalidate
 rather than being silently filtered into faster medians. It records bytes/hash, status,
-header duration, full wire duration, raw SSR duration and selected non-secret headers.
+header duration, full wire duration, raw SSR duration, view duration and selected
+non-secret headers. The example requires view only on the candidate. Its executable
+MUST include ef3fee3 (or equivalent integrated server code); an older release missing
+view is an invalid candidate for that contract, not a0ms observation.
 
 Run anonymous cases /, /explore, /login as fresh200 GETs and separate explicit304
 revalidations. Each conditional case first primes a200+ETag on its own variant and
@@ -136,7 +144,9 @@ this task. Keep viewport/DNA/auth/page/English equal. On each variant verify sty
 and bundle load, navigation200 followed by a real conditional304 on reload, and an
 HTMX page/update. Record the navigation/response render metric and footer text from
 the same response, using documented rounding. In the candidate, the displayed footer
-must equal that current response metric, not an earlier cached SSR value. Main's old
+must equal the finite current view metric (rounded like the footer), not an earlier
+cached SSR value or the larger render total. If the response genuinely has no view
+(e.g. a fragment that renders no footer), test the documented render fallback separately. Main's old
 behavior is recorded as reference, not silently patched for the benchmark. Identical
 rounded text on two requests is possible; require current metric mapping rather than
 asserting every request's formatted number changes.
@@ -148,3 +158,49 @@ functional Node tests, NOT real application timings or a completed browser revie
 The pending release comparison must retain all raw samples, invalid cases, executable/
 asset/build identities and sample counts. Report each page/auth/cache/profile separately;
 use paired distributions and repeat on an idle host before claiming a regression or win.
+
+
+## Minimal PowerShell run commands after both release builds are ready
+
+These assume the private RUN directory, deterministic fixture and setup-token file have
+been prepared as above, and BASE_EXE/CANDIDATE_EXE identify immutable helper outputs.
+They do not compile. HARNESS is the current harness checkout; BASE_SOURCE is pinned39f;
+CANDIDATE_SOURCE is the exact candidate checkout. Use quoted absolute paths for each
+variable. Keep the same shell environment for both server commands.
+
+```powershell
+$env:RBIT_PERF_SETUP_TOKEN_FILE = Join-Path $perfRunRoot 'setup-token.txt'
+$env:RBIT_PERF_FIXTURE = Join-Path $perfRunRoot 'fixture'
+$env:RBIT_PERF_CREDENTIALS_FILE = Join-Path $perfRunRoot 'credentials.txt'
+node "$perfHarnessRoot/scripts/perf/fixture.mjs" $env:RBIT_PERF_FIXTURE
+# Terminal A: fresh baseline seed server. Never substitute the live user app.
+node "$perfHarnessRoot/scripts/perf/serve.mjs" --executable $perfBaselineExecutable --source-dir $perfBaselineRoot --profile release --isolated true --port 3305 --data-dir "$perfRunRoot/seed-data" --metadata "$perfRunRoot/seed-server.json"
+# Terminal B, same environment:
+node "$perfHarnessRoot/scripts/perf/seed.mjs" http://127.0.0.1:3305
+# Stop only Terminal A's owned seed server and verify drain before copying.
+Copy-Item -LiteralPath "$perfRunRoot/seed-data" -Destination "$perfRunRoot/main-data" -Recurse
+Copy-Item -LiteralPath "$perfRunRoot/seed-data" -Destination "$perfRunRoot/candidate-data" -Recurse
+# Terminal A: baseline comparison process.
+node "$perfHarnessRoot/scripts/perf/serve.mjs" --executable $perfBaselineExecutable --source-dir $perfBaselineRoot --profile release --isolated true --port 3305 --data-dir "$perfRunRoot/main-data" --metadata "$perfRunRoot/main-server.json"
+# Terminal B: candidate comparison process.
+node "$perfHarnessRoot/scripts/perf/serve.mjs" --executable $perfCandidateExecutable --source-dir $perfCandidateRoot --profile release --isolated true --port 3306 --data-dir "$perfRunRoot/candidate-data" --metadata "$perfRunRoot/candidate-server.json"
+# Terminal C: only after both are ready and no compiler/build/browser load remains.
+Copy-Item -LiteralPath "$perfHarnessRoot/scripts/perf/footer-comparison.example.json" -Destination "$perfRunRoot/anonymous.json"
+node "$perfHarnessRoot/scripts/perf/measure.mjs" "$perfRunRoot/anonymous.json"
+```
+
+Both terminals need the private setup-file environment; use distinct new metadata paths
+on every restart, and new destinations that do not exist. Resolve and verify all run
+paths are under the dedicated RUN directory before copying. No recursive deletion or
+movement is required by this protocol. The fixture command intentionally refuses to
+replace an unmarked existing directory.
+
+For the authenticated run, derive a second config from anonymous.json. Change output
+file, put credentialsFile="credentials.txt" on both variants, and choose only document
+pages /, /explore, /settings/account with requireTiming/requireFooter true and
+contains='action="/logout"'. Keep candidate requireViewTiming=true and baseline absent.
+Write UTF8 JSON without a BOM, then invoke the same measure.mjs with that config. Keep
+cold-process restart samples and browser304 validity outside both warm summaries.
+Compare baseline footerSsrMs to candidate footerSsrMs, baseline renderMs to candidate
+renderMs, and candidate viewMs to its own raw/footer display interval. Missing baseline
+view is not a speedup and total/view ratios are not a before/after performance ratio.

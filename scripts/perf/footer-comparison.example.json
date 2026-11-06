@@ -14,7 +14,8 @@
     {
       "name": "candidate",
       "baseUrl": "http://127.0.0.1:3306",
-      "metadata": "candidate-server.json"
+      "metadata": "candidate-server.json",
+      "requireViewTiming": true
     }
   ],
   "pages": [

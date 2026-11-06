@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
 import { requestSample, validateConfig } from "./measure.mjs";
-import { footerSsrMs, renderHeaderMs } from "./http-timing.mjs";
+import { footerSsrMs, renderHeaderMs, viewHeaderMs } from "./http-timing.mjs";
 import { serverEnvironment } from "./server-environment.mjs";
 
 const footer = value => `<span data-render-time>${value}</span>`;
@@ -66,7 +66,7 @@ test("paired authenticated CLI keeps passwords/cookies private and records reval
     }
     assert.equal(request.headers.cookie,`rbit_session=${cookie}`);
     const conditional=Boolean(request.headers["if-none-match"]);
-    response.writeHead(conditional ? 304 : 200,{"Content-Type":"text/html",ETag:'W/"fixture"',"Server-Timing":"render;dur=2"});
+    response.writeHead(conditional ? 304 : 200,{"Content-Type":"text/html",ETag:'W/"fixture"',"Server-Timing":"render;dur=2, view;dur=0.500"});
     response.end(conditional ? undefined : `<main id="main">fixture</main>${footer("500 µs")}`);
   });
   await writeFile(join(directory,"private-credentials.txt"),`perf:${password}\n`);
@@ -80,7 +80,9 @@ test("paired authenticated CLI keeps passwords/cookies private and records reval
   const raw=await readFile(join(directory,"report.json.jsonl"),"utf8");
   for(const secret of [password,cookie,"private-credentials.txt"]) {assert.ok(!text.includes(secret));assert.ok(!raw.includes(secret));}
   assert.equal(report.valid,true);assert.equal(report.samples.filter(sample=>sample.phase==="cache-prime").length,2);
-  assert.equal(report.summary[0].renderMs.count,3);assert.equal(report.summary[0].footerSsrMs.count,0);
+  assert.equal(report.summary[0].renderMs.count,3);assert.equal(report.summary[0].renderMs.median,2);
+  assert.equal(report.summary[0].viewMs.count,3);assert.equal(report.summary[0].viewMs.median,0.5);
+  assert.equal(report.summary[0].footerSsrMs.count,0);
   assert.equal(report.summary[0].bodyBytes.median,0);
   assert.throws(()=>validateConfig({...config,password}),/never embed/);
   assert.throws(()=>validateConfig({...config,variants:[{...variants[0],Cookie:cookie},variants[1]]}),/unknown variant/);
@@ -100,4 +102,26 @@ test("isolated launcher refuses private configs and ignores inherited applicatio
   assert.equal(env.RBIT_PERF_SETUP_TOKEN_FILE,undefined);
   await writeFile(join(directory,"rbit.toml"),"private configuration");
   assert.throws(()=>serverEnvironment(options,{}),/private application config/);
+});
+
+
+test("view is an independent footer interval and never falls back to total render",async t=> {
+  assert.equal(viewHeaderMs("render;dur=9, view;dur=0.500"),0.5);
+  assert.equal(renderHeaderMs("view;dur=0.500, render;dur=9"),9);
+  for(const value of ["render;dur=9","view;dur=NaN","view;dur=1.2.3","view;dur=1, view;dur=2","view;dur=invalid, view;dur=2"]) assert.equal(viewHeaderMs(value),null);
+  const base=await server(t,(request,response)=> {
+    const candidate=request.url==="/candidate";
+    const revalidated=Boolean(request.headers["if-none-match"]);
+    response.writeHead(revalidated ? 304 : 200,{"Content-Type":"text/html",ETag:'W/"fixture"',"Server-Timing":candidate ? "render;dur=9, view;dur=0.500" : "render;dur=9"});
+    response.end(revalidated ? undefined : `<main id="main">fixture</main>${footer("500 µs")}`);
+  });
+  const options={timeoutMs:1000,maxBytes:1024};
+  const baseline=await requestSample(base+"/baseline",{requireFooter:true,requireTiming:true},options);
+  assert.equal(baseline.valid,true);assert.equal(baseline.viewMs,null);assert.equal(baseline.footerSsrMs,0.5);assert.equal(baseline.renderMs,9);
+  const absent=await requestSample(base+"/baseline",{requireFooter:true,requireTiming:true},{...options,requireViewTiming:true});
+  assert.equal(absent.valid,false);
+  const candidate=await requestSample(base+"/candidate",{requireFooter:true,requireTiming:true},{...options,requireViewTiming:true});
+  assert.equal(candidate.valid,true);assert.equal(candidate.viewMs,0.5);assert.equal(candidate.renderMs,9);assert.equal(candidate.footerSsrMs,0.5);
+  const conditional=await requestSample(base+"/candidate",{mode:"revalidate",requireFooter:true,requireTiming:true},{...options,requireViewTiming:true,ifNoneMatch:candidate.responseHeaders.etag});
+  assert.equal(conditional.valid,true);assert.equal(conditional.footerSsrMs,null);assert.equal(conditional.viewMs,0.5);assert.equal(conditional.renderMs,9);
 });

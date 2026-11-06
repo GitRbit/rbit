@@ -309,7 +309,8 @@ rest truncated, as a real oversized change would.
 
 See [the release footer comparison protocol](FOOTER-COMPARISON.md) and
 [example configuration](footer-comparison.example.json). The existing HTTP sampler
-can require both raw SSR footer and Server-Timing metrics, record conditional304
+records raw SSR footer, view and total Server-Timing independently (never substituting
+missing view from total), can require candidate-only view with requireViewTiming, and records conditional304
 cases separately, and authenticate each variant using a private credentialsFile.
 Credentials/cookies are never serialized; do not embed them in JSON or argv.
 `serve.mjs --isolated true` strips inherited application settings, refuses private
