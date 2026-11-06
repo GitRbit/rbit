@@ -2,6 +2,27 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { interactionStep, InteractionFailure } from "../../devtools/actions-visual/interaction-evidence.mjs";
 import { interactionChecks } from "../../devtools/actions-visual/interaction-checks.mjs";
+import { context as prototypeContext, render } from "../../docs/design/prototypes/actions/render.mjs";
+import { allowedRequest } from "../../devtools/actions-visual/policy.mjs";
+
+test("the actual live-log interaction navigation selects the fixture that owns simulated output", async () => {
+  let navigation, closed = false;
+  await assert.rejects(interactionChecks(async () => ({ faults: [], context: {
+    newPage: async () => ({ goto: async url => { navigation = url; throw Error("intentional fixture-only stop"); } }),
+    close: async () => { closed = true; },
+  } })), error => error.evidence.stage === "javascript.job-navigation" && error.evidence.code === "OPERATION_FAILED");
+  assert.equal(closed, true);
+  assert.equal(allowedRequest(navigation, "GET"), true);
+  const url = new URL(navigation);
+  assert.equal(url.pathname, "/job"); assert.equal(url.searchParams.get("state"), "running");
+  for (const [query, simulate] of [[new URLSearchParams(), false], [url.searchParams, true]]) {
+    const model = prototypeContext("/job", query), html = render(model);
+    assert.equal(model.state, simulate ? "running" : "failed");
+    assert.equal(html.includes("data-simulate"), simulate);
+    const lines = [...html.matchAll(/<li id="(L\d+)"/g)].map(match => match[1]);
+    assert.equal(lines.length, 80); assert.equal(lines.at(-1), "L50000");
+  }
+});
 
 test("interaction diagnostics retain only fixed stages and categories, never raw page or browser text", async () => {
   for (const [error, expected] of [

@@ -216,6 +216,14 @@ Raw error messages, selector results, URLs, clipboard text and page values are n
 recorded. Every existing interaction assertion remains required; context cleanup
 is awaited and cannot replace a primary failure's diagnosis.
 
+Source-level rendering proves the initial interaction URL selected the failed-job
+fixture, which intentionally has no simulated-output control. The explicit running
+fixture supplies that control with the same 80-line window ending at line 50000.
+The interaction sequence now navigates to that running fixture before exercising
+paused/follow behavior; no control or assertion is removed or relaxed. Its remaining
+search and no-JavaScript navigations retain their original fixtures. Actual isolated
+CI is still required to verify the complete sequence.
+
 Capture evidence also records bounded viewport scroll offsets, skip-link rectangle
 top/bottom and main/skip focus booleans immediately after the existing keyboard
 checks. The entire unfocused skip link must be above the viewport before capture.

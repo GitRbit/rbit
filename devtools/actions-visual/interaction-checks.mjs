@@ -9,7 +9,7 @@ export async function interactionChecks(context) {
   let failure;
   try {
     const page = await step("javascript.page", () => owned.context.newPage());
-    await step("javascript.job-navigation", () => page.goto(origin + "/job"));
+    await step("javascript.job-navigation", () => page.goto(origin + "/job?state=running"));
     await logControls(page);
     await step("javascript.search-navigation", () => page.goto(origin + "/job?q=error"));
     await step("javascript.match-next", () => page.locator('[data-match="next"]').click());
