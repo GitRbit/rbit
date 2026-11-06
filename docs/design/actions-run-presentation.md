@@ -24,6 +24,8 @@ existing status/event/relative-time labels, trust paragraphs and deployment pros
 still use their existing English representations. Pseudo output is a diagnostic,
 not a translated language. Dynamic title/name/ref values remain escaped Unicode
 text, with explicit bidirectional isolation for metadata and commit identifiers.
+The selected `#run` root carries its own language and direction, so a locale change
+also takes effect when HTMX replaces only that subtree.
 
 ## Live refresh ownership
 
@@ -33,6 +35,11 @@ The enhancement never cancels a poll or suppresses a returned permission update.
 
 Immediately before a successful same-run GET poll swaps, it snapshots only the
 approval checkbox and deployment-comment text, dirty state and focused selection.
+Both the configured request path and final XHR response URL must match the current
+run's exact origin and full deployed pathname. Relative paths are resolved against
+the current document; query/fragment differences do not select a different run in
+this route. Userinfo, other protocols, missing URLs, boosted navigation and HTMX
+redirect/retarget/navigation headers exclude restoration. No URL is logged.
 After replacement it restores dirty values only into a newly rendered form with
 the same method, action, review kind and environment, and matching enabled fields.
 It never recreates a missing form or writes hidden fields, CSRF state or actions.
@@ -45,7 +52,8 @@ to the request object in a WeakMap and are not persisted or transmitted.
 
 DOM fixtures cover dirty text/checkbox/caret retention, removed authorization,
 changed environment/action, disabled controls, POST/error/navigation exclusions,
-new server defaults and unrelated focus. Real-router fixtures seed a matrix run,
+cross-origin/run redirects, subpaths/query normalization, new server defaults and
+unrelated focus. Real-router fixtures seed a matrix run,
 fork approval and workflow error, assert native route/method/permission contracts,
 escaping, locale cache dimensions and full/HTMX document behavior. Existing reader/
 writer, environment, artifact and sanitized-summary integration tests remain gates.

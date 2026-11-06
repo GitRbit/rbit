@@ -178,6 +178,10 @@ async fn rtl_and_expanded_run_headers_use_existing_locale_negotiation_and_cache_
             assert!(vary.contains("Accept-Language") && vary.contains("Cookie"));
             let body = String::from_utf8(to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
             assert!(body.contains("A &#60;safe&#62; run"));
+            let selected_root = body.split("<section id=\"run\"").nth(1).unwrap().split('>').next().unwrap();
+            assert!(selected_root.contains(&format!("lang=\"{language}\"")));
+            let direction = if language == "ar-XB" { "rtl" } else { "ltr" };
+            assert!(selected_root.contains(&format!("dir=\"{direction}\"")));
             if language == "ar-XB" {
                 assert!(body.contains("dir=\"rtl\""));
             }
