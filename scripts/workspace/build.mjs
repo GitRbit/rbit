@@ -26,9 +26,10 @@ export function validateCargoArgs(args) {
   }
 }
 
-export function cargoProcess(ctx, args, env, onArtifact = () => {}, { spawnProcess = spawn, output = process.stdout, diagnostics = process.stderr } = {}) {
+export function cargoProcess(ctx, args, env, onArtifact = () => {}, { spawnProcess = spawn, output = process.stdout, diagnostics = process.stderr, onMessage = () => {}, captureStderr = false } = {}) {
   return new Promise((done, reject) => {
-    const child = spawnProcess("cargo", args, { cwd: ctx.checkout, env, windowsHide: true, stdio: ["inherit", "pipe", "inherit"] });
+    const child = spawnProcess("cargo", args, { cwd: ctx.checkout, env, windowsHide: true, stdio: ["inherit", "pipe", captureStderr ? "pipe" : "inherit"] });
+    if (captureStderr) child.stderr?.on("data", (chunk) => diagnostics.write(chunk));
     const lines = createInterface({ input: child.stdout });
     let parseError, spawnError;
     lines.on("line", (line) => {
@@ -37,6 +38,7 @@ export function cargoProcess(ctx, args, env, onArtifact = () => {}, { spawnProce
       catch { output.write(`${line}\n`); return; }
       try {
         if (!message || typeof message !== "object" || !message.reason) { output.write(`${line}\n`); return; }
+        onMessage(message);
         if (env.RBIT_WORKSPACE_JSON === "1") output.write(`${line}\n`);
         if (message.reason === "compiler-artifact" && message.executable) onArtifact(message);
         else if (env.RBIT_WORKSPACE_JSON !== "1" && message.reason === "compiler-message" && message.message.rendered) diagnostics.write(message.message.rendered);
