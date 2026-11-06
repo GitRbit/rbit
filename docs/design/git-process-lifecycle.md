@@ -18,12 +18,19 @@ its existing post-push effects. `ProcessIo` bundles the three existing generic
 stream directions without buffering packs or adding dynamic dispatch. Child
 environment scrubbing, hooks policy, input caps, streaming and exit codes remain.
 
-The independently spawned HTTP exchange owner already waits for its child on body
-drop. Its completion notification now also waits for aborted request/stderr pumps
-to be destroyed. This does not establish full HTTP admission ownership: the HTTP
-body currently owns the slot, so early body drop can still release it before the
-independent owner's cleanup finishes. Advertisement handlers also still use an
-outer dropping timeout. Those HTTP adapters need a separate coherent migration.
+HTTP streaming shares its admission guard between the response supervisor and the
+existing independently spawned child owner. Body drop requests cancellation but
+cannot release the last guard while normal child/pump cleanup remains. Conversely,
+a child that exits before the response finishes does not prematurely release the
+body's existing occupancy. Completion follows request/stderr pump destruction.
+
+HTTP advertisements use `advertise_refs_owned`, with one normal owner per admitted
+slot. Dropping the actual request waiter signals that owner; it retains admission
+while cooperatively killing/waiting for the direct child. The owner also applies
+the original advertisement deadline internally. The route no longer drops a live
+process future with an outer timeout. Successful advertisement bodies, protocol
+headers, privacy checks and the existing deadline response status (503) remain.
+The guard is supplied explicitly; this is not an unbounded detached fallback queue.
 
 Legacy transport signatures remain source compatible, including borrowed output
 streams. Arbitrary drop of those futures still relies on the last-resort child

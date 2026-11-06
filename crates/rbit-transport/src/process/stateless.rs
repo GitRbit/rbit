@@ -51,13 +51,14 @@ impl AsyncRead for ServiceOutput {
     }
 }
 
-pub(super) fn serve(
+pub(super) fn serve<G: Send + 'static>(
     transport: &ProcessTransport,
     service: Service,
     repo_path: &Path,
     protocol: Option<&str>,
     options: ReceiveOptions,
     mut request: impl AsyncRead + Send + Unpin + 'static,
+    guard: G,
 ) -> Result<ServiceSession, TransportError> {
     let mut child = transport
         .command(service, repo_path, protocol, options)
@@ -108,6 +109,7 @@ pub(super) fn serve(
             }
         };
         tokio::join!(feed.stop(), errors.stop());
+        drop(guard);
         match result {
             Ok(status) => {
                 let _ = done.send(status);

@@ -19,6 +19,11 @@ impl ProcessControl {
         Self { cancellation, deadline }
     }
 
+    pub(super) fn request_scope(&self) -> (Self, CancellationToken) {
+        let request = self.cancellation.child_token();
+        (Self::new(request.clone(), self.deadline), request)
+    }
+
     /// Rejects an already interrupted stage before spawning Git.
     ///
     /// # Errors

@@ -21,7 +21,7 @@ axum-extra.workspace = true
 tower.workspace = true
 tower-http.workspace = true
 tokio.workspace = true
-tokio-util.workspace = true
+tokio-util = { workspace = true, features = ["rt"] }
 futures-util.workspace = true
 async-compression.workspace = true
 brotli.workspace = true

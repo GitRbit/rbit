@@ -30,6 +30,8 @@
 //! delete existing tags or bring commits that change workflow files. With Actions disabled
 //! a task token is refused before anything is looked up.
 
+mod advertisement;
+pub use advertisement::info_refs;
 mod denied;
 pub(super) use denied::Denied;
 use denied::TOKEN_REQUIRED;
@@ -40,7 +42,7 @@ use rbit_services::mirrors;
 use async_compression::tokio::bufread::GzipDecoder;
 use axum::{
     body::Body,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
 };
@@ -59,7 +61,7 @@ use rbit_transport::{
     ReceiveOptions, Service,
     receive::{self, CommandLimits, Intercept, Remaining},
 };
-use serde::Deserialize;
+use std::sync::Arc;
 use tokio::io::{AsyncRead, BufReader};
 use tokio_util::io::StreamReader;
 
@@ -68,51 +70,6 @@ use crate::{
     client_ip::Client,
     supervise::{Activity, StreamLimits, Watched, supervised_body},
 };
-
-#[derive(Debug, Deserialize)]
-pub struct InfoRefsQuery {
-    service: Option<String>,
-}
-
-/// `GET /{owner}/{repo}.git/info/refs?service=git-upload-pack|git-receive-pack`
-pub async fn info_refs(
-    State(state): State<AppState>,
-    Path((owner, repo)): Path<(String, String)>,
-    Query(query): Query<InfoRefsQuery>,
-    client: Client,
-    headers: HeaderMap,
-) -> Response {
-    let Some(service) = query.service.as_deref().and_then(Service::from_wire_name) else {
-        return (StatusCode::FORBIDDEN, "the dumb HTTP protocol is not supported; please upgrade git").into_response();
-    };
-    let ctx = match authorize(&state, &client, &headers, &owner, &repo, service).await {
-        Ok((ctx, _)) => ctx,
-        // The advertisement is the first request of every operation, so the message reaches the user.
-        Err(Denied::TokenRequired) => return remote_error(service, TOKEN_REQUIRED),
-        Err(denied) => return denied.into_response(),
-    };
-    let _slot = match admit(&state, &client) {
-        Ok(slot) => slot,
-        Err(refused) => return busy(refused),
-    };
-
-    // The advertisement is buffered, so nothing moves until git is done: bound it whole.
-    let advertisement = state.transport.advertise_refs(service, &ctx.disk_path, git_protocol(&headers));
-    match tokio::time::timeout(state.config.repository.git_idle_timeout(), advertisement).await {
-        Ok(Ok(body)) => {
-            ([(header::CONTENT_TYPE, service.advertisement_content_type()), (header::CACHE_CONTROL, "no-cache".to_owned())], body)
-                .into_response()
-        }
-        Ok(Err(error)) => {
-            tracing::error!(%error, %owner, %repo, "ref advertisement failed");
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
-        }
-        Err(_) => {
-            tracing::warn!(%owner, %repo, %service, "ref advertisement exceeded the time limit");
-            StatusCode::SERVICE_UNAVAILABLE.into_response()
-        }
-    }
-}
 
 /// A slot of the Git process limits for this client (refusals answer with [`busy`]).
 fn admit(state: &AppState, client: &Client) -> Result<ConcurrencySlot, Refused> {
@@ -189,13 +146,15 @@ async fn run_service(
         Some(caller) if service.is_write() => Some(state.services.pushes.begin(&ctx, caller.push_source()).await),
         _ => None,
     };
-    let session = match state.transport.serve(service, &ctx.disk_path, git_protocol(&headers), options, request) {
-        Ok(session) => session,
-        Err(error) => {
-            tracing::error!(%error, %owner, %repo, %service, "failed to start git");
-            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-        }
-    };
+    let slot = Arc::new(slot);
+    let session =
+        match state.transport.serve_with_guard(service, &ctx.disk_path, git_protocol(&headers), options, request, Arc::clone(&slot)) {
+            Ok(session) => session,
+            Err(error) => {
+                tracing::error!(%error, %owner, %repo, %service, "failed to start git");
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            }
+        };
 
     if let Some(pending) = pending {
         let recorder = state.services.pushes.clone();

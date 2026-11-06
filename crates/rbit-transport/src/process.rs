@@ -15,6 +15,7 @@ mod control;
 #[cfg(test)]
 mod controlled_tests;
 mod exchange;
+mod owned_advertisement;
 mod pump;
 mod stateless;
 #[cfg(test)]
@@ -167,7 +168,23 @@ impl ProcessTransport {
         options: ReceiveOptions,
         request: impl AsyncRead + Send + Unpin + 'static,
     ) -> Result<ServiceSession, TransportError> {
-        stateless::serve(self, service, repo_path, protocol, options, request)
+        stateless::serve(self, service, repo_path, protocol, options, request, ())
+    }
+
+    /// Starts an exchange whose independent owner retains the caller's resource.
+    /// Successful cleanup releases it only after direct-child exit and pump destruction.
+    /// Use a shared guard when response-stream lifetime must also retain admission.
+    /// A wait error or owner panic is not proof of process exit; see the lifecycle contract.
+    pub fn serve_with_guard<G: Send + 'static>(
+        &self,
+        service: Service,
+        repo_path: &Path,
+        protocol: Option<&str>,
+        options: ReceiveOptions,
+        request: impl AsyncRead + Send + Unpin + 'static,
+        guard: G,
+    ) -> Result<ServiceSession, TransportError> {
+        stateless::serve(self, service, repo_path, protocol, options, request, guard)
     }
 
     /// Runs an SSH push after its separately inspected advertisement and commands.

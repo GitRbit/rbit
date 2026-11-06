@@ -9,6 +9,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- HTTP Git advertisements retain admission until cancelled or timed-out child work
+  has been reaped. Controlled Git exchanges join their input/output tasks, and SSH
+  shutdown drains owned sessions and Git work before returning. Operating-system
+  descendant containment and exceptional wait failures remain separate obligations.
 - Password hashing and verification share an instance-wide, cancellation-safe work
   limit. Exhausted or closed capacity returns a retryable 503 across HTML, API, Git
   and LFS without spending one-use password-reset or passkey-confirmation proofs.

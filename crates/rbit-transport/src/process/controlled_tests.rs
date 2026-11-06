@@ -226,3 +226,28 @@ async fn controlled_success_preserves_advertisements_protocol_and_exit_status() 
     assert!(status.success());
     assert_eq!(output, [0_u8; 0]);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn response_drop_retains_shared_admission_until_the_child_owner_cleans_up() {
+    let repo = repository();
+    let permits = Arc::new(Semaphore::new(1));
+    let response_guard = Arc::new(Arc::clone(&permits).acquire_owned().await.unwrap());
+    let (started, reading) = oneshot::channel();
+    let (destroying, dropped) = oneshot::channel();
+    let (release, resume) = mpsc::channel();
+    let destroyed = Arc::new(AtomicBool::new(false));
+    let input = GatedInput { started: Some(started), destroying: Some(destroying), release: resume, destroyed: Arc::clone(&destroyed) };
+    let session = ProcessTransport::new("git")
+        .serve_with_guard(Service::UploadPack, repo.path(), None, ReceiveOptions::default(), input, Arc::clone(&response_guard))
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(10), reading).await.unwrap().unwrap();
+    drop(session.output);
+    drop(response_guard);
+    tokio::time::timeout(Duration::from_secs(10), dropped).await.unwrap().unwrap();
+    assert_eq!(permits.available_permits(), 0, "body drop must leave admission with the process owner");
+    release.send(()).unwrap();
+    let status = tokio::time::timeout(Duration::from_secs(10), session.completion).await.unwrap().unwrap();
+    assert!(!status.success());
+    assert!(destroyed.load(Ordering::SeqCst));
+    assert_eq!(permits.available_permits(), 1);
+}
