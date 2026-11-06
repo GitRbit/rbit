@@ -2,7 +2,6 @@
 
 use axum::{
     extract::{Query, State},
-    http::HeaderMap,
     response::{IntoResponse, Response},
 };
 use rbit_core::{RepoSort, repository::ArchivedFilter};
@@ -13,13 +12,16 @@ use serde::Deserialize;
 use crate::{
     AppState,
     error::WebResult,
-    localization::{RequestLocale, single_header},
+    localization::RequestLocale,
     views::{
         components::Pagination,
         explore::{ExploreFragment, ExploreLink, ExplorePage, ExploreResults, ExploreText, explore_url},
         layout::Page,
     },
 };
+
+mod response_shape;
+use response_shape::ExploreRequestShape;
 
 /// Bad machine values keep the existing lenient defaults, including archived/page.
 #[derive(Debug, Deserialize)]
@@ -34,7 +36,7 @@ pub async fn explore(
     State(state): State<AppState>,
     page: Page,
     locale: RequestLocale,
-    headers: HeaderMap,
+    shape: ExploreRequestShape,
     Query(params): Query<ExploreQuery>,
 ) -> WebResult<Response> {
     let query = params.q.unwrap_or_default().trim().to_owned();
@@ -92,17 +94,10 @@ pub async fn explore(
         sort: sort.as_str(),
         archived: archived.query_value(),
     };
-    let response = if is_results_request(&headers) {
+    let response = if shape.results_only() {
         ExploreFragment { page: &view.page, results: &view.results }.into_response()
     } else {
         view.into_response()
     };
     Ok(locale.response(response))
-}
-
-fn is_results_request(headers: &HeaderMap) -> bool {
-    single_header(headers, "hx-request") == Some("true")
-        && single_header(headers, "hx-target") == Some("explore-results")
-        && !headers.contains_key("hx-history-restore-request")
-        && !headers.contains_key("hx-boosted")
 }
