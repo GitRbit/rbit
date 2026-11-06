@@ -12,13 +12,14 @@
 //!
 //! Creating, editing and commenting spend [`ThrottleScope::Content`] for the actor.
 
+mod text_edit;
 mod threads;
 
 use std::collections::{HashMap, HashSet};
 
 use rbit_core::{
     Account, AccountId, Comment, CommentId, EventId, Issue, IssueId, IssueKind, IssueNumber, IssuePermissions, IssueState, IssueText,
-    IssueTitle, RepoId, StateReason, TimelineEvent, Timestamp, User,
+    RepoId, StateReason, TimelineEvent, Timestamp, User,
     issue::{CommentAction, IssueAction, comment_permissions, issue_permissions},
 };
 use rbit_storage::sqlite::issues::StoredTimelineItem;
@@ -115,32 +116,6 @@ pub struct TimelineService {
 impl TimelineService {
     pub(crate) fn new(ctx: ServiceContext, throttle: ThrottleService) -> Self {
         Self { ctx, throttle }
-    }
-
-    /// Changes the title and/or the body (`None` keeps it). Publishes `Edited` with the
-    /// previous values of what changed; a change to the same text publishes nothing.
-    pub async fn edit(&self, actor: &User, ctx: &IssueContext, title: Option<&str>, body: Option<&str>) -> Result<Issue, ServiceError> {
-        if !permissions(actor, ctx).can_edit {
-            return Err(ServiceError::Forbidden);
-        }
-        ctx.repo.ensure_writable()?;
-        let title = title.map(IssueTitle::parse).transpose()?;
-        let body = body.map(IssueText::body).transpose()?;
-        self.spend(actor)?;
-        let issue = &ctx.issue;
-        let updated = self
-            .ctx
-            .database
-            .issues()
-            .update_text(issue.id, title.as_ref(), body.as_ref(), actor.id(), Timestamp::now())
-            .await?
-            .ok_or(ServiceError::NotFound)?;
-        let previous_title = (updated.title != issue.title).then(|| issue.title.to_string());
-        let previous_body = (updated.body != issue.body).then(|| issue.body.to_string());
-        if previous_title.is_some() || previous_body.is_some() {
-            self.publish_issue(&updated, Some(actor.id()), IssueAction::Edited { previous_title, previous_body, previous_base: None });
-        }
-        Ok(updated)
     }
 
     /// Closes (as completed or not planned) or reopens the thread. Reopening a pull

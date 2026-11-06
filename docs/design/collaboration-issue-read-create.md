@@ -3,8 +3,10 @@
 This slice follows label and milestone catalogs. It activates shared thread row
 creation, joined opening and counts, and the complete existing plain-issue creation
 workflow with metadata. Search/filter/dashboard queries, metadata read shaping,
-editing, deletion, comments, state/lock changes, attachment mutations and references
+deletion, comments, state/lock changes, attachment mutations and references
 remain legacy workflows. Neither issues nor collaboration are fully retired.
+Title/body editing is activated separately through `threads::ThreadEditor`; its
+legacy SQL transaction and event translation are retained.
 
 ## Model and dependency closure
 

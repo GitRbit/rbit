@@ -167,42 +167,7 @@ async fn comments_follow_the_permission_table_and_publish_events() {
     assert_eq!(fixture.open(&fixture.alice, number).await.issue.comment_count, 1);
 }
 
-#[tokio::test]
-async fn editing_title_and_body_records_a_rename() {
-    let fixture = Fixture::new(|_| {}).await;
-    let timeline = &fixture.services.timeline;
-    let number = fixture.seed(&fixture.alice, IssueKind::Issue, "Crash").await;
-    let bobs = fixture.seed(&fixture.bob, IssueKind::Issue, "Bob's report").await;
-    let mut events = fixture.services.events.subscribe();
-
-    let as_bob = fixture.open(&fixture.bob, number).await;
-    assert!(matches!(timeline.edit(&fixture.bob, &as_bob, Some("Mine now"), None).await, Err(ServiceError::Forbidden)));
-    let own = fixture.open(&fixture.bob, bobs).await;
-    timeline.edit(&fixture.bob, &own, None, Some("More detail")).await.unwrap();
-
-    let as_alice = fixture.open(&fixture.alice, number).await;
-    assert!(matches!(timeline.edit(&fixture.alice, &as_alice, Some("  "), None).await, Err(ServiceError::Invalid(_))));
-    let updated = timeline.edit(&fixture.alice, &as_alice, Some("Crash on start"), Some("Steps to reproduce")).await.unwrap();
-    assert_eq!(updated.title.as_str(), "Crash on start");
-    let again = fixture.open(&fixture.alice, number).await;
-    timeline.edit(&fixture.alice, &again, Some("Crash on start"), None).await.unwrap();
-
-    assert_eq!(
-        issue_actions(&drain(&mut events)),
-        [
-            IssueAction::Edited { previous_title: None, previous_body: Some("Steps to reproduce".to_owned()), previous_base: None },
-            IssueAction::Edited { previous_title: Some("Crash".to_owned()), previous_body: None, previous_base: None },
-        ],
-        "only what changed is reported, and no change publishes nothing"
-    );
-
-    let entries = timeline.timeline(Some(&fixture.bob), &again, None, 50).await.unwrap().entries;
-    assert!(matches!(
-        &entries[..],
-        [TimelineEntry::Event { event: TimelineEvent::Renamed { from, to }, actor: Some(actor), .. }]
-            if from == "Crash" && to == "Crash on start" && actor.name.as_str() == "alice"
-    ));
-}
+mod text_edit_port;
 
 #[tokio::test]
 async fn closing_and_reopening() {

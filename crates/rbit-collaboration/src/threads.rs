@@ -20,3 +20,8 @@ mod repository;
 pub use application::{OpenCounts, ThreadAccess, ThreadApplication, ThreadDraft, ThreadError};
 #[cfg(feature = "applications")]
 pub use repository::ThreadRepository;
+
+#[cfg(feature = "applications")]
+mod text_edit;
+#[cfg(feature = "applications")]
+pub use text_edit::{ThreadEditAccess, ThreadEditError, ThreadEditResult, ThreadEditor, ThreadTextChange, ThreadTextRepository};
