@@ -1,6 +1,6 @@
 # rbit ground up rewrite plan
 
-Prepared 2026-11-05. Status: proposed architecture and delivery plan, before implementation.
+Prepared 2026-11-05. Status: implementation authorized and active. Work proceeds in atomic commits against the pinned baseline; the phase exit gates below still govern completion.
 
 The rewrite will retain Rust, Axum, Askama, HTMX, Tailwind CSS v4, SQLite and redb, preserve the platform's features, and reorganize the application around small, documented modules. A statically linked application microkernel will own lifecycle and resource coordination. Feature crates will own behavior, while the existing separate runner remains the execution boundary for CI jobs.
 
