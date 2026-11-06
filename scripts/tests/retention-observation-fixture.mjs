@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative, isAbsolute } from "node:path";
 import { EventEmitter } from "node:events";
@@ -7,8 +7,10 @@ import { ownedCargo } from "../workspace/cargo-tree.mjs";
 import { cargoProcess } from "../workspace/build.mjs";
 import { boundedInput } from "../workspace/retention/policy.mjs";
 export const namespace = "a".repeat(20);
-export async function fixture(t) {
-  const root = await mkdtemp(join(tmpdir(), "rbit-retention-observe-"));
+export async function fixture(t, { temporaryRoot = tmpdir() } = {}) {
+  // Hosted Windows TEMP may use an 8.3 alias. Canonicalize before deriving every
+  // context, lane and output path, matching the production context() contract.
+  const root = await realpath(await mkdtemp(join(temporaryRoot, "rbit-retention-observe-")));
   t.after(() => rm(root, { recursive: true, force: true }));
   const ctx = { root, checkout: root, cache: join(root, "cache"), state: join(root, "state") };
   const lane = join(ctx.cache, namespace, "shared");
