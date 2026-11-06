@@ -4236,6 +4236,7 @@ version = "0.1.5"
 dependencies = [
  "rbit-contracts",
  "rbit-identity-models",
+ "rbit-repositories",
  "serde",
  "serde_json",
  "tokio",

@@ -240,7 +240,7 @@ impl Services {
         // Shared so the issue and pull request services spend the same content budget and
         // record through the same timeline.
         let timeline = ThreadServices::new(ctx.database.clone(), ctx.repositories.clone(), ctx.events.clone(), throttle.clone());
-        let references = ReferenceService::new(ctx.clone(), timeline.clone());
+        let references = ReferenceService::new(ctx.database.clone(), timeline.clone());
         let repositories =
             RepositoryService::new(Arc::clone(&config), database.repositories(), ctx.repositories.clone(), ctx.events.clone());
         // Milestone 3 (N): notification emails share the mail queue and the rate limits.
