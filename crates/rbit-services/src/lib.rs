@@ -107,7 +107,7 @@ pub use stars::{StarService, StarSummary};
 pub use statuses::StatusService;
 pub use teams::TeamService;
 pub use throttle::{ThrottleScope, ThrottleService};
-pub use timeline::{IssueContext, TimelineService};
+pub use timeline::{IssueContext, ThreadServices, TimelineService};
 pub use tokens::{AccessTokenService, CreateAccessToken};
 pub use transfers::TransferService;
 pub use two_factor::TwoFactorService;
@@ -171,7 +171,7 @@ pub struct Services {
     // Frontend wave: themes (T).
     pub preferences: PreferenceService,
     // Milestone 2 wave B: the shared issue timeline (T0).
-    pub timeline: TimelineService,
+    pub timeline: ThreadServices,
     // Issues (I).
     pub issues: IssueService,
     pub references: ReferenceService,
@@ -239,7 +239,7 @@ impl Services {
         let throttle = ThrottleService::new(ctx.clone());
         // Shared so the issue and pull request services spend the same content budget and
         // record through the same timeline.
-        let timeline = TimelineService::new(ctx.clone(), throttle.clone());
+        let timeline = ThreadServices::new(ctx.database.clone(), ctx.repositories.clone(), ctx.events.clone(), throttle.clone());
         let references = ReferenceService::new(ctx.clone(), timeline.clone());
         let repositories =
             RepositoryService::new(Arc::clone(&config), database.repositories(), ctx.repositories.clone(), ctx.events.clone());

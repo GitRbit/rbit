@@ -35,7 +35,7 @@ impl MilestoneAttachmentPort for MilestoneAssignmentView<'_> {
             MilestoneAttachmentKind::Removed => rbit_core::TimelineEvent::Demilestoned { milestone: id, title: title.to_owned() },
             MilestoneAttachmentKind::Added => rbit_core::TimelineEvent::Milestoned { milestone: id, title: title.to_owned() },
         };
-        self.service.timeline.record(self.ctx.issue.id, Some(self.actor.id()), event).await?;
+        self.service.timeline.writer().record(self.ctx.issue.id, Some(self.actor.id()), event).await?;
         Ok(())
     }
     fn publish(&self, kind: MilestoneAttachmentKind, id: MilestoneId, title: String) {

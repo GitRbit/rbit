@@ -117,6 +117,7 @@ async fn opening_a_thread_resolves_its_author_and_permissions() {
 
 mod human_comments_port;
 mod lifecycle_port;
+mod reader_port;
 mod task_comments_port;
 
 mod text_edit_port;

@@ -25,7 +25,7 @@ impl IssueCreationPort for Creation<'_> {
         Ok(self.service.ctx.database.issue_meta().find_milestone(self.repo.repo.repo.id, id).await?)
     }
     async fn create_thread(&self, title: &str, body: &str) -> Result<Issue, Self::Error> {
-        self.service.timeline.create(self.actor, self.repo, IssueKind::Issue, title, body).await
+        self.service.timeline.writer().create(self.actor, self.repo, IssueKind::Issue, title, body).await
     }
     async fn attach(
         &self,
@@ -43,7 +43,7 @@ impl IssueCreationPort for Creation<'_> {
             MetadataCreated::Assigned(assignee) => TimelineEvent::Assigned { assignee },
             MetadataCreated::Milestoned { id, title } => TimelineEvent::Milestoned { milestone: id, title },
         };
-        self.service.timeline.record(issue, Some(self.actor.id()), event).await?;
+        self.service.timeline.writer().record(issue, Some(self.actor.id()), event).await?;
         Ok(())
     }
     fn publish_opened(&self, issue: &Issue) {

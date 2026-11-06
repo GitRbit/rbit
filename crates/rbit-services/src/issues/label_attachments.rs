@@ -54,7 +54,7 @@ impl LabelAttachmentMutation for LabelAttachmentMutationView<'_> {
             LabelAttachmentKind::Labeled => rbit_core::TimelineEvent::Labeled { label: label.clone() },
             LabelAttachmentKind::Unlabeled => rbit_core::TimelineEvent::Unlabeled { label: label.clone() },
         };
-        self.service.timeline.record(self.ctx.issue.id, Some(self.actor.id()), event).await?;
+        self.service.timeline.writer().record(self.ctx.issue.id, Some(self.actor.id()), event).await?;
         Ok(())
     }
     fn publish(&self, kind: LabelAttachmentKind, label: LabelSnapshot) {

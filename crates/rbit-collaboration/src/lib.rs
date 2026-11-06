@@ -7,5 +7,6 @@ pub mod labels;
 pub mod milestones;
 mod state;
 pub mod threads;
+pub mod timeline;
 
 pub use state::IssueState;

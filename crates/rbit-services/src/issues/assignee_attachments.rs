@@ -34,7 +34,7 @@ impl AssigneeAttachmentPort for AssigneeAttachmentView<'_> {
             AssigneeAttachmentKind::Assigned => rbit_core::TimelineEvent::Assigned { assignee: id },
             AssigneeAttachmentKind::Unassigned => rbit_core::TimelineEvent::Unassigned { assignee: id },
         };
-        self.service.timeline.record(self.ctx.issue.id, Some(self.actor.id()), event).await?;
+        self.service.timeline.writer().record(self.ctx.issue.id, Some(self.actor.id()), event).await?;
         Ok(())
     }
     fn publish(&self, kind: AssigneeAttachmentKind, id: AccountId) {

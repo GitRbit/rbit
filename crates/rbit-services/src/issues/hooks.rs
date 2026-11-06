@@ -288,7 +288,7 @@ mod tests {
     async fn comment_payloads_include_the_comment_and_pull_requests() {
         let fixture = Fixture::new().await;
         let repo = fixture.services.repositories.open(Some(&fixture.alice), "alice", "demo").await.unwrap();
-        let pull = fixture.services.timeline.create(&fixture.alice, &repo, IssueKind::Pull, "Fix", "").await.unwrap();
+        let pull = fixture.services.timeline.writer().create(&fixture.alice, &repo, IssueKind::Pull, "Fix", "").await.unwrap();
         let ctx = fixture.services.timeline.open(Some(&fixture.alice), repo, IssueNumber::new(1).unwrap()).await.unwrap();
         let comment = fixture.services.timeline.comment(&fixture.alice, &ctx, "Looks good").await.unwrap();
         let event = |action| DomainEvent::IssueComment {

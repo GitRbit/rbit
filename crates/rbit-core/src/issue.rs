@@ -12,7 +12,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{AccountId, PushSource, RepoAccess, Timestamp, User};
+use crate::{AccountId, PushSource, RepoAccess, User};
 
 // ------------------------------------------------------------------ ids
 
@@ -20,9 +20,7 @@ pub use rbit_collaboration::threads::IssueId;
 
 pub use rbit_collaboration::comments::CommentId;
 
-/// Database id of a timeline event.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct EventId(pub i64);
+pub use rbit_collaboration::timeline::EventId;
 
 pub use rbit_collaboration::labels::LabelId;
 
@@ -406,7 +404,7 @@ pub fn comment_permissions(viewer: Option<&User>, permissions: IssuePermissions,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Account, AccountKind, AccountName, Email, RepoId};
+    use crate::{Account, AccountKind, AccountName, Email, RepoId, Timestamp};
 
     fn user(id: i64) -> User {
         User {

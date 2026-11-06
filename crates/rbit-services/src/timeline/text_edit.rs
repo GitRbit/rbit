@@ -3,7 +3,7 @@
 use rbit_collaboration::threads::{ThreadEditAccess, ThreadEditError, ThreadEditor};
 use rbit_storage::StorageError;
 
-use super::{Issue, IssueAction, IssueContext, ServiceError, TimelineService, Timestamp, User, permissions};
+use super::{Issue, IssueAction, IssueContext, ServiceError, Timestamp, User, permissions};
 
 fn error<P: Into<ServiceError>>(error: ThreadEditError<StorageError, P>) -> ServiceError {
     match error {
@@ -16,11 +16,11 @@ fn error<P: Into<ServiceError>>(error: ThreadEditError<StorageError, P>) -> Serv
     }
 }
 
-impl TimelineService {
+impl crate::timeline::writer::ThreadWriter<'_> {
     /// Changes title/body; unchanged values publish nothing and retain original store work.
     pub async fn edit(&self, actor: &User, ctx: &IssueContext, title: Option<&str>, body: Option<&str>) -> Result<Issue, ServiceError> {
         let access = ThreadEditAccess { can_edit: permissions(actor, ctx).can_edit, archived: ctx.repo.repo.repo.is_archived() };
-        let result = ThreadEditor::new(&self.ctx.database, actor.id(), access)
+        let result = ThreadEditor::new(self.database, actor.id(), access)
             .edit(&ctx.issue, title, body, || self.spend(actor), Timestamp::now)
             .await
             .map_err(error)?;

@@ -191,7 +191,7 @@ impl ReferenceService {
             }
             seen.push(target.id);
             if database.issue_meta().record_cross_ref(target.id, source.id, Timestamp::now()).await? {
-                self.timeline.record(target.id, actor, TimelineEvent::CrossReferenced { source: source.id }).await?;
+                self.timeline.writer().record(target.id, actor, TimelineEvent::CrossReferenced { source: source.id }).await?;
             }
         }
         Ok(())

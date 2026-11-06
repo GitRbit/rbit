@@ -697,11 +697,11 @@ impl IssueService {
                 for target in targets {
                     if database.issue_meta().record_commit_ref(target.id, &commit.id, Timestamp::now()).await? {
                         let event = TimelineEvent::CommitReferenced { commit: commit.id.clone(), summary: commit.summary.clone() };
-                        self.timeline.record(target.id, pusher, event).await?;
+                        self.timeline.writer().record(target.id, pusher, event).await?;
                     }
                     if default_branch && target.kind == IssueKind::Issue && scan.closes.contains(&target.number) {
                         let event = TimelineEvent::Closed { reason: StateReason::Completed, commit: Some(commit.id.clone()), pull: None };
-                        self.timeline.close_as_system(target.id, pusher, StateReason::Completed, event).await?;
+                        self.timeline.writer().close_as_system(target.id, pusher, StateReason::Completed, event).await?;
                     }
                 }
             }
@@ -725,7 +725,7 @@ impl IssueService {
         for target in database.issues().find_numbers(pull.repo_id, &scan.closes).await? {
             if target.kind == IssueKind::Issue {
                 let event = TimelineEvent::Closed { reason: StateReason::Completed, commit: None, pull: Some(number) };
-                self.timeline.close_as_system(target.id, actor, StateReason::Completed, event).await?;
+                self.timeline.writer().close_as_system(target.id, actor, StateReason::Completed, event).await?;
             }
         }
         Ok(())
