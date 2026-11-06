@@ -25,3 +25,8 @@ pub use repository::ThreadRepository;
 mod text_edit;
 #[cfg(feature = "applications")]
 pub use text_edit::{ThreadEditAccess, ThreadEditError, ThreadEditResult, ThreadEditor, ThreadTextChange, ThreadTextRepository};
+
+#[cfg(feature = "applications")]
+mod state_change;
+#[cfg(feature = "applications")]
+pub use state_change::{StateChange, ThreadStateAccess, ThreadStateChanger, ThreadStateError, ThreadStateRepository, ThreadStateResult};

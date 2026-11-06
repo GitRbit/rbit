@@ -12,6 +12,7 @@
 //!
 //! Creating, editing and commenting spend [`ThrottleScope::Content`] for the actor.
 
+mod state_change;
 mod text_edit;
 mod threads;
 
@@ -43,13 +44,7 @@ pub struct IssueContext {
 
 pub use rbit_collaboration::threads::OpenCounts;
 
-/// A state change a person asks for. Closing as [`StateReason::Merged`] is refused: only
-/// merging a pull request produces it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StateChange {
-    Close(StateReason),
-    Reopen,
-}
+pub use rbit_collaboration::threads::StateChange;
 
 /// One item of a thread's conversation, shaped for a viewer.
 #[derive(Debug, Clone)]
@@ -116,41 +111,6 @@ pub struct TimelineService {
 impl TimelineService {
     pub(crate) fn new(ctx: ServiceContext, throttle: ThrottleService) -> Self {
         Self { ctx, throttle }
-    }
-
-    /// Closes (as completed or not planned) or reopens the thread. Reopening a pull
-    /// request first asks `pulls::lifecycle::check_reopen`. Asking for the state it is
-    /// already in changes nothing and publishes nothing.
-    pub async fn set_state(&self, actor: &User, ctx: &IssueContext, change: StateChange) -> Result<Issue, ServiceError> {
-        if !permissions(actor, ctx).can_set_state {
-            return Err(ServiceError::Forbidden);
-        }
-        ctx.repo.ensure_writable()?;
-        let (state, reason, event, action) = match change {
-            StateChange::Close(StateReason::Merged) => {
-                return Err(ServiceError::Invalid("only merging a pull request closes it as merged".to_owned()));
-            }
-            StateChange::Close(reason) => (
-                IssueState::Closed,
-                Some(reason),
-                TimelineEvent::Closed { reason, commit: None, pull: None },
-                IssueAction::Closed { reason },
-            ),
-            StateChange::Reopen => {
-                if ctx.issue.is_pull() {
-                    crate::pulls::lifecycle::check_reopen(&self.ctx, &ctx.issue).await?;
-                }
-                (IssueState::Open, None, TimelineEvent::Reopened, IssueAction::Reopened)
-            }
-        };
-        let store = self.ctx.database.issues();
-        match store.set_state(ctx.issue.id, state, reason, Some(actor.id()), &event, Timestamp::now()).await? {
-            Some(updated) => {
-                self.publish_issue(&updated, Some(actor.id()), action);
-                Ok(updated)
-            }
-            None => store.find(ctx.issue.id).await?.ok_or(ServiceError::NotFound),
-        }
     }
 
     /// Closes a thread on behalf of the system: by a pushed commit (I) or by a merge (P).

@@ -13,6 +13,7 @@ mod collaboration_labels;
 mod collaboration_milestones;
 mod collaboration_threads;
 mod collaboration_thread_text;
+mod collaboration_thread_state;
 pub mod error;
 mod identity_accounts;
 mod identity_sessions;

@@ -4,14 +4,11 @@
 use std::sync::Arc;
 
 use rbit_core::{
-    Config, IssueKind, IssueNumber, IssueState, IssueText, IssueTitle, RepoAccess, StateReason, TimelineEvent, Timestamp, User, Visibility,
+    Config, IssueKind, IssueNumber, IssueText, IssueTitle, RepoAccess, TimelineEvent, Timestamp, User, Visibility,
     issue::{CommentAction, IssueAction},
     membership::Permission,
 };
-use rbit_services::{
-    CreateRepository, DomainEvent, IssueContext, RepoContext, ServiceError, Services,
-    timeline::{StateChange, TimelineEntry},
-};
+use rbit_services::{CreateRepository, DomainEvent, IssueContext, RepoContext, ServiceError, Services, timeline::TimelineEntry};
 use rbit_storage::{Database, KvStore, NewUser, sqlite::issues::NewIssue};
 use tokio::sync::broadcast::{Receiver, error::TryRecvError};
 
@@ -169,64 +166,7 @@ async fn comments_follow_the_permission_table_and_publish_events() {
 
 mod text_edit_port;
 
-#[tokio::test]
-async fn closing_and_reopening() {
-    let fixture = Fixture::new(|_| {}).await;
-    let timeline = &fixture.services.timeline;
-    let alices = fixture.seed(&fixture.alice, IssueKind::Issue, "Crash").await;
-    let bobs = fixture.seed(&fixture.bob, IssueKind::Issue, "Question").await;
-    let pull = fixture.seed(&fixture.alice, IssueKind::Pull, "Fix").await;
-    let mut events = fixture.services.events.subscribe();
-
-    let not_bobs = fixture.open(&fixture.bob, alices).await;
-    assert!(matches!(
-        timeline.set_state(&fixture.bob, &not_bobs, StateChange::Close(StateReason::Completed)).await,
-        Err(ServiceError::Forbidden)
-    ));
-
-    let own = fixture.open(&fixture.bob, bobs).await;
-    let closed = timeline.set_state(&fixture.bob, &own, StateChange::Close(StateReason::NotPlanned)).await.unwrap();
-    assert_eq!(
-        (closed.state, closed.state_reason, closed.closed_by),
-        (IssueState::Closed, Some(StateReason::NotPlanned), Some(fixture.bob.id()))
-    );
-    let again = timeline.set_state(&fixture.bob, &own, StateChange::Close(StateReason::Completed)).await.unwrap();
-    assert_eq!(again.state_reason, Some(StateReason::NotPlanned), "already closed: unchanged");
-    let reopened = timeline.set_state(&fixture.bob, &own, StateChange::Reopen).await.unwrap();
-    assert_eq!(reopened.state, IssueState::Open);
-
-    let as_alice = fixture.open(&fixture.alice, pull).await;
-    let merged = timeline.set_state(&fixture.alice, &as_alice, StateChange::Close(StateReason::Merged)).await;
-    assert!(matches!(merged, Err(ServiceError::Invalid(_))), "only a merge closes as merged");
-    timeline.set_state(&fixture.alice, &as_alice, StateChange::Close(StateReason::Completed)).await.unwrap();
-    let closed_pull = fixture.open(&fixture.alice, pull).await;
-    timeline.set_state(&fixture.alice, &closed_pull, StateChange::Reopen).await.unwrap();
-
-    let published = drain(&mut events);
-    assert_eq!(
-        issue_actions(&published),
-        [
-            IssueAction::Closed { reason: StateReason::NotPlanned },
-            IssueAction::Reopened,
-            IssueAction::Closed { reason: StateReason::Completed },
-            IssueAction::Reopened,
-        ]
-    );
-    assert!(matches!(published[2], DomainEvent::Issue { kind: IssueKind::Pull, .. }));
-
-    let kinds: Vec<_> = timeline
-        .timeline(None, &own, None, 50)
-        .await
-        .unwrap()
-        .entries
-        .iter()
-        .map(|entry| match entry {
-            TimelineEntry::Event { event, .. } => event.kind(),
-            TimelineEntry::Comment { .. } => "comment",
-        })
-        .collect();
-    assert_eq!(kinds, ["closed", "reopened"]);
-}
+mod state_change_port;
 
 #[tokio::test]
 async fn locked_threads_admit_only_writers() {
