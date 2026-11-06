@@ -5,6 +5,7 @@
 
 pub mod account;
 pub mod accounts;
+pub mod credential;
 pub mod names;
 pub mod sessions;
 pub mod token;

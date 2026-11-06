@@ -48,8 +48,9 @@ See SQLite's [AUTOINCREMENT](https://sqlite.org/autoinc.html) and
 ## What remains before activation
 
 A future session read must compare the ORIGINAL session epoch with SQL's current epoch
-and reject while ANY unresolved credential intent exists, in the existing one-query
-SessionUser projection. A versioned redb epoch sidecar must be updated with each session
+and reject while its CURRENT epoch has an unresolved credential intent, in the
+existing one-query SessionUser projection. Older pending rows remain explicit
+supersession/recovery work, rather than permanently blocking a newer completed epoch. A versioned redb epoch sidecar must be updated with each session
 record/index in the same redb write transaction, preserving legacy postcard bytes.
 Missing legacy sidecars mean fixed epoch zero, never the latest SQL epoch.
 
@@ -113,3 +114,52 @@ node scripts/workspace.mjs clippy -p rbit-storage --all-targets --locked -- -D w
 
 The full protocol still needs real redb/SQL fault, cancellation, restart, concurrent
 session-issuance and one-query regression tests before production adoption.
+
+
+## Alternate snapshot/read contract (still inactive)
+
+The pure identity-models credential module now defines a checked nonnegative
+CredentialEpoch, same-row CredentialFence facts and CredentialLoginSnapshot. These
+are freely constructible persistence DTOs, explicitly not opaque authentication or
+issuance receipts; no Serde credential or runtime/crypto dependency is added. Snapshot
+Debug delegates credential redaction to existing LoginRecord. The future application
+must immediately take its owned PHC into protected ownership as the existing login
+application does, and must not log or clone those bytes.
+
+AccountStore.find_login_snapshot reads the PHC, suspension flag, epoch and current-target
+pending state in one SQL statement. Pending/suspended candidates remain available to
+the future application so lookup -> before_verify -> admission -> verification ->
+suspension/accounting order is not silently changed here. This method itself neither
+verifies proof nor issues a receipt. Existing sign-in APIs still use their old lookup.
+
+AccountStore.find_session_user_at_epoch is an alternate one-statement projection
+comparing a supplied original epoch, current account activity and its current-target
+pending barrier while preserving password-change-required and optional unread flags.
+It never reads a PHC or refreshes the supplied epoch. Existing session resolution does
+not call it yet. Missing-sidecar/initial-epoch rules will be owned by the future session
+adapter, not inferred from a fresh SQL read. Normal routes still use the legacy APIs.
+
+Both barrier subqueries use account_id + target_epoch = authentication_epoch, then
+completed_at IS NULL. The existing UNIQUE(account_id,target_epoch) index supplies at
+most one candidate, independent of completed history size. Old unresolved targets do
+not block a newer completed target; they still need explicit supersession/recovery
+handling. No broad barrier-clear or stale-target acknowledgement is introduced.
+
+Prepared tests assert one instrumented statement/acquisition for both alternate reads,
+one actual traced statement for session flags, and EXPLAIN QUERY PLAN over the exact
+query constants requiring the unique account/epoch search (no intent-history scan).
+Other fixtures cover rollback/legacy epoch zero, original snapshot -> reset -> late
+issuance fencing, pending current vs older pending history, new barriers, suspension,
+unknown accounts, bound login parameters, PHC Debug redaction and unchanged legacy
+lookup. Model tests cover negative/max integers, increment exhaustion and fixed proof
+comparison. They are storage/model tests, not evidence that receipt propagation or
+remote issuance has been activated or that the redb race/crash protocol is complete.
+
+Additional acceptance commands once the compiler lane is available:
+
+```text
+node scripts/workspace.mjs test -p rbit-identity-models --locked credential
+node scripts/workspace.mjs test -p rbit-storage --test integration --locked credential_fence_reads
+node scripts/workspace.mjs test -p rbit-storage --lib --locked barrier_query_plans
+node scripts/workspace.mjs clippy -p rbit-identity-models -p rbit-storage --all-targets --locked -- -D warnings
+```

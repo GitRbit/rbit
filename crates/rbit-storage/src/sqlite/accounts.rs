@@ -3,6 +3,8 @@
 //! Suspension is enforced here: [`AccountStore::find_login`] reports it so sign-in can be
 //! refused, and [`AccountStore::find_active_user`] never resolves a suspended user.
 
+mod fenced;
+
 use super::pool::Pool;
 use rbit_core::{Account, AccountId, AccountKind, AccountName, Timestamp, User};
 
