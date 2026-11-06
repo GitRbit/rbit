@@ -67,7 +67,9 @@ test("workflow gate covers every validation, preserves platform/smoke checks and
   // This workflow deliberately uses direct, two-space job definitions and inline
   // needs. Refuse structural drift instead of pretending to be a general YAML parser.
   const jobs = [...workflow.slice(workflow.indexOf("\njobs:")).matchAll(/^  ([a-z][a-z0-9-]*):\r?$/gm)].map((match) => match[1]);
-  assert.deepEqual(jobs.filter((id) => id !== "required").sort(), REQUIRED_CHECKS.map((check) => check.id).sort());
+  assert.deepEqual(jobs.filter((id) => !["required", "actions-production-visual"].includes(id)).sort(),
+    REQUIRED_CHECKS.map((check) => check.id).sort());
+  assert.equal(jobs.filter(id => id === "actions-production-visual").length, 1);
   const gate = workflow.slice(workflow.indexOf("\n  required:"));
   const needs = gate.match(/^    needs: \[([^\]]+)\]/m)[1].split(",").map((id) => id.trim());
   assert.deepEqual(needs.sort(), REQUIRED_CHECKS.map((check) => check.id).sort());

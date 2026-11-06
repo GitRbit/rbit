@@ -14,7 +14,7 @@ export function relevantPath(path) {
       "scripts/tests/fixtures/actions-"].some(prefix => path.startsWith(prefix) || (prefix.endsWith("/") && path === prefix.slice(0, -1)))
     || /^scripts\/tests\/rewrite-actions-.*\.test\.mjs$/.test(path);
 }
-export async function relevance(eventName, event, git) {
+export async function relevance(eventName, event, git, acceptsPath = relevantPath) {
   if (eventName !== "pull_request" || event?.action !== "synchronize") {
     return { run: true, reason: "INITIAL_MANUAL_OR_NON_SYNCHRONIZE" };
   }
@@ -35,7 +35,7 @@ export async function relevance(eventName, event, git) {
     const output = await git(["diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--name-only", "-z", before, after, "--"]);
     if (output && !output.endsWith("\0")) throw new Error("Malformed path framing");
     const paths = output.split("\0").filter(Boolean);
-    const run = paths.some(relevantPath);
+    const run = paths.some(acceptsPath);
     return { run, reason: run ? "RELEVANT_EVENT_DELTA" : "NO_RELEVANT_EVENT_DELTA", changedPaths: paths.length };
   } catch { return { run: true, reason: "COMPARISON_UNAVAILABLE" }; }
 }

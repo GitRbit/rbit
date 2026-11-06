@@ -34,6 +34,21 @@ no source checkout, Git directory, database, profile or host socket. This preser
 the actual same-revision debug CSS/JS behavior without another web compilation.
 This is a functional debug fixture, not release performance evidence.
 
+The existing Linux test job exports this input only for relevant source events.
+The optional consuming job downloads only that named artifact from its own workflow
+run and verifies revision, ELF identity and all hashes before restoring execute mode
+on the exact single-link binary. Artifact upload/download does not preserve its
+executable mode. No raw Cargo output directory is mounted or searched by basename.
+
+The consuming job waits for **both** existing test platforms. It does not change
+the seven branch-protection aggregate dependencies; its own failure still fails
+the overall workflow. It inherits the CI workflow's PR supersession cancellation.
+On synchronize events, both producer and consumer compare exact validated
+before/after commits; unknown comparisons run conservatively. All crate changes
+are relevant because real shared middleware and persistence can affect the page.
+Documentation-only deltas skip export and the image pull. Initial/manual/main runs
+remain conservative. This is a bounded reuse gate, not a latency optimization claim.
+
 ```text
 node devtools/actions-visual/export-production.mjs
 node devtools/actions-visual/container.mjs --production
