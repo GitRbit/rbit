@@ -1,0 +1,43 @@
+    {#- The list refreshes itself (views::actions::runs_refresh), not the forms above it, so
+        nothing typed there is lost. -#}
+    <div id="runs" {% if let Some(every) = refresh %}hx-get="{{ self_url }}" hx-trigger="{{ every }}" hx-select="#runs" hx-target="this" hx-swap="outerHTML"{% endif %}>
+    <div class="box">
+      {% if runs.is_empty() %}
+      {% if filters.any %}
+      {% call ui::empty_state("zap", "No matching runs", "No workflow run matches these filters.") %}{% endcall %}
+      {% else if dispatch.is_some() %}
+      {% call ui::empty_state("zap", "No runs yet", "This workflow runs when it is started: use Run workflow above.") %}{% endcall %}
+      {% else %}
+      {% call ui::empty_state("zap", "No workflow runs yet", "Add a workflow file under .rbit/workflows and push it: runs show up here as runners pick them up.") %}{% endcall %}
+      {% endif %}
+      {% else %}
+      <ul>
+        {% for run in runs %}
+        <li class="row items-start gap-3 py-3">
+          {% let look = run.look %}
+          {% include "actions/state.html" %}
+          <div class="min-w-0 flex-1">
+            <a class="block truncate text-[13px] font-medium hover:underline hover:underline-offset-4" href="{{ run.url }}">{{ run.title }}</a>
+            <p class="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-ink-muted">
+              <span>{{ run.workflow }} #{{ run.number }}</span><span aria-hidden="true">·</span><span>{{ run.event }}</span>
+              {% if !run.reference.is_empty() %}<span aria-hidden="true">·</span><span class="font-mono">{{ run.reference }}</span>{% endif %}
+              {% if let Some(actor) = run.actor %}<span aria-hidden="true">·</span><span>{{ actor }}</span>{% endif %}
+            </p>
+            {% if let Some(error) = run.error %}<p class="mt-1 whitespace-pre-wrap break-words text-xs text-danger">{{ error }}</p>{% endif %}
+          </div>
+          <div class="shrink-0 text-right text-xs text-ink-faint">
+            <time class="block whitespace-nowrap" datetime="{{ run.when_iso }}">{{ run.when }}</time>
+            {% if let Some(duration) = run.duration %}<span class="mt-0.5 flex items-center justify-end gap-1 whitespace-nowrap tabular-nums">{% call ui::icon("clock", "size-3") %}{% endcall %}{{ duration }}</span>{% endif %}
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+
+    {% if let Some(url) = next_url %}
+    <nav class="mt-4 flex justify-end" aria-label="Pagination">
+      <a href="{{ url }}" class="btn" rel="next">Older runs{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</a>
+    </nav>
+    {% endif %}
+    </div>

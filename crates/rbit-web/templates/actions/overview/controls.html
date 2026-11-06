@@ -1,0 +1,41 @@
+    <div class="mb-3 flex min-h-8 items-center gap-3">
+      <h1 class="text-[13px] font-medium text-ink-muted">{% if let Some(name) = workflow %}{{ name }}{% else %}All workflow runs{% endif %}</h1>
+      {% if let Some(url) = switch_url %}
+      <form method="post" action="{{ url }}" class="ml-auto">
+        <input type="hidden" name="disabled" value="{% if disabled %}false{% else %}true{% endif %}">
+        <button class="btn h-10 sm:h-8" type="submit">{% if disabled %}Enable workflow{% else %}Disable workflow{% endif %}</button>
+      </form>
+      {% endif %}
+    </div>
+
+    {% if disabled %}
+    <p class="mb-3 rounded-md border border-line bg-subtle px-3 py-2 text-[13px] text-ink-muted" role="status">This workflow is disabled: it starts no run, for any event, until it is enabled.</p>
+    {% endif %}
+
+    {% if let Some(form) = dispatch %}{% include "actions/dispatch.html" %}{% endif %}
+
+    <form method="get" action="{{ filters.action }}" class="mb-3 flex flex-wrap items-center gap-2" role="search">
+      <label class="sr-only" for="runs-branch">Branch</label>
+      <input class="input min-w-0 flex-1 basis-36 sm:max-w-48" id="runs-branch" type="search" name="branch" value="{{ filters.branch }}" placeholder="Branch" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <label class="sr-only" for="runs-actor">Actor</label>
+      <input class="input min-w-0 flex-1 basis-36 sm:max-w-48" id="runs-actor" type="search" name="actor" value="{{ filters.actor }}" placeholder="Actor" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <label class="sr-only" for="runs-event">Event</label>
+      <div class="relative w-full sm:w-40">
+        <select class="input cursor-pointer appearance-none pr-9" id="runs-event" name="event">
+          <option value="">Any event</option>
+          {% for option in filters.events %}<option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>{% endfor %}
+        </select>
+        {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
+      </div>
+      <label class="sr-only" for="runs-status">Status</label>
+      <div class="relative w-full sm:w-44">
+        <select class="input cursor-pointer appearance-none pr-9" id="runs-status" name="status">
+          <option value="">Any status</option>
+          {% for option in filters.statuses %}<option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>{% endfor %}
+        </select>
+        {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
+      </div>
+      <button class="btn h-10 sm:h-9" type="submit">Filter</button>
+      {% if filters.any %}<a href="{{ filters.action }}" class="btn btn-ghost h-10 sm:h-9">Clear</a>{% endif %}
+    </form>
+
