@@ -3,7 +3,7 @@
     <p class="flex items-start gap-2 font-medium">{% call ui::icon("shield", "mt-px size-4 shrink-0 text-warning") %}{% endcall %}This run waits for approval</p>
     <p class="mt-1 text-ink-muted">It comes from a fork or from someone without write access. Its workflow may run code you have not reviewed, so a writer has to approve it first. Even approved, it runs with a read-only token and without secrets or variables.</p>
     {% if can_write %}
-    <form method="post" action="{{ approve_url }}" class="mt-3 flex flex-wrap items-center gap-3">
+    <form data-run-review="approval" method="post" action="{{ approve_url }}" class="mt-3 flex flex-wrap items-center gap-3">
       <label class="flex min-h-11 items-center gap-2"><input class="accent-(--ink)" type="checkbox" name="trust_author" value="true">Always run this author's pull requests without approval</label>
       <button class="btn btn-primary h-10 sm:h-9" type="submit">{% call ui::icon("play", "size-3.5") %}{% endcall %}Approve and run</button>
     </form>
@@ -18,7 +18,7 @@
     <p class="flex items-start gap-2 font-medium">{% call ui::icon("shield", "mt-px size-4 shrink-0 text-warning") %}{% endcall %}<span>Waiting for review: <span class="font-mono">{{ deployment.environment }}</span></span></p>
     <p class="mt-1 text-ink-muted">{{ deployment.jobs }} {% if deployment.jobs.contains(", ") %}deploy{% else %}deploys{% endif %} to {{ deployment.environment }}, whose reviewers must approve it first.</p>
     {% if deployment.can_review %}
-    <form method="post" action="{{ review_url }}" class="mt-3">
+    <form data-run-review="deployment" method="post" action="{{ review_url }}" class="mt-3">
       <input type="hidden" name="environment" value="{{ deployment.environment }}">
       <label class="label" for="review-{{ loop.index }}">Comment <span class="font-normal text-ink-faint">(optional)</span></label>
       <textarea class="input h-20 resize-y py-2" id="review-{{ loop.index }}" name="comment" rows="2"></textarea>

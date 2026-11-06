@@ -24,6 +24,7 @@ import "./branch-graph.js";
 import "./mirror-progress.js";
 // Actions job pages: steps keep the viewer's open or closed choice across refreshes.
 import "./actions-log.js";
+import "./actions-run.js";
 import "./repo-create.js";
 import "./markdown.js";
 import "./discussion.js";
