@@ -25,7 +25,12 @@ intentionally disables SQLite locking/change detection; read-only mode alone is
 insufficient to avoid WAL/SHM creation. No journal-mode changes or optimization on
 close are enabled. Query-only/trusted-schema-off, a 2 MiB page-cache target, no mmap,
 one-row fetch buffer, and no sorting bound the intended metadata query. Only a real
-`user_logins` table is accepted; a view is refused.
+`user_logins` table is accepted; a view is refused. The snapshot must use UTF-8
+(`PRAGMA encoding`); UTF-16le/be are refused with the fixed schema error and no
+report. SQLite BLOB casts and octet_length use the database encoding, so treating
+UTF-16 bytes as UTF-8 could incorrectly classify a valid PHC. The scanner does not
+convert or rewrite the input database. This tool-input restriction changes no
+application credential acceptance or stored hash policy.
 
 The tool rejects any `-wal`, `-shm`, or `-journal` sidecar, including empty files/links,
 before and after scanning. Input/ancestor links (including Windows reparse points)

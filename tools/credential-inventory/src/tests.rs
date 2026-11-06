@@ -148,3 +148,20 @@ async fn linked_input_and_linked_ancestors_are_refused_without_writes() {
     assert_eq!(scan_snapshot(&linked_parent.join(path.file_name().unwrap())).await.unwrap_err(), ScanError::Input);
     assert_eq!(scan_snapshot(&path).await.unwrap().rows, 1);
 }
+
+#[tokio::test]
+async fn utf16_snapshots_are_refused_instead_of_misclassifying_valid_phc_text() {
+    for pragma in ["PRAGMA encoding='UTF-16le'", "PRAGMA encoding='UTF-16be'"] {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("encoding.sqlite");
+        let options = SqliteConnectOptions::new().filename(&path).create_if_missing(true);
+        let mut database = SqliteConnection::connect_with(&options).await.unwrap();
+        sqlx::query(pragma).execute(&mut database).await.unwrap();
+        sqlx::query("CREATE TABLE user_logins (password_hash TEXT)").execute(&mut database).await.unwrap();
+        sqlx::query("INSERT INTO user_logins VALUES (?)").bind(VECTOR).execute(&mut database).await.unwrap();
+        database.close().await.unwrap();
+        let before = files(directory.path());
+        assert_eq!(scan_snapshot(&path).await.unwrap_err(), ScanError::Schema);
+        assert_eq!(before, files(directory.path()));
+    }
+}

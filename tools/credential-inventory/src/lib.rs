@@ -65,6 +65,12 @@ async fn scan_with_hook(path: &Path, limits: Limits, after_query: impl FnOnce(&P
     result
 }
 async fn scan_rows(connection: &mut SqliteConnection, limits: Limits) -> Result<Report, ScanError> {
+    // BLOB casts and octet_length use the database encoding. Only UTF-8 snapshots
+    // satisfy this tool's bounded raw-byte PHC contract; never misclassify UTF-16.
+    let encoding: String = sqlx::query_scalar("PRAGMA encoding").fetch_one(&mut *connection).await.map_err(|_| ScanError::Schema)?;
+    if encoding != "UTF-8" {
+        return Err(ScanError::Schema);
+    }
     let real_table: i64 = sqlx::query_scalar("SELECT count(*) FROM sqlite_schema WHERE type='table' AND name='user_logins' AND rootpage>0")
         .fetch_one(&mut *connection)
         .await
