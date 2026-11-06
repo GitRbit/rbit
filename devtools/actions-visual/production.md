@@ -78,6 +78,10 @@ checkbox and focus to survive. Removing the writer grant through private fixture
 control must remove the freshly rendered approval form while keeping public run
 read access. No old form is reconstructed. CSP headers and layout/console/network
 checks remain active; JavaScript-disabled pages cannot run the CSP event observer.
+The revocation check observes a natural same-run HTMX GET started after the private
+revocation acknowledgment, then its matching successful selected-root swap within
+the existing ten-second bound. A response already in flight before revocation
+cannot falsely count as that proof. No manual polling or update cancellation is used.
 
 Node fake-process/file/DOM-contract tests are not browser proof. Rust compilation,
 real isolated Linux execution, actual asset compatibility and human image review

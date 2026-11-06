@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { productionOrigin, productionRun, allowedProductionRequest } from "./production-policy.mjs";
 import { contain } from "./containment.mjs";
+import { postRevocationPoll } from "./production-poll.mjs";
 
 async function context(browser, fixture, { width, rtl = false, dark = false, javascript = true }) {
   const result = await browser.newContext({ viewport: { width, height: 1000 }, locale: "en-US", timezoneId: "UTC",
@@ -79,7 +80,7 @@ export async function productionChecks(browser, fixture, capture, stage) {
     await checkPage(page, faults);
     await capture(page, "production-run-mobile-rtl-dark");
     stage("permission-removal"); await fixture.revokeWriter();
-    await polled(page);
+    await postRevocationPoll(page);
     assert.equal(await page.locator('form[data-run-review="approval"]').count(), 0);
     assert.equal(await page.locator(`form[action="${productionRun}/approve"]`).count(), 0);
     assert.equal(await page.locator("#run h1").count(), 1, "public reader retains the real run document");
