@@ -30,8 +30,8 @@ use crate::{
 
 mod run;
 mod run_text;
-pub use run_text::RunText;
 pub use run::{ArtifactRow, DeploymentView, JobRow, RunPage, RunSummary, SummaryView, job_rows};
+pub use run_text::RunText;
 
 /// How a state is shown: the key picks the icon in `actions/state.html`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
