@@ -13,6 +13,7 @@ mod archives;
 mod collaborators;
 mod credential_epochs;
 mod credential_fence_reads;
+mod credential_mutations;
 mod credential_revocations;
 mod email_digests;
 mod external_identities;

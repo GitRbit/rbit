@@ -21,6 +21,7 @@ There is no safe requirement to adopt ambiguous legacy session records.
 | `dc2b989` (queued allocator) | Checked global allocation, SQL-history seed and explicit floor raise in caller transactions. Its migration must become0063 after writer0061 and locale0062. It is not yet used by all creation/mutation paths and does not scan surviving redb history. |
 | `73efc046` + `03f3281e` (queued creation producer/test correction) | Creation epoch returned from the SAME insert transaction, receipt minted after commit. Must switch insertion to global allocation before use. |
 | `4057501f` (queued provider producer) | Capture first accepted linked-account/verified-email origin, retain through provider/MFA/registration flow and final fixed-epoch projection. Must retain nonce/PKCE/email/link/trusted-provider policy and use globally allocated creation epochs. |
+| `profiles/fenced_password.rs`, `recovery/password_reset.rs` (prepared transaction writers) | Global allocation, exact password/reset proof mutation and pending intent share one commit. No service/finalizer selects them yet; legacy reset eligibility remains shared. |
 | `827204f` (replayed as `f3fa748e`, queued writer0061) | Missing-v1 official legacy writers refuse protected DML, even cached before migration. **Released v1 binaries still register v1 and retain unfenced writers. Fenced activation needs a new persisted required writer protocol.** |
 
 These are source preparations; their individual tests and the complete bundle still
@@ -183,10 +184,13 @@ and locale projections remain a single account SQL acquisition/statement. Full t
 strict Clippy, model/token-only dependency guards and measured representative request
 costs are gates; no hidden per-request mode/counter scans or dummy crypto are allowed.
 
-The **next directly completable implementation after this orchestration atom** is
-step3: transaction-owned global allocation+credential mutation+intent return in the
-three actual store operations, using the queued allocator and preserving legacy
-static mode until steps1–8 are complete. It needs no new abstraction for audit/events;
-the existing owned finalization worker is already the adoption point. That must be
-followed by the complete step4–6 repository/recovery/issuer adapter, not a route-only
-feature switch. Until then this closed bundle remains unactivated.
+The concrete store operations in step3 are now prepared in
+[transaction-owned credential changes](identity-credential-mutation-transactions.md),
+including committed intent return and failure rollback. Their service selection is
+still blocked on the actual finalizer/recovery protocol. The **next directly
+completable implementation** is step4's complete epoch-aware repository lifecycle:
+account-wide revoke/keep-current promotion, list/revoke/cleanup maintaining captured
+bindings, then step5 recovery and step6 issuer/resolver through that repository. Only
+then bind the three credential services to their new store operations inside the
+existing owned finalization worker and switch step7 together. There is no safe
+route-only activation. Until those gates close this bundle remains unactivated.

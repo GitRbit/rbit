@@ -2,6 +2,8 @@
 //!
 //! Workstream D owns this file. Keep row types here rather than in `rows.rs`.
 
+mod fenced_password;
+
 use super::pool::Pool;
 use rbit_core::{AccountId, Email, Timestamp};
 
