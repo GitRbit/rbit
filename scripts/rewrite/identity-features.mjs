@@ -2,6 +2,7 @@
 import { execFileSync } from "node:child_process";
 
 const consumers = {
+  "rbit-credential-inventory": { normal: ["credentials"] },
   "rbit-collaboration": { normal: [] },
   "rbit-repositories": { normal: [] },
   "rbit-core": { normal: [] },
@@ -75,4 +76,20 @@ export function checkIdentitySessionGraph(root) {
     cwd: root, encoding: "utf8", windowsHide: true, stdio: ["pipe", "pipe", "pipe"], maxBuffer: 8 * 1024 * 1024,
   });
   return sessionGraphViolations(tree);
+}
+
+export function inventoryGraphViolations(tree) {
+  const packages = new Set(tree.trim().split(/\r?\n/).filter(Boolean).map(line => line.trim().split(/\s+/)[0]));
+  const required = ["rbit-credential-inventory", "rbit-identity", "argon2", "sqlx", "zeroize", "tokio"];
+  if (required.some(name => !packages.has(name))) return ["credential inventory: incomplete normal dependency graph"];
+  const forbidden = ["rbit-storage", "rbit-services", "rbit-core", "rbit-web", "rbit-server", "rbit-kernel"];
+  return forbidden.filter(name => packages.has(name)).map(name => `credential inventory: application dependency unexpectedly includes ${name}`);
+}
+
+/** Offline tooling owns no application store, startup or password-work owner. */
+export function checkInventoryGraph(root) {
+  const tree = execFileSync("cargo", ["tree", "--package", "rbit-credential-inventory", "--edges", "normal", "--prefix", "none", "--locked", "--offline"], {
+    cwd: root, encoding: "utf8", windowsHide: true, stdio: ["pipe", "pipe", "pipe"], maxBuffer: 8 * 1024 * 1024,
+  });
+  return inventoryGraphViolations(tree);
 }

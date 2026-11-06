@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkIdentityFeatures, modelGraphViolations, tokenGraphViolations, sessionGraphViolations } from "../rewrite/identity-features.mjs";
+import { checkIdentityFeatures, modelGraphViolations, tokenGraphViolations, sessionGraphViolations, inventoryGraphViolations } from "../rewrite/identity-features.mjs";
 
 test("renamed and target-specific identity edges cannot silently enable crypto defaults", () => {
   const dependency = { name: "rbit-identity", rename: "models", target: "cfg(windows)", kind: null, uses_default_features: false, features: [] };
@@ -80,4 +80,28 @@ test("session-only graphs retain async ownership without password work", () => {
     assert.match(sessionGraphViolations(`${graph}${dependency} v1.0.0 (*)\n`)[0], /unexpectedly includes/);
   }
   assert.match(sessionGraphViolations(graph.replace("tokio-util v0.7.0\n", ""))[0], /incomplete/);
+});
+
+test("offline inventory requests only explicit credentials without widening storage models", () => {
+  const dependency = { name: "rbit-identity", kind: null, uses_default_features: false, features: ["credentials"] };
+  const pkg = { id: "inventory", name: "rbit-credential-inventory", dependencies: [dependency] };
+  const metadata = { packages: [pkg], workspace_members: [pkg.id] };
+  assert.deepEqual(checkIdentityFeatures(metadata), []);
+  for (const features of [[], ["password-work"], ["credentials", "sessions"]]) {
+    dependency.features = features;
+    assert.match(checkIdentityFeatures(metadata)[0], /exactly \[credentials\]/);
+  }
+  dependency.features = ["credentials"]; dependency.uses_default_features = true;
+  assert.match(checkIdentityFeatures(metadata)[0], /disable defaults/);
+  dependency.uses_default_features = false; pkg.name = "rbit-storage";
+  assert.match(checkIdentityFeatures(metadata)[0], /exactly \[\]/);
+});
+
+test("inventory normal graph proves metadata parsing but excludes application initialization", () => {
+  const graph = "rbit-credential-inventory v0.1.5\nrbit-identity v0.1.5\nargon2 v0.6.0\nsqlx v0.9.0\nzeroize v1.8.2\ntokio v1.0.0\n";
+  assert.deepEqual(inventoryGraphViolations(graph), []);
+  for (const name of ["rbit-storage", "rbit-services", "rbit-core", "rbit-web", "rbit-server", "rbit-kernel"]) {
+    assert.match(inventoryGraphViolations(`${graph}${name} v0.1.5\n`)[0], /unexpectedly includes/);
+  }
+  assert.match(inventoryGraphViolations(graph.replace("argon2 v0.6.0\n", ""))[0], /incomplete/);
 });

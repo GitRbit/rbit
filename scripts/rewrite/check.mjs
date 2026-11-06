@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkIdentityFeatures, checkIdentityModelGraphs, checkIdentityTokenGraph, checkIdentitySessionGraph } from "./identity-features.mjs";
+import { checkIdentityFeatures, checkIdentityModelGraphs, checkIdentityTokenGraph, checkIdentitySessionGraph, checkInventoryGraph } from "./identity-features.mjs";
 import { checkCollaborationFeatures, checkCollaborationGraphs } from "./collaboration-features.mjs";
 
 export const LIMIT = 400;
@@ -12,6 +12,7 @@ const GENERATED = new Set([
   "crates/rbit-web/assets/app.bundle.js", "crates/rbit-web/src/themes/catalog.rs",
 ]);
 const FEATURE_EDGES = {
+  "rbit-credential-inventory": ["rbit-identity"],
   "rbit-process-tree-probe": [],
   "rbit-kernel": [], "rbit-contracts": [], "rbit-localization": [], "rbit-rewrite-check": [], "rbit-render-probe": [],
   "rbit-identity": ["rbit-contracts", "rbit-kernel"],
@@ -132,7 +133,7 @@ export function check(root) {
     cwd: root, encoding: "utf8", windowsHide: true, stdio: ["pipe", "pipe", "pipe"], maxBuffer: 8 * 1024 * 1024,
   }));
   return { files: files.length, violations: [...checkSizes(files, baseline), ...checkEdges(metadata, baseline),
-    ...checkIdentityFeatures(metadata), ...checkIdentityModelGraphs(root), ...checkIdentityTokenGraph(root), ...checkIdentitySessionGraph(root),
+    ...checkIdentityFeatures(metadata), ...checkIdentityModelGraphs(root), ...checkIdentityTokenGraph(root), ...checkIdentitySessionGraph(root), ...checkInventoryGraph(root),
     ...checkCollaborationFeatures(metadata), ...checkCollaborationGraphs(root),
     ...checkMigrations(root, baseline), ...checkLedger(root, ledger)] };
 }

@@ -24,6 +24,7 @@ members = [
     "tools/rewrite-check",
     "tools/render-probe",
     "tools/process-tree-probe",
+    "tools/credential-inventory",
 ]
 default-members = ["crates/rbit-server"]
 

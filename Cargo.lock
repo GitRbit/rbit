@@ -4256,10 +4256,10 @@ dependencies = [
 name = "rbit-core"
 version = "0.1.5"
 dependencies = [
- "rbit-collaboration",
  "proptest",
  "pulldown-cmark",
  "rbit-access",
+ "rbit-collaboration",
  "rbit-contracts",
  "rbit-identity",
  "rbit-repositories",
@@ -4267,6 +4267,20 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "time",
+]
+
+[[package]]
+name = "rbit-credential-inventory"
+version = "0.1.5"
+dependencies = [
+ "futures-util",
+ "rbit-identity",
+ "serde_json",
+ "sha2 0.11.1",
+ "sqlx",
+ "tempfile",
+ "tokio",
+ "zeroize",
 ]
 
 [[package]]
@@ -4464,7 +4478,6 @@ dependencies = [
 name = "rbit-services"
 version = "0.1.5"
 dependencies = [
- "rbit-collaboration",
  "aes-gcm",
  "aho-corasick",
  "axum",
@@ -4476,6 +4489,7 @@ dependencies = [
  "p256",
  "percent-encoding",
  "rbit-auth",
+ "rbit-collaboration",
  "rbit-core",
  "rbit-git",
  "rbit-identity",
@@ -4526,7 +4540,6 @@ dependencies = [
 name = "rbit-storage"
 version = "0.1.5"
 dependencies = [
- "rbit-collaboration",
  "aes-gcm",
  "base64 0.23.1",
  "futures-util",
@@ -4534,6 +4547,7 @@ dependencies = [
  "metrics",
  "metrics-exporter-prometheus",
  "postcard",
+ "rbit-collaboration",
  "rbit-core",
  "rbit-identity",
  "rbit-repositories",
@@ -4607,6 +4621,7 @@ dependencies = [
  "tower-http 0.7.1",
  "tracing",
  "tracing-subscriber",
+ "zeroize",
  "zip",
 ]
 
