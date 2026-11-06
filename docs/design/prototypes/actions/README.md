@@ -85,6 +85,11 @@ node --test scripts/tests/rewrite-actions-prototype.test.mjs
 node scripts/rewrite/check.mjs
 ```
 
+On November 5, 2026, Tailwind 4.3.3 produced byte-identical CSS with and without
+these prototype sources and their new markup fixtures: 144,701 bytes, SHA-256
+`4a134b074d858b16720edb61f4d92059c1f6518d0cfafd4f82514db70d7a55ad`.
+No production source-scan exclusion was justified by that measurement.
+
 **Visual acceptance is pending.** No screenshot, accessibility, overflow or
 browser-performance pass is claimed. The separate
 [isolated Linux CI browser proposal](visual-validation.md) records exact dependency
