@@ -215,3 +215,10 @@ selector, navigation, closed-target, protocol or unknown-operation category.
 Raw error messages, selector results, URLs, clipboard text and page values are not
 recorded. Every existing interaction assertion remains required; context cleanup
 is awaited and cannot replace a primary failure's diagnosis.
+
+Capture evidence also records bounded viewport scroll offsets, skip-link rectangle
+top/bottom and main/skip focus booleans immediately after the existing keyboard
+checks. The entire unfocused skip link must be above the viewport before capture.
+These observations are retained even if that assertion prevents an image. They
+help distinguish an actual visible control from a full-page screenshot/scroll
+artifact; no CSS hiding or scroll reset follows from an unverified hypothesis.
