@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import test from "node:test";
 import { alive, leased } from "../workspace/lease.mjs";
 import { launchTree, stopTree, verifyTreeStopped } from "../workspace/process-tree.mjs";
 import { finishRuntime, protectedRuntime } from "../workspace/runtime-marker.mjs";
+import { observeOwnedLaunch, preservingLaunchFailure } from "./support/owned-launch-observation.mjs";
 
 const pause = (ms) => new Promise((done) => setTimeout(done, ms));
 
@@ -17,9 +19,19 @@ test("response-file transport preserves native spawn rejection of non-string or 
 });
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), "rbit-runtime-test-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  const ctx = { root, checkout: root, cache: join(root, ".build-cache"), state: join(root, "state") };
+  t.after(async () => {
+    // A cancelled native test must finish owned cleanup before removing stop/proof files.
+    try { await ctx.cleanup?.(); }
+    catch (error) {
+      if (!ctx.primaryFailure && !t.signal.aborted) throw error;
+      t.diagnostic("OWNED_LAUNCH_CLEANUP_UNPROVED");
+      return; // Keep control evidence; the original assertion/deadline remains the failure.
+    }
+    await rm(root, { recursive: true, force: true });
+  });
   const cache = join(root, ".build-cache"); await mkdir(cache);
-  return { root, checkout: root, cache, state: join(root, "state") };
+  return ctx;
 }
 
 test("delayed old cleanup cannot unlink a new runtime owner's marker", async (t) => {
@@ -74,14 +86,48 @@ async function waitFor(file, predicate = () => true) {
 test("owned launcher preserves quoting, cwd, environment, output and normal exit code", { timeout: 30_000 }, async (t) => {
   const ctx = await fixture(t);
   const expected = ["with spaces", "embedded\"quote", "trailing\\", "", "a\\\"b", "a".repeat(26_000)];
-  const { child, closed } = launch(ctx, ["-e", "console.log(JSON.stringify({args:process.argv.slice(1),cwd:process.cwd(),env:process.env.WORKSPACE_ARG_TEST}));process.exit(7)", ...expected]);
-  let output = "", errors = "";
-  child.stdout.on("data", (chunk) => { output += chunk; }); child.stderr.on("data", (chunk) => { errors += chunk; });
-  assert.equal((await closed).code, 7, errors);
-  assert.deepEqual(JSON.parse(output).args, expected);
-  assert.equal(JSON.parse(output).env, "kept");
-  assert.equal(JSON.parse(output).cwd, ctx.root);
-  assert.equal(await verifyTreeStopped(child), true);
+  const source = "const fs=require('node:fs');fs.writeFileSync('target-stage','started');" +
+    "console.log(JSON.stringify({args:process.argv.slice(1),cwd:process.cwd(),env:process.env.WORKSPACE_ARG_TEST}));" +
+    "fs.writeFileSync('target-stage','output-returned');process.exit(7)";
+  const { child } = launch(ctx, ["-e", source, ...expected]);
+  const observation = observeOwnedLaunch(child, { progress: async () => {
+    const read = async (file) => {
+      try { return await readFile(file, "utf8"); }
+      catch (error) { if (error.code === "ENOENT") return null; throw error; }
+    };
+    const stage = await read(join(ctx.root, "target-stage"));
+    const proof = await read(child.treeControl.proofFile);
+    let argumentsPending = true;
+    try { await access(`${child.treeControl.stopFile}.args.json`); }
+    catch (error) { if (error.code === "ENOENT") argumentsPending = false; else throw error; }
+    return {
+      argumentsPending,
+      targetStarted: stage === "started" || stage === "output-returned",
+      targetOutputReturned: stage === "output-returned",
+      proof: proof === null ? "missing" : proof === child.treeControl.token ? "verified" : "unreadable",
+    };
+  } });
+  ctx.cleanup = () => observation.cleanup();
+  // Report before node:test's unchanged 30s deadline, without changing success criteria.
+  const watchdog = setTimeout(() => {
+    observation.diagnostics().then((state) => t.diagnostic(JSON.stringify(state)));
+  }, 25_000);
+  try {
+    await preservingLaunchFailure(async () => {
+      assert.equal((await observation.wait(t.signal)).code, 7, "OWNED_LAUNCH_EXIT_CODE");
+      let parsed;
+      try { parsed = JSON.parse(observation.output()); }
+      catch { assert.fail("OWNED_LAUNCH_INVALID_JSON"); }
+      assert.equal(isDeepStrictEqual(parsed.args, expected), true, "OWNED_LAUNCH_ARGUMENTS");
+      assert.equal(parsed.env === "kept", true, "OWNED_LAUNCH_ENVIRONMENT");
+      assert.equal(parsed.cwd === ctx.root, true, "OWNED_LAUNCH_CWD");
+      assert.equal(await verifyTreeStopped(child), true, "OWNED_LAUNCH_PROOF");
+    }, ctx.cleanup);
+  } catch (error) {
+    ctx.primaryFailure = true;
+    t.diagnostic(JSON.stringify(await observation.diagnostics()));
+    throw error;
+  } finally { clearTimeout(watchdog); }
 });
 
 test("failed target spawn acknowledges that no owned target survived", { timeout: 30_000 }, async (t) => {
