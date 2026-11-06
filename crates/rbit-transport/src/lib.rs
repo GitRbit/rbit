@@ -27,5 +27,5 @@ pub mod process;
 pub mod receive;
 pub mod service;
 
-pub use process::{ProcessTransport, ReceiveOptions, ServiceSession, TransportError, is_safe_protocol_header};
+pub use process::{ProcessControl, ProcessIo, ProcessTransport, ReceiveOptions, ServiceSession, TransportError, is_safe_protocol_header};
 pub use service::Service;
