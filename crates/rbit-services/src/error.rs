@@ -89,3 +89,14 @@ impl From<rbit_auth::PasswordError> for ServiceError {
         Self::internal(error)
     }
 }
+
+impl From<rbit_kernel::AdmissionError> for ServiceError {
+    fn from(error: rbit_kernel::AdmissionError) -> Self {
+        let reason = match error {
+            rbit_kernel::AdmissionError::Busy => "busy",
+            rbit_kernel::AdmissionError::Closed => "closed",
+        };
+        metrics::counter!("rbit_password_admission_rejected_total", "reason" => reason).increment(1);
+        Self::Unavailable { retry_after_seconds: 1 }
+    }
+}

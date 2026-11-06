@@ -8,6 +8,8 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use p256::ecdsa::{Signature, SigningKey, signature::Signer as _};
 use rbit_auth::{TotpSecret, totp::time_step};
 use rbit_core::{Config, Timestamp, User};
+use rbit_identity::PasswordWork;
+use rbit_kernel::BlockingBudget;
 use rbit_services::{
     ServiceError, Services, SignUp,
     accounts::ClientInfo,
@@ -27,18 +29,21 @@ struct Fixture {
     _dir: tempfile::TempDir,
     database: Database,
     services: Services,
+    passwords: PasswordWork,
 }
 
 impl Fixture {
     async fn new() -> Self {
         let dir = tempfile::tempdir().unwrap();
         let mut config = Config::default();
+        config.security.max_password_jobs = 1;
         config.storage.data_dir = dir.path().to_path_buf();
         let config = Arc::new(config);
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
         let kv = KvStore::open(&config.storage.kv_path()).unwrap();
-        let services = Services::new(config, &database, &kv).await.unwrap();
-        Self { _dir: dir, database, services }
+        let passwords = PasswordWork::new(BlockingBudget::new(std::num::NonZeroUsize::new(1).unwrap()));
+        let services = Services::with_password_work(config, &database, &kv, passwords.clone()).await.unwrap();
+        Self { _dir: dir, database, services, passwords }
     }
 
     async fn user(&self, name: &str) -> User {
@@ -296,4 +301,29 @@ async fn recovery_codes_can_be_regenerated_with_a_passkey() {
     let pending = fixture.pending().await;
     assert!(fixture.services.complete_sign_in(&pending, &old[0], &client()).await.is_err());
     fixture.services.complete_sign_in(&pending, &fresh[0], &client()).await.unwrap();
+}
+
+#[tokio::test]
+async fn overload_preserves_a_passkey_challenge_but_an_attempted_wrong_password_spends_it() {
+    let fixture = Fixture::new().await;
+    let alice = fixture.user("alice").await;
+    let key = Authenticator::new(9);
+    fixture.register(&alice, &key, "Key").await.unwrap();
+    let options = fixture.services.two_factor.confirmation_options(&alice).await.unwrap().unwrap();
+    let response = key.get(&options);
+    let occupied = fixture.passwords.begin().unwrap();
+    let busy = fixture.services.regenerate_recovery_codes(&alice, PASSWORD.into(), SecondFactorProof::Passkey(&response), &client()).await;
+    assert!(matches!(busy, Err(ServiceError::Unavailable { retry_after_seconds: 1 })));
+    assert_eq!(fixture.services.two_factor.status(&alice).await.unwrap().recovery_codes_left, 10);
+    drop(occupied);
+    fixture.services.regenerate_recovery_codes(&alice, PASSWORD.into(), SecondFactorProof::Passkey(&response), &client()).await.unwrap();
+
+    let options = fixture.services.two_factor.confirmation_options(&alice).await.unwrap().unwrap();
+    let response = key.get(&options);
+    let wrong =
+        fixture.services.regenerate_recovery_codes(&alice, "wrong password".into(), SecondFactorProof::Passkey(&response), &client()).await;
+    assert!(matches!(wrong, Err(ServiceError::InvalidCredentials)));
+    let replay =
+        fixture.services.regenerate_recovery_codes(&alice, PASSWORD.into(), SecondFactorProof::Passkey(&response), &client()).await;
+    assert!(matches!(replay, Err(ServiceError::InvalidCredentials)));
 }

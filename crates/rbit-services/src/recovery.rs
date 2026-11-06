@@ -20,8 +20,9 @@
 
 use std::{collections::HashSet, fmt, sync::Arc};
 
-use rbit_auth::{Passwords, SessionToken};
+use rbit_auth::SessionToken;
 use rbit_core::{AccountId, Email, Timestamp, User};
+use rbit_identity::PasswordWork;
 use rbit_mail::{
     Mail,
     messages::{EmailChanged, PasswordReset, VerifyEmail, VerifyReason, mask_address},
@@ -31,6 +32,10 @@ use tokio::sync::broadcast::error::RecvError;
 
 use crate::audit::{AuditAction, AuditEntry, AuditService};
 use crate::{AccountService, DomainEvent, InstanceService, MailService, ServiceContext, ServiceError, ThrottleScope, ThrottleService};
+
+mod builder;
+mod password_changes;
+pub use builder::RecoveryServiceBuilder;
 
 /// How long a password-reset link works.
 pub const RESET_LIFETIME_SECONDS: i64 = 60 * 60;
@@ -86,6 +91,7 @@ pub struct VerifiedEmail {
 
 #[derive(Debug, Clone)]
 pub struct RecoveryService {
+    passwords: PasswordWork,
     ctx: ServiceContext,
     mail: MailService,
     throttle: Arc<dyn RequestThrottle>,
@@ -93,64 +99,7 @@ pub struct RecoveryService {
     accounts: Option<AccountService>,
 }
 
-/// Assembles a [`RecoveryService`] from shared services. Anything not supplied is built
-/// from the context (its own mail transport from `[mail]`, its own throttle, and the site
-/// name from `[server]`).
-#[derive(Debug)]
-pub struct RecoveryServiceBuilder {
-    ctx: ServiceContext,
-    mail: Option<MailService>,
-    throttle: Option<Arc<dyn RequestThrottle>>,
-    instance: Option<InstanceService>,
-    accounts: Option<AccountService>,
-}
-
-impl RecoveryServiceBuilder {
-    /// The mail service to send through (share `Services::mail`).
-    #[must_use]
-    pub fn mail(mut self, mail: MailService) -> Self {
-        self.mail = Some(mail);
-        self
-    }
-
-    /// The rate limiter to consult (share `Services::throttle`).
-    #[must_use]
-    pub fn throttle(mut self, throttle: impl RequestThrottle + 'static) -> Self {
-        self.throttle = Some(Arc::new(throttle));
-        self
-    }
-
-    /// Runtime instance settings, for the site name in messages.
-    #[must_use]
-    pub fn instance(mut self, instance: InstanceService) -> Self {
-        self.instance = Some(instance);
-        self
-    }
-
-    /// Shares password-change session enforcement with signed-in request guards.
-    #[must_use]
-    pub fn accounts(mut self, accounts: AccountService) -> Self {
-        self.accounts = Some(accounts);
-        self
-    }
-
-    pub fn build(self) -> RecoveryService {
-        let ctx = self.ctx;
-        RecoveryService {
-            mail: self.mail.unwrap_or_else(|| MailService::new(ctx.clone())),
-            throttle: self.throttle.unwrap_or_else(|| Arc::new(ThrottleService::new(ctx.clone()))),
-            instance: self.instance,
-            accounts: self.accounts,
-            ctx,
-        }
-    }
-}
-
 impl RecoveryService {
-    pub fn builder(ctx: ServiceContext) -> RecoveryServiceBuilder {
-        RecoveryServiceBuilder { ctx, mail: None, throttle: None, instance: None, accounts: None }
-    }
-
     fn audit(&self) -> AuditService {
         AuditService::new(self.ctx.clone())
     }
@@ -193,36 +142,6 @@ impl RecoveryService {
     pub async fn reset_target(&self, token: &str) -> Result<String, ServiceError> {
         let account = self.reset_account(token).await?;
         Ok(account.name.to_string())
-    }
-
-    /// Sets a new password through a reset link, which is used up. Validates the password
-    /// exactly like sign-up; an invalid password leaves the link usable.
-    pub async fn reset_password(&self, token: &str, new_password: String) -> Result<(), ServiceError> {
-        let account = self.reset_account(token).await?;
-        validate_password(self.ctx.config.security.min_password_length, &new_password)?;
-        if self.ctx.database.accounts().password_change_required(account.id).await? {
-            let current = self.ctx.database.profiles().password_hash(account.id).await?.ok_or(ServiceError::NotFound)?;
-            if Passwords::verify(new_password.clone(), current).await? {
-                return Err(ServiceError::Invalid("choose a different password from your initial password".to_owned()));
-            }
-        }
-        let hash = Passwords::hash(new_password).await?;
-
-        let digest = parse_token(token)?;
-        let service = self.clone();
-        crate::credentials::finish_update(async move {
-            service.store().reset_password(&digest, &hash, Timestamp::now()).await?.ok_or(ServiceError::NotFound)?;
-            service.password_changed(account.id).await?;
-
-            tracing::info!(user = %account.name, "password reset by email link");
-            service
-                .audit()
-                .record(AuditEntry::new(AuditAction::PasswordReset).by_login(account.name.as_str()).on(account.name.as_str()))
-                .await;
-            service.ctx.events.publish(DomainEvent::PasswordChanged { user: account.id });
-            Ok(())
-        })
-        .await
     }
 
     async fn reset_account(&self, token: &str) -> Result<RecoveryAccount, ServiceError> {
@@ -322,30 +241,6 @@ impl RecoveryService {
         tracing::info!(admin = %actor.name(), user = %account.name, "administrator sent a password reset");
         self.audit().record(AuditEntry::new(AuditAction::PasswordResetSent).by(actor).on(account.name.as_str())).await;
         Ok(account.email)
-    }
-
-    /// Sets a user's password directly (for instances without email, or locked-out users).
-    /// Validated like sign-up; outstanding reset links stop working.
-    pub async fn admin_set_password(&self, actor: &User, target: AccountId, new_password: String) -> Result<(), ServiceError> {
-        require_admin(actor)?;
-        let account = self.store().find_account(target).await?.ok_or(ServiceError::NotFound)?;
-        if account.id == actor.id() {
-            return Err(ServiceError::Invalid("change your own password from your account settings".to_owned()));
-        }
-        validate_password(self.ctx.config.security.min_password_length, &new_password)?;
-        let hash = Passwords::hash(new_password).await?;
-        let service = self.clone();
-        let actor = actor.clone();
-        crate::credentials::finish_update(async move {
-            service.ctx.database.profiles().set_password_hash(account.id, &hash).await?;
-            service.password_changed(account.id).await?;
-
-            tracing::info!(admin = %actor.name(), user = %account.name, "administrator set a password");
-            service.audit().record(AuditEntry::new(AuditAction::PasswordSet).by(&actor).on(account.name.as_str())).await;
-            service.ctx.events.publish(DomainEvent::PasswordChanged { user: account.id });
-            Ok(())
-        })
-        .await
     }
 
     // ------------------------------------------------------------------ background

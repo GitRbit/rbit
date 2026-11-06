@@ -31,6 +31,7 @@ pub mod mirrors;
 pub mod notification_email;
 pub mod notifications;
 pub mod orgs;
+mod password_work;
 pub mod preferences;
 pub mod profiles;
 pub mod protection;
@@ -64,6 +65,7 @@ use std::sync::Arc;
 
 use rbit_core::Config;
 use rbit_git::RepositoryStorage;
+use rbit_identity::PasswordWork;
 use rbit_storage::{Database, KvStore};
 
 pub use accounts::{AccountService, SignUp};
@@ -128,6 +130,7 @@ pub struct ServiceContext {
 /// All services, constructed once at start-up and shared by reference.
 #[derive(Debug, Clone)]
 pub struct Services {
+    passwords: PasswordWork,
     pub updates: updates::UpdateService,
     pub contributions: contributions::ContributionService,
     pub accounts: AccountService,
@@ -196,6 +199,30 @@ pub struct Services {
 
 impl Services {
     pub async fn new(config: Arc<Config>, database: &Database, kv: &KvStore) -> Result<Self, ServiceError> {
+        let passwords = password_work::configured(&config)?;
+        // Composition runs once; keep its large initializer out of callers' future frames.
+        Box::pin(Self::with_password_work(config, database, kv, passwords)).await
+    }
+
+    /// Composes an instance around an explicitly owned password budget.
+    ///
+    /// Embedders may share one owner across instances; tests can hold its reservations
+    /// deterministically. Startup policy remains validated, and clones are injected
+    /// into every password consumer rather than placed in broad service context.
+    ///
+    /// # Errors
+    ///
+    /// Returns invalid configuration or infrastructure/service initialization errors.
+    pub async fn with_password_work(
+        config: Arc<Config>,
+        database: &Database,
+        kv: &KvStore,
+        passwords: PasswordWork,
+    ) -> Result<Self, ServiceError> {
+        let capacity = config.security.password_job_capacity().map_err(ServiceError::Invalid)?;
+        if passwords.capacity() != capacity {
+            return Err(ServiceError::Invalid("password work capacity must match security.max_password_jobs".into()));
+        }
         let ctx = ServiceContext {
             config: Arc::clone(&config),
             database: database.clone(),
@@ -224,13 +251,21 @@ impl Services {
         let releases = ReleaseService::new(ctx.clone());
         let lfs = LfsService::new(ctx.clone());
         let setup_token = accounts::bootstrap_setup_token(&config, &database.accounts()).await?;
-        let accounts =
-            AccountService::new(Arc::clone(&config), database.accounts(), kv.sessions(), instance.clone(), ctx.events.clone(), setup_token);
+        let accounts = AccountService::new(
+            Arc::clone(&config),
+            database.accounts(),
+            kv.sessions(),
+            instance.clone(),
+            ctx.events.clone(),
+            setup_token,
+            passwords.clone(),
+        );
 
         let issues = IssueService::new(ctx.clone(), timeline.clone(), references.clone(), throttle.clone());
         issues.index_existing_mentions().await?;
 
         Ok(Self {
+            passwords: passwords.clone(),
             updates: updates::UpdateService::new(&config.updates),
             accounts: accounts.clone(),
             contributions: contributions::ContributionService::new(ctx.clone()),
@@ -238,7 +273,7 @@ impl Services {
             blame: BlameService::new(),
             jobs: JobService::new(ctx.clone()),
             mail: mail.clone(),
-            recovery: RecoveryService::builder(ctx.clone())
+            recovery: RecoveryService::builder(ctx.clone(), passwords.clone())
                 .mail(mail)
                 .throttle(throttle.clone())
                 .instance(instance.clone())
@@ -246,8 +281,8 @@ impl Services {
                 .build(),
             ssh_keys: SshKeyService::new(ctx.clone()),
             throttle: throttle.clone(),
-            two_factor: TwoFactorService::new(ctx.clone(), instance.clone()),
-            admin: AdminService::new(ctx.clone(), instance.clone()),
+            two_factor: TwoFactorService::new(ctx.clone(), instance.clone(), passwords.clone()),
+            admin: AdminService::new(ctx.clone(), instance.clone(), passwords),
             insights: InsightsService::new(ctx.clone()),
             orgs: OrgService::new(ctx.clone(), instance.clone()),
             profiles: ProfileService::new(ctx.clone(), accounts, throttle.clone()),
@@ -320,6 +355,11 @@ impl Services {
     /// commit references, notifications, merges) and waits, bounded, for it to finish.
     /// Call during graceful shutdown, before closing the stores.
     pub async fn shutdown(&self) {
+        self.passwords.close();
+        tracing::info!(
+            admitted_password_attempts = self.passwords.admitted(),
+            "password admission closed; admitted attempts retain their slots until completion"
+        );
         tokio::join!(
             self.updates.shutdown(),
             self.jobs.shutdown(),

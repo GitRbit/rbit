@@ -1,8 +1,8 @@
 # Identity work admission
 
-Status: credential extraction and owned password-attempt API implemented; no service behavior changes
-are implemented by this document. Evidence is the pinned GitHub main system plus the
-new `rbit-kernel::BlockingBudget` and shared identity contracts.
+Status: credential extraction, configured service admission and HTTP overload adapters
+are implemented; integrated validation is in progress. Paired operational measurements
+and the complete identity port remain open.
 
 ## Decision
 
@@ -47,13 +47,12 @@ The reservation is opaque and non-cloneable. It owns one permit; dropping it bef
 submission releases the permit. `spawn` consumes it and moves ownership into the worker,
 including time queued in Tokio. It introduces no waiter queue or second semaphore.
 Acquisition before a Tokio runtime is allowed; spawning requires a runtime and unwinding
-a failed spawn must return the permit. This is the next concrete kernel extraction.
+a failed spawn must return the permit.
 
-`Services::check_password_and_proof` in `two_factor.rs` currently takes a passkey
-confirmation challenge before `TwoFactorService::verify_password`. A naive budget inside
-the latter would consume the challenge and then return Busy without attempting proof.
-Reserve after the existing throttle check but before `take_challenge`, token consumption,
-or any other one-use mutation. A rejected reservation leaves the proof usable. Once an
+At the pinned baseline, `Services::check_password_and_proof` took a passkey confirmation
+challenge before password verification. The replacement reserves after the existing
+throttle check and before `take_challenge`, token consumption or another one-use mutation.
+A rejected reservation leaves the proof usable. Once an
 attempt is actually admitted, preserve the current single-use challenge semantics,
 including consumption on wrong password or request cancellation after the attempt starts.
 
@@ -63,7 +62,7 @@ clear invariant; do not hold a SQL write transaction or an unrelated network ope
 under a reservation. Reject overlong password input using the existing limit before
 admission. Cancellation before submission drops the reservation and starts no worker.
 
-## Existing production call-site inventory
+## Pinned-main production call-site inventory
 
 All paths below are relative to `crates/`; line numbers are intentionally omitted so
 the contract survives the extraction. Re-run `rg 'Passwords::' crates` before merging.
@@ -80,7 +79,7 @@ the contract survives the extraction. Re-run `rg 'Passwords::' crates` before me
 | `rbit-services/src/two_factor.rs`: `verify_password`, `check_password_and_proof` | Inject the shared handle, reserve before taking a passkey challenge, then reuse that reservation for the password worker. TOTP/recovery-code checks retain their existing single-use behavior. |
 | `rbit-server/src/serve.rs`: `create_user` through `accounts::create_user_offline` | Use one short-lived explicitly constructed offline password-work owner for the operation; do not open redb or start all services merely to hash a CLI password. |
 
-The current production inventory contains nine direct `Passwords::` invocations across
+The pinned production inventory contains nine direct `Passwords::` invocations across
 accounts, profiles, recovery and two_factor; signup/admin/CLI helpers add indirect paths.
 Auth unit tests and profiles/recovery integration fixtures also use the facade and need
 explicit test construction where appropriate. `ExternalAuthService` creates passwordless
@@ -88,10 +87,12 @@ accounts with an empty hash; it does not hash a generated password during regist
 
 ## Composition and configuration
 
-`Services::new` currently constructs `ServiceContext`, then `AccountService::new`,
+`Services::new` constructs `ServiceContext`, then `AccountService::new`,
 `ProfileService::new`, `TwoFactorService::new`, `AdminService::new`, and a
 `RecoveryServiceBuilder`. Construct `PasswordWork` once before those consumers and inject
-clones explicitly. Keep public high-level service method signatures unchanged.
+clones explicitly. Public high-level service method signatures remain unchanged.
+The explicit `Services::with_password_work` composition seam requires its owner's
+capacity to equal validated configuration; injection cannot bypass the setting.
 
 Avoid adding the handle to broad `ServiceContext`: only these identity consumers need
 it. AccountService gets an explicit constructor argument; ProfileService can share the
@@ -103,9 +104,9 @@ calling the legacy offline convenience function concurrently is not the server p
 Update manually assembled context/builders in `tests/recovery.rs` without duplicating
 the live instance's budget.
 
-Proposed immutable startup setting: `[security] max_password_jobs`, with
+Implemented immutable startup setting: `[security] max_password_jobs`, with
 `RBIT_SECURITY__MAX_PASSWORD_JOBS`. Use a small explicit default of two as an initial
-policy, subject to the constrained-memory and CPU baseline before production activation;
+policy; constrained-memory and CPU measurements remain a deployment acceptance gate;
 require a positive bounded value, initially 1 through 64. At current hashing parameters,
 two simultaneous hashes need roughly 38 MiB for Argon2 working memory plus overhead;
 this is an estimate, not a measured process RSS bound. Stored PHC parameters can differ.
@@ -141,6 +142,13 @@ existing passwordless record does not. Preserve malformed-hash false semantics, 
 convert it into a successful password or expose a stored PHC value in errors. Legitimate
 historical PHC parameters and database/cache latency can still differ; do not advertise
 literal constant-time end-to-end login or rewrite stored parameters in this slice.
+
+Profile replacement resets its password-check budget after successful verification,
+including a confirmed replacement-hash error. A worker panic does not prove which
+crypto stage completed, so it cannot reset authentication penalties speculatively.
+Login/profile input-length guards are preserved. Main had no equivalent guard on MFA
+password re-checks; this activation preserves that proof/failure behavior. A consistent
+early input-bound policy remains an identity hardening obligation.
 
 Do not route personal access tokens, task tokens, SSH keys, OIDC or passkey-only sign-in
 through Argon2 admission. A saturated password pool must leave these independent paths

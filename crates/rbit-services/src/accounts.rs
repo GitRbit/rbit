@@ -22,10 +22,11 @@ use std::{
     sync::{Arc, Mutex, PoisonError},
 };
 
-use rbit_auth::{Passwords, SessionToken, TokenDigest};
-use rbit_core::{Account, AccountId, AccountName, Config, Email, RegistrationMode, Timestamp, User};
+use rbit_auth::{SessionToken, TokenDigest};
+use rbit_core::{Account, AccountId, Config, RegistrationMode, Timestamp, User};
+use rbit_identity::PasswordWork;
 pub use rbit_storage::SessionUser;
-use rbit_storage::{AccountStore, NewUser, SessionRecord, SessionStore, kv::StoredSession};
+use rbit_storage::{AccountStore, SessionRecord, SessionStore, kv::StoredSession};
 use subtle::ConstantTimeEq;
 use tokio::sync::broadcast::{self, error::TryRecvError};
 
@@ -33,6 +34,11 @@ use crate::{
     DomainEvent, EventBus, InstanceService, ServiceError,
     audit::{AuditAction, AuditEntry, AuditService},
 };
+
+mod password_authentication;
+mod registration;
+pub use registration::create_user_offline;
+pub(crate) use registration::prepare_user;
 
 /// Upper bound on password length: Argon2 accepts more, but unbounded input invites denial of service.
 const MAX_PASSWORD_LEN: usize = 256;
@@ -97,6 +103,7 @@ fn session_id(digest: &TokenDigest) -> String {
 
 #[derive(Debug, Clone)]
 pub struct AccountService {
+    passwords: PasswordWork,
     config: Arc<Config>,
     accounts: AccountStore,
     sessions: SessionStore,
@@ -117,10 +124,15 @@ impl AccountService {
         instance: InstanceService,
         events: EventBus,
         setup_token: Option<String>,
+        passwords: PasswordWork,
     ) -> Self {
         let audit = AuditService::from_store(accounts.audit_log());
         let setup_token = setup_token.map(Arc::from);
-        Self { config, accounts, sessions, instance, events, audit, password_changes: Arc::default(), setup_token }
+        Self { config, accounts, sessions, instance, events, audit, password_changes: Arc::default(), setup_token, passwords }
+    }
+
+    pub(crate) fn password_work(&self) -> &PasswordWork {
+        &self.passwords
     }
 
     /// Whether the public sign-up form is available (an instance setting administrators
@@ -153,7 +165,7 @@ impl AccountService {
         if first && !self.setup_token_matches(setup_token) {
             return Err(ServiceError::Invalid(SETUP_TOKEN_REQUIRED.to_owned()));
         }
-        let new = prepare_user(&self.config, input, false).await?;
+        let new = prepare_user(&self.config, &self.passwords, input, false).await?;
         let user = self.accounts.register_user(new, open).await?;
         self.events.publish(DomainEvent::UserSignedUp { user: user.id() });
         Ok(user)
@@ -170,51 +182,9 @@ impl AccountService {
     /// Creates a user regardless of the registration setting (admin CLI, admin panel).
     /// `is_admin = None` applies the "first user is admin" rule.
     pub async fn create_user(&self, input: SignUp, is_admin: Option<bool>) -> Result<User, ServiceError> {
-        let user = create_user(&self.config, &self.accounts, input, is_admin).await?;
+        let user = registration::create_user(&self.config, &self.accounts, &self.passwords, input, is_admin).await?;
         self.events.publish(DomainEvent::UserSignedUp { user: user.id() });
         Ok(user)
-    }
-
-    /// Verifies credentials. Takes the same time whether or not the login exists.
-    /// A suspended user with the right password gets [`ServiceError::Forbidden`].
-    pub async fn authenticate(&self, login: &str, password: String) -> Result<User, ServiceError> {
-        self.authenticate_resolved(login, password, |_| Ok(())).await.1
-    }
-
-    /// Like [`Self::authenticate`], also returning the account `login` resolved to (if
-    /// any), so callers can throttle per account. `before_verify` sees that account before
-    /// the password is checked; an error from it is returned instead of checking.
-    pub(crate) async fn authenticate_resolved(
-        &self,
-        login: &str,
-        password: String,
-        before_verify: impl FnOnce(Option<AccountId>) -> Result<(), ServiceError>,
-    ) -> (Option<AccountId>, Result<User, ServiceError>) {
-        if password.len() > MAX_PASSWORD_LEN * 4 {
-            return (None, Err(ServiceError::InvalidCredentials));
-        }
-        let record = match self.accounts.find_login(login.trim()).await {
-            Ok(record) => record,
-            Err(error) => return (None, Err(error.into())),
-        };
-        let account = record.as_ref().map(|record| record.user.id());
-        if let Err(error) = before_verify(account) {
-            return (account, Err(error));
-        }
-        let Some(record) = record else {
-            Passwords::verify_dummy(password).await;
-            return (None, Err(ServiceError::InvalidCredentials));
-        };
-        let result = match Passwords::verify(password, record.password_hash).await {
-            Ok(true) if record.suspended => {
-                tracing::info!(user = %record.user.name(), "suspended user refused sign-in");
-                Err(ServiceError::Forbidden)
-            }
-            Ok(true) => Ok(record.user),
-            Ok(false) => Err(ServiceError::InvalidCredentials),
-            Err(error) => Err(error.into()),
-        };
-        (account, result)
     }
 
     /// Whether an administrator has suspended the user. Credentials resolved elsewhere
@@ -542,54 +512,6 @@ fn describe_session(record: &SessionRecord) -> String {
         Some(ip) => format!("{agent} from {ip}").trim().to_owned(),
         None => agent,
     }
-}
-
-/// Creates a user with only the relational database, for the `rbit user create`
-/// command: it needs neither the key/value store (which a running server holds
-/// exclusively) nor background services. Nothing in that process listens for
-/// events, so none is published. `is_admin = None` applies the "first user is
-/// admin" rule.
-pub async fn create_user_offline(
-    config: &Config,
-    accounts: &AccountStore,
-    input: SignUp,
-    is_admin: Option<bool>,
-) -> Result<User, ServiceError> {
-    create_user(config, accounts, input, is_admin).await
-}
-
-/// Validates and stores a new user. Shared by sign-up, the CLI and the admin panel.
-pub(crate) async fn create_user(
-    config: &Config,
-    accounts: &AccountStore,
-    input: SignUp,
-    is_admin: Option<bool>,
-) -> Result<User, ServiceError> {
-    let new = prepare_user(config, input, is_admin.unwrap_or(false)).await?;
-    let user = if is_admin.is_some() { accounts.create_user(new).await? } else { accounts.register_user(new, true).await? };
-    tracing::info!(user = %user.name(), is_admin = user.is_admin, "account created");
-    Ok(user)
-}
-
-pub(crate) async fn prepare_user(config: &Config, input: SignUp, is_admin: bool) -> Result<NewUser, ServiceError> {
-    let name: AccountName = input.username.trim().parse()?;
-    let email: Email = input.email.trim().parse()?;
-    validate_password(config, &input.password)?;
-
-    let password_hash = Passwords::hash(input.password).await?;
-    Ok(NewUser { name, email, display_name: None, password_hash, is_admin })
-}
-
-fn validate_password(config: &Config, password: &str) -> Result<(), ServiceError> {
-    let min = config.security.min_password_length;
-    let length = password.chars().count();
-    if length < min {
-        return Err(ServiceError::Invalid(format!("password must be at least {min} characters")));
-    }
-    if length > MAX_PASSWORD_LEN {
-        return Err(ServiceError::Invalid(format!("password must be at most {MAX_PASSWORD_LEN} characters")));
-    }
-    Ok(())
 }
 
 #[cfg(test)]

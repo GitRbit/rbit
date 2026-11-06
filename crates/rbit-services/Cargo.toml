@@ -12,6 +12,8 @@ autotests = false
 rbit-core.workspace = true
 rbit-storage.workspace = true
 rbit-auth.workspace = true
+rbit-identity.workspace = true
+rbit-kernel.workspace = true
 rbit-git.workspace = true
 rbit-mail.workspace = true
 # Actions: workflow parsing, triggers and planning.

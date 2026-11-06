@@ -29,8 +29,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use rbit_auth::{Challenge, Passwords, RecoveryCode, RelyingParty, SessionToken, TokenDigest, TotpSecret};
+use rbit_auth::{Challenge, RecoveryCode, RelyingParty, SessionToken, TokenDigest, TotpSecret};
 use rbit_core::{AccountId, Timestamp, User};
+use rbit_identity::PasswordWork;
 use rbit_storage::{
     AccountStore,
     sqlite::two_factor::{NewPasskey, PasskeyAdded, PasskeyRecord, TwoFactorRecord, TwoFactorStore},
@@ -41,6 +42,8 @@ use crate::{
     accounts::ClientInfo,
     audit::{AuditAction, AuditEntry, AuditService},
 };
+
+mod password_checks;
 
 /// Recovery codes issued per enrolment (and per regeneration).
 pub const RECOVERY_CODE_COUNT: usize = 10;
@@ -188,6 +191,7 @@ type Challenges = HashMap<(AccountId, Ceremony), Vec<(Challenge, Instant)>>;
 
 #[derive(Debug, Clone)]
 pub struct TwoFactorService {
+    passwords: PasswordWork,
     store: TwoFactorStore,
     accounts: AccountStore,
     audit: AuditService,
@@ -198,9 +202,10 @@ pub struct TwoFactorService {
 }
 
 impl TwoFactorService {
-    pub(crate) fn new(ctx: ServiceContext, instance: InstanceService) -> Self {
+    pub(crate) fn new(ctx: ServiceContext, instance: InstanceService, passwords: PasswordWork) -> Self {
         let ServiceContext { config, database, .. } = ctx;
         Self {
+            passwords,
             store: database.two_factor(),
             accounts: database.accounts(),
             audit: AuditService::from_store(database.audit()),
@@ -319,14 +324,6 @@ impl TwoFactorService {
         } else {
             Err(ServiceError::InvalidCredentials)
         }
-    }
-
-    /// Re-checks the account password for sensitive changes.
-    async fn verify_password(&self, user: &User, password: String) -> Result<(), ServiceError> {
-        let Some(record) = self.accounts.find_login(user.name().as_str()).await? else {
-            return Err(ServiceError::InvalidCredentials);
-        };
-        if Passwords::verify(password, record.password_hash).await? { Ok(()) } else { Err(ServiceError::InvalidCredentials) }
     }
 
     // ------------------------------------------------------------------ passkeys
@@ -735,69 +732,6 @@ impl Services {
         }
         self.audit.record(AuditEntry::new(AuditAction::RecoveryCodesRegenerated).by(user).from_ip(client.ip)).await;
         Ok(formatted(&codes))
-    }
-
-    async fn check_password_and_proof(
-        &self,
-        user: &User,
-        password: String,
-        proof: SecondFactorProof<'_>,
-        client: &ClientInfo,
-    ) -> Result<(), ServiceError> {
-        let key = user.id().0.to_string();
-        self.throttle.check(ThrottleScope::TwoFactor, &key)?;
-        // Taken before anything is checked, so a failed attempt can't be retried with it.
-        let challenge = match proof {
-            SecondFactorProof::Passkey(response) => self.two_factor.take_challenge(user.id(), Ceremony::Confirm, response),
-            SecondFactorProof::Code(_) => None,
-        };
-        let verified = match self.two_factor.verify_password(user, password).await {
-            Ok(()) => self.two_factor.verify(user, proof, challenge).await.map(drop),
-            Err(error) => Err(error),
-        };
-        match verified {
-            Ok(()) => {
-                self.throttle.reset(ThrottleScope::TwoFactor, &key);
-                Ok(())
-            }
-            Err(ServiceError::InvalidCredentials) => {
-                self.throttle.record_failure(ThrottleScope::TwoFactor, &key);
-                self.audit.record(AuditEntry::new(AuditAction::TwoFactorFailed).by(user).from_ip(client.ip).detail("in settings")).await;
-                Err(ServiceError::InvalidCredentials)
-            }
-            Err(other) => Err(other),
-        }
-    }
-
-    /// Checks Git HTTP Basic credentials made of a login and the account password,
-    /// throttled per client address and per login. Accounts with 2FA must use tokens.
-    pub async fn authenticate_git_password(
-        &self,
-        login: &str,
-        password: String,
-        client: &ClientInfo,
-    ) -> Result<GitPasswordOutcome, ServiceError> {
-        let (ip, login) = (ip_key(client), login.trim());
-        self.throttle.check_client(ThrottleScope::GitAuth, &ip)?;
-        self.throttle.check(ThrottleScope::GitAuth, login)?;
-        let user = match self.accounts.authenticate(login, password).await {
-            Ok(user) => user,
-            Err(error) => {
-                if matches!(error, ServiceError::InvalidCredentials) {
-                    self.throttle.record_client_failure(ThrottleScope::GitAuth, &ip);
-                    self.throttle.record_failure(ThrottleScope::GitAuth, login);
-                }
-                return Err(error);
-            }
-        };
-        self.throttle.reset(ThrottleScope::GitAuth, login);
-        if self.accounts.password_change_required(user.id()).await? {
-            return Err(ServiceError::Forbidden);
-        }
-        if self.two_factor.is_enabled(user.id()).await? {
-            return Ok(GitPasswordOutcome::TokenRequired);
-        }
-        Ok(GitPasswordOutcome::Authenticated(user))
     }
 }
 

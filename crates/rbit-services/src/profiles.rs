@@ -2,7 +2,7 @@
 //!
 //! Workstream D owns this file.
 
-use rbit_auth::Passwords;
+mod password_checks;
 use rbit_core::{AccountId, AccountName, Email, User};
 use rbit_storage::sqlite::profiles::{AccountProfile, ProfileStore};
 
@@ -111,8 +111,16 @@ impl ProfileService {
         if current_password == new_password {
             return Err(ServiceError::Invalid("choose a different password from your current password".to_owned()));
         }
-        let verified = self.verify_password(user, current_password).await?;
-        let hash = Passwords::hash(new_password).await?;
+        let verified = self.checked_password_hash(user, &current_password).await?;
+        let result = self.accounts.password_work().begin()?.verify_and_hash(current_password, verified.clone(), new_password).await;
+        // A hashing error follows successful verification; a worker panic does not
+        // reveal which step completed, so only this known-success case resets.
+        if matches!(&result, Err(rbit_identity::PasswordError::Hash(_))) {
+            self.finish_password_check(user, true)?;
+        }
+        let hash = result?;
+        self.finish_password_check(user, hash.is_some())?;
+        let hash = hash.ok_or(ServiceError::InvalidCredentials)?;
         let service = self.clone();
         let user = user.clone();
         crate::credentials::finish_update(async move {
@@ -138,26 +146,6 @@ impl ProfileService {
             return Err(ServiceError::Invalid(format!("new password must be at most {MAX_PASSWORD_LEN} characters")));
         }
         Ok(())
-    }
-
-    /// [`ServiceError::InvalidCredentials`] unless `password` is the user's current password.
-    /// Throttled per account ([`ThrottleScope::PasswordCheck`]), so a stolen session cannot
-    /// be used to guess the password.
-    async fn verify_password(&self, user: &User, password: String) -> Result<String, ServiceError> {
-        let key = user.id().0.to_string();
-        self.throttle.check(ThrottleScope::PasswordCheck, &key)?;
-        let verified = if password.len() > MAX_PASSWORD_LEN * 4 {
-            None
-        } else {
-            let hash = self.store().password_hash(user.id()).await?.ok_or(ServiceError::NotFound)?;
-            Passwords::verify(password, hash.clone()).await?.then_some(hash)
-        };
-        let Some(hash) = verified else {
-            self.throttle.record_failure(ThrottleScope::PasswordCheck, &key);
-            return Err(ServiceError::InvalidCredentials);
-        };
-        self.throttle.reset(ThrottleScope::PasswordCheck, &key);
-        Ok(hash)
     }
 }
 

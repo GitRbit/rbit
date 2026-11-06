@@ -33,6 +33,7 @@ mod listings;
 mod markdown_preview;
 mod mirror_progress;
 mod notification_settings;
+mod password_protocols;
 mod properties;
 mod repository_documents;
 mod security;

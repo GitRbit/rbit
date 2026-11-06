@@ -19,7 +19,12 @@ const FEATURE_EDGES = {
   "rbit-presentation": ["rbit-contracts", "rbit-localization"],
 };
 // Reviewed seams added to legacy adapters during incremental replacement.
-const ADDED_EDGES = { "rbit-core": ["rbit-contracts"], "rbit-web": ["rbit-localization"], "rbit-auth": ["rbit-identity"] };
+const ADDED_EDGES = {
+  "rbit-core": ["rbit-contracts"], "rbit-web": ["rbit-localization"],
+  "rbit-auth": ["rbit-identity"], "rbit-services": ["rbit-identity", "rbit-kernel"],
+};
+// HTTP acceptance fixtures may inject the shared owner without adding production edges.
+const DEV_EDGES = { "rbit-web": ["rbit-identity", "rbit-kernel"] };
 
 export function authored(path) {
   return /\.(rs|html|mjs|js|ps1|cs)$/.test(path) && !GENERATED.has(path)
@@ -64,7 +69,8 @@ export function checkEdges(metadata, baseline) {
       ? [...legacy.get(name), ...(ADDED_EDGES[name] ?? [])] : undefined);
     if (!allowed) { violations.push(`${name}: declare an explicit architecture policy before adding a workspace crate`); continue; }
     for (const dependency of pkg.dependencies) {
-      if (members.has(dependency.name) && !allowed.includes(dependency.name)) {
+      const testOnly = dependency.kind === "dev" && (DEV_EDGES[name] ?? []).includes(dependency.name);
+      if (members.has(dependency.name) && !allowed.includes(dependency.name) && !testOnly) {
         violations.push(`${name} -> ${dependency.name}: forbidden dependency (${dependency.kind ?? "normal"})`);
       }
     }

@@ -31,6 +31,20 @@ test("Cargo resolved names catch renamed or dev dependency boundary leaks", () =
   assert.match(checkEdges({ packages, workspace_members: ["kernel", "storage"] }, baseline)[0], /explicit architecture policy/);
 });
 
+test("password protocol fixtures cannot introduce production admission dependencies", () => {
+  const web = { id: "web", name: "rbit-web", dependencies: [
+    { name: "rbit-identity", rename: "credentials", kind: "dev" },
+    { name: "rbit-kernel", kind: "dev" },
+  ] };
+  const packages = [web, { id: "identity", name: "rbit-identity", dependencies: [] },
+    { id: "kernel", name: "rbit-kernel", dependencies: [] }];
+  const metadata = { packages, workspace_members: packages.map((pkg) => pkg.id) };
+  const baseline = { crates: [{ name: "rbit-web", internalDependencies: [] }] };
+  assert.deepEqual(checkEdges(metadata, baseline), []);
+  web.dependencies[0].kind = null;
+  assert.match(checkEdges(metadata, baseline)[0], /rbit-web -> rbit-identity: forbidden dependency \(normal\)/);
+});
+
 test("migration fingerprints permit checkout line endings but reject mutation and removal", () => {
   const root = mkdtempSync(join(tmpdir(), "rbit-migrations-"));
   try {

@@ -9,6 +9,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- Password hashing and verification share an instance-wide, cancellation-safe work
+  limit. Exhausted or closed capacity returns a retryable 503 across HTML, API, Git
+  and LFS without spending one-use password-reset or passkey-confirmation proofs.
+  Password workers retain their slots until completion and zero their owned inputs.
+- Generic error pages disable HTMX history snapshots, preserving the history barrier
+  when an error replaces a page whose URL contains a live recovery token.
+- Update `pulldown-cmark` to 0.13.6 for RUSTSEC-2026-0433, retaining the existing
+  Markdown option whitelist.
 - Update `zstd` to 0.14.3, `zstd-safe` to 8.2.0 and `zstd-sys` to 2.1.2 for
   RUSTSEC-2026-0391, RUSTSEC-2026-0398, RUSTSEC-2026-0403 and RUSTSEC-2026-0410; they reach
   rbit through `async-compression`.
@@ -17,6 +25,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Typed localization foundations and shared Explore page/results rendering, including
+  opt-in expansion and right-to-left diagnostic locales and direct HTMX fragments.
+- Development worktrees under `worktrees/`, shared Cargo output with guarded artifact
+  handoff, isolated runtime data and ports, and configurable inactive-cache pruning.
+  See [development worktrees](docs/development-worktrees.md).
 - Live administration monitoring: theme-aware request-rate and response-time charts,
   HTTP response and Git activity tables, five-second updates, and pause/resume controls.
   Five minutes of process-local history stay in bounded memory without a chart library.
@@ -74,6 +87,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Upgrade notes
 
+- `[security] max_password_jobs` defaults to 2 and accepts 1 through 64. Changes take
+  effect after restart; disabling request rate limits leaves this resource bound in
+  place. Size it for the instance's CPU and memory, including historical Argon2 PHC
+  parameters. Retain the previous configuration snapshot before saving new settings:
+  older binaries reject the new field and require their earlier snapshot on rollback.
 - Migrations `0048` to `0057` add the Actions tables, a `source` column on commit statuses
   and comments (and releases), step summaries, the Actions permissions and owner policies, the
   `workflow_run` and `repository_dispatch` events, access to private reusable workflows and
