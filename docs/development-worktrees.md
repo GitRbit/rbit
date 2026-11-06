@@ -191,6 +191,13 @@ codes: inspect the failed job's process tree before manual recovery. A future pl
 exit policy requires verified semantics or an owned-tree acknowledgement; never infer
 cleanup from an arbitrary small integer exit code.
 
+Shared outputs also require [source provenance validation](development-source-provenance.md):
+Cargo's mtime checks alone can reuse a different worktree's older-source artifact.
+The helper validates all local variants and invalidates only small freshness stamps;
+it preserves codegen/registry/runtime output. Trust admission requires native completion
+proof; an unowned command leaves local units conservatively untrusted. Lockfile generation
+does not approve units or require an already-current lock.
+
 ## Verification and remaining integrations
 
 ```sh

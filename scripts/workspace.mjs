@@ -25,7 +25,8 @@ async function main() {
   } else if (["build", "check", "clippy", "test", "nextest", "generate-lockfile"].includes(command)) {
     result = await cargo(ctx, command, args);
     // Environment may contain secrets: output only deliberate public build metadata.
-    result = { namespace: result.namespace, executables: result.executables, ...(result.cache ? { cache: result.cache } : {}) };
+    result = { namespace: result.namespace, executables: result.executables, ...(result.cache ? { cache: result.cache } : {}),
+      ...(result.sourceProof ? { sourceProof: result.sourceProof } : {}) };
   } else if (command === "run") {
     const separator = args.indexOf("--");
     const buildArgs = separator < 0 ? args : args.slice(0, separator);

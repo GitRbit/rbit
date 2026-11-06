@@ -1,10 +1,10 @@
+import { cargo } from "./source-proof-fixture.mjs";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { acquire, leased } from "../workspace/lease.mjs";
-import { cargo } from "../workspace/build.mjs";
 import { cacheBudget, cacheReport, DEFAULT_CACHE_MAX_BYTES, enforceHighWater, prune } from "../workspace/storage.mjs";
 
 const old = "00000000000000000000", recent = "11111111111111111111", current = "22222222222222222222";

@@ -1,3 +1,4 @@
+import { cargo } from "./source-proof-fixture.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { copyFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
@@ -5,7 +6,6 @@ import { join } from "node:path";
 import { leased, acquire, UncertainProcessTreeError } from "../workspace/lease.mjs";
 import { failedCargoCompletion } from "../workspace/cargo-tree.mjs";
 import { enforceHighWater, prune } from "../workspace/storage.mjs";
-import { cargo } from "../workspace/build.mjs";
 import { candidateHeadroom, requireCandidateHeadroom, createCandidate, startCandidate,
   candidateExecutionStarting, candidateExecuted, completeCandidate, quarantineCandidate } from "../workspace/retention/candidate.mjs";
 import { fixture, completion, namespace } from "./retention-observation-fixture.mjs";

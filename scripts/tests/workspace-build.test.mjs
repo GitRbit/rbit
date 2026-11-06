@@ -1,3 +1,4 @@
+import { cargo } from "./source-proof-fixture.mjs";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
@@ -6,7 +7,7 @@ import { join } from "node:path";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import test from "node:test";
-import { cargo, cargoProcess, compatibility } from "../workspace/build.mjs";
+import { cargoProcess, compatibility } from "../workspace/build.mjs";
 import { acquire } from "../workspace/lease.mjs";
 import { contains, guarded } from "../workspace/paths.mjs";
 

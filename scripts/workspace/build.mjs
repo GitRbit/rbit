@@ -11,6 +11,7 @@ import { cacheBudget, enforceHighWater } from "./storage.mjs";
 import { cargoTreeMode, ownedCargo, verifiedCargoCompletion, failedCargoCompletion } from "./cargo-tree.mjs";
 import { managedRetentionMode, beginRetention, finishRetention } from "./retention/observe.mjs";
 import { candidateHeadroom, createCandidate, startCandidate, candidateExecutionStarting, candidateExecuted, completeCandidate, quarantineCandidate } from "./retention/candidate.mjs";
+import { sourceProof } from "./source-proof/guard.mjs";
 
 function reportCacheOverage(report) {
   if (report.overageBytes > 0) process.stderr.write(`Build cache remains ${report.overageBytes} bytes over its ${report.maxBytes}-byte soft limit (${report.bytes} bytes retained); current or managed namespaces are protected.\n`);
@@ -75,7 +76,8 @@ function consumeCargo(ctx, args, env, onArtifact = () => {}, { spawnProcess = sp
 }
 
 /** Only helpers acquire this lease. Direct Cargo/IDE builds must not use this lane. */
-export async function cargo(ctx, command, args = [], { execute = cargoProcess, env = process.env, key, reportMaintenance = reportCacheOverage, readRetentionInput } = {}) {
+export async function cargo(ctx, command, args = [], { execute = cargoProcess, env = process.env, key, reportMaintenance = reportCacheOverage, readRetentionInput,
+  provenance = sourceProof, proofInputs } = {}) {
   if (!["build", "check", "clippy", "test", "nextest", "generate-lockfile"].includes(command)) throw new Error("Unsupported Cargo command");
   validateCargoArgs(args);
   cargoTreeMode(env);
@@ -95,7 +97,7 @@ export async function cargo(ctx, command, args = [], { execute = cargoProcess, e
     const candidate = retentionMode === "measure-candidate"
       ? await createCandidate(ctx, namespace, requiredHeadroom, lease) : null;
     const lane = candidate?.path ?? await managedDirectory(ctx, join(cache, namespace, "shared"));
-    let completion, executionAttempted = false;
+    let completion, proof, executionAttempted = false;
     try {
       buildEnv.CARGO_TARGET_DIR = join(lane, "target");
       buildEnv.CARGO_BUILD_TARGET_DIR = buildEnv.CARGO_TARGET_DIR;
@@ -103,14 +105,22 @@ export async function cargo(ctx, command, args = [], { execute = cargoProcess, e
       const observation = retentionMode === "observe"
         ? await beginRetention(ctx, { namespace, command, args, env: buildEnv }, lease, { read: readRetentionInput }) : null;
       if (candidate) await startCandidate(candidate.handle, command, args, buildEnv, lease, { read: readRetentionInput });
+      // Lock generation is a noncompiler writer; do not require an already-valid
+      // lock through metadata or let it approve any cached compilation unit.
+      if (command !== "generate-lockfile") proof = await provenance.begin(ctx, { lane, namespace, command, args, env: buildEnv }, lease, proofInputs);
       const artifacts = [], copies = observation || candidate ? [] : null;
       const json = ["build", "check", "clippy", "test"].includes(command);
       const format = buildEnv.RBIT_WORKSPACE_JSON === "1" ? "json" : "json-render-diagnostics";
       if (candidate) candidateExecutionStarting(candidate.handle, lease);
       executionAttempted = true;
-      completion = await execute(ctx, [command, ...(json ? [`--message-format=${format}`] : []), ...args], buildEnv, (item) => artifacts.push(item), { lease });
+      completion = await execute(ctx, [command, ...(json ? [`--message-format=${format}`] : []), ...args], buildEnv, (item) => artifacts.push(item),
+        { lease, invocation: proof?.invocation, onMessage: proof?.observe });
       if (candidate) candidateExecuted(candidate.handle, lease);
       const result = { executables: [], environment: buildEnv, namespace };
+      if (proof) {
+        result.sourceProof = await provenance.finish(proof.handle, completion, lease);
+        if (!result.sourceProof.trusted) process.stderr.write("Shared local-unit reuse remains untrusted: owned native completion is required.\n");
+      }
       if (verifiedCargoCompletion(completion, lease)) result.completion = completion;
       if ((observation || candidate) && !result.completion) throw new UncertainProcessTreeError("Managed execution requires verified native Cargo completion");
       if (command === "build") {
@@ -145,6 +155,10 @@ export async function cargo(ctx, command, args = [], { execute = cargoProcess, e
       if (candidate) result.retention = await completeCandidate(candidate.handle, completion, copies, lease);
       return result;
     } catch (error) {
+      if (proof) {
+        try { await provenance.fail(proof.handle, lease); }
+        catch { /* Failed provenance publication cannot replace process uncertainty. */ }
+      }
       const failure = candidate && executionAttempted && !verifiedCargoCompletion(completion, lease)
         && !failedCargoCompletion(error, lease) && !(error instanceof UncertainProcessTreeError)
         ? new UncertainProcessTreeError("Candidate command completion is unverified", { cause: error }) : error;

@@ -113,6 +113,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Shared development builds validate local Cargo artifacts against their source and
+  checkout identity, preventing stale artifacts from another worktree from being reused.
+
 - Failed or unexpected Windows development-process waits fail the command instead
   of interpreting an unproved target state as successful completion.
 

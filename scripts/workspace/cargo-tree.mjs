@@ -18,9 +18,10 @@ export function cargoTreeMode(env, platform = process.platform) {
   return mode;
 }
 /** A serialized object or a receipt from another lease is never completion authority. */
-export function verifiedCargoCompletion(receipt, lease) {
+export function verifiedCargoCompletion(receipt, lease, invocation) {
   return receipt !== null && typeof receipt === "object" && receipts.has(receipt)
-    && typeof lease?.token === "string" && lease.token.length > 0 && receipts.get(receipt) === lease.token;
+    && typeof lease?.token === "string" && lease.token.length > 0 && receipts.get(receipt).token === lease.token
+    && (invocation === undefined || receipts.get(receipt).invocation === invocation);
 }
 /** Failure status is separate from positive native tree-completion provenance. */
 export function failedCargoCompletion(error, lease) {
@@ -43,7 +44,7 @@ async function cargoExecutable(ctx, env) {
   return executable;
 }
 export async function ownedCargo(ctx, args, env, artifact, options, consume) {
-  const { lease, native = {}, ...streamOptions } = options;
+  const { lease, invocation, native = {}, ...streamOptions } = options;
   if (!native.launch && process.platform !== "win32") throw new Error("Owned Cargo requires Windows job support");
   await requireLease(ctx, lease);
   const control = await managedDirectory(ctx, join(ctx.state, "cargo", randomUUID()));
@@ -67,7 +68,7 @@ export async function ownedCargo(ctx, args, env, artifact, options, consume) {
           if (!await verify(child)) throw new Error("Native completion proof is absent");
           proved = true;
           receipt = Object.freeze({ method: "windows-job", treeStopped: true });
-          receipts.set(receipt, lease.token);
+          receipts.set(receipt, { token: lease.token, invocation });
           return receipt;
         } catch (cause) {
           throw new UncertainProcessTreeError("Owned Cargo descendants are unverified; control evidence retained", { cause });

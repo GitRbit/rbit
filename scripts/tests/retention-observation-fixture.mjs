@@ -31,7 +31,7 @@ export async function fixture(t, { temporaryRoot = tmpdir() } = {}) {
   const request = { namespace, command: "check", args: ["-p", "model"], env: { CARGO_HOME: join(root, "cargo-home") } };
   return { ctx, lane, read, request };
 }
-export async function completion(ctx, lease, { code = 0, verified = true } = {}) {
+export async function completion(ctx, lease, { code = 0, verified = true, invocation } = {}) {
   let launched;
   const started = new Promise(resolve => { launched = resolve; });
   const child = new EventEmitter();
@@ -39,7 +39,7 @@ export async function completion(ctx, lease, { code = 0, verified = true } = {})
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
   const result = ownedCargo(ctx, [], {}, () => {}, {
-    lease,
+    lease, invocation,
     native: { resolve: async () => "cargo.exe", launch: () => { launched(); return child; }, verify: async () => verified },
     output: { write: () => {} }, diagnostics: { write: () => {} },
   }, (ctx, args, env, artifact, options) => cargoProcess(ctx, args, env, artifact, options));

@@ -1,3 +1,4 @@
+import { cargo } from "./source-proof-fixture.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
@@ -6,7 +7,7 @@ import { join } from "node:path";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { leased, acquire, UncertainProcessTreeError } from "../workspace/lease.mjs";
-import { cargo, cargoProcess } from "../workspace/build.mjs";
+import { cargoProcess } from "../workspace/build.mjs";
 import { cargoTreeMode, ownedCargo, verifiedCargoCompletion } from "../workspace/cargo-tree.mjs";
 const tick = () => new Promise(resolve => setImmediate(resolve));
 async function fixture(t) {

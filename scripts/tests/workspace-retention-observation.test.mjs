@@ -1,8 +1,8 @@
+import { cargo } from "./source-proof-fixture.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { copyFile, link, mkdir, readFile, readdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { cargo } from "../workspace/build.mjs";
 import { leased } from "../workspace/lease.mjs";
 import { managedRetentionMode, beginRetention, finishRetention } from "../workspace/retention/observe.mjs";
 import { boundedInput, policySnapshot } from "../workspace/retention/policy.mjs";
