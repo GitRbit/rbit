@@ -5,6 +5,11 @@
 //! and `Retry-After`. Accounts with two-factor authentication continue at
 //! `/login/two-factor` (see [`super::security`]), carried by a short-lived cookie.
 
+mod credential_forms;
+mod password_commands;
+pub use credential_forms::{LoginForm, SignupForm};
+pub use password_commands::{login, signup};
+
 use axum::{
     Form,
     extract::{Query, State},
@@ -47,23 +52,6 @@ pub struct NextQuery {
     next: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct LoginForm {
-    login: String,
-    password: String,
-    next: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct SignupForm {
-    username: String,
-    email: String,
-    password: String,
-    /// Only asked for (and only checked) while the instance has no user.
-    #[serde(default)]
-    setup_token: String,
-}
-
 pub async fn login_form(State(state): State<AppState>, viewer: Viewer, page: Page, Query(query): Query<NextQuery>) -> WebResult<Response> {
     let next = safe_redirect_target(query.next.as_deref()).to_owned();
     if viewer.user().is_some() {
@@ -72,62 +60,11 @@ pub async fn login_form(State(state): State<AppState>, viewer: Viewer, page: Pag
     Ok(login_page(&state, page, FormError::default(), String::new(), next).await?.into_response())
 }
 
-pub async fn login(
-    State(state): State<AppState>,
-    jar: CookieJar,
-    https: Https,
-    client: Client,
-    page: Page,
-    Form(form): Form<LoginForm>,
-) -> WebResult<Response> {
-    let next = safe_redirect_target(form.next.as_deref()).to_owned();
-    let message = match state.services.sign_in(&form.login, form.password, &client.0).await {
-        Ok(SignInOutcome::SignedIn(user)) => return start_session(&state, jar, https, &client, &user, &next).await,
-        Ok(SignInOutcome::SecondFactorRequired(pending)) => return Ok(second_factor_redirect(jar, https, &pending, &next)),
-        Err(ServiceError::InvalidCredentials) => "Incorrect username or password.".to_owned(),
-        Err(ServiceError::Forbidden) => "This account has been suspended. Contact an administrator.".to_owned(),
-        Err(ServiceError::RateLimited { retry_after_seconds }) => {
-            let page = login_page(&state, page, FormError::new(slow_down("sign-in", retry_after_seconds)), form.login, next).await?;
-            return Ok(too_many_requests(page, retry_after_seconds));
-        }
-        Err(other) => return Err(other.into()),
-    };
-    let page = login_page(&state, page, FormError::new(message), form.login, next).await?;
-    Ok((StatusCode::UNPROCESSABLE_ENTITY, page).into_response())
-}
-
 pub async fn signup_form(State(state): State<AppState>, viewer: Viewer, page: Page) -> WebResult<Response> {
     if viewer.user().is_some() {
         return Ok(Redirect::to("/").into_response());
     }
     Ok(signup_page(&state, page, FormError::default(), String::new(), String::new(), String::new()).await?.into_response())
-}
-
-pub async fn signup(
-    State(state): State<AppState>,
-    jar: CookieJar,
-    https: Https,
-    client: Client,
-    page: Page,
-    Form(form): Form<SignupForm>,
-) -> WebResult<Response> {
-    let SignupForm { username, email, password, setup_token } = form;
-    let ip = client.ip().map(|ip| ip.to_canonical().to_string()).unwrap_or_default();
-    if let Err(ServiceError::RateLimited { retry_after_seconds }) = state.services.throttle.check(ThrottleScope::SignUp, &ip) {
-        let error = FormError::new(slow_down("sign-up", retry_after_seconds));
-        let page = signup_page(&state, page, error, username, email, setup_token).await?;
-        return Ok(too_many_requests(page, retry_after_seconds));
-    }
-    let input = SignUp { username: username.clone(), email: email.clone(), password };
-    match state.services.accounts.sign_up(input, &setup_token).await {
-        Ok(user) => start_session(&state, jar, https, &client, &user, "/").await,
-        Err(error @ (ServiceError::Invalid(_) | ServiceError::Conflict(_) | ServiceError::RegistrationClosed)) => {
-            let error = FormError::from_message(&error.to_string());
-            let page = signup_page(&state, page, error, username, email, setup_token).await?;
-            Ok((StatusCode::UNPROCESSABLE_ENTITY, page).into_response())
-        }
-        Err(other) => Err(other.into()),
-    }
 }
 
 pub async fn logout(State(state): State<AppState>, jar: CookieJar) -> WebResult<Response> {

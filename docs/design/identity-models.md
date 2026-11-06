@@ -14,20 +14,22 @@ extraction does not tighten validation or claim to verify mailbox ownership.
 
 ## Explicit feature graph
 
-The existing identity crate provides three small layers:
+The identity crate provides explicit layers:
 
 | Selection | Available API | Normal dependencies |
 | --- | --- | --- |
 | No default features | Account/session models, validated names and pure account port | contracts, Serde |
-| `credentials` | Models plus existing Passwords/PasswordError API | above plus Argon2, thiserror, Tokio |
-| `password-work` | Credential layer plus injected work and account applications | credential layer plus kernel, zeroize, subtle, getrandom |
+| `credentials` | Models plus existing Passwords/PasswordError API | above plus Argon2, thiserror, Tokio, zeroize |
+| `password-work` | Credential layer plus injected work and account applications | credential layer plus kernel, subtle, getrandom |
 | `session-tokens` | Models plus fixed-width session token/codec API | contracts, Serde, base64, sha2, getrandom |
+| `sessions` | Session applications and tracked finalization | session-tokens plus Tokio/tokio-util |
 | Default | Complete existing password API | same as password-work |
 
 The asynchronous legacy Passwords facade inherently needs Tokio. Model-only
 consumers do not activate it. The workspace dependency must disable defaults;
 core uses that model-only dependency, auth explicitly enables credentials and session-tokens, and
-services plus web development fixtures explicitly enable password-work. Cargo
+services enables password-work + sessions, while web development fixtures enable
+password-work. The production web form adapters use zeroize directly. Cargo
 unifies requested capabilities when building the server; feature selection is
 compile-time dependency organization, not a runtime security sandbox.
 
@@ -84,3 +86,11 @@ Tokio/tokio-util over `session-tokens`, independently of Argon2. Services opts i
 password-work + sessions; model-only storage/core remain unchanged. Its new
 application/ownership tests are compiler-pending; the earlier matrix above proves
 only its original recorded scope. See [session application ownership](identity-session-application.md).
+
+
+Credential input follow-up: the credentials layer now includes the existing optional
+zeroize dependency so even the legacy facade protects owned inputs synchronously.
+The session-tokens-only layer does not request it. Model-only graph restrictions and
+all explicit consumer feature names remain unchanged. Outer services and form handlers
+retain `.await` usage through eagerly protected futures; this source follow-up still
+requires compiler validation, independently of earlier acceptance counts.

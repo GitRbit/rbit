@@ -6,6 +6,11 @@
 //! `Referrer-Policy: no-referrer`, so the secret neither lingers in caches nor leaks to
 //! other sites through links on the page.
 
+mod credential_forms;
+mod password_commands;
+pub use credential_forms::ResetForm;
+pub use password_commands::reset;
+
 use axum::{
     Form, Router,
     extract::{Path, Query, State},
@@ -92,50 +97,11 @@ pub(crate) fn form_error_response(error: &ServiceError, page: impl IntoResponse)
 
 // ------------------------------------------------------------------ reset password
 
-#[derive(Debug, Deserialize)]
-pub struct ResetForm {
-    #[serde(default)]
-    new_password: String,
-    #[serde(default)]
-    confirm_password: String,
-}
-
 /// `GET /password/reset/{token}`: the new-password form, if the link is still good.
 pub async fn reset_form(State(state): State<AppState>, page: Page, Path(token): Path<String>) -> WebResult<Response> {
     let response = match state.services.recovery.reset_target(&token).await {
         Ok(username) => {
             (StatusCode::OK, ResetPasswordPage::form(page, &token, username, state.config.security.min_password_length)).into_response()
-        }
-        Err(error) => problem_page(&state, page, error),
-    };
-    Ok((SECRET_URL_HEADERS, response).into_response())
-}
-
-/// `POST /password/reset/{token}`
-pub async fn reset(
-    State(state): State<AppState>,
-    page: Page,
-    Path(token): Path<String>,
-    Form(form): Form<ResetForm>,
-) -> WebResult<Response> {
-    let recovery = &state.services.recovery;
-    let result = if form.new_password == form.confirm_password {
-        recovery.reset_password(&token, form.new_password).await
-    } else {
-        Err(ServiceError::Invalid("the new passwords do not match".to_owned()))
-    };
-    let response = match result {
-        Ok(()) => Redirect::to(RESET_COMPLETE_URL).into_response(),
-        Err(ServiceError::Invalid(message)) => {
-            // Re-check the link: it may have been used or expired meanwhile.
-            match recovery.reset_target(&token).await {
-                Ok(username) => {
-                    let page = ResetPasswordPage::form(page, &token, username, state.config.security.min_password_length)
-                        .with_error(FormError::from_message(&message));
-                    (StatusCode::UNPROCESSABLE_ENTITY, page).into_response()
-                }
-                Err(error) => problem_page(&state, page, error),
-            }
         }
         Err(error) => problem_page(&state, page, error),
     };

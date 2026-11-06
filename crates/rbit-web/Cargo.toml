@@ -9,6 +9,7 @@ license.workspace = true
 autotests = false
 
 [dependencies]
+zeroize.workspace = true
 rbit-core.workspace = true
 rbit-localization.workspace = true
 rbit-auth.workspace = true

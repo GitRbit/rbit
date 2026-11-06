@@ -1,5 +1,10 @@
 //! Account settings: `/settings/…`.
 
+mod credential_forms;
+mod password_commands;
+pub use credential_forms::{EmailFormInput, PasswordFormInput, UsernameFormInput};
+pub use password_commands::{change_email, change_password, change_username};
+
 use axum::{
     Form, Router,
     extract::{Path, Query, State},
@@ -113,43 +118,6 @@ pub async fn appearance(SignedIn(_): SignedIn, page: Page, Query(query): Query<G
 
 // ------------------------------------------------------------------ account
 
-#[derive(Debug, Deserialize)]
-pub struct EmailFormInput {
-    #[serde(default)]
-    email: String,
-    #[serde(default)]
-    current_password: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct UsernameFormInput {
-    #[serde(default)]
-    username: String,
-    #[serde(default)]
-    current_password: String,
-}
-
-/// `POST /settings/account/username`: changes only the signed-in account's name.
-pub async fn change_username(
-    State(state): State<AppState>,
-    SignedIn(user): SignedIn,
-    page: Page,
-    Form(form): Form<UsernameFormInput>,
-) -> WebResult<Response> {
-    let result = state.services.profiles.change_username(&user, form.current_password, &form.username).await;
-    account_result(&state, &user, page, AccountForm::Username, result, Some(form.username)).await
-}
-
-#[derive(Debug, Deserialize)]
-pub struct PasswordFormInput {
-    #[serde(default, rename = "current_password")]
-    current: String,
-    #[serde(default, rename = "new_password")]
-    new: String,
-    #[serde(default, rename = "confirm_password")]
-    confirmation: String,
-}
-
 /// `GET /settings/account`
 pub async fn account(
     State(state): State<AppState>,
@@ -179,32 +147,6 @@ async fn account_page(state: &AppState, user: &User, page: Page) -> WebResult<Ac
 pub async fn resend_verification(State(state): State<AppState>, SignedIn(user): SignedIn, page: Page) -> WebResult<Response> {
     let result = state.services.recovery.resend_verification(&user).await;
     account_result(&state, &user, page, AccountForm::Verification, result, None).await
-}
-
-/// `POST /settings/account/email`
-pub async fn change_email(
-    State(state): State<AppState>,
-    SignedIn(user): SignedIn,
-    page: Page,
-    Form(form): Form<EmailFormInput>,
-) -> WebResult<Response> {
-    let result = state.services.profiles.change_email(&user, form.current_password, &form.email).await;
-    account_result(&state, &user, page, AccountForm::Email, result.map(drop), Some(form.email)).await
-}
-
-/// `POST /settings/account/password`
-pub async fn change_password(
-    State(state): State<AppState>,
-    SignedIn(user): SignedIn,
-    page: Page,
-    Form(form): Form<PasswordFormInput>,
-) -> WebResult<Response> {
-    let result = if form.new == form.confirmation {
-        state.services.profiles.change_password(&user, form.current, form.new).await
-    } else {
-        Err(ServiceError::Invalid("the new passwords do not match".to_owned()))
-    };
-    account_result(&state, &user, page, AccountForm::Password, result, None).await
 }
 
 /// Redirects after a successful change, or re-renders the account page with the error

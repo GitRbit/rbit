@@ -4,6 +4,11 @@
 //! never learn the panel exists. The routes are merged into the page router, so they get
 //! sessions, CSRF protection, security headers and error pages automatically.
 
+mod credential_forms;
+mod password_commands;
+pub use credential_forms::{NewUserForm, SetPasswordForm};
+pub use password_commands::{create_user, set_password};
+
 use std::collections::BTreeMap;
 
 use axum::{
@@ -189,14 +194,6 @@ pub async fn send_password_reset(
     }
 }
 
-#[derive(Debug, Deserialize)]
-pub struct SetPasswordForm {
-    #[serde(default)]
-    new_password: String,
-    #[serde(default)]
-    confirm_password: String,
-}
-
 /// `GET /admin/users/{id}/password`
 pub async fn set_password_form(
     State(state): State<AppState>,
@@ -210,33 +207,6 @@ pub async fn set_password_form(
 
 fn set_password_page(state: &AppState, admin: &User, page: Page, record: &UserRecord) -> SetPasswordPage {
     SetPasswordPage::new(page, admin, record, state.config.security.min_password_length, state.services.recovery.email_available())
-}
-
-/// `POST /admin/users/{id}/password`
-pub async fn set_password(
-    State(state): State<AppState>,
-    SiteAdmin(admin): SiteAdmin,
-    page: Page,
-    Path(id): Path<String>,
-    Form(form): Form<SetPasswordForm>,
-) -> WebResult<Response> {
-    let record = state.services.admin.user(&admin, AccountId(parse_id(&id)?)).await?;
-    let result = if form.new_password == form.confirm_password {
-        state.services.recovery.admin_set_password(&admin, record.user.id(), form.new_password).await
-    } else {
-        Err(ServiceError::Invalid("the new passwords do not match".to_owned()))
-    };
-    match result {
-        Ok(()) => {
-            let listing = listing_url(AdminSection::Users.url(), record.user.name().as_str(), 1);
-            Ok(Redirect::to(&UsersNotice::PasswordSet.url(&listing)).into_response())
-        }
-        Err(ServiceError::Invalid(message)) => {
-            let page = set_password_page(&state, &admin, page, &record).with_error(FormError::from_message(&message));
-            Ok((StatusCode::UNPROCESSABLE_ENTITY, page).into_response())
-        }
-        Err(other) => Err(other.into()),
-    }
 }
 
 /// Hidden fields that bring an action back to the listing page it was taken on.
@@ -276,17 +246,6 @@ pub async fn moderate_user(
     }
 }
 
-#[derive(Debug, Deserialize)]
-pub struct NewUserForm {
-    #[serde(default)]
-    username: String,
-    #[serde(default)]
-    email: String,
-    #[serde(default)]
-    password: String,
-    is_admin: Option<String>,
-}
-
 /// `GET /admin/users/new`
 pub async fn new_user_form(State(state): State<AppState>, SiteAdmin(_admin): SiteAdmin, page: Page) -> NewUserPage {
     new_user_page(&state, page, FormError::default(), String::new(), String::new(), false)
@@ -302,25 +261,6 @@ fn new_user_page(state: &AppState, page: Page, error: FormError, username: Strin
         is_admin,
         min_password_length: state.config.security.min_password_length,
         registration_open: state.services.instance.current().registration == RegistrationMode::Open,
-    }
-}
-
-/// `POST /admin/users/new`
-pub async fn create_user(
-    State(state): State<AppState>,
-    SiteAdmin(admin): SiteAdmin,
-    page: Page,
-    Form(form): Form<NewUserForm>,
-) -> WebResult<Response> {
-    let is_admin = form.is_admin.is_some();
-    let input = SignUp { username: form.username.clone(), email: form.email.clone(), password: form.password };
-    match state.services.admin.create_user(&admin, input, is_admin).await {
-        Ok(user) => Ok(Redirect::to(&listing_url(AdminSection::Users.url(), user.name().as_str(), 1)).into_response()),
-        Err(error @ (ServiceError::Invalid(_) | ServiceError::Conflict(_))) => {
-            let page = new_user_page(&state, page, FormError::from_message(&error.to_string()), form.username, form.email, is_admin);
-            Ok((StatusCode::UNPROCESSABLE_ENTITY, page).into_response())
-        }
-        Err(other) => Err(other.into()),
     }
 }
 
