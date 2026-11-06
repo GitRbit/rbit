@@ -96,8 +96,9 @@ pub(super) fn read_window_counted(
     let mut bytes = vec![0u8; usize::try_from(finish - begin).unwrap_or_default()];
     work.data_opens += 1;
     if gzip {
+        let file = File::open(&files.gzip)?;
         work.decoders += 1;
-        let mut decoder = Inflated { reader: flate2::read::GzDecoder::new(File::open(&files.gzip)?), bytes: 0 };
+        let mut decoder = Inflated { reader: flate2::read::GzDecoder::new(file), bytes: 0 };
         let result = (|| {
             std::io::copy(&mut (&mut decoder).take(begin), &mut std::io::sink())?;
             decoder.read_exact(&mut bytes)

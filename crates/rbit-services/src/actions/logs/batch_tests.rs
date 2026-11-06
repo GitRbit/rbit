@@ -195,3 +195,13 @@ fn only_forward_persisted_lifecycle_changes_permit_the_single_retry() {
     assert!(!retryable(LogState::Expired, LogState::Live));
     assert!(!retryable(LogState::Expired, LogState::Final));
 }
+
+#[test]
+fn a_failed_legacy_gzip_open_counts_the_attempt_without_inventing_a_decoder() {
+    let (_directory, files, _) = fixture(&["kept".into()]);
+    let mut work = ReadWork::default();
+    let mut window = LogWindow::default();
+    let error = read_window_counted(&files, true, request(0, None, LogRange::Tail, 1000, 1024), &mut window, &mut work).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+    assert_eq!((work.index_opens, work.data_opens, work.decoders, work.inflated_bytes), (1, 1, 0, 0));
+}
