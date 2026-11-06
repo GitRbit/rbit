@@ -62,6 +62,9 @@ impl ActionsOverviewMessage {
 
 impl Catalog {
     pub fn overview(self, message: ActionsOverviewMessage) -> LocalizedText {
+        if self.locale == crate::Locale::Spanish {
+            return super::spanish::overview(self, message);
+        }
         let literal = match message {
             ActionsOverviewMessage::Workflows => "Workflows",
             ActionsOverviewMessage::AllWorkflows => "All workflows",

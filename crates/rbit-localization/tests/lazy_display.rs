@@ -21,7 +21,7 @@ fn messages(site: &str) -> Vec<Message<'_>> {
 }
 #[test]
 fn lazy_output_is_byte_equivalent_to_owned_text_including_escaping_and_fallback() {
-    for locale in [Locale::English, Locale::PseudoExpanded, Locale::PseudoRtl] {
+    for locale in [Locale::English, Locale::Spanish, Locale::PseudoExpanded, Locale::PseudoRtl] {
         for site in ["", "Example Forge", "雪 café🦀 \u{2066}עברית\u{2069}", "<script>bad</script>&\"' </title>\n"] {
             let catalog = Catalog::new(locale);
             for message in messages(site) {
@@ -69,7 +69,7 @@ fn lazy_messages_propagate_destination_failure() {
             Err(std::fmt::Error)
         }
     }
-    for locale in [Locale::English, Locale::PseudoExpanded, Locale::PseudoRtl] {
+    for locale in [Locale::English, Locale::Spanish, Locale::PseudoExpanded, Locale::PseudoRtl] {
         let message = Catalog::new(locale).display(Message::ExploreSubtitle { site: "untrusted" });
         assert!(write!(&mut Refuse, "{message}").is_err());
     }

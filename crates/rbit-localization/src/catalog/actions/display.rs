@@ -26,6 +26,14 @@ impl fmt::Display for ActionsDisplay<'_> {
                 _ => {}
             }
         }
+        if self.catalog.locale() == Locale::Spanish {
+            use crate::catalog::spanish::{RERUN_PREFIX, SUMMARY_PREFIX};
+            match self.message {
+                ActionsMessage::RerunJob { name } => return write!(output, "{RERUN_PREFIX}{name}"),
+                ActionsMessage::Summary { job } => return write!(output, "{SUMMARY_PREFIX}{job}"),
+                _ => {}
+            }
+        }
         fmt::Display::fmt(&self.catalog.actions(self.message), output)
     }
 }

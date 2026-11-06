@@ -70,6 +70,9 @@ impl ActionsJobMessage {
 
 impl Catalog {
     pub fn job(self, message: ActionsJobMessage) -> LocalizedText {
+        if self.locale == Locale::Spanish {
+            return super::spanish::job(self, message);
+        }
         let literal = match message {
             ActionsJobMessage::Details => "Job details",
             ActionsJobMessage::Steps => "Steps and logs",
@@ -124,6 +127,11 @@ impl fmt::Display for JobDisplay {
         {
             return write!(output, "{count} {}", if count == 1 { "step" } else { "steps" });
         }
+        if self.catalog.locale() == Locale::Spanish
+            && let ActionsJobMessage::StepCount { count } = self.message
+        {
+            return write!(output, "{count} {}", if count == 1 { "paso" } else { "pasos" });
+        }
         fmt::Display::fmt(&self.catalog.job(self.message), output)
     }
 }
@@ -137,7 +145,7 @@ mod tests {
     fn static_english_is_borrowed_and_counts_match_the_compiled_catalog() {
         let english = Catalog::new(Locale::English);
         assert!(matches!(english.job(ActionsJobMessage::RawLog).0, Cow::Borrowed("Raw log")));
-        for locale in [Locale::English, Locale::PseudoExpanded, Locale::PseudoRtl] {
+        for locale in [Locale::English, Locale::Spanish, Locale::PseudoExpanded, Locale::PseudoRtl] {
             let catalog = Catalog::new(locale);
             for count in [0, 1, 2, 512, u64::MAX] {
                 let message = ActionsJobMessage::StepCount { count };

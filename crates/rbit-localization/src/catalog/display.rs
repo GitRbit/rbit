@@ -34,6 +34,17 @@ impl fmt::Display for LocalizedDisplay<'_> {
                 _ => {}
             }
         }
+        if self.catalog.locale() == Locale::Spanish {
+            use super::spanish::{PAGE_OF, PAGE_PREFIX, SUBTITLE_PREFIX};
+            match self.message {
+                Message::Stars { count } => {
+                    return write!(output, "{count} {}", if count.unsigned_abs() == 1 { "estrella" } else { "estrellas" });
+                }
+                Message::PageOf { page, pages } => return write!(output, "{PAGE_PREFIX}{page}{PAGE_OF}{pages}"),
+                Message::ExploreSubtitle { site } => return write!(output, "{SUBTITLE_PREFIX}{site}."),
+                _ => {}
+            }
+        }
         fmt::Display::fmt(&self.catalog.text(self.message), output)
     }
 }

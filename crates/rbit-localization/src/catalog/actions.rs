@@ -51,6 +51,9 @@ impl ActionsMessage<'_> {
 impl Catalog {
     /// Uses the same compiled locale and argument-isolation rules as other messages.
     pub fn actions(self, message: ActionsMessage<'_>) -> LocalizedText {
+        if self.locale == crate::Locale::Spanish {
+            return super::spanish::actions(self, message);
+        }
         let literal = match message {
             ActionsMessage::Actions => "Actions",
             ActionsMessage::Workflow => "Workflow",

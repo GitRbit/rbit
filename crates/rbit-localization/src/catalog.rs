@@ -10,6 +10,11 @@ pub use actions::{ActionsDisplay, ActionsMessage};
 mod job;
 pub use job::{ActionsJobMessage, JobDisplay};
 mod display;
+mod language;
+mod spanish;
+pub use language::LanguageMessage;
+mod chrome;
+pub use chrome::{ChromeDisplay, ChromeMessage};
 pub use display::LocalizedDisplay;
 use display::{PAGE_OF_SEPARATOR, PAGE_PREFIX, STARS_SUFFIX, SUBTITLE_PREFIX, SUBTITLE_SUFFIX};
 
@@ -22,7 +27,7 @@ pub enum RepositoryVisibility {
 }
 
 /// Stable typed message contract. Each variant has a complete compiled catalog entry.
-/// Counts use English cardinal rules only; pseudo catalogs deliberately share them.
+/// Integer noun forms are catalog-owned; diagnostic catalogs share English grammar.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Message<'a> {
     RepositoriesTitle,
@@ -133,6 +138,9 @@ impl Catalog {
     /// Formats a typed message into plain text. Arguments are never interpreted as
     /// catalog syntax, markup or formatting instructions. Templates escape once.
     pub fn text(self, message: Message<'_>) -> LocalizedText {
+        if self.locale == Locale::Spanish {
+            return spanish::text(self, message);
+        }
         let mut output = String::new();
         match message {
             Message::RepositoriesTitle => return self.literal_text("Repositories"),
@@ -210,7 +218,7 @@ impl Catalog {
     }
 
     fn literal_text(self, text: &'static str) -> LocalizedText {
-        if self.locale == Locale::English {
+        if matches!(self.locale, Locale::English | Locale::Spanish) {
             return LocalizedText(Cow::Borrowed(text));
         }
         let mut output = String::new();
@@ -219,7 +227,7 @@ impl Catalog {
     }
 
     fn finish(self, mut output: String) -> LocalizedText {
-        if self.locale != Locale::English {
+        if matches!(self.locale, Locale::PseudoExpanded | Locale::PseudoRtl) {
             output.insert(0, '[');
             output.push(']');
         }
@@ -229,7 +237,7 @@ impl Catalog {
     fn literal(self, output: &mut String, text: &str) {
         match self.locale {
             Locale::PseudoExpanded => pseudo::expand(output, text),
-            Locale::English | Locale::PseudoRtl => output.push_str(text),
+            Locale::English | Locale::Spanish | Locale::PseudoRtl => output.push_str(text),
         }
     }
 

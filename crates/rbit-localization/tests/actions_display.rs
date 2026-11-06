@@ -16,7 +16,7 @@ struct Owned<'a> {
 
 #[test]
 fn dynamic_and_static_labels_match_owned_text_and_escape_once_in_text_and_attributes() {
-    for locale in [Locale::English, Locale::PseudoExpanded, Locale::PseudoRtl] {
+    for locale in [Locale::English, Locale::Spanish, Locale::PseudoExpanded, Locale::PseudoRtl] {
         let catalog = Catalog::new(locale);
         for name in ["", "build", "雪 café 🦀 \u{2066}עברית\u{2069}", "<script>bad</script>&\"' </title>\n"] {
             for message in [ActionsMessage::RerunJob { name }, ActionsMessage::Summary { job: name }, ActionsMessage::Jobs] {
@@ -67,7 +67,7 @@ fn english_dynamic_display_accepts_a_fixed_destination_and_propagates_failure() 
         write!(&mut destination, "{}", catalog.actions_display(message)).unwrap();
         assert_eq!(&destination.bytes[..destination.used], catalog.actions(message).as_str().as_bytes());
     }
-    for locale in [Locale::English, Locale::PseudoExpanded, Locale::PseudoRtl] {
+    for locale in [Locale::English, Locale::Spanish, Locale::PseudoExpanded, Locale::PseudoRtl] {
         assert!(write!(&mut Refuse, "{}", Catalog::new(locale).actions_display(ActionsMessage::Summary { job: "job" })).is_err());
     }
 }

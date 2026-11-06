@@ -5,7 +5,7 @@ use crate::Locale;
 const MAX_HEADER_BYTES: usize = 4096;
 const MAX_RANGES: usize = 32;
 const MAX_TAG_BYTES: usize = 63;
-const LOCALES: [Locale; 3] = [Locale::English, Locale::PseudoExpanded, Locale::PseudoRtl];
+const LOCALES: [Locale; 4] = [Locale::English, Locale::Spanish, Locale::PseudoExpanded, Locale::PseudoRtl];
 
 /// Borrowed choices in descending priority; strings must contain a single tag.
 #[derive(Clone, Copy, Debug, Default)]
@@ -49,9 +49,9 @@ pub struct LocaleResolver {
 }
 
 impl LocaleResolver {
-    /// Enables pseudo catalogs explicitly; production defaults supply only English.
+    /// Enables pseudo catalogs explicitly; production supports English and Spanish.
     pub fn new(default: Locale, enable_pseudo: bool) -> Result<Self, UnsupportedDefault> {
-        if default != Locale::English && !enable_pseudo {
+        if matches!(default, Locale::PseudoExpanded | Locale::PseudoRtl) && !enable_pseudo {
             return Err(UnsupportedDefault);
         }
         Ok(Self { default, enable_pseudo })
@@ -76,7 +76,7 @@ impl LocaleResolver {
     }
 
     fn supported(self, locale: Locale) -> bool {
-        locale == Locale::English || self.enable_pseudo
+        matches!(locale, Locale::English | Locale::Spanish) || self.enable_pseudo
     }
 
     fn lookup(self, tag: &str) -> Option<Locale> {

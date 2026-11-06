@@ -38,6 +38,18 @@ fn english_static_labels_and_visibility_choices_borrow_compiled_text() {
 }
 
 #[test]
+fn spanish_static_messages_and_new_shell_labels_borrow_compiled_literals() {
+    let catalog = Catalog::new(Locale::Spanish);
+    for message in STATIC_MESSAGES.into_iter().chain([Message::PaginationLabel]) {
+        assert!(matches!(catalog.text(message).0, Cow::Borrowed(_)), "{}", message.id());
+    }
+    for message in [super::ChromeMessage::Skip, super::ChromeMessage::SignIn, super::ChromeMessage::TimingHelp] {
+        assert!(matches!(catalog.chrome(message).0, Cow::Borrowed(_)), "{}", message.id());
+    }
+    assert!(matches!(catalog.language(super::LanguageMessage::Title).0, Cow::Borrowed("Idioma de la interfaz")));
+}
+
+#[test]
 fn dynamic_messages_own_formatted_plain_text() {
     let catalog = Catalog::new(Locale::English);
     for message in [
