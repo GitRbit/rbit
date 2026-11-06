@@ -8,6 +8,7 @@
 //! answers `401` with a `WWW-Authenticate` challenge so Git prompts for credentials.
 //!
 //! Credentials are throttled per client address and per login (`429` + `Retry-After`).
+//! Password-work saturation/shutdown is `503` + `Retry-After`, without a new challenge.
 //! Accounts with two-factor authentication must use a personal access token: their
 //! password is refused with an explanation Git prints (`fatal: remote error: …`).
 //! A repository's old `owner/name` from before a rename or transfer is served as the
@@ -29,6 +30,13 @@
 //! delete existing tags or bring commits that change workflow files. With Actions disabled
 //! a task token is refused before anything is looked up.
 
+mod denied;
+pub(super) use denied::Denied;
+use denied::TOKEN_REQUIRED;
+
+#[cfg(test)]
+use rbit_services::mirrors;
+
 use async_compression::tokio::bufread::GzipDecoder;
 use axum::{
     body::Body,
@@ -44,7 +52,6 @@ use rbit_services::{
     ConcurrencySlot, RepoContext, ServiceError, ThrottleScope,
     actions::tokens::TaskGrant,
     limits::{RETRY_AFTER_SECONDS, Refused},
-    mirrors,
     protection::PushActor,
     two_factor::GitPasswordOutcome,
 };
@@ -315,56 +322,6 @@ fn git_protocol(headers: &HeaderMap) -> Option<&str> {
     headers.get("git-protocol").and_then(|v| v.to_str().ok())
 }
 
-/// Why a Git request was refused.
-#[derive(Debug)]
-pub(super) enum Denied {
-    /// Ask the client for (better) credentials.
-    Challenge,
-    Forbidden,
-    /// Correct credentials of a suspended user.
-    Suspended,
-    /// The account password of a user with two-factor authentication.
-    TokenRequired,
-    /// Too many attempts from this client or against this login.
-    RateLimited {
-        retry_after_seconds: u64,
-    },
-    /// A push to a pull mirror.
-    Mirror,
-    NotFound,
-    Internal,
-}
-
-/// Shown by Git when an account with two-factor authentication offers its password.
-const TOKEN_REQUIRED: &str = "two-factor authentication is enabled for this account, so its password cannot be used \
-                              with Git. Create a personal access token under Settings > Access tokens and use it as the \
-                              password.";
-
-impl IntoResponse for Denied {
-    fn into_response(self) -> Response {
-        match self {
-            Self::Challenge => (
-                StatusCode::UNAUTHORIZED,
-                [(header::WWW_AUTHENTICATE, "Basic realm=\"rbit\", charset=\"UTF-8\"")],
-                "authentication required",
-            )
-                .into_response(),
-            Self::Forbidden => (StatusCode::FORBIDDEN, "you do not have permission to push to this repository").into_response(),
-            Self::Suspended => (StatusCode::FORBIDDEN, "this account has been suspended").into_response(),
-            Self::TokenRequired => (StatusCode::FORBIDDEN, TOKEN_REQUIRED).into_response(),
-            Self::RateLimited { retry_after_seconds } => (
-                StatusCode::TOO_MANY_REQUESTS,
-                [(header::RETRY_AFTER, retry_after_seconds.to_string())],
-                format!("too many authentication attempts; try again in {retry_after_seconds} seconds"),
-            )
-                .into_response(),
-            Self::Mirror => (StatusCode::FORBIDDEN, mirrors::PUSH_REFUSED).into_response(),
-            Self::NotFound => (StatusCode::NOT_FOUND, "repository not found").into_response(),
-            Self::Internal => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-        }
-    }
-}
-
 /// A ref advertisement consisting of a single `ERR` packet: Git aborts and prints
 /// `fatal: remote error: <message>`, which plain HTTP error bodies never achieve.
 fn remote_error(service: Service, message: &str) -> Response {
@@ -513,6 +470,7 @@ pub(super) async fn authenticate(state: &AppState, client: &Client, headers: &He
         Err(ServiceError::InvalidCredentials) => Err(Denied::Challenge),
         Err(ServiceError::Forbidden) => Err(Denied::Suspended),
         Err(ServiceError::RateLimited { retry_after_seconds }) => Err(Denied::RateLimited { retry_after_seconds }),
+        Err(ServiceError::Unavailable { retry_after_seconds }) => Err(Denied::Unavailable { retry_after_seconds }),
         Err(error) => {
             tracing::error!(%error, "git authentication failed");
             Err(Denied::Internal)
