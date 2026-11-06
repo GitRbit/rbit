@@ -48,6 +48,8 @@ pub mod recovery;
 pub mod ref_picker;
 pub mod refs;
 pub mod releases;
+#[cfg(test)]
+mod render_probe;
 pub mod repo;
 pub mod repo_files;
 pub mod repo_settings;

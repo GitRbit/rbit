@@ -1,0 +1,149 @@
+{% import "macros.html" as ui %}
+{#- Light/dark switch and the theme picker as menu rows: the phone-sized stand-ins for the
+    top bar's sun/moon and palette buttons. -#}
+{% macro theme_menu_items(page) %}
+{%- let toggle = page.theme.toggled() %}
+<form method="post" action="/themes" class="sm:hidden" hx-boost="false" data-theme-form data-asset-version="{{ crate::assets::build_version() }}">
+  <input type="hidden" name="next" value="{{ page.path }}">
+  <button class="menu-item" type="submit" name="theme" value="{{ toggle.slug() }}" data-theme-toggle data-variant="{{ toggle.scheme().unwrap_or_default() }}">
+    <span class="when-dark">{% call ui::icon("sun", "menu-icon") %}{% endcall %}</span><span class="when-light">{% call ui::icon("moon", "menu-icon") %}{% endcall %}</span>
+    <span class="when-dark">Light mode</span><span class="when-light">Dark mode</span>
+  </button>
+</form>
+<a class="menu-item sm:hidden" href="/themes" hx-boost="false" aria-haspopup="dialog" data-theme-dialog-open>{% call ui::icon("palette", "menu-icon") %}{% endcall %}Themes</a>
+{% endmacro %}
+<!doctype html>
+<html lang="{{ page.locale.tag() }}" dir="{{ page.locale.direction().as_str() }}"{% if let Some(theme) = page.theme.attribute() %} data-theme="{{ theme }}"{% endif %}{% if let Some(scheme) = page.theme.scheme() %} data-scheme="{{ scheme }}"{% endif %}>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!--partial:title--><title>{{ page.document_title() }}</title><!--/partial:title-->
+  <meta name="description" content="{{ page.branding.description }}">
+  {%- if let Some(color) = page.theme.theme_color() %}
+  <meta name="theme-color" content="{{ color }}">
+  <meta name="color-scheme" content="{{ page.theme.scheme().unwrap_or_default() }}">
+  {%- else %}
+  <meta name="theme-color" content="{{ crate::themes::DNA_DAY_CANVAS }}" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="{{ crate::themes::DNA_DARK_CANVAS }}" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+  {%- endif %}
+  <meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false,"historyCacheSize":3,"defaultSettleDelay":0,"responseHandling":[{"code":"204","swap":false},{"code":"...","swap":true}]}'>
+  <link rel="icon" href="{{ page.favicon_url() }}">
+  <link rel="apple-touch-icon" sizes="180x180" href="{{ page.app_icon_url() }}">
+  {#- Before the inline stylesheets, so the preload scanner finds these without first
+      reading ~140 KB of CSS; neither holds up parsing. -#}
+  <script src="{{ page.asset("vendor/htmx.min.js") }}" defer></script>
+  <script src="{{ page.asset("app.bundle.js") }}" type="module"></script>
+  {#- Exact embedded bytes are authorized by hashes in the response CSP. htmx requests
+      leave them out: htmx drops the <head> and the page keeps its own stylesheets. -#}
+  {%- if crate::assets::head_styles() %}
+  <style data-app-stylesheet>{{ crate::assets::inline_css("app.css")|safe }}</style>
+  {%- if let Some(path) = page.theme.stylesheet_path() %}
+  <style data-theme-stylesheet data-theme="{{ page.theme.slug() }}">{{ crate::assets::inline_css(path)|safe }}</style>
+  {%- endif %}
+  {%- endif %}
+  {% if !page.branding.primary_color.is_empty() %}<link rel="stylesheet" href="/assets/branding.css?color={{ page.branding.primary_color|urlencode }}&amp;text={{ page.branding.primary_text_color|urlencode }}">{% endif %}
+  {#- The server renders the visitor's theme into <html>, so theme.js only migrates old
+      choices here and need not hold up the first paint. Pages rendered without the
+      visitor's cookie (error, offline) run it synchronously instead; it stays after the
+      stylesheets because the theme sheet it may link must come after app.css. -#}
+  {% block theme_script %}<script src="{{ page.asset("theme.js") }}" async></script>{% endblock %}
+</head>
+{#- The preloader (assets/preload.js) keeps a preloaded page as long as the server lets the browser cache it. #}
+<body hx-boost="true" data-preload-fresh="{{ crate::middleware::PRELOAD_MAX_AGE_SECONDS }}"{% if page.is_signed_in() %} data-signed-in{% endif %} class="flex min-h-dvh flex-col">
+  <a href="#main" class="btn sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-3 focus:z-50">Skip to content</a>
+
+  <div class="pointer-events-none fixed inset-x-0 top-0 z-50 h-0.5 overflow-hidden" aria-hidden="true">
+    <div id="page-progress" class="h-full w-1/4 bg-ink"></div>
+  </div>
+
+  <header class="site-header sticky top-0 z-30 border-b border-line bg-canvas/90 pt-[env(safe-area-inset-top)] backdrop-blur-md">
+    <nav class="mx-auto flex h-12 max-w-[96rem] items-center gap-3 px-4 sm:px-6" aria-label="Main">
+      <a href="/" class="shrink-0" aria-label="{{ page.site_name }} home">{% call ui::brand_logo(page, "size-9", 36) %}{% endcall %}</a>
+      <div class="flex min-w-0 items-center gap-2 text-[13px]">
+        {% block nav_context %}<a href="/" class="font-semibold tracking-tight">{{ page.site_name }}</a>{% endblock %}
+      </div>
+
+      <div class="ml-auto flex shrink-0 items-center gap-1">
+        <a href="/explore" class="btn btn-ghost hidden sm:inline-flex {% if page.is_at("/explore") %}text-ink{% endif %}">Explore</a>
+        {#- One click flips light/dark, keeping a tinted scheme's family (Gruvbox dark ↔ light);
+            the palette menu next to it picks any theme. Both are plain forms without JS. On
+            phones both move into the account menu (or, signed out, the site menu). -#}
+        {%- let toggle = page.theme.toggled() %}
+        <form method="post" action="/themes" class="hidden sm:contents" hx-boost="false" data-theme-form data-asset-version="{{ crate::assets::build_version() }}">
+          <input type="hidden" name="next" value="{{ page.path }}">
+          <button class="btn btn-ghost btn-icon" type="submit" name="theme" value="{{ toggle.slug() }}" data-theme-toggle data-variant="{{ toggle.scheme().unwrap_or_default() }}" aria-label="Switch between light and dark" title="Switch between light and dark">
+            {% call ui::icon("sun", "size-4 when-dark") %}{% endcall %}
+            {% call ui::icon("moon", "size-4 when-light") %}{% endcall %}
+          </button>
+        </form>
+        {#- Opens the theme picker dialog; without scripts, the gallery. -#}
+        <a href="/themes" class="btn btn-ghost btn-icon hidden sm:inline-flex" hx-boost="false" aria-haspopup="dialog" aria-label="Choose a theme" title="Choose a theme" data-theme-dialog-open>
+          {% call ui::icon("palette", "size-4") %}{% endcall %}
+        </a>
+
+        {% if let Some(user) = page.viewer %}
+        <a href="/notifications" class="btn btn-ghost btn-icon relative {% if page.is_at("/notifications") %}text-ink{% endif %}" aria-label="Notifications" title="{% if page.has_unread_notifications %}You have unread notifications{% else %}Notifications{% endif %}">
+          {% call ui::icon("bell", "size-4") %}{% endcall %}
+          {%- if page.has_unread_notifications %}<span class="notification-dot" aria-hidden="true"></span>{% endif %}
+        </a>
+        <a href="/new" class="btn btn-ghost btn-icon hidden sm:inline-flex" aria-label="New repository" title="New repository">
+          {% call ui::icon("plus", "size-4") %}{% endcall %}
+        </a>
+        <details class="relative ml-1" data-menu>
+          <summary class="flex size-9 cursor-pointer items-center justify-center rounded-full sm:size-8" aria-label="Account menu">
+            {% call ui::avatar(user.avatar, "size-7 text-[10px]") %}{% endcall %}
+          </summary>
+          <div class="menu right-0 w-60">
+            <a class="menu-item" href="/issues">Issues</a>
+            <a class="menu-item" href="/pulls">Pull requests</a>
+            <div class="flex items-center gap-2.5 px-2.5 py-2">
+              {% call ui::avatar(user.avatar, "size-8 text-[11px]") %}{% endcall %}
+              <div class="min-w-0">
+                <p class="truncate text-[13px] font-medium">{{ user.label }}</p>
+                <p class="truncate text-xs text-ink-muted">{{ user.name }}</p>
+              </div>
+            </div>
+            <div class="menu-divider"></div>
+            <a class="menu-item" href="/">{% call ui::icon("code", "menu-icon") %}{% endcall %}Dashboard</a>
+            <a class="menu-item" href="/{{ user.name }}">{% call ui::icon("user", "menu-icon") %}{% endcall %}Profile</a>
+            <a class="menu-item sm:hidden" href="/explore">{% call ui::icon("compass", "menu-icon") %}{% endcall %}Explore</a>
+            <div class="menu-divider"></div>
+            <a class="menu-item" href="/new">{% call ui::icon("plus", "menu-icon") %}{% endcall %}New repository</a>
+            {% if user.can_create_org %}<a class="menu-item" href="/organizations/new">{% call ui::icon("building", "menu-icon") %}{% endcall %}New organization</a>{% endif %}
+            <div class="menu-divider"></div>
+            {% call theme_menu_items(page) %}{% endcall %}
+            <a class="menu-item" href="/settings">{% call ui::icon("settings", "menu-icon") %}{% endcall %}Settings</a>
+            {% if user.is_admin %}
+            <a class="menu-item" href="/admin">{% call ui::icon("shield", "menu-icon") %}{% endcall %}Site administration</a>
+            {% endif %}
+            <div class="menu-divider"></div>
+            <form method="post" action="/logout">
+              <button class="menu-item text-ink-muted" type="submit">{% call ui::icon("log-out", "menu-icon") %}{% endcall %}Sign out</button>
+            </form>
+          </div>
+        </details>
+        {% else %}
+        <a href="/login" class="btn btn-ghost hidden sm:inline-flex">Sign in</a>
+        <a href="/signup" class="btn btn-primary hidden sm:inline-flex">Sign up</a>
+        {%- if !page.is_at("/login") %}<a href="/login" class="btn sm:hidden">Sign in</a>{% endif %}
+        <details class="relative sm:hidden" data-menu>
+          <summary class="btn btn-ghost btn-icon cursor-pointer" aria-label="Menu">{% call ui::icon("menu", "size-4") %}{% endcall %}</summary>
+          <div class="menu right-0 w-60">
+            <a class="menu-item" href="/explore">{% call ui::icon("compass", "menu-icon") %}{% endcall %}Explore</a>
+            <a class="menu-item" href="/signup">{% call ui::icon("user-plus", "menu-icon") %}{% endcall %}Create an account</a>
+            <div class="menu-divider"></div>
+            {% call theme_menu_items(page) %}{% endcall %}
+          </div>
+        </details>
+        {% endif %}
+      </div>
+    </nav>
+  </header>
+  {#- Page tabs: sticky under the top bar from `md` up, scrolling with the page on phones
+      (app.css `.site-subnav`). Hidden when a page has none. -#}
+  <div class="site-subnav">{% block subnav %}{% endblock %}</div>
+
+  {#- Markers: where `partial.rs` cuts a page for partial responses (title, main). -#}
+  <!--partial:main--><main id="main" class="mx-auto w-full max-w-[96rem] flex-1 px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
+    {# probe-boundary: preserve source whitespace #}
