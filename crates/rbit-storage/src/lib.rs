@@ -9,6 +9,7 @@
 //!
 //! Stores speak in `rbit-core` domain types; SQL rows never leak out of this crate.
 
+mod collaboration_comments;
 mod collaboration_labels;
 mod collaboration_milestones;
 mod collaboration_thread_state;

@@ -12,6 +12,7 @@
 //!
 //! Creating, editing and commenting spend [`ThrottleScope::Content`] for the actor.
 
+mod human_comments;
 mod state_change;
 mod text_edit;
 mod threads;
@@ -145,25 +146,6 @@ impl TimelineService {
         Ok(())
     }
 
-    /// Adds a comment by `actor`.
-    pub async fn comment(&self, actor: &User, ctx: &IssueContext, body: &str) -> Result<Comment, ServiceError> {
-        if !permissions(actor, ctx).can_comment {
-            return Err(ServiceError::Forbidden);
-        }
-        ctx.repo.ensure_writable()?;
-        let body = IssueText::comment(body)?;
-        self.spend(actor)?;
-        let comment = self
-            .ctx
-            .database
-            .issues()
-            .add_comment(ctx.issue.id, actor.id(), &body, Timestamp::now())
-            .await?
-            .ok_or(ServiceError::NotFound)?;
-        self.publish_comment(ctx, comment.id, Some(actor), CommentAction::Created);
-        Ok(comment)
-    }
-
     // Actions: task tokens.
     /// Adds a comment a workflow task wrote with its token, as rbit Actions: no author and
     /// [`CommentSource::Actions`](rbit_core::CommentSource::Actions). `issues: write` (on any
@@ -229,38 +211,6 @@ impl TimelineService {
         }
         ctx.repo.ensure_writable()?;
         Ok(comment)
-    }
-
-    /// Replaces the text of the actor's own comment `id` on this thread.
-    pub async fn edit_comment(&self, actor: &User, ctx: &IssueContext, id: CommentId, body: &str) -> Result<Comment, ServiceError> {
-        let store = self.ctx.database.issues();
-        let comment = store.find_comment(ctx.issue.id, id).await?.ok_or(ServiceError::NotFound)?;
-        if !comment_permissions(Some(actor), permissions(actor, ctx), &comment).can_edit {
-            return Err(ServiceError::Forbidden);
-        }
-        ctx.repo.ensure_writable()?;
-        let body = IssueText::comment(body)?;
-        if body == comment.body {
-            return Ok(comment);
-        }
-        self.spend(actor)?;
-        let edited = store.edit_comment(id, &body, Timestamp::now()).await?.ok_or(ServiceError::NotFound)?;
-        self.publish_comment(ctx, id, Some(actor), CommentAction::Edited { previous_body: comment.body.into() });
-        Ok(edited)
-    }
-
-    /// Deletes comment `id` on this thread: the actor's own, or anyone's for moderators.
-    pub async fn delete_comment(&self, actor: &User, ctx: &IssueContext, id: CommentId) -> Result<(), ServiceError> {
-        let store = self.ctx.database.issues();
-        let comment = store.find_comment(ctx.issue.id, id).await?.ok_or(ServiceError::NotFound)?;
-        if !comment_permissions(Some(actor), permissions(actor, ctx), &comment).can_delete {
-            return Err(ServiceError::Forbidden);
-        }
-        ctx.repo.ensure_writable()?;
-        if let Some(snapshot) = store.delete_comment(id).await? {
-            self.publish_comment(ctx, id, Some(actor), CommentAction::Deleted { snapshot });
-        }
-        Ok(())
     }
 
     /// Comment `id` on this thread and its author (`None` once the account is deleted),

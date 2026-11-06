@@ -4,8 +4,7 @@
 use std::sync::Arc;
 
 use rbit_core::{
-    Config, IssueKind, IssueNumber, IssueText, IssueTitle, RepoAccess, TimelineEvent, Timestamp, User, Visibility,
-    issue::{CommentAction, IssueAction},
+    Config, IssueKind, IssueNumber, IssueText, IssueTitle, RepoAccess, TimelineEvent, Timestamp, User, Visibility, issue::IssueAction,
     membership::Permission,
 };
 use rbit_services::{CreateRepository, DomainEvent, IssueContext, RepoContext, ServiceError, Services, timeline::TimelineEntry};
@@ -116,53 +115,7 @@ async fn opening_a_thread_resolves_its_author_and_permissions() {
     assert_eq!((counts.issues, counts.pulls), (1, 0));
 }
 
-#[tokio::test]
-async fn comments_follow_the_permission_table_and_publish_events() {
-    let fixture = Fixture::new(|_| {}).await;
-    let timeline = &fixture.services.timeline;
-    let number = fixture.seed(&fixture.alice, IssueKind::Issue, "Crash").await;
-    let mut events = fixture.services.events.subscribe();
-
-    let as_bob = fixture.open(&fixture.bob, number).await;
-    let as_alice = fixture.open(&fixture.alice, number).await;
-    assert!(matches!(timeline.comment(&fixture.bob, &as_bob, " \n ").await, Err(ServiceError::Invalid(_))));
-    let comment = timeline.comment(&fixture.bob, &as_bob, "Same here\r\n").await.unwrap();
-    assert_eq!(comment.body.as_str(), "Same here\n");
-
-    assert!(matches!(timeline.edit_comment(&fixture.alice, &as_alice, comment.id, "Hacked").await, Err(ServiceError::Forbidden)));
-    let edited = timeline.edit_comment(&fixture.bob, &as_bob, comment.id, "Same here, on Linux").await.unwrap();
-    assert!(edited.edited_at.is_some());
-    let unchanged = timeline.edit_comment(&fixture.bob, &as_bob, comment.id, "Same here, on Linux").await.unwrap();
-    assert_eq!(unchanged, edited, "the same text again is not an edit");
-
-    let mine = timeline.comment(&fixture.alice, &as_alice, "Thanks").await.unwrap();
-    assert!(matches!(timeline.delete_comment(&fixture.bob, &as_bob, mine.id).await, Err(ServiceError::Forbidden)));
-    timeline.delete_comment(&fixture.alice, &as_alice, comment.id).await.unwrap();
-
-    // A comment of another thread is not found through this one.
-    let other = fixture.open(&fixture.alice, fixture.seed(&fixture.alice, IssueKind::Issue, "Other").await).await;
-    assert!(matches!(timeline.delete_comment(&fixture.alice, &other, mine.id).await, Err(ServiceError::NotFound)));
-
-    let actions: Vec<_> = drain(&mut events)
-        .into_iter()
-        .filter_map(|event| match event {
-            DomainEvent::IssueComment { action, actor, number: n, kind, .. } => {
-                assert_eq!((n, kind), (number, IssueKind::Issue));
-                Some((actor, action))
-            }
-            _ => None,
-        })
-        .collect();
-    assert_eq!(actions.len(), 4);
-    assert_eq!(actions[0], (Some(fixture.bob.id()), CommentAction::Created));
-    assert_eq!(actions[1], (Some(fixture.bob.id()), CommentAction::Edited { previous_body: "Same here\n".to_owned() }));
-    assert_eq!(actions[2], (Some(fixture.alice.id()), CommentAction::Created));
-    assert!(
-        matches!(&actions[3], (actor, CommentAction::Deleted { snapshot }) if *actor == Some(fixture.alice.id()) && snapshot.id == comment.id)
-    );
-
-    assert_eq!(fixture.open(&fixture.alice, number).await.issue.comment_count, 1);
-}
+mod human_comments_port;
 
 mod text_edit_port;
 
