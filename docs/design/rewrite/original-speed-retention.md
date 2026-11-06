@@ -37,6 +37,14 @@ output directories must not lose this flag when building the older baseline chec
 Main's profile settings and the helper's compiler namespace must match on both sides
 of a performance comparison.
 
+The completed [Linux test job at `f82aaf09`](https://github.com/GitRbit/rbit/actions/runs/42174879076/job/127750932586)
+ran 2,285 tests successfully, with one skipped. Its log confirms the actual SQLite
+QPSG compile-option test, indexed repository lookup/assignee-search tests, and both
+real-router work-count/access-recheck tests passed. These cover selected inherited
+contracts on the rewrite's integrated session implementation. The overall workflow
+was superseded and cancelled before Windows tests and release completed; this job
+does not establish a complete hosted checkpoint or a latency result.
+
 ## Complete the audit during each feature migration
 
 The initial table covers important shared fast paths; it is not an exhaustive claim
