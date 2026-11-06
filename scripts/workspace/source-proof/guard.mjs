@@ -70,13 +70,15 @@ export async function finishSourceProof(handle, completion, lease) {
     catch (diagnostic) { try { uncertain.provenanceRecordError = diagnostic; } catch {} }
     throw uncertain;
   }
-  const { ctx, request, inputs, state, trusted } = value;
-  const after = await inputSnapshot(ctx, request.namespace, request.command, request.args, request.env, value.dependencies);
-  if (inputs.digest !== after.digest || inputs.stability !== after.stability) throw new Error("SOURCE_PROOF_INPUT_CHANGED_DURING_COMMAND");
   if (!verifiedCargoCompletion(completion, lease, value.invocation)) {
+    // An explicitly unowned command cannot approve output. Record that refusal
+    // without rereading source/configuration that may still be changing.
     await failSourceProof(handle, lease);
     return { trusted: false, reason: "OWNED_NATIVE_COMPLETION_REQUIRED", approved: 0 };
   }
+  const { ctx, request, inputs, state, trusted } = value;
+  const after = await inputSnapshot(ctx, request.namespace, request.command, request.args, request.env, value.dependencies);
+  if (inputs.digest !== after.digest || inputs.stability !== after.stability) throw new Error("SOURCE_PROOF_INPUT_CHANGED_DURING_COMMAND");
   const units = await scanUnits(request.lane, after);
   const approved = {};
   for (const [id, previous] of trusted) {

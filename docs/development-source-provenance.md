@@ -98,7 +98,10 @@ local-unit approvals only after verified native tree completion for that invocat
 `RBIT_WORKSPACE_CARGO_TREE=off` explicitly selects the prior unowned execution path;
 non-Windows defaults remain `off`, and requesting `windows-job` there is refused.
 Without owned proof, the command reports `trusted:false` and no new unit approvals;
-subsequent commands conservatively invalidate untrusted local freshness. Missing or
+it records that refusal without a completion source/configuration scan. Subsequent
+commands conservatively invalidate untrusted local freshness. The native-owned
+path still requires its complete source/configuration and artifact observations.
+Missing or
 foreign proof in Windows default/explicit owned mode retains an uncertain blocked
 lease, even when ledger diagnostics also fail. No potentially active artifact tree
 is scanned after such a failure. Unix owned-Cargo activation remains open; runtime

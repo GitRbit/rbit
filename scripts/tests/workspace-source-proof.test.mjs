@@ -20,6 +20,28 @@ async function command(f, ctx, body, { proof = true } = {}) {
   });
 }
 
+test("unowned completion never rereads source inputs or admits its output", async t => {
+  const f = await sourceFixture(t), ctx = f.context("a"), metadata = f.metadata;
+  let reads = 0;
+  f.metadata = (...args) => { assert.equal(++reads, 1, "unowned output needs no completion snapshot"); return metadata(...args); };
+  const report = await command(f, ctx, async guard => {
+    await f.change(ctx, "B");
+    guard.observe(await f.message(ctx, await f.unit(undefined, { content: "B" })));
+  }, { proof: false });
+  assert.deepEqual(report, { trusted: false, reason: "OWNED_NATIVE_COMPLETION_REQUIRED", approved: 0 });
+  assert.equal(reads, 1);
+  const stored = JSON.parse(await readFile(join(f.lane, ".source-proof.json"), "utf8"));
+  assert.equal(stored.data.status, "untrusted");
+  assert.deepEqual(stored.data.entries, {});
+  f.metadata = metadata;
+  const recovery = await command(f, ctx, async guard => {
+    assert.equal(guard.report.reusable, 0);
+    assert.equal(guard.report.invalidated, 1);
+    guard.observe(await f.message(ctx, await f.unit(undefined, { content: "B" })));
+  });
+  assert.equal(recovery.approved, 1);
+});
+
 test("three worktrees and backdated source never reuse another root; selected and unselected variants stay distinct", async t => {
   const f = await sourceFixture(t), a = f.context("a"), b = f.context("b"), c = f.context("c");
   await f.change(b, "B", true); await f.change(c, "C", true);
