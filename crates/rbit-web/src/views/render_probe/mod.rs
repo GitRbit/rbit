@@ -16,9 +16,14 @@ enum Mode {
     Inherited,
     Segments,
     Blocks,
+    #[cfg(feature = "shared-shell-experiment")]
+    Production,
 }
 
+#[cfg(not(feature = "shared-shell-experiment"))]
 const MODES: [Mode; 3] = [Mode::Inherited, Mode::Segments, Mode::Blocks];
+#[cfg(feature = "shared-shell-experiment")]
+const MODES: [Mode; 4] = [Mode::Inherited, Mode::Segments, Mode::Blocks, Mode::Production];
 
 mod sealed {
     pub(super) trait Approved {}
@@ -49,7 +54,12 @@ fn compose(page: &Page, body: &dyn ApprovedBody, output: &mut String) -> askama:
 
 fn explore_into(mode: Mode, view: &ExplorePage, output: &mut String) -> askama::Result<()> {
     match mode {
+        #[cfg(not(feature = "shared-shell-experiment"))]
         Mode::Inherited => view.render_into(output),
+        #[cfg(feature = "shared-shell-experiment")]
+        Mode::Inherited => production_candidate::explore_reference(view, output),
+        #[cfg(feature = "shared-shell-experiment")]
+        Mode::Production => view.render_into(output),
         Mode::Segments => compose(&view.page, &bodies::ExploreSegments::from(view), output),
         Mode::Blocks => compose(&view.page, &bodies::ExploreBlocks::from(view), output),
     }
@@ -57,11 +67,18 @@ fn explore_into(mode: Mode, view: &ExplorePage, output: &mut String) -> askama::
 
 fn login_into(mode: Mode, view: &LoginPage, output: &mut String) -> askama::Result<()> {
     match mode {
+        #[cfg(not(feature = "shared-shell-experiment"))]
         Mode::Inherited => view.render_into(output),
+        #[cfg(feature = "shared-shell-experiment")]
+        Mode::Inherited => production_candidate::login_reference(view, output),
+        #[cfg(feature = "shared-shell-experiment")]
+        Mode::Production => view.render_into(output),
         Mode::Segments => compose(&view.page, &bodies::LoginSegments::from(view), output),
         Mode::Blocks => compose(&view.page, &bodies::LoginBlocks::from(view), output),
     }
 }
 
+#[cfg(feature = "shared-shell-experiment")]
+mod production_candidate;
 mod protocol_tests;
 mod tests;

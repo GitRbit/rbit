@@ -108,6 +108,38 @@ fn assert_style_hashes(headers: &HeaderMap, body: &str, include: bool, theme: Th
     }
 }
 
+#[cfg(feature = "shared-shell-experiment")]
+#[tokio::test]
+async fn production_candidate_preserves_boosted_history_and_fragment_fallback_headers() {
+    for feature in [Feature::Explore, Feature::Login] {
+        for navigation in ["HX-Boosted", "HX-History-Restore-Request", "Rbit-Partial"] {
+            let mut reference = None;
+            for mode in [Mode::Inherited, Mode::Production] {
+                let request = Request::builder()
+                    .uri("/probe")
+                    .header("HX-Request", "true")
+                    .header(navigation, if navigation == "Rbit-Partial" { "/keeper/project" } else { "true" })
+                    .body(Body::empty())
+                    .unwrap();
+                let response = router(mode, feature, Theme::System).oneshot(request).await.unwrap();
+                assert_eq!(response.status(), StatusCode::OK);
+                let headers = response.headers().clone();
+                let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+                let stable = timing::without_render_time(&body).concat();
+                assert!(String::from_utf8_lossy(&stable).contains("<html"));
+                let selected = [header::ETAG, header::VARY, header::CONTENT_SECURITY_POLICY, header::CACHE_CONTROL]
+                    .map(|name| headers.get_all(name).iter().cloned().collect::<Vec<_>>());
+                if let Some((expected_body, expected_headers)) = &reference {
+                    assert_eq!(&stable, expected_body, "{feature:?} {navigation}");
+                    assert_eq!(&selected, expected_headers, "{feature:?} {navigation}");
+                } else {
+                    reference = Some((stable, selected));
+                }
+            }
+        }
+    }
+}
+
 #[tokio::test]
 async fn real_middleware_keeps_csp_cache_partial_and_timing_contracts_for_every_candidate() {
     for feature in [Feature::Explore, Feature::Login] {

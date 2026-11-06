@@ -1,8 +1,12 @@
 # Representative rendering correctness probe
 
 This module is compiled only with `cfg(test)`. It adds no production route,
-feature toggle, template parser, dependency or alternative production renderer.
-The original `ExplorePage` and `LoginPage` remain the inherited references.
+template parser or dependency. By default, `ExplorePage` and `LoginPage` remain
+the inherited references. The separate default-off
+[`shared-shell-experiment`](../../../../../docs/design/real-page-shell-experiment.md)
+feature uses the reviewed template snapshots in real production page renderers.
+With that feature selected, this test module retains independent inherited
+references and adds the production candidate to the protocol/parity matrix.
 
 Three composition paths render the real view models:
 

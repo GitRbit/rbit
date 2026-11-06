@@ -32,8 +32,9 @@ pub struct ExploreResults {
 }
 
 /// A canonical document, including a usable ordinary GET search form.
-#[derive(Debug, Template, WebTemplate)]
-#[template(path = "home/explore.html")]
+#[derive(Debug, WebTemplate)]
+#[cfg_attr(not(feature = "shared-shell-experiment"), derive(Template))]
+#[cfg_attr(not(feature = "shared-shell-experiment"), template(path = "home/explore.html"))]
 pub struct ExplorePage {
     pub page: Page,
     pub query: String,

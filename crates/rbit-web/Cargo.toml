@@ -8,6 +8,10 @@ license.workspace = true
 # One integration-test binary (tests/main.rs) instead of one per file.
 autotests = false
 
+[features]
+# Measurement candidate only; inherited rendering remains the production default.
+shared-shell-experiment = []
+
 [dependencies]
 zeroize.workspace = true
 rbit-core.workspace = true

@@ -5,8 +5,9 @@ use askama_web::WebTemplate;
 
 use crate::views::{components::FormError, external_auth::ProviderButton, layout::Page};
 
-#[derive(Debug, Template, WebTemplate)]
-#[template(path = "auth/login.html")]
+#[derive(Debug, WebTemplate)]
+#[cfg_attr(not(feature = "shared-shell-experiment"), derive(Template))]
+#[cfg_attr(not(feature = "shared-shell-experiment"), template(path = "auth/login.html"))]
 pub struct LoginPage {
     pub page: Page,
     pub error: FormError,
