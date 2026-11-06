@@ -195,3 +195,29 @@ retains count-before-clamp-before-search ordering. The migrated issue creation a
 label adapters preserve their existing store calls and ordered effects. No additional
 query or removed cache fast path was identified in these reviewed paths; this is a
 bounded source review, not an exhaustive or runtime performance claim.
+
+## Collaboration and Actions extraction follow-up
+
+A source audit after `c4c84e3` found two concrete costs introduced by extraction:
+
+- Label/milestone catalog and numbered-thread adapters constructed a pool-backed
+  store before early rejection. Main constructed it only after the operation's
+  permission, validation and, where applicable, throttle/clock steps. Concrete
+  repository factories restore those construction points, retain one handle for
+  count/write or default-seeding operations, and do nothing for an unpolled future.
+  Construction-count/order tests are necessary: unchanged SQL counters alone cannot
+  detect an extra pool-handle clone and drop.
+- The localized Actions run page initially materialized owned rerun/summary labels
+  per eligible job or summary. Main streamed the literal and name into Askama's
+  writer. Borrowed typed display values now stream English labels, retaining the
+  compiled diagnostic catalogs and ordinary HTML escaping. Reference tests compare
+  text and attribute output for empty, Unicode and unsafe names; bounded-writer
+  tests retain formatting-error propagation.
+
+The same scoped audit found no additional collection allocations, SQL, acquisition
+or clock-call counts in the reviewed assignee, label/milestone attachment, text-edit
+and state-change application paths. Original two-read replacement gaps, no-op
+throttling, conditional SQL updates and per-effect event ordering remain explicit
+contracts, including inherited partial-commit limitations. This is source evidence;
+new Rust acceptance and representative Actions runtime/allocation measurements are
+still required. No latency percentage follows from removing these operations.

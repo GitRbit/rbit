@@ -22,63 +22,76 @@ Public development and review continue in [draft PR #53](https://github.com/GitR
 | Build integration | Shared development and performance launchers, editor JSON output, isolated runtime data/HTTP ports, verified process-tree ownership and managed-development SSH disabled by default |
 | CI foundation | Linux/Windows rewrite contracts plus a stable, fail-closed aggregate and readable revision/platform/result summary |
 | Git and SSH ownership | Controlled exchanges reap direct children and join pumps; admitted HTTP advertisements survive waiter cancellation, and SSH shutdown drains its tracked session and Git owners |
-| Actions design | Review-only themed overview/run/job fixtures cover approval boundaries, mobile navigation and bounded long logs; production and browser acceptance remain pending |
+| Actions design | Production run/overview and dispatch presentation use existing native routes and typed labels; themed fixtures cover mobile review and long logs. Production browser/accessibility acceptance remains pending |
 | Native containment experiments | Windows root/nested Job fixtures and isolated Linux group-anchor/pidfd scenarios pass; Linux lost-anchor and setsid cases retain quarantine. Neither experiment is a production containment claim |
 
 The kernel now coordinates password admission and its first statically owned background workers. Full module lifecycle and the remaining feature ports are still pending. Existing services remain the behavior authority during the transition.
 
-## Latest published checkpoint
+## Published validation checkpoint
 
-`cd2198a4` builds on `fcdd2f95`, which adds repository discovery, collaboration label/milestone catalogs and
-issue read/create applications through static ports. Existing SQL and event ordering
-remain the compatibility authority. Issue creation still spans separate durable
-transactions; its partial-commit limitation is covered rather than presented as
-crash-atomic behavior. These ports do not retire their complete feature groups.
+`c4c84e314eb486d5e912389e930edb8a774bbc08` adds production run-page presentation,
+thread text/state applications and label/milestone attachment applications. Static
+borrowed adapters retain the original SQL, no-op, authorization, throttle and event
+boundaries. The new run page uses existing data and routes, typed labels, responsive
+sections and the existing polling interval. Unsent review drafts survive only a
+matching same-route poll into freshly authorized forms; permission removal wins.
+Hidden inputs and server authority are never restored from the previous document.
 
-The feature-free `rbit-identity-models` package separates model consumers from
-globally unified credential/session application features. The boundary check now
-examines the full enabled application graph, in addition to isolated model graphs.
-Credential inputs gain eager zeroizing ownership and redacted form diagnostics.
-The new offline credential-inventory tool reports bounded aggregate metadata from
-an explicit stopped copy; no live user database has been inspected and no new
-password-cost rejection policy is activated.
+The latest fully green hosted checkpoint is `68e304b3`:
+[CI run 42211302304](https://github.com/GitRbit/rbit/actions/runs/42211302304).
+At `c4c84e3`, [CI run 42221344674](https://github.com/GitRbit/rbit/actions/runs/42221344674)
+passes Linux tests/contracts, Clippy, frontend, advisories/licenses and runner image.
+Two Windows observation tests fail because their temporary root uses an 8.3 alias;
+the new fixture canonicalization correction retains production containment checks.
+The remaining Windows and release jobs require their own terminal result.
 
-Actions job logs retain original step limits while sharing one bounded indexed
-decode across requested windows. A default-off real-page shared-shell experiment
-retains the original production renderer. Explore dynamic labels now defer
-formatting until rendering. New Rust and feature-equivalence validation remains
-required for this integrated batch.
+- Integrated local checks at `c4c84e3`: 409 Node tests pass, five platform skips;
+  1,372 authored files and no source-policy violations. Formatting, strict workspace/
+  all-target Clippy and cumulative structure checks pass; password-boundary coverage
+  is 144 files.
+- The broad Rust run passes 208 service unit and 377 service integration tests,
+  446 web unit tests, Actions HTTP evaluation, collaboration policy and localization
+  cases. Three new HTML assertions initially expected named rather than Askama's
+  numeric escaped entities. After correction, all ten Actions page HTTP cases pass;
+  the other web integration cases already passed in the broad run. Fresh full latest
+  candidate, feature-specific, doctest and release gates remain required.
+- The default-off Windows observer completed an actual helper build, native empty-Job
+  proof, input-graph observation and independent exact executable handoff. The legacy
+  lane remains protected and above its soft watermark. No managed promotion, deletion,
+  automatic rotation or hard storage bound is established.
+- [Matched release footer evidence](measurements/footer-small-pages.md) retains four
+  runs and 1,800 measured responses against pinned main. Both revisions have
+  sub-500-microsecond medians for six small anonymous/authenticated pages. Tail
+  differences remain investigation items; this does not validate later ports,
+  production Actions, large workloads, concurrency, CPU/RSS or browser rendering.
+- The [isolated prototype visual run](https://github.com/GitRbit/rbit/actions/runs/42221344697)
+  passes sandbox proof, 29 captures and interactions. Its preceding interaction
+  failure selected a completed job while expecting a live control; the corrected
+  fixture selects the running job. Captures retain keyboard/geometry evidence.
+  Prototype screenshots do not establish production-page browser acceptance.
 
-- Main CI passed at `ec57e0ac`: [run 42188842556](https://github.com/GitRbit/rbit/actions/runs/42188842556).
-  The full [run 42182650192](https://github.com/GitRbit/rbit/actions/runs/42182650192)
-  also passed at `7326e563`. Both precede the latest domain-port batch.
-- Local Node checks pass: 378 tests, five platform skips. Source policy reports
-  1,330 authored files and no violations. Formatting, strict workspace/all-target
-  Clippy and cumulative structural checks pass; the password-boundary audit covers
-  140 files. The later UTF-8 snapshot preflight passes focused domain/tool tests
-  and strict Clippy, including closed UTF-16 little- and big-endian refusal fixtures.
-- The latest broad local run passes all 110 E2E cases, 208 service unit tests and
-  355 service integration tests. It reaches web tests with 445 passed and one failed
-  new fragment assertion, corrected to preserve the escaped site name in its title
-  while excluding the full-document subtitle from results. A fresh web run is pending.
-  Hosted `fcdd2f95` has the same sole test failure: 2,384 Linux and 2,369 Windows
-  tests passed. Its release build passed; its contract download assumption and lint
-  failures are corrected locally. A new complete hosted/doctest pass remains required.
-- Opt-in owned Windows Cargo completion passes a real lingering-child fixture,
-  kernel/IDE checks, checker build/handoff/execution and strict workspace Clippy.
-  It remains off by default. No automatic generation rotation or hard storage
-  bound is claimed; the protected shared namespace remains above the soft limit.
-- The [matched release footer comparison](measurements/footer-small-pages.md)
-  retains four valid runs and 1,800 measured responses against pinned main.
-  Both revisions have sub-500-microsecond medians for the six small page cases.
-  Tail differences remain investigation items; later ports and operational workloads
-  require fresh evidence.
-- The separate [visual review run](https://github.com/GitRbit/rbit/actions/runs/42204656483)
-  passed namespace prerequisites and browser launch, then failed the command-line
-  verification protocol call. The pinned Playwright defaults omit its required
-  automation switch; the new checkpoint supplies it explicitly while retaining
-  actual command-line and namespace/seccomp proof. No images or browser acceptance
-  are claimed before a successful hosted follow-up.
+## Next integration acceptance
+
+A source-only integration adds assignee attachment and human comment applications, production Actions
+Overview/dispatch presentation, isolated inventory-tool CI compilation and opt-in
+fresh-output build measurement. The latter reserves one candidate per namespace,
+requires explicit observed free-space headroom, protects evidence from namespace
+pruning and remains ineligible for promotion/deletion. Fresh output alone does not
+prove cold compiler caches or satisfy the rotation cost gate.
+
+The main-branch speed audit found eager store-handle clones before rejected catalog
+and thread operations and new per-job owned Actions label buffers. Concrete factory
+applications restore the original store-construction points; borrowed English label
+formatters preserve plain-text escaping and diagnostic catalog output. Construction/
+ordering tests complement SQL counters, which cannot detect pool-handle clones.
+
+This integration passes 438 Node tests with five platform skips; source policy covers
+1,407 authored files with no violations. A fresh asset
+build reproduces the committed generated assets. Removed diff columns release resize
+observers and theme-picker scroll bursts share one pending animation frame; real browser
+performance remains unmeasured. Rust tests, structural execution,
+strict Clippy and fresh hosted gates remain pending the shared compiler lane. These
+ports do not retire their complete feature groups or establish runtime speed gains.
 
 ## Historical validation checkpoints
 
@@ -133,4 +146,4 @@ Session application and enforcement are now a further production slice. Identity
 
 Automatic cache maintenance evicts inactive compatibility namespaces after successful builds/tests while retaining the current namespace. The watermark is soft: a protected namespace can exceed it and reports its overage. Zero disables automatic maintenance; manual zero-budget pruning still empties an inactive cache. Crashed or uncertain build leases require process inspection before recovery. Account locale persistence, translations beyond English, global UI/email localization, runtime performance acceptance and full platform feature parity remain open.
 
-The [cache investigation](../build-cache-retention.md) records retained artifact growth and a whole-lane retention proposal. Automatic rotation is deferred until its cold-build cost, transient space requirements and ownership gates are measured. The [Actions prototype](../prototypes/actions/README.md) remains a review artifact: source/HTTP tests pass, while browser, accessibility and production integration remain open.
+The [cache investigation](../build-cache-retention.md) records retained artifact growth and a whole-lane retention proposal. Automatic rotation is deferred until its cold-build cost, transient space requirements and ownership gates are measured. The [Actions prototype](../prototypes/actions/README.md) remains a review artifact. Its isolated browser checks pass; production run/overview are integrated, while production job integration, browser and accessibility acceptance remain open.
