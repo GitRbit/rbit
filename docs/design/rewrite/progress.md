@@ -18,21 +18,23 @@ Public development and review continue in [draft PR #53](https://github.com/GitR
 | Build integration | Shared development and performance launchers, editor JSON output, isolated runtime data/HTTP ports, verified process-tree ownership and managed-development SSH disabled by default |
 | CI foundation | Dedicated Linux and Windows rewrite-contracts jobs supplement the existing platform checks and release safeguards |
 
-The current kernel is a work-admission foundation. Full module lifecycle, identity-budget wiring and the remaining feature ports are still pending. Existing services remain the behavior authority during the transition.
+The current kernel is a work-admission foundation. Password consumers now share one validated instance owner; full module lifecycle and the remaining feature ports are still pending. Existing services remain the behavior authority during the transition.
 
 ## Validation checkpoint
 
+- The activated integration tree passes `cargo fmt --all -- --check`, strict workspace/all-target Clippy, advisory/license checks, source policy, cumulative type ceilings and the service/server password-boundary audit. Full workspace tests and release/runtime gates still require the candidate's hosted and operational evidence.
 - Contracts/core: 150 tests and strict Clippy passed after ID extraction; the 148 core tests also passed with the patched Markdown parser.
-- Identity/auth: 24 identity tests and 42 auth/compatibility tests passed; strict Clippy passed for both crates and all targets. The password-attempt API covers single-slot login/reuse checks and eagerly zeroizing inputs, with a fixed published Argon2id compatibility vector. Production callers have not migrated. The services crate also passed type checking against the extracted credential graph.
+- Identity/auth: 24 identity tests and 42 auth/compatibility tests passed; strict Clippy passed for both crates and all targets. The password-attempt API covers single-slot login/reuse checks and eagerly zeroizing inputs, with a fixed published Argon2id compatibility vector. Production password consumers now use this owner.
+- Services: all 530 tests passed after activation. They cover shared saturation, closure, cancellation-safe ownership, proof preservation, bootstrap races, password replacement compare-and-swap and session revocation. Explicit injected capacity must match validated configuration.
 - Kernel admission: all ten cancellation, saturation, panic, closure, reservation and queued-abort tests and strict Clippy passed.
 - Localization: 13 tests, including real Askama escaping and borrowed/static output checks, and strict Clippy passed.
-- Structural checker: 16 tests and strict Clippy passed; runtime checks of all six replacement/tool crates, including reservations, reported no size violations.
-- JavaScript: the final full Windows suite passed 231 tests, with one Unix-only case skipped. The final helper/performance suite passes 50 tests on Windows and 49 on Linux, with only opposite-platform cases skipped. Linux runs use a disposable native Git fixture because Linux Git cannot resolve Windows worktree metadata.
-- Web: all targets passed type checking. All 415 unit, 129 integration and one Actions evaluation test passed with the patched Markdown parser. Strict Clippy passed for all core/web targets with the patched dependency graph. The combined core/web result is 693 passing tests.
-- Rendering probe: all six semantic/CLI tests and strict Clippy passed for inherited, segmented and block composition at eight distinct contexts. Exact HTML, escaping and buffer reuse are checked; scaling and compiler-memory measurements remain pending.
+- Structural checker: 22 Windows tests and strict Clippy passed. The password-boundary audit reports 114 service/server source files and no legacy-facade violations. The replacement/tool crate type checks report no size violations. The source policy reports 1,042 authored files and no violations; Unix-only link fixtures are separate from the Windows result.
+- JavaScript: the final integrated Windows suite passed all 251 cases (250 passed, one Unix-only case skipped), including compiler-observer startup/shutdown, process identity, report validity and helper hooks. Root-alias helper regressions also passed with a declared Windows junction as the temporary root. Earlier Linux helper runs use a disposable native Git fixture because Linux Git cannot resolve Windows worktree metadata.
+- Web/server: the broad run passed 423 web unit tests, 134 web integration tests and one Actions evaluation test, plus 12 server tests. One server helper remains ignored as a standalone test; its parent executes seven isolated startup/configuration child cases. A subsequent test-only expansion passed all six password-protocol cases, bringing the web integration inventory to 135. These verify real cookie, PAT, Git and LFS behavior under Busy and Closed admission.
+- Rendering probe: all six semantic/CLI tests and strict Clippy passed for inherited, segmented and block composition at eight distinct contexts. The [balanced runtime experiment](measurements/render-runtime-count8.md) records 18 samples with equal HTML output; synthetic render-loop medians are not production HTTP performance evidence. The compiler experiment now supports balanced 1/8/32/96-context samples, explicit build settings, package-scoped cleaning and owned-process memory observations; measurements remain pending.
 - Dependency security: `pulldown-cmark` minimum and lockfile raised to 0.13.6 for RUSTSEC-2026-0433. Advisories and licenses pass, with no new advisory exception or unrelated external upgrade.
 - Real worktree check: a second source checkout passed all ten kernel tests using the same compatibility namespace and was removed cleanly. No checkout-local compiler tree was created.
-- CI configuration is committed and published with the draft PR; the validation results above describe local checks, without claiming hosted CI completion.
+- Hosted CI passed in full at `e8e5dba098d5185258232b497da0d478a9d96e0a`: [run 42141554197](https://github.com/GitRbit/rbit/actions/runs/42141554197). That run includes Linux/Windows rewrite contracts and tests, Clippy, frontend, runner image, advisories/licenses and release build. It predates password-service activation; later local results do not imply a hosted pass for the new revision.
 
 ## Validated production slice
 
@@ -40,11 +42,15 @@ Explore uses typed feature labels and one shared Askama results component for it
 
 The passing HTTP regressions cover full/fragment consistency, language and ETag dimensions, private repository exclusion even for an owner session, malicious text and ambiguous request headers. No runtime speed percentage is claimed from static inspection or test duration.
 
+Password work is a second production slice. Startup validates `[security] max_password_jobs` (default 2, range 1–64), administrator saves preserve atomic validation, and the setting requires restart. Account, profile, administration, recovery and MFA services share one owner; offline account creation uses an explicit short-lived owner. Request rate-limit configuration cannot disable this resource bound.
+
+Busy and Closed return generic retryable 503 responses without credential challenges or password-failure surcharges. Admission precedes one-use proof consumption. Real HTTP regressions preserve reset and MFA proofs and sessions across overload, then retry the same operation successfully. PAT-backed Git/LFS/API and health requests remain usable. Generic errors retain the HTMX history barrier when replacing a secret-bearing page. The [identity contract](../identity-admission.md) records remaining input-bound and operational measurement obligations. This slice does not retire the complete identity feature group.
+
 ## Work still required
 
 1. Continue from the passing foundation checks. Process-tree ownership has independent review and Windows/Linux fault-test coverage; uncertain compiler/runtime ownership remains protected.
-2. Complete policy and protocol adapters for password admission. The identity credential extraction and bounded password-attempt API pass focused tests; existing services still use the legacy primitive until every constructor and call site migrates.
-3. Wire service password admission using the [identity contract](../identity-admission.md), reserving capacity before consuming one-use proofs and preserving uniform known/unknown-login behavior.
+2. Validate the activated password-work slice in hosted CI, and measure constrained-memory/CPU behavior before treating its initial default as a deployment recommendation.
+3. Continue the complete identity port and resolve its remaining input-bound policy. Preserve the proof, failure and session contracts already verified by this slice.
 4. Establish fresh release/runtime benchmarks against the pinned main. The [rendering experiment](../rendering-compilation.md) investigates inherited Askama shell duplication without presuming a measured cause or improvement.
 5. Continue repository/access/identity ports, durable required events, collaboration, Actions engine/UI, complete localization, release hardening, and migration/rollback rehearsals through the plan's gates.
 
