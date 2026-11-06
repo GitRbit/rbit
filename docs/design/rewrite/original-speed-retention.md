@@ -221,3 +221,26 @@ throttling, conditional SQL updates and per-effect event ordering remain explici
 contracts, including inherited partial-commit limitations. This is source evidence;
 new Rust acceptance and representative Actions runtime/allocation measurements are
 still required. No latency percentage follows from removing these operations.
+
+## Frontend observer and scroll scheduling follow-up
+
+Main's diff sizing and picker index geometry remain the reference behavior. The
+inherited `blocks.js` observed diff columns without releasing those observations
+when HTMX removed them. Cleanup now unobserves only the announced observed column,
+clears its width memo, and ignores queued deliveries for released targets. This uses
+the pinned HTMX cleanup event emitted for each removed element, without a document
+rescan. A restored column is observed and initialized again; row-height formulas,
+read-before-write sizing and scrollbar handling are unchanged.
+
+The picker previously queued one animation callback per scroll event. Its extracted
+index module keeps at most one pending frame, reads the latest geometry when that
+frame runs, cancels on close, and skips disconnected/closed dialogs. Explicit filter
+updates still synchronize immediately. The existing top threshold, hidden-group
+selection, aria-current updates and nearest index scrolling are unchanged.
+
+Fourteen focused Node tests cover existing theme/navigation defaults, repeated
+cleanup/restoration, queued observer delivery, scrollbar and typed-attr behavior,
+scroll bursts, close/reopen and hidden-group geometry. The owned JavaScript bundle
+is regenerated. These are bounded source/DOM-fixture reductions in retained targets
+and scheduled work, not measured browser latency or memory improvements; visual
+and real browser measurements remain separate gates.

@@ -3,7 +3,11 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const pickerSource = await readFile(new URL('../../crates/rbit-web/assets/theme-picker.js', import.meta.url), 'utf8');
+const pickerModule = await readFile(new URL('../../crates/rbit-web/assets/theme-picker.js', import.meta.url), 'utf8');
+const indexModule = await readFile(new URL('../../crates/rbit-web/assets/theme-picker-index.js', import.meta.url), 'utf8');
+const indexImport = 'import { syncIndex, watchIndexScroll } from "./theme-picker-index.js";';
+assert.ok(pickerModule.startsWith(indexImport));
+const pickerSource = indexModule.replace(/^export /gm, '') + pickerModule.slice(indexImport.length);
 const fallbackSource = await readFile(new URL('../../crates/rbit-web/assets/theme.js', import.meta.url), 'utf8');
 
 function picker({ slug = 'system', scheme, dark = false } = {}) {

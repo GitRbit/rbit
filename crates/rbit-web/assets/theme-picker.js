@@ -1,3 +1,5 @@
+import { syncIndex, watchIndexScroll } from "./theme-picker-index.js";
+
 // Instant theme switching and the theme gallery. Every control here is a plain form or
 // link that works without JavaScript; this module only makes it instant.
 //
@@ -454,29 +456,9 @@ function filterDialog() {
   part("empty").hidden = shown > 0;
   list.scrollTop = 0;
   activate(reachable()[0] ?? null, { scroll: false });
-  syncIndex();
+  syncIndex(dialog);
 }
 
-/** Marks the family index entry of the group at the top of the list. */
-function syncIndex() {
-  const list = listOf();
-  const top = list.scrollTop + 1;
-  let current = null;
-  for (const group of list.querySelectorAll(".tpk-group:not([hidden])")) {
-    if (group.offsetTop - list.offsetTop > top) break;
-    current = group;
-  }
-  current ??= list.querySelector(".tpk-group:not([hidden])");
-  for (const link of dialog.querySelectorAll("[data-tpk-jump]")) {
-    const isCurrent = link.dataset.tpkJump === current?.id;
-    if (isCurrent && !link.hasAttribute("aria-current")) {
-      link.setAttribute("aria-current", "true");
-      link.scrollIntoView({ block: "nearest" });
-    } else if (!isCurrent) {
-      link.removeAttribute("aria-current");
-    }
-  }
-}
 
 function move(by) {
   const options = reachable();
@@ -513,7 +495,7 @@ function wireDialog(dialog) {
     if (option && option !== activeRow()) activate(option, { scroll: false });
   });
 
-  list.addEventListener("scroll", () => requestAnimationFrame(syncIndex), { passive: true });
+  watchIndexScroll(dialog);
 
   dialog.addEventListener("click", (event) => {
     const target = event.target instanceof Element ? event.target : null;
