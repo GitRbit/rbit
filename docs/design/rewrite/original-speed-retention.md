@@ -92,9 +92,9 @@ new abstractions, background work, allocation, request-time parsing and localiza
 Unmeasured alternatives remain experiments until the relevant gates pass.
 
 
-## Follow-up source audit at91bb328
+## Follow-up source audit at `91bb328`
 
-This review compared pinned main39f932a with91bb328 and read the four historical
+This review compared pinned main `39f932a` with `91bb328` and read the four historical
 performance notes against actual call sites. No Cargo, browser, live application,
 allocation profiler or elapsed-time experiment ran. No removed original fast path was
 found in the reviewed areas; this is a scoped source conclusion, not runtime parity.
@@ -119,11 +119,12 @@ found in the reviewed areas; this is a scoped source conclusion, not runtime par
   clones or added SQL call. The same postcard decode/materialization still owns its
   strings; extraction alone is not an allocation benchmark. Tracking/ledger admission
   applies to password mutations/guards, not ordinary GET session resolution.
-- **Explore has an avoidable full header clone.** Its new HeaderMap parameter uses
-  the locked axum-core0.5.6 HeaderMap extractor, whose implementation returns
-  parts.headers.clone(). Only four response-shape checks require those headers.
-  Borrowed response-shape extraction is the minimal removal, preserving duplicate,
-  boost/history and privacy rules; prepared patch5e4a485 is outside this audited head.
+- **Explore introduced an avoidable header clone.** Its new `HeaderMap` parameter used
+  the locked axum-core 0.5.6 extractor, which returns `parts.headers.clone()`. Only four
+  response-shape checks require those headers. Commit `497a7e9a` removes this through
+  a narrow borrowing extractor. Two Rust tests cover the old expression across 48
+  combinations and ambiguous/invalid headers; three HTTP localization/privacy tests
+  also pass. No latency percentage is inferred from the removed operation.
 - **Explore has small new dynamic text materialization.** English static labels use
   borrowed Cow and catalogs are compiled. However subtitle and PageOf are eagerly
   made into owned text even for a results fragment/single-page result; Stars creates
@@ -139,12 +140,13 @@ found in the reviewed areas; this is a scoped source conclusion, not runtime par
   can affect cache reuse, but removing them to obtain a faster sample would lose
   privacy/response-shape correctness. English/RTL document attributes add bytes;
   there is no source-wide new translation parser or full-platform localization pass.
-- **Visible footer timing changed meaning at this checkpoint.** timing.rs itself is
+- **Visible footer timing changed meaning at this checkpoint.** `timing.rs` itself is
   unchanged, but the new initial-navigation script selects total render timing where
   old initial HTML displayed the earlier SSR footer interval. This can change the
   displayed number without proving lost backend optimization. The subsequent view-
-  metric correction must be judged separately; compare raw SSR with raw SSR and total
-  with total, retain304 semantics, and use the exact executable's source contract.
+  metric correction in `dbfa4bf` has eight passing Rust tests covering precision,
+  200/304 responses and task isolation. Compare raw SSR with raw SSR and total with
+  total, retain 304 semantics, and use the exact executable's source contract.
 
 ### Historical notes are leads, not current regression evidence
 
