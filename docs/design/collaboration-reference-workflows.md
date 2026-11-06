@@ -46,3 +46,36 @@ retains six acquisitions/seven statements; replay retains five/five. Shared-lane
 strict Clippy, component mode and HTTP/reference/notification/Git tests remain pending.
 Source/Node graph guards and read-only existing AST counts pass. There is no measured
 runtime/compile-time performance claim from this parity port.
+
+## Commit and merged-pull target applications
+
+CommitReferences now owns message scanning, target lookup, unique commit-link/history
+ordering and issue-only default-branch closure. The existing Git orchestration keeps
+mirror skipping, empty-update fast path, repository/default-branch lookup, ref snapshot,
+exclusion lists, configured commit limit, new_commits call/full-OID path, warning and
+continue behavior. A lazy borrowed iterator preserves oldest-first processing without
+a commit DTO Vec or copied OIDs. Summary/body message allocation and event string
+clones occur exactly where they did before; no per-row query or extra Git call is added.
+
+A commit first inserts its unique reference; only a new link records history. A commit
+previously referenced on a feature branch may still close an issue when it reaches the
+default branch, without another reference event. Pull targets may receive references
+but closing keywords do not close them. History failure still leaves the committed
+link and prevents the remainder of that attempt; no repair/outbox guarantee is added.
+
+MergeIssueClosures first checks the original merged/default-branch predicate, then
+loads the pull issue and scans its Markdown body. Missing pulls, nondefault merges
+and empty closing lists retain early returns. One existing target batch follows;
+only issue targets close, with the fixed original pull number and actor. The existing
+public context-based predicate remains a compatibility wrapper around explicit
+Database dependencies. System closure still owns its original conditional winner and
+publication transaction boundary.
+
+Prepared independent fixtures pin oldest-first effects, feature-branch replay,
+no-reference/unpolled paths, partial history failure, merge-gate precedence and pull
+target exclusion. Existing real Git push and merged-pull tests move intact with added
+SQL budgets: first two-target feature reference seven acquisitions/nine statements;
+default replay six/eight; default merged-pull close five/seven; nondefault merge
+two/two. These budgets await shared-lane Rust execution. Root command setup through
+the default-branch decision remains source-identical to the pre-port implementation.
+No Git, SQL, wire, registry-dependency or authorization change is claimed.

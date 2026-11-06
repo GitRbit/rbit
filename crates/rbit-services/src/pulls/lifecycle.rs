@@ -46,10 +46,14 @@ pub(crate) async fn check_reopen_with(
 /// issue workstream closes the issues a pull request names only then, as GitHub does).
 /// `false` for anything else, including rows that no longer exist.
 pub async fn merged_into_default_branch(ctx: &ServiceContext, pull: IssueId) -> Result<bool, ServiceError> {
-    let Some(row) = ctx.database.pulls().find(pull).await? else { return Ok(false) };
+    merged_into_default_branch_with(&ctx.database, pull).await
+}
+
+pub(crate) async fn merged_into_default_branch_with(database: &rbit_storage::Database, pull: IssueId) -> Result<bool, ServiceError> {
+    let Some(row) = database.pulls().find(pull).await? else { return Ok(false) };
     if !row.is_merged() {
         return Ok(false);
     }
-    let Some(repo) = ctx.database.admin().find_repository(row.repo_id).await? else { return Ok(false) };
+    let Some(repo) = database.admin().find_repository(row.repo_id).await? else { return Ok(false) };
     Ok(repo.repo.default_branch == row.base_branch)
 }

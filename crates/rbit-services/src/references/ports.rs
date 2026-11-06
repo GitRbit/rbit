@@ -65,3 +65,42 @@ impl CrossReferencePort for ReferenceView<'_> {
         Ok(())
     }
 }
+
+impl rbit_collaboration::references::CommitReferencePort for ReferenceView<'_> {
+    type Error = ServiceError;
+    async fn targets(&self, repo: RepoId, numbers: &[IssueNumber]) -> Result<Vec<IssueRef>, Self::Error> {
+        Ok(self.database.issues().find_numbers(repo, numbers).await?)
+    }
+    async fn commit_link(&self, target: IssueId, commit: &str, at: Timestamp) -> Result<bool, Self::Error> {
+        Ok(self.database.issue_meta().record_commit_ref(target, commit, at).await?)
+    }
+    async fn record_commit(&self, target: IssueId, commit: &str, summary: &str, actor: Option<AccountId>) -> Result<(), Self::Error> {
+        self.timeline
+            .writer()
+            .record(target, actor, TimelineEvent::CommitReferenced { commit: commit.to_owned(), summary: summary.to_owned() })
+            .await?;
+        Ok(())
+    }
+    async fn close_commit(&self, target: IssueId, commit: &str, actor: Option<AccountId>) -> Result<(), Self::Error> {
+        let event = TimelineEvent::Closed { reason: rbit_core::StateReason::Completed, commit: Some(commit.to_owned()), pull: None };
+        self.timeline.writer().close_as_system(target, actor, rbit_core::StateReason::Completed, event).await?;
+        Ok(())
+    }
+}
+impl rbit_collaboration::references::MergeReferencePort for ReferenceView<'_> {
+    type Error = ServiceError;
+    async fn merged_into_default(&self, pull: IssueId) -> Result<bool, Self::Error> {
+        crate::pulls::lifecycle::merged_into_default_branch_with(self.database, pull).await
+    }
+    async fn pull_issue(&self, pull: IssueId) -> Result<Option<Issue>, Self::Error> {
+        Ok(self.database.issues().find(pull).await?)
+    }
+    async fn closing_targets(&self, repo: RepoId, numbers: &[IssueNumber]) -> Result<Vec<IssueRef>, Self::Error> {
+        Ok(self.database.issues().find_numbers(repo, numbers).await?)
+    }
+    async fn close_merge(&self, target: IssueId, pull: IssueNumber, actor: Option<AccountId>) -> Result<(), Self::Error> {
+        let event = TimelineEvent::Closed { reason: rbit_core::StateReason::Completed, commit: None, pull: Some(pull) };
+        self.timeline.writer().close_as_system(target, actor, rbit_core::StateReason::Completed, event).await?;
+        Ok(())
+    }
+}

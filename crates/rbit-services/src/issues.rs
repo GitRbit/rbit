@@ -39,7 +39,7 @@ use std::{
 
 use rbit_auth::repo_access;
 use rbit_core::{
-    Account, AccountId, Issue, IssueId, IssueKind, IssueNumber, IssueState, LabelId, RepoAccess, RepoId, StateReason, TimelineEvent,
+    Account, AccountId, Issue, IssueId, IssueKind, IssueNumber, IssueState, LabelId, RepoAccess, RepoId, StateReason,
     Timestamp, User,
     issue::{IssueAction, LabelSnapshot, issue_permissions},
     issue_query::{IssueQuery, KindFilter, StateFilter, Who},
@@ -683,28 +683,16 @@ impl IssueService {
                 }
             };
             let default_branch = branch == owned.repo.default_branch;
-            // Oldest first, so the timeline reads in commit order.
-            for commit in commits.iter().rev() {
-                let message = match &commit.body {
-                    Some(body) => format!("{}\n\n{body}", commit.summary),
-                    None => commit.summary.clone(),
-                };
-                let scan = references::scan_plain(&message);
-                if scan.local.is_empty() {
-                    continue;
-                }
-                let targets = database.issues().find_numbers(repo, &scan.local).await?;
-                for target in targets {
-                    if database.issue_meta().record_commit_ref(target.id, &commit.id, Timestamp::now()).await? {
-                        let event = TimelineEvent::CommitReferenced { commit: commit.id.clone(), summary: commit.summary.clone() };
-                        self.timeline.writer().record(target.id, pusher, event).await?;
-                    }
-                    if default_branch && target.kind == IssueKind::Issue && scan.closes.contains(&target.number) {
-                        let event = TimelineEvent::Closed { reason: StateReason::Completed, commit: Some(commit.id.clone()), pull: None };
-                        self.timeline.writer().close_as_system(target.id, pusher, StateReason::Completed, event).await?;
-                    }
-                }
-            }
+            // Preserve the original oldest-first Git iterator without a DTO Vec or OID copies.
+            let effects = self.references.effects();
+            let commits = commits.iter().rev().map(|commit| rbit_collaboration::references::CommitReference {
+                id: &commit.id,
+                summary: &commit.summary,
+                body: commit.body.as_deref(),
+            });
+            rbit_collaboration::references::CommitReferences::new(&effects)
+                .record(repo, pusher, default_branch, commits, Timestamp::now)
+                .await?;
         }
         Ok(())
     }
@@ -713,22 +701,8 @@ impl IssueService {
     /// with closing keywords (`pulls::lifecycle::merged_into_default_branch`); merges into
     /// other branches close nothing, as on GitHub.
     async fn close_by_merge(&self, pull: IssueId, number: IssueNumber, actor: Option<AccountId>) -> Result<(), ServiceError> {
-        if !crate::pulls::lifecycle::merged_into_default_branch(&self.ctx, pull).await? {
-            return Ok(());
-        }
-        let database = &self.ctx.database;
-        let Some(pull) = database.issues().find(pull).await? else { return Ok(()) };
-        let scan = references::scan_markdown(pull.body.as_str());
-        if scan.closes.is_empty() {
-            return Ok(());
-        }
-        for target in database.issues().find_numbers(pull.repo_id, &scan.closes).await? {
-            if target.kind == IssueKind::Issue {
-                let event = TimelineEvent::Closed { reason: StateReason::Completed, commit: None, pull: Some(number) };
-                self.timeline.writer().close_as_system(target.id, actor, StateReason::Completed, event).await?;
-            }
-        }
-        Ok(())
+        let effects = self.references.effects();
+        rbit_collaboration::references::MergeIssueClosures::new(&effects).close(pull, number, actor, references::scan_markdown).await
     }
 }
 

@@ -17,3 +17,7 @@ pub use cross_references::CrossReferences;
 pub use ports::{CrossReferencePort, ReferenceReadPort, RemoteReferencePort};
 #[cfg(feature = "applications")]
 pub use resolver::ReferenceResolver;
+#[cfg(feature = "applications")]
+mod commit_effects;
+#[cfg(feature = "applications")]
+pub use commit_effects::{CommitReference, CommitReferencePort, CommitReferences, MergeIssueClosures, MergeReferencePort};

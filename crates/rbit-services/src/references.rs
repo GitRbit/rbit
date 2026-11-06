@@ -87,6 +87,12 @@ impl ReferenceService {
     pub(crate) async fn record_cross_references(&self, source: &Issue, actor: Option<AccountId>, text: &str) -> Result<(), ServiceError> {
         rbit_collaboration::references::CrossReferences::new(&self.view()).record(source, actor, text, scan_markdown, Timestamp::now).await
     }
+    pub(crate) fn effects(
+        &self,
+    ) -> impl rbit_collaboration::references::CommitReferencePort<Error = ServiceError>
+    + rbit_collaboration::references::MergeReferencePort<Error = ServiceError> {
+        self.view()
+    }
     fn view(&self) -> ports::ReferenceView<'_> {
         ports::ReferenceView { database: &self.database, timeline: &self.timeline }
     }
