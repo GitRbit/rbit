@@ -77,6 +77,27 @@ impl PasswordAttempt {
         .await
     }
 
+    /// Hashes a candidate only if it differs from the password represented by `previous_phc`.
+    ///
+    /// Returns None when verification succeeds, allowing a caller to reject password
+    /// reuse. A malformed previous hash fails verification and permits a new hash,
+    /// preserving existing verification semantics. Both steps use this one admitted
+    /// worker, even when the budget closes after the attempt was reserved.
+    /// Authorization, input validation and persisted credential updates belong to callers.
+    ///
+    /// # Errors
+    ///
+    /// Returns the existing candidate-hash or Tokio join error.
+    pub async fn hash_if_different(self, password: String, previous_phc: String) -> Result<Option<String>, PasswordError> {
+        self.execute(move || {
+            if credential::verify(&password, &previous_phc) {
+                return Ok(None);
+            }
+            credential::hash(&password).map(Some)
+        })
+        .await
+    }
+
     async fn execute<F, T>(self, operation: F) -> Result<T, PasswordError>
     where
         F: FnOnce() -> Result<T, PasswordError> + Send + 'static,
