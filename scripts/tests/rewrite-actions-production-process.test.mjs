@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { EventEmitter } from "node:events";
+import { readFile } from "node:fs/promises";
 import { ProductionFixture, parseFixtureReady } from "../../devtools/actions-visual/production-process.mjs";
 import { productionBinary, productionOrigin, fixtureArguments } from "../../devtools/actions-visual/production-policy.mjs";
 
@@ -41,6 +42,20 @@ test("cookies remain private and are attached only to the fixed loopback origin"
   await owned.owner.stop();
   assert.deepEqual(events, ["stop\n"]);
   assert.equal(owned.owner.status().closed, true);
+});
+
+test("the private frame starts a new line after serial libtest's unterminated test name", async () => {
+  const source = await readFile(new URL("../../crates/rbit-web/tests/actions_pages/production_fixture.rs", import.meta.url), "utf8");
+  assert.ok(source.includes('println!("\\nRBIT_ACTIONS_FIXTURE_READY {}"'));
+  const owned = fake(async () => owned.child.emit("close", 0, null));
+  const prefix = "\nrunning 1 test\ntest actions_pages::production_fixture::serve ... ";
+  owned.child.stdout.emit("data", Buffer.from(prefix));
+  // Split the actual newline-delimited frame across pipe chunks, including its prefix.
+  owned.child.stdout.emit("data", Buffer.from("\nRBIT_ACTIONS_"));
+  owned.child.stdout.emit("data", Buffer.from(`FIXTURE_READY ${JSON.stringify({ version: 1, cookie: token })}\n`));
+  await owned.owner.ready();
+  await owned.owner.authenticate({ addCookies: async cookies => assert.equal(cookies[0].value, token) });
+  await owned.owner.stop();
 });
 
 test("stop acknowledgment is insufficient until the actual owned process closes", async () => {

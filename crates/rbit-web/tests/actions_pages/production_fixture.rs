@@ -145,7 +145,9 @@ mod linux {
         });
         // Private process pipe only: the Node owner never logs or artifacts this token.
         let cookie = fixture.reader.strip_prefix("rbit_session=").expect("FIXTURE_COOKIE_REFUSED");
-        println!("RBIT_ACTIONS_FIXTURE_READY {}", serde_json::json!({"version": 1, "cookie": cookie}));
+        // Serial libtest's pretty formatter writes the test name without a newline.
+        // Delimit our private frame explicitly instead of depending on its prefix.
+        println!("\nRBIT_ACTIONS_FIXTURE_READY {}", serde_json::json!({"version": 1, "cookie": cookie}));
         std::io::stdout().flush().expect("FIXTURE_READY_REFUSED");
         let deadline = tokio::time::sleep(Duration::from_secs(120));
         tokio::pin!(deadline);
