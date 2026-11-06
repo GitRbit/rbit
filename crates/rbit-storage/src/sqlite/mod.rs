@@ -16,6 +16,7 @@ pub mod actions_settings;
 pub mod admin;
 pub mod audit;
 pub mod collaborators;
+pub mod credential_epochs;
 pub mod credential_revocations;
 // Email digests.
 pub mod email_digests;
