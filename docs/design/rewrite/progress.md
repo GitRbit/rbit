@@ -27,7 +27,35 @@ Public development and review continue in [draft PR #53](https://github.com/GitR
 
 The kernel now coordinates password admission and its first statically owned background workers. Full module lifecycle and the remaining feature ports are still pending. Existing services remain the behavior authority during the transition.
 
-## Published validation checkpoint
+## Current validation checkpoint
+
+The published shared-output guard (`1263cc38`) and owned Windows default
+(`b58fa8c6`) prevent admission based only on Cargo source timestamps. The
+[source-cache evidence](measurements/shared-source-cache.md) records 22 native
+worktree scenarios, including backdated source switches, build-script inputs,
+feature variants, legacy-writer interference, failed compilation and warm reuse.
+An unproven command does not approve local compiler output. Unix owned completion
+is still pending; the active namespace remains protected above the soft watermark.
+
+After integration with the accessible-theme update, 512 Node tests pass with seven
+platform skips; formatting and the source ratchet pass (1,479 authored files, zero
+violations). The integrated helper source matches the native-tested source exactly.
+These checks do not establish complete application validation.
+
+The pending feature batch passes 625 service tests using the new guard. Its full
+workspace run stops at the import/mirror E2E case: 109 E2E cases pass and one fails
+because the returned import page is not successful. A diagnostic rerun is required
+before assigning a cause. The latest completed hosted test run at `84150e1e` also
+fails four highlighting-style parity assertions on both Linux and Windows; those
+assertions require resolved keyword-weight inheritance after the theme update.
+The current published head therefore has no full green validation claim.
+
+Earlier footer measurements retain their actual executable hashes and responses,
+but their cached local dependencies were not qualified by the new source guard.
+Fresh guarded release builds and repeated paired measurements remain required for
+performance acceptance, alongside all workload, feature and release gates below.
+
+## Earlier validation checkpoints
 
 `c4c84e314eb486d5e912389e930edb8a774bbc08` adds production run-page presentation,
 thread text/state applications and label/milestone attachment applications. Static
