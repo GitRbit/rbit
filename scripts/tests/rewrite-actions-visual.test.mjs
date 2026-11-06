@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { setupFailure } from "../../devtools/actions-visual/diagnostics.mjs";
 import test from "node:test";
 import { mkdtemp, writeFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -213,4 +214,26 @@ test("interruption awaits Docker client closure and drains late stdout before co
   child.emit("close", null, "SIGTERM");
   await stopping; await rejected;
   assert.equal(closed, true);
+});
+
+test("launch evidence is classified into fixed codes without retaining private diagnostics", () => {
+  const sentinel = "private-profile-path credential=example-secret";
+  for (const [message, expected] of [
+    ["Failed to move to new namespace: PID namespaces supported, Network namespace supported, but failed: errno = Operation not permitted", "BROWSER_NAMESPACE_DENIED"],
+    ["No usable sandbox!", "BROWSER_NO_USABLE_SANDBOX"],
+    ["Executable doesn't exist at /private/profile", "BROWSER_EXECUTABLE_MISSING"],
+    ["error while loading shared libraries: libunknown.so", "BROWSER_LIBRARIES_MISSING"],
+    ["Host system is missing dependencies to run browsers.", "BROWSER_LIBRARIES_MISSING"],
+    ["Read-only file system", "BROWSER_READONLY_PATH"],
+    ["Timeout 15000ms exceeded.", "BROWSER_LAUNCH_TIMEOUT"],
+    ["Target page, context or browser has been closed; signal=SIGTRAP", "BROWSER_SIGNAL_TRAP"],
+  ]) {
+    const actual = setupFailure("browser-launch", new Error(`${message} ${sentinel}`));
+    assert.equal(actual, expected);
+    assert.equal(actual.includes(sentinel), false);
+  }
+  assert.equal(setupFailure("sandbox-proof", new Error("SANDBOX_UNPROVED")), "SANDBOX_UNPROVED");
+  assert.equal(setupFailure("browser-launch", new Error(`SANDBOX_${sentinel}`)), "SETUP_FAILED");
+  assert.equal(setupFailure("provenance", new Error("No usable sandbox!")), "SETUP_FAILED");
+  assert.equal(setupFailure("browser-launch", undefined), "SETUP_FAILED");
 });

@@ -8,6 +8,7 @@ import { origin, image, cases, artifactBudget } from "./policy.mjs";
 import { revision, sourceDigest, digest } from "./provenance.mjs";
 import { verifySandbox } from "./sandbox.mjs";
 import { contain } from "./containment.mjs";
+import { setupFailure } from "./diagnostics.mjs";
 import { keyboard, logControls, noJavascript } from "./interactions.mjs";
 const output = "/artifacts";
 const source = "/work/docs/design/prototypes/actions";
@@ -90,8 +91,7 @@ try {
   catch { report.failures.push({ fixture: "interactions", code: "INTERACTION_ASSERTION_FAILED" }); }
   report.status = report.failures.length ? "failed" : "candidate-review-required";
 } catch (error) {
-  const known = /^(SANDBOX_[A-Z_]+|BROWSER_VERSION_MISMATCH|LINUX_NONROOT_REQUIRED)$/;
-  report.failures.push({ fixture: "setup", stage: setupStage, code: known.test(error.message) ? error.message : "SETUP_FAILED" });
+  report.failures.push({ fixture: "setup", stage: setupStage, code: setupFailure(setupStage, error) });
 } finally {
   try { if (browser) await browser.close(); }
   catch { report.status = "invalid"; report.failures.push({ fixture: "cleanup", code: "BROWSER_CLOSE_FAILED" }); }

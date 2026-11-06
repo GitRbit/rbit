@@ -82,3 +82,13 @@ name. SIGINT/SIGTERM stops and awaits owned Docker clients before cleanup; an
 `always()` workflow step is the cancellation backstop. Forced host termination
 or runner loss can prevent both cleanup paths; the disposable worker is the final
 lifetime boundary. No global Docker prune or unrelated container removal occurs.
+
+Launch failures are classified in memory into fixed namespace/sandbox, missing
+browser/library, read-only path, display, timeout or early-exit categories. The
+raw Playwright message, browser arguments, paths and environment are not retained.
+A namespace-denied result requires a disposable runner host that permits nonroot
+user namespaces under this exact seccomp/capability policy. Do not disable the
+sandbox, AppArmor, seccomp, no-new-privileges or capability restrictions to pass.
+A dedicated ephemeral supported Linux runner can be evaluated with the same
+positive proof before accepting screenshots; host support remains unproven until
+that launch succeeds. The present failure does not establish its cause by itself.
