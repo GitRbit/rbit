@@ -13,9 +13,10 @@ values, account-vs-thread branch, canonical IssueNumber precedence, whitespace t
 search limit 10/offset 0 and exact Issue/PR labels. The static production port keeps
 account display-name selection, SQL order and indexed numeric lookup. Denied or
 unpolled requests do not construct stores. Account suggestions construct no IssueStore.
-Thread requests retain one IssueStore before numeric parsing, including the original
-unused handle on search; SearchFilter initialization is infallible empty-field setup,
-and the existing word Vec moves into it without copying. No new SQL/count/metadata
+The thread adapter now borrows only Database. Numeric lookup obtains its IssueStore
+when polled; the search branch constructs only IssueSearchStore, removing the original
+unused IssueStore and its pool-handle clone. SearchFilter initialization remains
+infallible empty-field setup, and the existing word Vec moves into it without copying. No new SQL/count/metadata
 read, validation pass, task or dynamic dispatch is introduced.
 
 Prepared policy fixtures observe construction, character cap (not UTF-8 byte cap),

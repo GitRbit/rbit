@@ -111,6 +111,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `rbit_actions_*` metrics: finished runs and jobs, queue and job durations, runner calls,
   log bytes, workflow errors, waiting jobs and online runners.
 
+### Performance
+
+- Text-based reference suggestions avoid constructing an unused issue-store handle;
+  numeric suggestions retain the existing indexed lookup and SQL work.
+
 ### Fixed
 
 - Fetch locked dependencies before guarded CI compilation so fresh runners can

@@ -7,13 +7,9 @@ use rbit_collaboration::{
     timeline::IssueRef,
 };
 use rbit_core::{Account, RepoId};
-use rbit_storage::{
-    Database,
-    sqlite::{issue_search::SearchFilter, issues::IssueStore},
-};
+use rbit_storage::{Database, sqlite::issue_search::SearchFilter};
 pub(super) struct SuggestionThreads<'a> {
     database: &'a Database,
-    store: IssueStore,
 }
 impl<'a> SuggestionPort for ReferenceView<'a> {
     type Error = ServiceError;
@@ -22,13 +18,13 @@ impl<'a> SuggestionPort for ReferenceView<'a> {
         Ok(self.database.issue_meta().mention_candidates(prefix).await?)
     }
     fn threads(&self) -> Self::Threads {
-        SuggestionThreads { database: self.database, store: self.database.issues() }
+        SuggestionThreads { database: self.database }
     }
 }
 impl SuggestionThreadPort for SuggestionThreads<'_> {
     type Error = ServiceError;
     async fn numbers(&self, repo: RepoId, numbers: &[IssueNumber]) -> Result<Vec<IssueRef>, Self::Error> {
-        Ok(self.store.find_numbers(repo, numbers).await?)
+        Ok(self.database.issues().find_numbers(repo, numbers).await?)
     }
     async fn search(&self, repo: RepoId, words: Vec<String>, limit: u32, offset: u64) -> Result<Vec<Issue>, Self::Error> {
         let mut filter = SearchFilter::new(repo);
