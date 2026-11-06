@@ -86,9 +86,12 @@ export function inventoryGraphViolations(tree) {
   return forbidden.filter(name => packages.has(name)).map(name => `credential inventory: application dependency unexpectedly includes ${name}`);
 }
 
-/** Offline tooling owns no application store, startup or password-work owner. */
+/** The offline tool owns no application store, startup or password-work owner.
+ * Build-time graph inspection may fetch locked packages on a fresh CI host,
+ * consistently with the other feature checks; this does not run the tool.
+ */
 export function checkInventoryGraph(root) {
-  const tree = execFileSync("cargo", ["tree", "--package", "rbit-credential-inventory", "--edges", "normal", "--prefix", "none", "--locked", "--offline"], {
+  const tree = execFileSync("cargo", ["tree", "--package", "rbit-credential-inventory", "--edges", "normal", "--prefix", "none", "--locked"], {
     cwd: root, encoding: "utf8", windowsHide: true, stdio: ["pipe", "pipe", "pipe"], maxBuffer: 8 * 1024 * 1024,
   });
   return inventoryGraphViolations(tree);
