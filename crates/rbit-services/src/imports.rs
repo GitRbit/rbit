@@ -35,11 +35,12 @@
 pub mod api;
 pub mod client;
 mod job;
+mod startup;
 
 use std::{
     collections::HashSet,
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicBool, Ordering},
     },
     time::Duration,
@@ -51,7 +52,7 @@ use rbit_core::{
     repository::OwnedRepository,
 };
 use rbit_storage::sqlite::imports::{ImportStore, NewImport};
-use tokio::sync::Semaphore;
+use tokio::sync::{Mutex, Semaphore};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use self::{
@@ -116,7 +117,8 @@ struct Inner {
     lfs: LfsService,
     releases: ReleaseService,
     permits: Arc<Semaphore>,
-    /// Repositories whose import this process runs (queued or running).
+    /// Repositories whose import this process runs. The guard also serializes
+    /// record admission with the complete restart sweep; never held for Git work.
     running: Mutex<HashSet<RepoId>>,
     shutdown: CancellationToken,
     tasks: TaskTracker,
@@ -187,13 +189,9 @@ impl ImportService {
         let created = self.inner.repositories.create_in(actor, &input.owner, repository).await?;
         let repo_id = created.repo.id;
 
-        // Marked as this process's before the record exists, so start-up's sweep of
-        // interrupted imports cannot catch it.
-        lock(&self.inner.running).insert(repo_id);
         let source_url = source.web_url();
         let record = NewImport { repo: repo_id, importer: actor.id(), kind: source.kind, source_url: &source_url, options: input.options };
-        if let Err(error) = self.store().create(&record).await {
-            lock(&self.inner.running).remove(&repo_id);
+        if let Err(error) = self.create_record(&record).await {
             tracing::error!(%error, "cannot record an import; the repository stays empty");
             return Err(error.into());
         }
@@ -224,7 +222,7 @@ impl ImportService {
             if let Err(failure) = service.store().finish(id, Timestamp::now(), error.as_deref()).await {
                 tracing::error!(error = %failure, repo = id.0, "cannot record the end of an import");
             }
-            lock(&inner.running).remove(&id);
+            inner.running.lock().await.remove(&id);
         });
     }
 
@@ -270,8 +268,7 @@ impl ImportService {
         }
         let service = self.clone();
         self.inner.tasks.spawn(async move {
-            let running: Vec<RepoId> = lock(&service.inner.running).iter().copied().collect();
-            match service.store().fail_unfinished(Timestamp::now(), INTERRUPTED, &running).await {
+            match service.fail_interrupted().await {
                 Ok(0) => {}
                 Ok(count) => tracing::warn!(count, "imports interrupted by a restart were marked failed"),
                 Err(error) => tracing::warn!(%error, "cannot mark interrupted imports as failed"),
@@ -293,9 +290,4 @@ impl ImportService {
 /// The address check for every host an import talks to (see the module docs).
 pub(crate) async fn check_source_host(config: &Config, host: &str, port: u16) -> Result<rbit_git::remote::ResolvedHost, String> {
     check_public_host(host, port, config.imports.allow_private_addresses).await
-}
-
-/// Locks a mutex, recovering the data if a previous holder panicked (the set stays valid).
-fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }

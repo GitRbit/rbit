@@ -132,6 +132,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - The Windows development launcher preserves a completed target's exit code 259,
   so an unsuccessful command cannot be reported as successful.
+- Prevent startup cleanup from marking newly queued repository imports as
+  interrupted while their import jobs are still running.
 
 - Preserve edited Actions review controls after real HTMX outer-element polls, using
   the newly authorized live element while retaining server permission decisions.
