@@ -77,7 +77,7 @@ export async function finishSourceProof(handle, completion, lease) {
     return { trusted: false, reason: "OWNED_NATIVE_COMPLETION_REQUIRED", approved: 0 };
   }
   const { ctx, request, inputs, state, trusted } = value;
-  const after = await inputSnapshot(ctx, request.namespace, request.command, request.args, request.env, value.dependencies);
+  const after = await inputSnapshot(ctx, request.namespace, request.command, request.args, request.env, value.dependencies, "completion");
   if (inputs.digest !== after.digest || inputs.stability !== after.stability) throw new Error("SOURCE_PROOF_INPUT_CHANGED_DURING_COMMAND");
   const units = await scanUnits(request.lane, after);
   const approved = {};

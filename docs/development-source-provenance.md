@@ -20,8 +20,8 @@ This explicit noncompiler writer can use the network under the same shared lease
 Cargo output-directory overrides. It skips source-proof admission, never approves
 units and rejects managed-retention observation/candidate modes.
 
-Read-only Cargo metadata uses `--locked --offline --all-features`; it cannot fetch
-dependencies or regenerate a lockfile. Local packages must have bounded, unambiguous
+Cargo metadata uses `--locked --offline --all-features`; it cannot download
+dependencies over the network or regenerate a lockfile. Local packages must have bounded, unambiguous
 names/roots and inspectable targets/dependencies. The guard hashes actual package
 files, including ignored generated public CSS/JS, canonical package/target roots,
 local dependency provenance, manifests, lockfile and Cargo configuration/environment
@@ -119,6 +119,30 @@ The helper exposes bounded `sourceProof` counters (`trusted`, `approved`, `inval
 `reusable`, `fresh`, `rebuilt`). No whole cache generation is thereby approved for
 retention, promotion or eviction. This guard is separate from the default-off
 multi-command measurement/compaction work.
+
+## Compiler interval and metadata maintenance
+
+Admission runs fresh offline metadata before observing policy files and absent
+configuration ancestors. Verified completion observes those policy inputs first,
+then runs fresh metadata and rederives the package closure. Neither phase reuses
+the other's metadata or policy snapshot. Missing, foreign or explicitly unowned
+completion cannot enter this completion observation stage.
+
+This ordering seals the native compiler interval without treating the helper's own
+subsequent metadata maintenance as compiler-time source changes. Full Cargo metadata
+can access dependency packages and flush its global-cache usage database; see
+[Cargo's metadata implementation](https://doc.rust-lang.org/stable/nightly-rustc/src/cargo/ops/cargo_metadata.rs.html#156-168)
+and [package acquisition](https://doc.rust-lang.org/stable/nightly-rustc/src/cargo/workspace/package.rs.html#363-366).
+Such writes can change a directory containing absent configuration files even
+though neither configuration file changed.
+
+No directory timestamp is ignored during the native command: configuration
+create/delete ABA and unrelated parent churn in that interval still refuse trust.
+This correction does not suppress actual compiler-side cache churn, activate a
+filesystem observer, weaken source/file identities or change admission records.
+A long-build failure caused by writes during the native interval remains a separate
+observation problem. Synthetic ordering regressions are not proof of the cause of
+any particular application build; native instrumentation must establish that boundary.
 
 ## Limits and verification
 

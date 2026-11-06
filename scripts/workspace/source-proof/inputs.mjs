@@ -64,11 +64,20 @@ async function packageFiles(root, budget) {
 }
 
 /** Metadata is a bounded Cargo-output seam for temporary tests, never ledger data. */
-export async function inputSnapshot(ctx, namespace, command, args, env, { metadata = cargoMetadata, readPolicy, absentPolicy = absentInput } = {}) {
-  const data = await metadata(ctx, env);
-  if (!data || !Array.isArray(data.packages) || data.packages.length > 4096 || !Array.isArray(data.resolve?.nodes)) {
-    throw new Error("SOURCE_PROOF_METADATA_UNOBSERVED");
-  }
+export async function inputSnapshot(ctx, namespace, command, args, env,
+  { metadata = cargoMetadata, readPolicy, absentPolicy = absentInput } = {}, stage = "admission") {
+  if (!["admission", "completion"].includes(stage)) throw new Error("SOURCE_PROOF_STAGE_REFUSED");
+  const readMetadata = async () => {
+    const data = await metadata(ctx, env);
+    if (!data || !Array.isArray(data.packages) || data.packages.length > 4096 || !Array.isArray(data.resolve?.nodes)) {
+      throw new Error("SOURCE_PROOF_METADATA_UNOBSERVED");
+    }
+    return data;
+  };
+  // Admission absorbs its own metadata maintenance before the native interval.
+  // Verified completion seals that interval BEFORE metadata can flush Cargo's
+  // global-cache database and change absent configuration's ancestor timestamps.
+  let data = stage === "admission" ? await readMetadata() : undefined;
   const budget = { entries: 0, bytes: 0, stability: [] };
   const policy = await policySnapshot(ctx, namespace, command, args, env, async (path, optional, limit) => {
     const bytes = await (readPolicy ?? boundedInput)(path, optional, limit);
@@ -77,6 +86,7 @@ export async function inputSnapshot(ctx, namespace, command, args, env, { metada
     return bytes;
   });
   if (!policy.inputId) throw new Error("SOURCE_PROOF_POLICY_UNOBSERVED");
+  if (stage === "completion") data = await readMetadata();
   const locals = new Map(), names = new Map(), registryNames = new Set();
   for (const pkg of data.packages) {
     if (typeof pkg.id !== "string" || typeof pkg.name !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(pkg.name)) throw new Error("SOURCE_PROOF_PACKAGE_REFUSED");
