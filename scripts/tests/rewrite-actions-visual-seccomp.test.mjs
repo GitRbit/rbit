@@ -93,7 +93,8 @@ test("container isolation and real Chromium proof remain mandatory after the nar
   assert.doesNotMatch(container, /--cap-add|seccomp=unconfined|--privileged|--ipc.*host/);
   const runner = await readFile(new URL("../../devtools/actions-visual/run.mjs", import.meta.url), "utf8");
   assert.ok(runner.indexOf("namespaceStartupReady(report.environment)") < runner.indexOf("await initialNamespaceChroot()"));
-  assert.ok(runner.indexOf("await childNamespaceChroot()") < runner.indexOf("await chromium.launch"));
+  assert.ok(runner.indexOf("await childNamespaceChroot()") < runner.indexOf("await launchSandboxedBrowser(chromium)"));
   assert.ok(runner.indexOf("await verifySandbox(browser)") < runner.indexOf("for (const model of cases())"));
-  assert.match(runner, /chromiumSandbox: true/);
+  const sandbox = await readFile(new URL("../../devtools/actions-visual/sandbox.mjs", import.meta.url), "utf8");
+  assert.match(sandbox, /chromiumSandbox: true/);
 });

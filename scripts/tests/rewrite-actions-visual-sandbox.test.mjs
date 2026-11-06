@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { verifySandbox, SandboxVerificationError } from "../../devtools/actions-visual/sandbox.mjs";
+import { launchSandboxedBrowser, verifySandbox, SandboxVerificationError } from "../../devtools/actions-visual/sandbox.mjs";
 import { browserVersion } from "../../devtools/actions-visual/policy.mjs";
 import { setupFailure } from "../../devtools/actions-visual/diagnostics.mjs";
 
@@ -9,7 +9,7 @@ const rows = [
   ...["PID namespaces", "Network namespaces", "Seccomp-BPF sandbox"].map(label => ({ label, value: "Yes" })),
 ];
 function fixture({ failAt, message = "private path token=SECRET", table = rows,
-  closeFails = false, detachFails = false, args = ["--enable-automation"] } = {}) {
+  closeFails = false, detachFails = false, args = ["--enable-automation"], requireAutomation = false } = {}) {
   const events = [];
   function step(stage, value) {
     events.push(stage);
@@ -33,6 +33,9 @@ function fixture({ failAt, message = "private path token=SECRET", table = rows,
   const session = {
     send: async command => {
       assert.equal(command, "Browser.getBrowserCommandLine");
+      if (requireAutomation && !args.includes("--enable-automation")) {
+        throw new Error("Protocol error: Command line not returned because --enable-automation not set.");
+      }
       return step("cdp-command", { arguments: args });
     },
     detach: async () => { events.push("cdp-detach"); if (detachFails) throw new Error(message); },
@@ -47,6 +50,25 @@ function fixture({ failAt, message = "private path token=SECRET", table = rows,
   };
   return { browser, events };
 }
+
+test("real launch options enable command-line proof without replacing sandbox evidence", async () => {
+  const chromium = { launch: async options => {
+    assert.equal(options.channel, "chromium");
+    assert.equal(options.chromiumSandbox, true);
+    assert.equal(options.headless, true);
+    assert.equal(options.timeout, 15000);
+    assert.deepEqual(options.args, ["--enable-automation"]);
+    return fixture({ args: options.args, requireAutomation: true }).browser;
+  } };
+  const browser = await launchSandboxedBrowser(chromium);
+  assert.equal((await verifySandbox(browser, 1001)).forbiddenFlagsAbsent, true);
+  await assert.rejects(verifySandbox(fixture({ args: [], requireAutomation: true }).browser, 1001),
+    error => error.evidence.stage === "cdp-command" && error.evidence.code === "PROTOCOL_ERROR");
+  const negative = { launch: async options => fixture({ args: options.args, requireAutomation: true,
+    table: rows.map(row => row.label === "PID namespaces" ? { ...row, value: "No" } : row) }).browser };
+  await assert.rejects(verifySandbox(await launchSandboxedBrowser(negative), 1001),
+    error => error.evidence.code === "SANDBOX_UNPROVED");
+});
 
 test("proof intermediates identify failures without retaining raw diagnostics or arguments", async () => {
   for (const stage of ["cdp-session", "cdp-command", "context-create", "page-create", "internal-navigation", "table-read"]) {

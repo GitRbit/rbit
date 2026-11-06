@@ -6,7 +6,7 @@ import { performance } from "node:perf_hooks";
 import { preview } from "../../docs/design/prototypes/actions/server.mjs";
 import { origin, image, cases, artifactBudget } from "./policy.mjs";
 import { revision, sourceDigest, digest } from "./provenance.mjs";
-import { verifySandbox, SandboxVerificationError } from "./sandbox.mjs";
+import { launchSandboxedBrowser, verifySandbox, SandboxVerificationError } from "./sandbox.mjs";
 import { contain } from "./containment.mjs";
 import { setupFailure } from "./diagnostics.mjs";
 import { launchEvidence } from "./launch-evidence.mjs";
@@ -97,7 +97,7 @@ try {
   report.childNamespaceChroot = await childNamespaceChroot();
   if (!report.childNamespaceChroot.confirmed) throw new Error("CHILD_NAMESPACE_CHROOT_UNPROVED");
   setupStage = "browser-launch";
-  browser = await chromium.launch({ channel: "chromium", chromiumSandbox: true, headless: true, timeout: 15000 });
+  browser = await launchSandboxedBrowser(chromium);
   setupStage = "sandbox-proof";
   report.sandbox = await verifySandbox(browser); // No timed capture before positive sandbox proof.
   report.browserVersion = browser.version();

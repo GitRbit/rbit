@@ -25,6 +25,12 @@ export class SandboxVerificationError extends Error {
     this.evidence = Object.freeze(evidence);
   }
 }
+// Playwright 1.65 no longer adds this flag to its default Chromium switches.
+// Browser.getBrowserCommandLine requires it; it does not disable a sandbox layer.
+export function launchSandboxedBrowser(chromium) {
+  return chromium.launch({ channel: "chromium", chromiumSandbox: true, headless: true,
+    timeout: 15000, args: ["--enable-automation"] });
+}
 // This internal diagnostic is not a network navigation or screenshot fixture.
 export async function verifySandbox(browser, uid = process.getuid?.()) {
   const evidence = { stage: "version", code: null, cdpDetached: null, contextClosed: null };

@@ -197,3 +197,12 @@ evidence now identifies fixed version/CDP/context/page/navigation/table/proof st
 allowlisted failure categories and cleanup booleans. Only the four known sandbox
 row labels and fixed status values may be retained; unknown text, flags and paths
 are discarded. Missing, negative or unknown proof still prevents screenshots.
+
+The following retained run reached `cdp-command` with `PROTOCOL_ERROR`. The pinned
+[Playwright 1.65 switches](https://github.com/microsoft/playwright/blob/v1.65.0/packages/playwright-core/src/server/chromium/chromiumSwitches.ts)
+omit `--enable-automation`, while the
+[Chromium protocol](https://chromedevtools.github.io/devtools-protocol/tot/Browser/#method-getBrowserCommandLine)
+requires that switch to return the actual browser command line. The runner now
+supplies it explicitly. This addresses a concrete verifier prerequisite; it does
+not substitute assumed launch options for the returned command line or positive
+namespace/seccomp rows. No sandbox-disabling flag or policy change is added.
