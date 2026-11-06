@@ -22,6 +22,7 @@ members = [
     "crates/rbit-access",
     "crates/rbit-repositories",
     "crates/rbit-collaboration",
+    "crates/rbit-actions",
     "tools/rewrite-check",
     "tools/render-probe",
     "tools/process-tree-probe",
@@ -46,6 +47,7 @@ rbit-identity = { path = "crates/rbit-identity", default-features = false }
 rbit-access = { path = "crates/rbit-access" }
 rbit-repositories = { path = "crates/rbit-repositories", default-features = false }
 rbit-collaboration = { path = "crates/rbit-collaboration", default-features = false }
+rbit-actions = { path = "crates/rbit-actions" }
 rbit-core = { path = "crates/rbit-core" }
 rbit-storage = { path = "crates/rbit-storage" }
 rbit-auth = { path = "crates/rbit-auth" }

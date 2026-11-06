@@ -4,6 +4,7 @@
 mod access;
 // Actions: foundation (F).
 mod actions;
+mod actions_claims;
 // Actions: triggers (T).
 // Actions: workflow_run and repository_dispatch.
 mod actions_calls;

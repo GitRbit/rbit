@@ -4208,6 +4208,10 @@ name = "rbit-access"
 version = "0.1.5"
 
 [[package]]
+name = "rbit-actions"
+version = "0.1.5"
+
+[[package]]
 name = "rbit-auth"
 version = "0.1.5"
 dependencies = [
@@ -4500,6 +4504,7 @@ dependencies = [
  "metrics",
  "p256",
  "percent-encoding",
+ "rbit-actions",
  "rbit-auth",
  "rbit-collaboration",
  "rbit-core",

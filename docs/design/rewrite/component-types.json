@@ -20,7 +20,8 @@
         "lib::issues::deletion::DeletionEffects",
         "lib::transfers::TransferService",
         "lib::transfers::TransferBridge",
-        "lib::repositories::aliases::AliasView"
+        "lib::repositories::aliases::AliasView",
+        "lib::actions::scheduler::claim_bridge::ClaimSession"
       ]
     },
     {
