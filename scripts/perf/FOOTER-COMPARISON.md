@@ -15,12 +15,13 @@ unknown build/data/cache conditions and is not this baseline's measured result.
   including work after the template/footer was rendered. Compare this to the same
   header metric, not to another revision's visible SSR footer.
 - `viewMs` is the candidate's new Server-Timing view duration, captured at the same
-  footer interval and truncated to whole microseconds. Main39f has no view metric:
+  footer interval, preserving whole microseconds below 1ms and nanosecond precision
+  above it. Main39f has no view metric:
   its viewMs remains null/count0, never substituted from render. Raw SSR remains the
   common comparison metric; candidate view provides fresh precision on revalidation.
 - The visible browser footer is a presentation contract. Main39f initial navigation
   retains SSR text. The intermediate render-only navigation fix displayed total time;
-  ef3fee3 restores the footer interval by preferring finite view on navigation and
+  The view instrumentation restores the footer interval by preferring finite view on navigation and
   HTMX, retaining render only as a legacy/non-footer fallback. Confirm the exact
   executable embeds that server change, not just rebuilt browser assets. A304 has
   no current HTML footer at all: cached SSR text is old.
@@ -43,15 +44,13 @@ launch-time HEAD or executable directory name.
 
 The reference predates the shared build helper, but the CURRENT helper can be invoked
 by absolute path with the reference as cwd: its context follows cwd, not script location.
-After root grants the compiler lane, run its build --release --package rbit-server
+After the shared compiler lane is free, run its build --release --package rbit-server
 --locked there. Do not pass --manifest-path or override target/build/output dirs;
 those bypass helper safety. The helper uses the existing shared compiler namespace and
 copies generation-specific executables before releasing its lease. Preserve candidate
 and baseline runnable generations. Never compile or run npm watchers during timing.
-Reference Node dependencies occupy ~214MB logical bytes; no Rust output was created.
 No per-worktree target directory or independent compiler/intermediate namespace is
-needed. Current D free space was ~1.66TB at preparation, not an approved cache budget;
-shared helper retention/budget policy still governs build storage.
+needed. Shared helper retention/budget policy governs build storage.
 
 ## Isolated identical seed
 
@@ -109,7 +108,7 @@ The sampler validates every sample; failed redirects/content/status/timing inval
 rather than being silently filtered into faster medians. It records bytes/hash, status,
 header duration, full wire duration, raw SSR duration, view duration and selected
 non-secret headers. The example requires view only on the candidate. Its executable
-MUST include ef3fee3 (or equivalent integrated server code); an older release missing
+MUST include the view instrumentation; an older release missing
 view is an invalid candidate for that contract, not a0ms observation.
 
 Run anonymous cases /, /explore, /login as fresh200 GETs and separate explicit304
