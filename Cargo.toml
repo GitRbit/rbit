@@ -19,6 +19,7 @@ members = [
     "crates/rbit-localization",
     "crates/rbit-identity",
     "tools/rewrite-check",
+    "tools/render-probe",
 ]
 default-members = ["crates/rbit-server"]
 

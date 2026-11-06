@@ -40,6 +40,7 @@ jobs:
       - run: node --test scripts/tests/rewrite-*.test.mjs scripts/tests/workspace*.test.mjs
       - run: node scripts/rewrite/check.mjs
       - run: node scripts/workspace.mjs test --package rbit-contracts --package rbit-core --package rbit-kernel --package rbit-localization --package rbit-identity --package rbit-auth --package rbit-rewrite-check --locked
+      - run: node scripts/workspace.mjs test --package rbit-render-probe --no-default-features --features inheritance,segments,blocks,count-8 --locked
       - run: node scripts/rewrite/check-types.mjs
 
   lint:

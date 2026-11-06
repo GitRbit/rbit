@@ -4300,6 +4300,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbit-render-probe"
+version = "0.1.5"
+dependencies = [
+ "askama",
+ "serde_json",
+]
+
+[[package]]
 name = "rbit-rewrite-check"
 version = "0.1.5"
 dependencies = [

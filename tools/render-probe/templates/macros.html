@@ -1,0 +1,2 @@
+{% macro icon(kind) %}<svg viewBox="0 0 24 24" aria-hidden="true">{% if kind == "repo" %}<path d="M3 3h18v18H3z"/>{% else %}<circle cx="12" cy="12" r="8"/>{% endif %}</svg>{% endmacro %}
+{% macro row(row) %}<li data-key="{{ row.key }}">{% call icon("repo") %}{% endcall %}<span>{{ row.label }}</span></li>{% endmacro %}
