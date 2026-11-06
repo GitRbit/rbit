@@ -1,0 +1,255 @@
+.job-layout  {
+  display: grid;
+  grid-template-columns: 225px minmax(0,1fr);
+  gap: 28px;
+}
+
+.job-sidebar nav  {
+  display: grid;
+  gap: 2px;
+}
+
+.job-sidebar nav>a,.mobile-jobs nav>a  {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border-radius: var(--radius-ui);
+  color: var(--ink-muted);
+}
+
+.job-sidebar [aria-current],.mobile-jobs [aria-current]  {
+  background: var(--hover);
+  color: var(--ink);
+  font-weight: 550;
+}
+
+.job-main  {
+  min-width: 0;
+}
+
+.job-main .section-heading  {
+  margin-block-end: 20px;
+}
+
+.job-failure  {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+  margin-block-end: 18px;
+}
+
+.job-failure .icon  {
+  color: var(--danger);
+  margin-inline-end: 4px;
+}
+
+.job-failure>a  {
+  color: var(--ink-muted);
+}
+
+.mobile-jobs  {
+  display: none;
+}
+
+.steps>li  {
+  border-block-end: 1px solid var(--line);
+}
+
+.steps>li:last-child  {
+  border: 0;
+}
+
+.steps summary  {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+  min-height: 46px;
+  list-style: none;
+}
+
+.steps summary::-webkit-details-marker  {
+  display: none;
+}
+
+.steps summary:hover  {
+  background: var(--subtle);
+}
+
+.step-title  {
+  flex: 1;
+  font-weight: 550;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.disclosure  {
+  margin-inline-start: 10px;
+  color: var(--ink-faint);
+  transform: rotate(-90deg);
+}
+
+details[open]>summary .disclosure  {
+  transform: none;
+}
+
+.step-body  {
+  border-block-start: 1px solid var(--line);
+}
+
+.step-note  {
+  padding: 16px;
+  color: var(--ink-muted);
+}
+
+.step-note a  {
+  text-decoration: underline;
+}
+
+.log-toolbar  {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--subtle);
+  border-block-end: 1px solid var(--line);
+}
+
+.log-toolbar form  {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.log-search  {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.log-search .input  {
+  width: 200px;
+  font-size: 12px;
+}
+
+.log-toolbar .btn  {
+  font-size: 11px;
+  min-height: 30px;
+  padding-inline: 9px;
+}
+
+.log-window-note,.log-footer  {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 8px 14px;
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+.log-window-note a  {
+  text-decoration: underline;
+}
+
+.log-window-note>span  {
+  flex: 1;
+}
+
+.log-scroll  {
+  overflow: auto;
+  max-height: 510px;
+  background: var(--surface);
+  scrollbar-gutter: stable;
+}
+
+.log-lines  {
+  list-style: none;
+  padding: 8px 0;
+  margin: 0;
+  min-width: max-content;
+}
+
+.log-line  {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  padding: 1px 16px;
+  min-height: 24px;
+  scroll-margin: 40px;
+}
+
+.line-number  {
+  color: var(--ink-faint);
+  width: 42px;
+  text-align: right;
+  user-select: none;
+  flex-shrink: 0;
+  font: 11px var(--font-mono);
+}
+
+.log-line code  {
+  white-space: pre;
+  font-size: 11px;
+  line-height: 22px;
+}
+
+.log-line.error-line  {
+  background: var(--danger-subtle);
+}
+
+.log-line.error-line code  {
+  color: var(--danger);
+}
+
+.log-line:target  {
+  outline: 1px solid var(--ink-muted);
+  outline-offset: -1px;
+  background: var(--hover);
+}
+
+mark  {
+  color: var(--inverted-ink);
+  background: var(--inverted);
+  border-radius: 2px;
+}
+
+.log-footer  {
+  justify-content: space-between;
+  border-block-start: 1px solid var(--line);
+  background: var(--subtle);
+}
+
+.connection-notice  {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-block-end: 1px solid var(--line);
+  color: var(--warning);
+  font-size: 12px;
+}
+
+.connection-notice a  {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.proposed-note  {
+  color: var(--ink-muted);
+  font-size: 11px;
+  margin-block-end: 12px;
+}
+
+.proposed-note .btn  {
+  min-height: 26px;
+  font-size: 11px;
+}

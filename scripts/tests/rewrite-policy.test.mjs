@@ -70,6 +70,22 @@ test("source scan ignores cache roots and refuses directory links", () => {
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test("review prototypes obey source ceilings including their stylesheets", () => {
+  const root = mkdtempSync(join(tmpdir(), "rbit-prototype-sources-"));
+  try {
+    const directory = join(root, "docs", "design", "prototypes", "actions");
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(join(directory, "view.mjs"), "// renderer\n");
+    writeFileSync(join(directory, "prototype.css"), ":root {}\n".repeat(401));
+    writeFileSync(join(directory, "README.md"), "Review guidance\n");
+    const files = sourceFiles(root);
+    assert.deepEqual(files, ["docs/design/prototypes/actions/prototype.css", "docs/design/prototypes/actions/view.mjs"]);
+    assert.equal(authored("docs/design/prototypes/actions/prototype.css"), true);
+    assert.equal(authored("docs/design/prototypes/actions/README.md"), false);
+    assert.equal(checkSizes(new Map([[files[0], ":root {}\n".repeat(401)]]), { authoredSizeBaseline: [] }).length, 1);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test("feature retirement requires replacement and acceptance evidence", () => {
   const root = mkdtempSync(join(tmpdir(), "rbit-ledger-"));
   try {

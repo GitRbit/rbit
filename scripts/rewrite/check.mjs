@@ -30,7 +30,8 @@ const ADDED_EDGES = {
 const DEV_EDGES = { "rbit-web": ["rbit-identity", "rbit-kernel"] };
 
 export function authored(path) {
-  return /\.(rs|html|mjs|js|ps1|cs)$/.test(path) && !GENERATED.has(path)
+  const prototypeStyle = path.startsWith("docs/design/prototypes/") && path.endsWith(".css");
+  return (/\.(rs|html|mjs|js|ps1|cs)$/.test(path) || prototypeStyle) && !GENERATED.has(path)
     && !path.startsWith("crates/rbit-web/assets/vendor/")
     && !path.startsWith("crates/rbit-web/assets/mermaid/");
 }
@@ -46,7 +47,7 @@ export function sourceFiles(root) {
       else if (entry.isFile() && authored(next)) result.push(next);
     }
   }
-  for (const directory of ["crates", "scripts", "tools"]) {
+  for (const directory of ["crates", "scripts", "tools", "docs/design/prototypes"]) {
     try { visit(directory); } catch (error) { if (error.code !== "ENOENT") throw error; }
   }
   return result.sort();

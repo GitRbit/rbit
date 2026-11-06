@@ -1,0 +1,6 @@
+/* Read-only screen styles, organized by responsibility; no generated app assets. */
+@import url("/styles/base.css");
+@import url("/styles/overview.css");
+@import url("/styles/run.css");
+@import url("/styles/job.css");
+@import url("/styles/responsive.css");

@@ -1,0 +1,338 @@
+/* Review-only layout. Colours, fonts and component states come from the built app CSS. */
+*  {
+  box-sizing: border-box;
+}
+
+body  {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+a  {
+  text-underline-offset: 3px;
+}
+
+a:hover  {
+  text-decoration: underline;
+}
+
+h1,h2,h3,p,ol,ul,dl,dd  {
+  margin: 0;
+}
+
+h1  {
+  font-size: 21px;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: -.025em;
+}
+
+h2  {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+h3  {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+button,input,select,textarea  {
+  font: inherit;
+}
+
+button,summary,a  {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible  {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
+.btn  {
+  min-height: 36px;
+  text-decoration: none;
+}
+
+.input  {
+  min-height: 36px;
+}
+
+textarea.input  {
+  min-height: 76px;
+  padding-block: 8px;
+  resize: vertical;
+}
+
+.icon  {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.muted,.meta,.hint  {
+  color: var(--ink-muted);
+}
+
+.strong,.run-title  {
+  font-weight: 550;
+}
+
+.mono,code  {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.eyebrow  {
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-weight: 550;
+  margin-block-end: 8px;
+}
+
+.count  {
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.status  {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.status.success,.success  {
+  color: var(--success);
+}
+
+.status.failure,.failure  {
+  color: var(--danger);
+}
+
+.status.running,.status.queued,.status.approval  {
+  color: var(--warning);
+}
+
+.status.skipped,.status.cancelled,.status.waiting  {
+  color: var(--ink-muted);
+}
+
+.meta  {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  font-size: 12px;
+  margin-block-start: 6px;
+}
+
+.duration  {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.branch  {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.branch .icon  {
+  width: 12px;
+  height: 12px;
+}
+
+.branch bdi  {
+  overflow-wrap: anywhere;
+}
+
+.site-header  {
+  height: 62px;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding-inline: 32px;
+  border-block-end: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.brand  {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 650;
+  font-size: 20px;
+  letter-spacing: -.04em;
+}
+
+.brand img  {
+  object-fit: contain;
+}
+
+.repository-crumb  {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.repository-crumb>span:not(.badge)  {
+  color: var(--ink-faint);
+}
+
+.global-nav  {
+  margin-inline-start: auto;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.avatar  {
+  display: grid;
+  place-items: center;
+  width: 29px;
+  height: 29px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--subtle);
+  font-weight: 600;
+}
+
+.repository-nav  {
+  background: var(--surface);
+  border-block-end: 1px solid var(--line);
+  padding-inline: 32px;
+}
+
+.repository-nav nav  {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  max-width: 1400px;
+  margin-inline: auto;
+  overflow-x: auto;
+}
+
+.repository-nav a  {
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+  color: var(--ink-muted);
+  border-block-end: 2px solid transparent;
+}
+
+.repository-nav a[aria-current]  {
+  color: var(--ink);
+  font-weight: 550;
+  border-color: var(--ink);
+}
+
+.review-wrap  {
+  max-width: 1400px;
+  margin-inline: auto;
+  padding: 12px 32px 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.review-tools  {
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+
+.review-tools>summary  {
+  cursor: pointer;
+  padding-block: 7px;
+}
+
+.review-tools form  {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+  padding-block: 10px;
+}
+
+.review-tools label  {
+  display: grid;
+  gap: 4px;
+}
+
+.review-tools .input  {
+  max-width: 170px;
+  font-size: 12px;
+}
+
+.screen-switch  {
+  display: flex;
+  gap: 15px;
+  font-size: 11px;
+  padding-block: 7px;
+}
+
+.screen-switch [aria-current]  {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+main  {
+  max-width: 1400px;
+  margin-inline: auto;
+  padding: 30px 32px 64px;
+  min-height: 70vh;
+}
+
+.section-heading  {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-block-end: 24px;
+}
+
+.section-heading .muted:not(.meta)  {
+  margin-block-start: 5px;
+}
+
+.button-row  {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.title-line  {
+  display: flex;
+  align-items: start;
+  gap: 10px;
+}
+
+.title-line>.status  {
+  margin-block-start: 6px;
+}
+
+.title-line>.status>.icon  {
+  width: 20px;
+  height: 20px;
+}
+
+.box  {
+  border-radius: var(--radius-ui);
+  overflow: hidden;
+}
