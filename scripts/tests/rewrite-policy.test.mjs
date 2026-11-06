@@ -115,3 +115,35 @@ test("development harness sources count toward source ceilings but installed pac
       { authoredSizeBaseline: [] }).length, 1);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+
+test("locale adapters accept exact model contracts without widening application boundaries", () => {
+  const modelEdge = () => ({ name: "rbit-identity-models", kind: null,
+    uses_default_features: false, features: [] });
+  const packages = [
+    ...["rbit-services", "rbit-web"].map(name => ({ id: name, name, dependencies: [modelEdge()] })),
+    ...["rbit-identity-models", "rbit-identity", "rbit-kernel", "rbit-storage"].map(name => (
+      { id: name, name, dependencies: [] })),
+  ];
+  const metadata = { packages, workspace_members: packages.map(pkg => pkg.id) };
+  const baseline = { crates: ["rbit-services", "rbit-web", "rbit-storage"].map(name => (
+    { name, internalDependencies: [] })) };
+  assert.deepEqual(checkEdges(metadata, baseline), []);
+  for (const adapter of packages.slice(0, 2)) {
+    adapter.dependencies[0].features = ["password-work"];
+    assert.match(checkEdges(metadata, baseline).join("\n"), /contract dependency must disable defaults and request no features/);
+    adapter.dependencies[0].features = [];
+    adapter.dependencies[0].uses_default_features = true;
+    assert.match(checkEdges(metadata, baseline).join("\n"), /contract dependency must disable defaults and request no features/);
+    adapter.dependencies[0].uses_default_features = false;
+  }
+  const web = packages[1];
+  for (const name of ["rbit-identity", "rbit-kernel", "rbit-storage"]) {
+    web.dependencies.push({ name, kind: null });
+    assert.match(checkEdges(metadata, baseline).join("\n"), new RegExp(`rbit-web -> ${name}: forbidden dependency`));
+    web.dependencies.pop();
+  }
+  const models = packages.find(pkg => pkg.name === "rbit-identity-models");
+  models.dependencies.push({ name: "rbit-storage", kind: null });
+  assert.match(checkEdges(metadata, baseline).join("\n"), /rbit-identity-models -> rbit-storage: forbidden dependency/);
+});

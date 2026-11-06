@@ -13,6 +13,7 @@ autotests = false
 shared-shell-experiment = []
 
 [dependencies]
+rbit-identity-models.workspace = true
 zeroize.workspace = true
 rbit-core.workspace = true
 rbit-localization.workspace = true

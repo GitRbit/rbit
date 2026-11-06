@@ -4,6 +4,8 @@
 //! refused, and [`AccountStore::find_active_user`] never resolves a suspended user.
 
 mod fenced;
+#[cfg(test)]
+mod locale_tests;
 
 use super::pool::Pool;
 use rbit_core::{Account, AccountId, AccountKind, AccountName, Timestamp, User};
@@ -31,7 +33,7 @@ macro_rules! select_user {
 const SESSION_USER: &str = "SELECT a.id, a.kind, a.name, a.display_name, a.bio, a.created_at, l.email, l.is_admin, \
      '' AS password_hash, l.password_change_required, \
      CASE WHEN ?2 THEN EXISTS (SELECT 1 FROM notifications n WHERE n.user_id = a.id AND n.unread = 1) ELSE 0 END \
-     AS has_unread_notifications \
+     AS has_unread_notifications, CASE l.locale WHEN 'en' THEN 1 WHEN 'es' THEN 2 ELSE 0 END AS locale_choice \
      FROM accounts a JOIN user_logins l ON l.account_id = a.id WHERE a.id = ?1 AND l.suspended_at IS NULL";
 
 pub use rbit_identity_models::sessions::SessionUser;
@@ -42,6 +44,7 @@ struct SessionUserRow {
     user: UserRow,
     password_change_required: bool,
     has_unread_notifications: bool,
+    locale_choice: i64,
 }
 
 pub use rbit_identity_models::accounts::{LoginRecord, NewUser};
@@ -146,6 +149,7 @@ impl AccountStore {
                 user,
                 password_change_required: row.password_change_required,
                 has_unread_notifications: row.has_unread_notifications,
+                locale: super::preferences::locale_from_code(row.locale_choice),
             })
         })
         .transpose()

@@ -20,6 +20,7 @@ mod issue_meta;
 mod issue_search;
 mod issues;
 mod lfs;
+mod locale_preferences;
 mod mirrors;
 mod notification_email;
 mod notifications;

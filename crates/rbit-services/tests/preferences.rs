@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use rbit_core::{Config, User};
+use rbit_identity_models::AccountLocale;
 use rbit_services::{ServiceError, Services};
 use rbit_storage::{Database, KvStore, NewUser};
 
@@ -26,6 +27,22 @@ async fn user(database: &Database, name: &str) -> User {
         })
         .await
         .unwrap()
+}
+
+#[tokio::test]
+async fn account_languages_are_independent_and_reset_does_not_change_theme() {
+    let (_directory, database, services) = fixture().await;
+    let alice = user(&database, "alice").await;
+    let bob = user(&database, "bob").await;
+    services.preferences.set_theme(&alice, "dark").await.unwrap();
+    services.preferences.set_locale(&alice, Some(AccountLocale::Spanish)).await.unwrap();
+    services.preferences.set_locale(&bob, Some(AccountLocale::English)).await.unwrap();
+    assert_eq!(services.preferences.locale(&alice).await.unwrap(), Some(AccountLocale::Spanish));
+    assert_eq!(services.preferences.locale(&bob).await.unwrap(), Some(AccountLocale::English));
+    services.preferences.set_locale(&alice, None).await.unwrap();
+    assert_eq!(services.preferences.locale(&alice).await.unwrap(), None);
+    assert_eq!(services.preferences.theme(&alice).await.unwrap().as_deref(), Some("dark"));
+    assert_eq!(services.preferences.locale(&bob).await.unwrap(), Some(AccountLocale::English));
 }
 
 #[tokio::test]

@@ -13,7 +13,8 @@ const LOGIN_SNAPSHOT: &str = "SELECT a.id, a.kind, a.name, a.display_name, a.bio
 const FENCED_SESSION_USER: &str = "SELECT a.id, a.kind, a.name, a.display_name, a.bio, a.created_at, \
     l.email, l.is_admin, '' AS password_hash, l.password_change_required, \
     CASE WHEN ?2 THEN EXISTS (SELECT 1 FROM notifications n WHERE n.user_id = a.id AND n.unread = 1) ELSE 0 END \
-    AS has_unread_notifications FROM accounts a JOIN user_logins l ON l.account_id = a.id \
+    AS has_unread_notifications, CASE l.locale WHEN 'en' THEN 1 WHEN 'es' THEN 2 ELSE 0 END AS locale_choice \
+    FROM accounts a JOIN user_logins l ON l.account_id = a.id \
     WHERE a.id = ?1 AND l.suspended_at IS NULL AND l.authentication_epoch = ?3 \
     AND NOT EXISTS (SELECT 1 FROM credential_revocations r WHERE r.account_id = a.id \
     AND r.target_epoch = l.authentication_epoch AND r.completed_at IS NULL)";
@@ -67,6 +68,7 @@ impl AccountStore {
                 user,
                 password_change_required: row.password_change_required,
                 has_unread_notifications: row.has_unread_notifications,
+                locale: super::super::preferences::locale_from_code(row.locale_choice),
             })
         })
         .transpose()

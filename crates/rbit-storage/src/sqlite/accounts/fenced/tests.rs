@@ -21,5 +21,10 @@ async fn barrier_query_plans_use_exact_account_epoch_unique_lookup_not_history_s
             "{details:?}"
         );
         assert!(!details.iter().any(|detail| detail.starts_with("SCAN r")), "{details:?}");
+        if !login {
+            assert!(details.iter().any(|detail| detail.contains("SEARCH l USING INTEGER PRIMARY KEY")), "{details:?}");
+            assert!(!FENCED_SESSION_USER.contains("user_preferences"));
+            assert!(FENCED_SESSION_USER.contains("CASE l.locale"));
+        }
     }
 }

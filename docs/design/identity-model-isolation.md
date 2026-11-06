@@ -50,6 +50,19 @@ already public, so this adds no way to bypass an existing invariant or authoriza
 No DTO, serde field order, integer/enum representation, validation, PHC handling,
 session policy, error precedence, SQL, redb transaction or lifecycle behavior changes.
 
+## Locale adapter contracts
+
+Services and web consume `AccountLocale` directly from `rbit-identity-models` for
+account preference persistence and HTTP language negotiation. Their explicit normal
+model edges disable default features and request no features. The dependency guard
+allows these two contract seams without allowing a normal web dependency on the
+identity application or kernel, or adding storage/HTTP dependencies to models.
+
+This does not assert that the complete service or web graph is runtime-free:
+services already owns application composition, and web already owns HTTP rendering.
+The direct contract edge avoids using the feature-unified identity application as
+an indirect source of model types. Existing web admission fixtures remain dev-only.
+
 ## Stronger source proof
 
 The source check explicitly resolves the whole workspace with

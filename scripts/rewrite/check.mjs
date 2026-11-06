@@ -27,8 +27,8 @@ const FEATURE_EDGES = {
 };
 // Reviewed seams added to legacy adapters during incremental replacement.
 const ADDED_EDGES = {
-  "rbit-core": ["rbit-contracts", "rbit-access", "rbit-identity-models", "rbit-repositories", "rbit-collaboration"], "rbit-web": ["rbit-localization"],
-  "rbit-auth": ["rbit-identity", "rbit-access"], "rbit-services": ["rbit-identity", "rbit-kernel", "rbit-repositories", "rbit-collaboration"],
+  "rbit-core": ["rbit-contracts", "rbit-access", "rbit-identity-models", "rbit-repositories", "rbit-collaboration"], "rbit-web": ["rbit-localization", "rbit-identity-models"],
+  "rbit-auth": ["rbit-identity", "rbit-access"], "rbit-services": ["rbit-identity", "rbit-kernel", "rbit-repositories", "rbit-collaboration", "rbit-identity-models"],
   "rbit-server": ["rbit-kernel"],
   "rbit-storage": ["rbit-identity-models", "rbit-repositories", "rbit-collaboration"],
 };
@@ -94,6 +94,11 @@ export function checkEdges(metadata, baseline) {
       ? [...legacy.get(name), ...(ADDED_EDGES[name] ?? [])] : undefined);
     if (!allowed) { violations.push(`${name}: declare an explicit architecture policy before adding a workspace crate`); continue; }
     for (const dependency of pkg.dependencies) {
+      // Locale adapters consume contracts directly, never application features through this edge.
+      if (["rbit-services", "rbit-web"].includes(name) && dependency.name === "rbit-identity-models"
+        && (dependency.uses_default_features !== false || dependency.features?.length)) {
+        violations.push(`${name}: identity-models contract dependency must disable defaults and request no features`);
+      }
       const testOnly = dependency.kind === "dev" && (DEV_EDGES[name] ?? []).includes(dependency.name);
       if (members.has(dependency.name) && !allowed.includes(dependency.name) && !testOnly) {
         violations.push(`${name} -> ${dependency.name}: forbidden dependency (${dependency.kind ?? "normal"})`);

@@ -63,7 +63,7 @@ pub fn policy() -> SessionPolicy {
 pub fn store() -> Store {
     Store(Mutex::new(State {
         record: Some(record()),
-        user: Some(SessionUser { user: user(), password_change_required: true, has_unread_notifications: true }),
+        user: Some(SessionUser { user: user(), password_change_required: true, has_unread_notifications: true, locale: None }),
         renewal_survives: true,
         ..State::default()
     }))

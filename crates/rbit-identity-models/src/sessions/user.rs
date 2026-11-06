@@ -1,6 +1,6 @@
 //! Feature-owned session identity projection, supplied by one repository lookup.
 
-use crate::User;
+use crate::{AccountLocale, User};
 
 /// An active (not suspended) user as a signed-in request sees them, from
 /// the active-session account repository port.
@@ -11,4 +11,6 @@ pub struct SessionUser {
     pub password_change_required: bool,
     /// Something in the inbox is unread (always `false` when notifications are off).
     pub has_unread_notifications: bool,
+    /// `None` follows browser/default negotiation; diagnostic locales are never stored.
+    pub locale: Option<AccountLocale>,
 }

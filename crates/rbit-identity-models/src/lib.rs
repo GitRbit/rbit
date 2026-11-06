@@ -6,10 +6,12 @@
 pub mod account;
 pub mod accounts;
 pub mod credential;
+pub mod locale;
 pub mod names;
 pub mod sessions;
 pub mod token;
 
 pub use account::{Account, AccountId, AccountKind, User};
+pub use locale::AccountLocale;
 pub use names::{AccountName, Email};
 pub use token::TokenDigest;
