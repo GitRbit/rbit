@@ -44,6 +44,7 @@ jobs:
       - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --locked
       - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --features credentials --locked
       - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --features session-tokens --locked
+      - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --features sessions --locked
       - run: node scripts/workspace.mjs test --package rbit-contracts --package rbit-core --package rbit-kernel --package rbit-localization --package rbit-identity --package rbit-auth --package rbit-rewrite-check --locked
       - run: node scripts/workspace.mjs test --package rbit-render-probe --no-default-features --features inheritance,segments,blocks,count-8 --locked
       - run: node scripts/rewrite/check-types.mjs

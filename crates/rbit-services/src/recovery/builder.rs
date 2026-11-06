@@ -49,7 +49,9 @@ impl RecoveryServiceBuilder {
 
     pub fn build(self) -> RecoveryService {
         let ctx = self.ctx;
+        let fallback_session_effects = self.accounts.is_none().then(rbit_identity::sessions::effects::SessionEffectScope::new);
         RecoveryService {
+            fallback_session_effects,
             background: rbit_kernel::TaskLifecycle::new(),
             passwords: self.passwords,
             mail: self.mail.unwrap_or_else(|| MailService::new(ctx.clone())),

@@ -37,6 +37,7 @@ mod background;
 mod builder;
 mod email_events;
 mod password_changes;
+mod session_effects;
 pub use builder::RecoveryServiceBuilder;
 
 /// How long a password-reset link works.
@@ -94,6 +95,7 @@ pub struct VerifiedEmail {
 #[derive(Debug, Clone)]
 pub struct RecoveryService {
     background: TaskLifecycle,
+    fallback_session_effects: Option<rbit_identity::sessions::effects::SessionEffectScope>,
     passwords: PasswordWork,
     ctx: ServiceContext,
     mail: MailService,
@@ -237,15 +239,6 @@ impl RecoveryService {
     }
 
     // ------------------------------------------------------------------ helpers
-
-    async fn password_changed(&self, user: AccountId) -> Result<(), ServiceError> {
-        if let Some(accounts) = &self.accounts {
-            accounts.password_changed(user).await?;
-        } else {
-            self.ctx.kv.sessions().delete_for_account(user, None).await?;
-        }
-        Ok(())
-    }
 
     /// Stores a new token for the current address and returns its link secret.
     async fn issue(&self, account: &RecoveryAccount, purpose: TokenPurpose, lifetime: i64) -> Result<String, ServiceError> {

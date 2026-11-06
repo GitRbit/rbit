@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkIdentityFeatures, checkIdentityModelGraphs, checkIdentityTokenGraph } from "./identity-features.mjs";
+import { checkIdentityFeatures, checkIdentityModelGraphs, checkIdentityTokenGraph, checkIdentitySessionGraph } from "./identity-features.mjs";
 
 export const LIMIT = 400;
 const GENERATED = new Set([
@@ -131,7 +131,7 @@ export function check(root) {
     cwd: root, encoding: "utf8", windowsHide: true, stdio: ["pipe", "pipe", "pipe"], maxBuffer: 8 * 1024 * 1024,
   }));
   return { files: files.length, violations: [...checkSizes(files, baseline), ...checkEdges(metadata, baseline),
-    ...checkIdentityFeatures(metadata), ...checkIdentityModelGraphs(root), ...checkIdentityTokenGraph(root),
+    ...checkIdentityFeatures(metadata), ...checkIdentityModelGraphs(root), ...checkIdentityTokenGraph(root), ...checkIdentitySessionGraph(root),
     ...checkMigrations(root, baseline), ...checkLedger(root, ledger)] };
 }
 

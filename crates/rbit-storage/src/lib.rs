@@ -11,6 +11,7 @@
 
 pub mod error;
 mod identity_accounts;
+mod identity_sessions;
 pub mod kv;
 pub mod sealing;
 pub mod sqlite;

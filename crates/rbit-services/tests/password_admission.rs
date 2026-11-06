@@ -156,3 +156,5 @@ fn concurrent_password_replacement_cannot_overwrite_a_newer_hash() {
 }
 
 mod workflows;
+
+mod session_shutdown;

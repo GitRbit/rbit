@@ -43,6 +43,8 @@ pub struct ProfileService {
     throttle: ThrottleService,
 }
 
+mod password_changes;
+
 impl ProfileService {
     pub(crate) fn new(ctx: ServiceContext, accounts: AccountService, throttle: ThrottleService) -> Self {
         Self { ctx, accounts, throttle }
@@ -103,37 +105,6 @@ impl ProfileService {
         tracing::info!(user = %user.name(), "email changed");
         self.ctx.events.publish(DomainEvent::EmailChanged { user: user.id(), previous: user.email.to_string() });
         Ok(email)
-    }
-
-    /// Replaces the password after re-checking the current one.
-    pub async fn change_password(&self, user: &User, current_password: String, new_password: String) -> Result<(), ServiceError> {
-        self.validate_new_password(&new_password)?;
-        if current_password == new_password {
-            return Err(ServiceError::Invalid("choose a different password from your current password".to_owned()));
-        }
-        let verified = self.checked_password_hash(user, &current_password).await?;
-        let result = self.accounts.password_work().begin()?.verify_and_hash(current_password, verified.clone(), new_password).await;
-        // A hashing error follows successful verification; a worker panic does not
-        // reveal which step completed, so only this known-success case resets.
-        if matches!(&result, Err(rbit_identity::PasswordError::Hash(_))) {
-            self.finish_password_check(user, true)?;
-        }
-        let hash = result?;
-        self.finish_password_check(user, hash.is_some())?;
-        let hash = hash.ok_or(ServiceError::InvalidCredentials)?;
-        let service = self.clone();
-        let user = user.clone();
-        crate::credentials::finish_update(async move {
-            if !service.store().set_password_hash_if_current(user.id(), &hash, &verified).await? {
-                return Err(ServiceError::InvalidCredentials);
-            }
-            service.accounts.password_changed_preserving_current(user.id()).await?;
-            tracing::info!(user = %user.name(), "password changed");
-            AuditService::new(service.ctx.clone()).record(AuditEntry::new(AuditAction::PasswordChanged).by(&user)).await;
-            service.ctx.events.publish(DomainEvent::PasswordChanged { user: user.id() });
-            Ok(())
-        })
-        .await
     }
 
     fn validate_new_password(&self, password: &str) -> Result<(), ServiceError> {

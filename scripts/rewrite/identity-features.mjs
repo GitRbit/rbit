@@ -5,7 +5,7 @@ const consumers = {
   "rbit-core": { normal: [] },
   "rbit-storage": { normal: [] },
   "rbit-auth": { normal: ["credentials", "session-tokens"] },
-  "rbit-services": { normal: ["password-work"] },
+  "rbit-services": { normal: ["password-work", "sessions"] },
   "rbit-web": { dev: ["password-work"] },
 };
 const runtime = new Set(["argon2", "tokio", "tokio-util", "rbit-kernel", "zeroize", "base64", "sha2", "getrandom", "subtle"]);
@@ -56,4 +56,21 @@ export function checkIdentityTokenGraph(root) {
     cwd: root, encoding: "utf8", windowsHide: true, stdio: ["pipe", "pipe", "pipe"], maxBuffer: 8 * 1024 * 1024,
   });
   return tokenGraphViolations(tree);
+}
+
+export function sessionGraphViolations(tree) {
+  const packages = new Set(tree.trim().split(/\r?\n/).filter(Boolean).map(line => line.trim().split(/\s+/)[0]));
+  const required = ["rbit-identity", "base64", "sha2", "getrandom", "tokio", "tokio-util"];
+  if (required.some(name => !packages.has(name))) return ["identity sessions: incomplete normal dependency graph"];
+  return ["argon2", "rbit-kernel", "zeroize", "subtle"].filter(name => packages.has(name))
+    .map(name => `identity sessions: password-independent graph unexpectedly includes ${name}`);
+}
+
+/** Session lifecycle may use async ownership without pulling in password work. */
+export function checkIdentitySessionGraph(root) {
+  const tree = execFileSync("cargo", ["tree", "--package", "rbit-identity", "--no-default-features", "--features", "sessions",
+    "--edges", "normal", "--prefix", "none", "--locked"], {
+    cwd: root, encoding: "utf8", windowsHide: true, stdio: ["pipe", "pipe", "pipe"], maxBuffer: 8 * 1024 * 1024,
+  });
+  return sessionGraphViolations(tree);
 }

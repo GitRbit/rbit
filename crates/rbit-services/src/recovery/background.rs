@@ -14,7 +14,16 @@ impl RecoveryService {
     /// Stops event intake and waits for any current account-mail operation to finish.
     /// Cancelling the wait leaves ownership intact; a later wait resumes draining.
     pub async fn shutdown(&self) {
+        if let Some(scope) = &self.fallback_session_effects {
+            scope.close();
+        }
         self.background.shutdown().await;
+        if let Some(scope) = &self.fallback_session_effects {
+            let report = scope.shutdown().await;
+            if report.abnormal > 0 || report.returned_errors > 0 {
+                tracing::error!(?report, "standalone recovery finalization drained with failed or unproved outcomes");
+            }
+        }
         if self.background.state() == TaskState::Failed {
             tracing::error!("recovery email subscriber failed before shutdown completed");
         }

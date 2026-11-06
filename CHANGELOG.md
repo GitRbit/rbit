@@ -17,6 +17,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   limit. Exhausted or closed capacity returns a retryable 503 across HTML, API, Git
   and LFS without spending one-use password-reset or passkey-confirmation proofs.
   Password workers retain their slots until completion and zero their owned inputs.
+- Credential finalization and password-triggered session revocation retain their
+  per-instance ownership across request cancellation. Graceful shutdown closes
+  admission and drains admitted work before stores close.
 - Generic error pages disable HTMX history snapshots, preserving the history barrier
   when an error replaces a page whose URL contains a live recovery token.
 - Update `pulldown-cmark` to 0.13.6 for RUSTSEC-2026-0433, retaining the existing

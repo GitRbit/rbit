@@ -73,7 +73,14 @@ Isolated normal core metadata contains 24 packages and no Argon2, Tokio, kernel 
 zeroize edge. CI checks both explicit consumer features and resolved model-only
 normal graphs; workspace feature unification is not substituted for that evidence.
 
-Account registration/authentication/session application workflows and persistence
-ports remain the next production port. Core no longer owns these model definitions,
-but that fact alone does not complete account/session application ownership, MFA,
-recovery, external sign-in, tokens, or phase2.
+The model extraction alone did not transfer application workflows or persistence
+ports. Account registration/authentication now have their own subsequent production
+port; the session follow-up below advances another subset. Neither establishes full
+identity/access, MFA, recovery, external sign-in, personal-token or phase2 completion.
+
+
+The session application follow-up adds an explicit `sessions` capability layering
+Tokio/tokio-util over `session-tokens`, independently of Argon2. Services opts into
+password-work + sessions; model-only storage/core remain unchanged. Its new
+application/ownership tests are compiler-pending; the earlier matrix above proves
+only its original recorded scope. See [session application ownership](identity-session-application.md).
