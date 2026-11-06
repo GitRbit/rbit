@@ -116,6 +116,8 @@ public static class WorkspaceJobLauncher {
             if (ResumeThread(process.thread) == UInt32.MaxValue) throw new Win32Exception(Marshal.GetLastWin32Error());
             uint waitResult;
             while ((waitResult = WaitForSingleObject(process.process, 100)) == 258 && !File.Exists(stop)) { }
+            if (waitResult == UInt32.MaxValue) throw new Win32Exception(Marshal.GetLastWin32Error());
+            if (waitResult != 0 && waitResult != 258) throw new IOException("Unexpected owned process wait result");
             uint code; Require(GetExitCodeProcess(process.process, out code));
             // A supervisor exit is not evidence that workers exited. Stop the entire job.
             Require(TerminateJobObject(job, 0));

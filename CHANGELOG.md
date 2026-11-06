@@ -113,6 +113,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Failed or unexpected Windows development-process waits fail the command instead
+  of interpreting an unproved target state as successful completion.
+
 - The Windows development launcher preserves a completed target's exit code 259,
   so an unsuccessful command cannot be reported as successful.
 

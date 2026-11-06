@@ -3,6 +3,7 @@ import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promise
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
 import { isDeepStrictEqual } from "node:util";
 import test from "node:test";
 import { alive, leased } from "../workspace/lease.mjs";
@@ -164,6 +165,49 @@ test("Windows stop of a still-running target remains a successful owned shutdown
     assert.equal(await verifyTreeStopped(child), true, "OWNED_LAUNCH_STOP_PROOF");
     assert.equal(alive(pid), false, "OWNED_LAUNCH_TARGET_STOPPED");
   }, ctx.cleanup);
+});
+
+async function waitFault(t, returned) {
+  const ctx = await fixture(t);
+  const nativeSource = await readFile(new URL("../workspace/job-launcher.cs", import.meta.url), "utf8");
+  const call = "WaitForSingleObject(process.process, 100)";
+  assert.equal(nativeSource.split(call).length, 2, "exactly one wait call must be replaced in the private test copy");
+  // A delegate avoids a constant-condition compiler warning. This is injected return
+  // behavior, not evidence that the real operating system produced WAIT_FAILED.
+  const injected = nativeSource.replace(call, `new Func<uint>(() => ${returned})()`);
+  await writeFile(join(ctx.root, "job-launcher.cs"), injected);
+  await writeFile(join(ctx.root, "job-launcher.ps1"), await readFile(new URL("../workspace/job-launcher.ps1", import.meta.url)));
+  const token = randomUUID();
+  const stopFile = join(ctx.root, "stop");
+  const proofFile = join(ctx.root, "proof");
+  const argumentsFile = join(ctx.root, "arguments.json");
+  const ready = join(ctx.root, "suspended.json");
+  const gate = join(ctx.root, "resume");
+  await writeFile(argumentsFile, JSON.stringify(["-e", "setInterval(()=>{},1000)"]));
+  const child = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+    "-File", join(ctx.root, "job-launcher.ps1"), "-Executable", process.execPath,
+    "-ArgumentsFile", argumentsFile, "-Directory", ctx.root, "-StopFile", stopFile,
+    "-ProofFile", proofFile, "-Token", token, "-SuspendedReady", ready, "-ResumeGate", gate,
+  ], { cwd: ctx.root, env: process.env, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+  child.treeControl = { stopFile, proofFile, token };
+  const observation = observeOwnedLaunch(child);
+  ctx.cleanup = () => observation.cleanup();
+  await preservingLaunchFailure(async () => {
+    const pid = await waitFor(ready).catch(() => assert.fail("OWNED_WAIT_FAULT_TARGET_READY"));
+    assert.equal(alive(pid), true, "OWNED_WAIT_FAULT_KNOWN_TARGET");
+    await writeFile(gate, "resume");
+    assert.equal((await observation.wait(t.signal)).code, 125, "OWNED_WAIT_FAULT_EXIT");
+    assert.equal(await verifyTreeStopped(child), true, "OWNED_WAIT_FAULT_EMPTY_JOB_PROOF");
+    assert.equal(alive(pid), false, "OWNED_WAIT_FAULT_TARGET_GONE");
+  }, ctx.cleanup);
+}
+
+test("fault-injected Windows WAIT_FAILED fails while proving the known target is gone", { timeout: 30_000, skip: process.platform !== "win32" }, async (t) => {
+  await waitFault(t, "0xFFFFFFFFu");
+});
+
+test("fault-injected unexpected Windows wait result also rejects normal completion", { timeout: 30_000, skip: process.platform !== "win32" }, async (t) => {
+  await waitFault(t, "128u");
 });
 
 async function supervisor(ctx) {
