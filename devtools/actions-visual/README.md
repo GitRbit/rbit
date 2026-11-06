@@ -206,3 +206,12 @@ requires that switch to return the actual browser command line. The runner now
 supplies it explicitly. This addresses a concrete verifier prerequisite; it does
 not substitute assumed launch options for the returned command line or positive
 namespace/seccomp rows. No sandbox-disabling flag or policy change is added.
+
+The next isolated run completed positive browser sandbox verification and all 29
+image captures, but its separate interaction checks failed without a phase. This
+does not establish which control failed or approve the prototype. Interaction
+evidence now retains only a registered check stage and fixed assertion, timeout,
+selector, navigation, closed-target, protocol or unknown-operation category.
+Raw error messages, selector results, URLs, clipboard text and page values are not
+recorded. Every existing interaction assertion remains required; context cleanup
+is awaited and cannot replace a primary failure's diagnosis.

@@ -13,7 +13,9 @@ import { launchEvidence } from "./launch-evidence.mjs";
 import { initialNamespaceChroot, childNamespaceChroot } from "./namespace-probe.mjs";
 import { browserSeccompPolicy } from "./seccomp.mjs";
 import { environment, namespaceStartupReady } from "./environment.mjs";
-import { keyboard, logControls, noJavascript } from "./interactions.mjs";
+import { keyboard } from "./interactions.mjs";
+import { interactionChecks } from "./interaction-checks.mjs";
+import { InteractionFailure } from "./interaction-evidence.mjs";
 const output = "/artifacts";
 const source = "/work/docs/design/prototypes/actions";
 const started = performance.now();
@@ -50,31 +52,7 @@ async function fixture(model) {
     assert.deepEqual(owned.faults, [], "BROWSER_CONTAINMENT");
   } finally { await owned.context.close(); }
 }
-async function interactionChecks() {
-  const owned = await context({ viewport: { width: 1440, height: 1000 } });
-  try {
-    const page = await owned.context.newPage();
-    await page.goto(origin + "/job");
-    await logControls(page);
-    await page.goto(origin + "/job?q=error");
-    await page.locator('[data-match="next"]').click();
-    await page.locator("[data-log-feedback]").filter({ hasText: /Match \d+ of/ }).waitFor();
-    for (const [state, viewer, visible] of [
-      ["approval", "writer", true], ["approval", "reader", false],
-      ["deployment", "reviewer", true], ["deployment", "writer", false],
-    ]) {
-      await page.goto(`${origin}/run?state=${state}&viewer=${viewer}`);
-      assert.equal(await page.locator(`button[value="${state === "approval"
-        ? "approve-run" : "approve-deployment"}"]`).count() > 0, visible);
-    }
-    assert.deepEqual(owned.faults, []);
-  } finally { await owned.context.close(); }
-  const plain = await context({ javaScriptEnabled: false });
-  try {
-    await noJavascript(await plain.context.newPage());
-    assert.deepEqual(plain.faults, []);
-  } finally { await plain.context.close(); }
-}
+
 try {
   if (process.platform !== "linux" || process.getuid?.() === 0) throw new Error("LINUX_NONROOT_REQUIRED");
   report.sourceSha256 = await sourceDigest(source);
@@ -105,8 +83,11 @@ try {
     try { await fixture(model); }
     catch { report.failures.push({ fixture: model.id, code: "FIXTURE_ASSERTION_FAILED" }); }
   }
-  try { await interactionChecks(); }
-  catch { report.failures.push({ fixture: "interactions", code: "INTERACTION_ASSERTION_FAILED" }); }
+  try { await interactionChecks(context); }
+  catch (error) {
+    if (error instanceof InteractionFailure) report.interactions = error.evidence;
+    report.failures.push({ fixture: "interactions", code: "INTERACTION_ASSERTION_FAILED" });
+  }
   report.status = report.failures.length ? "failed" : "candidate-review-required";
 } catch (error) {
   if (error instanceof SandboxVerificationError) report.sandboxVerification = error.evidence;
