@@ -4226,6 +4226,7 @@ dependencies = [
  "pulldown-cmark",
  "rbit-access",
  "rbit-contracts",
+ "rbit-identity",
  "serde",
  "serde_json",
  "thiserror",
@@ -4276,7 +4277,11 @@ name = "rbit-identity"
 version = "0.1.5"
 dependencies = [
  "argon2",
+ "postcard",
+ "rbit-contracts",
  "rbit-kernel",
+ "serde",
+ "serde_json",
  "thiserror",
  "tokio",
  "zeroize",

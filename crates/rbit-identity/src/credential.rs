@@ -5,7 +5,9 @@
 
 use argon2::{Algorithm, Argon2, Params, PasswordHasher, PasswordVerifier, Version};
 
+#[cfg(feature = "password-work")]
 mod login;
+#[cfg(feature = "password-work")]
 pub(crate) use login::verify_login;
 
 #[derive(Debug, thiserror::Error)]
@@ -21,7 +23,8 @@ const DUMMY_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHRzb21lc2FsdA$
 
 /// Legacy stateless facade over Argon2id; it schedules directly without admission.
 ///
-/// Production callers migrating to bounded work use [`crate::PasswordWork`] instead.
+/// Production callers migrating to bounded work use `PasswordWork` with the
+/// `password-work` feature instead.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Passwords;
 
@@ -56,6 +59,7 @@ pub(crate) fn verify(password: &str, phc_hash: &str) -> bool {
     Passwords::argon2().verify_password(password.as_bytes(), phc_hash).is_ok()
 }
 
+#[cfg(feature = "password-work")]
 pub(crate) fn verify_dummy(password: &str) {
     let _ = verify(password, DUMMY_HASH);
 }

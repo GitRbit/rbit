@@ -50,7 +50,7 @@ rbit-workflow.workspace = true
 flate2.workspace = true
 
 [dev-dependencies]
-rbit-identity.workspace = true
+rbit-identity = { workspace = true, features = ["password-work"] }
 rbit-kernel.workspace = true
 proptest.workspace = true
 # Actions (F): the query counter shared with rbit-storage's tests.

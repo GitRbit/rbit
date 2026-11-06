@@ -9,38 +9,7 @@ use serde::{Deserialize, Serialize};
 
 pub use rbit_contracts::NameError;
 use rbit_contracts::names::validate_slug;
-
-/// Top-level paths that would collide with application routes if used as an account name.
-const RESERVED_ACCOUNT_NAMES: &[&str] = &[
-    "admin",
-    "api",
-    "assets",
-    "email",
-    "explore",
-    "favicon.ico",
-    "healthz",
-    "issues",
-    "login",
-    "logout",
-    "manifest.webmanifest",
-    "metrics",
-    "new",
-    "notifications",
-    "offline",
-    "org",
-    "organizations",
-    "orgs",
-    "password",
-    "pulls",
-    "readyz",
-    "robots.txt",
-    "settings",
-    "signup",
-    "sw.js",
-    "themes",
-    "user",
-    "users",
-];
+pub use rbit_identity::{AccountName, Email};
 
 /// Second-level paths reserved under `/{owner}/`.
 const RESERVED_REPO_NAMES: &[&str] = &["followers", "members", "people", "repositories", "settings", "stars", "teams"];
@@ -99,62 +68,9 @@ macro_rules! validated_name {
 }
 
 validated_name!(
-    /// The URL name of a user or organisation (`/{account}`). Case-insensitively unique.
-    AccountName, kind = "username", max = 39, reserved = RESERVED_ACCOUNT_NAMES
-);
-
-validated_name!(
     /// The URL name of a repository (`/{owner}/{repo}`). Unique per owner, case-insensitively.
     RepoName, kind = "repository name", max = 100, reserved = RESERVED_REPO_NAMES
 );
-
-/// A syntactically plausible email address. Deliverability is verified separately by
-/// sending a confirmation link; this type only rules out obvious garbage.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(try_from = "String", into = "String")]
-pub struct Email(String);
-
-impl Email {
-    pub const MAX_LEN: usize = 254;
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl FromStr for Email {
-    type Err = NameError;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        let value = value.trim();
-        let plausible = value.len() <= Self::MAX_LEN
-            && !value.chars().any(char::is_whitespace)
-            && value.split_once('@').is_some_and(|(local, domain)| {
-                !local.is_empty() && domain.contains('.') && !domain.starts_with('.') && !domain.ends_with('.')
-            });
-        if plausible { Ok(Self(value.to_owned())) } else { Err(NameError::InvalidEmail) }
-    }
-}
-
-impl TryFrom<String> for Email {
-    type Error = NameError;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        value.parse()
-    }
-}
-
-impl From<Email> for String {
-    fn from(email: Email) -> Self {
-        email.0
-    }
-}
-
-impl fmt::Display for Email {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
 
 #[cfg(test)]
 mod tests {

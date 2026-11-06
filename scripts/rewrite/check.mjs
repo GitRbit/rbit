@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { checkIdentityFeatures, checkIdentityModelGraphs } from "./identity-features.mjs";
 
 export const LIMIT = 400;
 const GENERATED = new Set([
@@ -20,7 +21,7 @@ const FEATURE_EDGES = {
 };
 // Reviewed seams added to legacy adapters during incremental replacement.
 const ADDED_EDGES = {
-  "rbit-core": ["rbit-contracts", "rbit-access"], "rbit-web": ["rbit-localization"],
+  "rbit-core": ["rbit-contracts", "rbit-access", "rbit-identity"], "rbit-web": ["rbit-localization"],
   "rbit-auth": ["rbit-identity", "rbit-access"], "rbit-services": ["rbit-identity", "rbit-kernel"],
   "rbit-server": ["rbit-kernel"],
 };
@@ -126,7 +127,8 @@ export function check(root) {
   const metadata = JSON.parse(execFileSync("cargo", ["metadata", "--no-deps", "--locked", "--format-version=1"], {
     cwd: root, encoding: "utf8", windowsHide: true, stdio: ["pipe", "pipe", "pipe"], maxBuffer: 8 * 1024 * 1024,
   }));
-  return { files: files.length, violations: [...checkSizes(files, baseline), ...checkEdges(metadata, baseline), ...checkMigrations(root, baseline), ...checkLedger(root, ledger)] };
+  return { files: files.length, violations: [...checkSizes(files, baseline), ...checkEdges(metadata, baseline),
+    ...checkIdentityFeatures(metadata), ...checkIdentityModelGraphs(root), ...checkMigrations(root, baseline), ...checkLedger(root, ledger)] };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

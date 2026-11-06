@@ -36,7 +36,7 @@ repository = "https://github.com/GitRbit/rbit"
 rbit-kernel = { path = "crates/rbit-kernel" }
 rbit-contracts = { path = "crates/rbit-contracts" }
 rbit-localization = { path = "crates/rbit-localization" }
-rbit-identity = { path = "crates/rbit-identity" }
+rbit-identity = { path = "crates/rbit-identity", default-features = false }
 rbit-access = { path = "crates/rbit-access" }
 rbit-core = { path = "crates/rbit-core" }
 rbit-storage = { path = "crates/rbit-storage" }

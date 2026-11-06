@@ -8,7 +8,7 @@ license.workspace = true
 
 [dependencies]
 rbit-access.workspace = true
-rbit-identity.workspace = true
+rbit-identity = { workspace = true, features = ["credentials"] }
 rbit-core.workspace = true
 argon2.workspace = true
 sha2.workspace = true
