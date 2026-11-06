@@ -168,3 +168,25 @@ jobs:
       - run: docker run --rm rbit-runner:ci --version
       - run: docker run --rm --entrypoint git rbit-runner:ci --version
       - run: docker run --rm --entrypoint docker rbit-runner:ci --version
+
+  required:
+    # Keep this display name stable for branch protection. Every validation job must
+    # be listed directly, including ancestors of other jobs, so no skip hides failure.
+    name: CI required
+    if: ${{ always() }}
+    needs: [rewrite-contracts, lint, deny, test, assets, release, runner-image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Summarize and require every validation
+        run: node scripts/ci/required-check.mjs
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
