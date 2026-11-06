@@ -140,6 +140,8 @@ Specify crash durability as a product contract before changing pragmas. Main cur
 
 ### Establish a reproducible main baseline
 
+Preserve main's established performance optimizations throughout the rewrite. The [original-speed retention audit](rewrite/original-speed-retention.md) records inherited fast paths and the evidence required when moving or replacing them. Each feature migration must retain its optimized cache, query, Git, allocation and rendering behavior or demonstrate an equivalent or better replacement under matching workloads.
+
 Build the pinned main commit and candidate with matching toolchain, release profile, assets and fixture snapshots. Keep builds idle during runtime measurements. Record source and executable hashes, CPU/RAM/disk/OS, configuration, compiler flags, dependency lockfiles, fixture refs and raw samples. Measure cold and warm behavior separately, alternate before/after runs, and report distributions across at least six paired rounds after warmup.
 
 The workload matrix includes small and large repositories, a 20,000-line source file, blame, a 150-file diff, refs/history/search, private ACL reads, mixed comments/pushes/webhooks, Actions scheduling and long logs. Exercise anonymous and authenticated users at concurrency 1, 4, 16 and 64, plus controlled overload and cancellation. Browser measurements must use visible, styled pages at fixed desktop/mobile viewports; scripted scroll probes and physical input results remain distinct.
