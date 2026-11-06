@@ -19,6 +19,7 @@
 //! and closing keywords in commits pushed to the default branch (or in the body of a
 //! merged pull request) close the issues they name.
 
+mod assignee_attachments;
 mod creation;
 pub mod hooks;
 pub mod json;
@@ -470,13 +471,6 @@ impl IssueService {
 
     // ------------------------------------------------------------------ triage
 
-    fn require_triage(actor: &User, ctx: &IssueContext) -> Result<(), ServiceError> {
-        if !issue_permissions(Some(actor), ctx.repo.access, &ctx.issue).can_triage {
-            return Err(ServiceError::Forbidden);
-        }
-        ctx.repo.ensure_writable()
-    }
-
     /// The labels of `repo` with these ids; an id that is not one of them is invalid.
     async fn repo_labels(&self, repo: RepoId, ids: &[LabelId]) -> Result<Vec<Label>, ServiceError> {
         let mut labels = Vec::with_capacity(ids.len());
@@ -498,51 +492,6 @@ impl IssueService {
             users.push(user);
         }
         Ok(users)
-    }
-
-    /// Assigns and unassigns (`add` wins over `remove`). Assignees must be able to push;
-    /// at most 10 remain.
-    pub async fn change_assignees(
-        &self,
-        actor: &User,
-        ctx: &IssueContext,
-        add: &[AccountId],
-        remove: &[AccountId],
-    ) -> Result<(), ServiceError> {
-        Self::require_triage(actor, ctx)?;
-        let add_ids = distinct(add);
-        let remove: Vec<AccountId> = distinct(remove).into_iter().filter(|id| !add_ids.contains(id)).collect();
-        let store = self.ctx.database.issue_meta();
-        let current: Vec<AccountId> = store.assignees_of(&[ctx.issue.id]).await?.into_iter().map(|(_, a)| a.id).collect();
-        let new: Vec<AccountId> = add_ids.iter().copied().filter(|id| !current.contains(id)).collect();
-        let users = self.validated_assignees(&ctx.repo.repo, &new).await?;
-        let kept = current.iter().filter(|id| !remove.contains(id)).count();
-        if kept + users.len() > MAX_ASSIGNEES {
-            return Err(invalid(format!("an issue can have at most {MAX_ASSIGNEES} assignees")));
-        }
-        self.spend(actor)?;
-        let now = Timestamp::now();
-        for id in current.iter().filter(|id| remove.contains(id)) {
-            if store.remove_assignee(ctx.issue.id, *id).await? {
-                self.timeline.record(ctx.issue.id, Some(actor.id()), TimelineEvent::Unassigned { assignee: *id }).await?;
-                self.publish(&ctx.issue, Some(actor.id()), IssueAction::Unassigned { assignee: *id });
-            }
-        }
-        for user in &users {
-            if store.add_assignee(ctx.issue.id, user.id(), actor.id(), now).await? {
-                self.timeline.record(ctx.issue.id, Some(actor.id()), TimelineEvent::Assigned { assignee: user.id() }).await?;
-                self.publish(&ctx.issue, Some(actor.id()), IssueAction::Assigned { assignee: user.id() });
-            }
-        }
-        Ok(())
-    }
-
-    /// Makes the thread's assignees exactly `assignees`.
-    pub async fn set_assignees(&self, actor: &User, ctx: &IssueContext, assignees: &[AccountId]) -> Result<(), ServiceError> {
-        Self::require_triage(actor, ctx)?;
-        let current = self.ctx.database.issue_meta().assignees_of(&[ctx.issue.id]).await?;
-        let remove: Vec<AccountId> = current.iter().map(|(_, a)| a.id).filter(|id| !assignees.contains(id)).collect();
-        self.change_assignees(actor, ctx, assignees, &remove).await
     }
 
     /// People who may be assigned in `repo`: names starting with `prefix`, at most 100.

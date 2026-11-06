@@ -124,3 +124,35 @@ no-op reads, transient publication and cancellation boundaries are unchanged.
 
 Direct factory-counter policy tests supplement SQL counters, which cannot detect
 pool-handle clones. These tests are source-prepared pending the shared Rust lane.
+
+## Assignee attachment application
+
+`rbit-collaboration::assignees::AssigneeAssignments` now owns both incremental and
+replacement assignment policy. The existing `IssueService` signatures delegate to
+one request-local static adapter; no model alias, SQL statement, transaction,
+background task, notification or audit contract changes.
+
+The current roster is read before validating new IDs. Only newly assigned IDs need
+an active user with push access: retaining an existing assignee does not revalidate
+suspension or grants. First-occurrence deduplication, add-wins conflicts, the ten-user
+limit, and removal-before-addition event order remain unchanged. No-ops still spend
+the content throttle and read the association clock. Replacement retains its first
+roster read followed by the delegated second read, without a snapshot guarantee.
+
+The database adapter is constructed only after authorization/archive checks and
+incremental deduplication. Separate association and timeline commits still permit a
+committed assignment without history/publication if the timeline write fails or the
+caller is cancelled. Repeating the existing assignment does not repair that gap.
+
+Independent policy tests cover ordered effects, validation/cap/throttle precedence,
+non-snapshot replacement and the committed-association failure gap. Actual-store
+fixtures pin authorization, active-user/grant queries, suspension of existing users,
+concurrent unique winners, event order, and work counts. Incremental owner addition
+retains four acquisitions/five statements; a repeated existing add uses one/one;
+replacement adds its initial read. A failing timeline insert retains four/four and
+no publication. These are source-prepared tests, pending Rust execution.
+
+Focused acceptance uses collaboration application tests and
+`rbit-services --test main issues::assignees_port`, then the complete issue/service
+and web suites, strict all-target Clippy, and the structural type checker. This does
+not retire the remaining issue/comment/reference/background collaboration workflows.

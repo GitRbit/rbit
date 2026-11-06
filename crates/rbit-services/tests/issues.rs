@@ -119,36 +119,7 @@ mod read_create_port;
 
 mod labels_port;
 
-#[tokio::test]
-async fn assignees_must_be_writers_and_at_most_ten() {
-    let fixture = Fixture::new().await;
-    let repo = fixture.repo(&fixture.alice).await;
-    fixture.services.collaborators.add(&fixture.alice, &repo, "bob", Permission::Write).await.unwrap();
-    fixture.services.collaborators.add(&fixture.alice, &repo, "carol", Permission::Read).await.unwrap();
-    let issues = &fixture.services.issues;
-    let number = fixture.create(&fixture.alice, "Crash", "").await;
-    let ctx = fixture.open(&fixture.alice, number).await;
-
-    let names: Vec<String> = issues.assignable(&repo, "").await.unwrap().into_iter().map(|a| a.name.to_string()).collect();
-    assert_eq!(names, ["alice", "bob"]);
-    assert!(matches!(issues.change_assignees(&fixture.alice, &ctx, &[fixture.carol.id()], &[]).await, Err(ServiceError::Invalid(_))));
-    issues.change_assignees(&fixture.alice, &ctx, &[fixture.bob.id(), fixture.alice.id()], &[]).await.unwrap();
-    issues.set_assignees(&fixture.alice, &ctx, &[fixture.bob.id()]).await.unwrap();
-    let assigned = &issues.metadata(&[ctx.issue.id]).await.unwrap()[&ctx.issue.id].assignees;
-    assert_eq!(assigned.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), ["bob"]);
-
-    let mut writers = Vec::new();
-    for i in 0..10 {
-        let writer = user(&fixture.database, &format!("w{i}")).await;
-        fixture.services.collaborators.add(&fixture.alice, &repo, writer.name().as_str(), Permission::Write).await.unwrap();
-        writers.push(writer.id());
-    }
-    assert!(matches!(issues.change_assignees(&fixture.alice, &ctx, &writers, &[]).await, Err(ServiceError::Invalid(_))), "ten at most");
-    let events = fixture.events_of(&fixture.alice, number).await;
-    let assigned = events.iter().filter(|e| matches!(e, TimelineEvent::Assigned { .. })).count();
-    let unassigned = events.iter().filter(|e| matches!(e, TimelineEvent::Unassigned { .. })).count();
-    assert_eq!((assigned, unassigned), (2, 1));
-}
+mod assignees_port;
 
 mod milestones_port;
 
