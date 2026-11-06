@@ -2,15 +2,17 @@
 
 This development-only contained mode uses the existing compiled `rbit-web`
 integration test binary, not a second release/LTO build or a mock HTML renderer.
-One ignored test seeds synthetic users, one public repository and one fork run
-awaiting approval through existing fixture services/stores. It listens only at
+One ignored test seeds synthetic users, one public repository and 26 bounded runs
+through existing fixture services/stores. Fork runs await approval; one valid
+job template is claimed by a synthetic registered runner through existing services.
+It listens only at
 `http://127.0.0.1:4189`, keeps SQLite/redb under a new container temp directory and
 never opens application configuration or user data. Ordinary tests do not start it.
 
 The Node owner executes only that exact ignored test. Its private process pipe
 transfers a new synthetic session cookie into a class-private field; stdout/stderr,
 cookie values, database files and browser storage are never logged or artifacted.
-A private fixed Unix socket accepts only revoke-writer and stop commands. Writer
+A private fixed Unix socket accepts only revoke-writer, finish-log-job and stop commands. Writer
 revocation uses the real collaborator service while the browser keeps GET/HEAD-only
 network access. Shutdown joins the HTTP server, closes fixture stores and confirms
 the actual process exit before acceptance. Unexpected exits/cleanup failures fail.
@@ -83,7 +85,37 @@ revocation acknowledgment, then its matching successful selected-root swap withi
 the existing ten-second bound. A response already in flight before revocation
 cannot falsely count as that proof. No manual polling or update cancellation is used.
 
+Three additional Overview candidates exercise the real 25-row newest page, its
+one-row older page, empty filters, a dirty focused branch input across a natural
+`#runs` replacement, mobile RTL/dark and actual native GET submission with JavaScript
+disabled. Filter/dispatch controls remain outside the refreshed result region.
+Dispatch execution and workflow-file editing are not exercised by these fixtures.
+
+Four Job candidates cover live desktop, mobile RTL/dark, native no-JavaScript details
+and a finished failure. The service-driven synthetic runner reports two steps and
+appends 1207 lines through the real masking/index/durability path. One runtime task
+token is deliberately appended privately; expected browser bytes contain only
+`task token ***`. The browser requires the exact masked raw digest before capturing
+any Job image. Only byte/line counts, SHA-256 and compression flags enter evidence;
+raw response bodies, runner credentials and task tokens are never artifacted.
+Live raw responses also traverse the page transport compressor, so their HTTP
+`Content-Encoding` may be Brotli, gzip or deflate. Evidence records this bounded
+transport category separately from the known live/final fixture storage stage;
+browser-decoded bytes must still match exactly. Final storage requires the actual
+gzip header plus the independent Rust fixture's final-state/raw-file proof.
+
+The job checks require the existing 1000-line preview, original 206–1205 line numbers,
+the larger 1205-line step page, and a keyboard-opened step surviving a natural poll.
+They close that long step for compact screenshots after proving its contents and
+open-state preservation. The private fixed completion command uses `task_state` to
+finish the known job and finalize its real gzip file; browser-decoded gzip must
+match the earlier live raw digest and byte count. Browser requests remain GET/HEAD
+only. No runner shell command, workflow execution or additional build profile runs.
+Total candidates are eleven, under the unchanged forty-image / 64 MiB ceiling.
+
 Node fake-process/file/DOM-contract tests are not browser proof. Rust compilation,
 real isolated Linux execution, actual asset compatibility and human image review
-remain required. Overview pages, deployment text drafts, full screen-reader review
-and release performance remain outside this first bounded fixture.
+remain required. Deployment text drafts, workflow dispatch, full screen-reader review
+and release performance remain outside this bounded fixture. Job polling retains
+the existing step-open contract; this does not claim to preserve summary focus across
+a replaced Job subtree. Run approval and Overview filter focus are explicitly checked.

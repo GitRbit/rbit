@@ -1,0 +1,72 @@
+// Real runner-backed step windows and gzip downloads; only fixed private completion.
+import assert from "node:assert/strict";
+import { productionJob } from "./production-policy.mjs";
+import { session, checkPage, openPage, replaced } from "./production-page.mjs";
+import { rawLogEvidence } from "./production-log-evidence.mjs";
+
+async function boundedPreview(page) {
+  const step = page.locator('details[data-step="0"]');
+  const rows = step.locator(".code-line");
+  assert.equal(await rows.count(), 1000);
+  assert.equal(await step.locator('.line-number[data-line="206"]').count(), 1);
+  assert.equal(await step.locator('.line-number[data-line="1205"]').count(), 1);
+  assert.equal(await step.locator('.line-number[data-line="1"]').count(), 0);
+  assert.equal(await step.locator("synthetic").count(), 0);
+  assert.ok((await step.locator(".line-code").allTextContents()).includes("line 0500: <synthetic> & output"));
+}
+
+export async function jobChecks(browser, fixture, capture, stage, record) {
+  let live;
+  stage("job-live-desktop");
+  await session(browser, fixture, { width: 1440 }, async (page, faults) => {
+    await openPage(page, productionJob);
+    assert.equal(await page.locator("#job h1").textContent(), "Build / stable <synthetic> & matrix");
+    await boundedPreview(page);
+    const summary = page.locator('details[data-step="0"] > summary');
+    await summary.focus(); await page.keyboard.press("Enter");
+    assert.equal(await page.locator('details[data-step="0"]').getAttribute("open"), "");
+    await replaced(page, "#job");
+    assert.equal(await page.locator('details[data-step="0"]').getAttribute("open"), "");
+    // Keep the image compact after proving the full preview and user-open state.
+    await page.locator('details[data-step="0"] > summary').click();
+    live = await rawLogEvidence(page, false);
+    await checkPage(page, faults); await capture(page, "production-job-live-desktop");
+    stage("step-longer-window");
+    await openPage(page, `${productionJob}/logs?step=0`);
+    assert.equal(await page.locator("#step .code-line").count(), 1205);
+    assert.equal(await page.locator('#step .line-number[data-line="1"]').count(), 1);
+    await checkPage(page, faults);
+  });
+  stage("job-mobile-rtl");
+  await session(browser, fixture, { width: 360, rtl: true, dark: true }, async (page, faults) => {
+    await openPage(page, productionJob);
+    assert.equal(await page.locator("#job").getAttribute("lang"), "ar-XB");
+    assert.equal(await page.locator("#job").getAttribute("dir"), "rtl");
+    assert.equal(await page.locator("html").getAttribute("data-theme"), "dna-dark");
+    await boundedPreview(page); await checkPage(page, faults);
+    await capture(page, "production-job-live-mobile-rtl-dark");
+  });
+  stage("job-nojs-native-details");
+  await session(browser, fixture, { width: 360, javascript: false }, async (page, faults) => {
+    await openPage(page, productionJob);
+    const step = page.locator('details[data-step="0"]');
+    await step.locator("summary").click(); assert.equal(await step.getAttribute("open"), "");
+    await step.locator("summary").click(); assert.equal(await step.getAttribute("open"), null);
+    assert.equal(await page.locator(`a[href="${productionJob}/logs/raw"]`).getAttribute("hx-boost"), "false");
+    await checkPage(page, faults, false); await capture(page, "production-job-live-mobile-nojs");
+  });
+  stage("job-private-finish"); await fixture.finishLogJob();
+  await session(browser, fixture, { width: 1440 }, async (page, faults) => {
+    await openPage(page, productionJob);
+    assert.equal(await page.locator("#job").getAttribute("hx-trigger"), null);
+    const rerun = page.locator(`form[action="${productionJob}/rerun"]`);
+    assert.equal(await rerun.getAttribute("method"), "post");
+    await boundedPreview(page);
+    // Finished failure opens the failed step by default; close for compact image.
+    await page.locator('details[data-step="0"] > summary').click();
+    const final = await rawLogEvidence(page, true);
+    assert.equal(final.sha256, live.sha256); assert.equal(final.bytes, live.bytes);
+    record({ live, final, previewLines: 1000, stepLines: 1205 });
+    await checkPage(page, faults); await capture(page, "production-job-finished-desktop");
+  });
+}

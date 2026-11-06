@@ -14,6 +14,8 @@ import { fileEvidence, publicAssets, requireLinuxBinary } from "./production-fil
 import { fixtureLimits, productionBinary, productionAssetRoot } from "./production-policy.mjs";
 import { ProductionFixture } from "./production-process.mjs";
 import { productionChecks } from "./production-checks.mjs";
+import { overviewChecks } from "./production-overview.mjs";
+import { jobChecks } from "./production-job.mjs";
 
 const started = performance.now();
 const report = { schema: 1, status: "invalid", mode: "production-run", runtime: "debug-functional",
@@ -76,6 +78,8 @@ try {
   stage = "fixture-ready";
   fixture = new ProductionFixture();
   await fixture.ready();
+  await overviewChecks(browser, fixture, capture, value => { stage = value; });
+  await jobChecks(browser, fixture, capture, value => { stage = value; }, value => { report.logChecks = value; });
   await productionChecks(browser, fixture, capture, value => { stage = value; });
   report.status = "candidate-review-required";
 } catch (error) {
