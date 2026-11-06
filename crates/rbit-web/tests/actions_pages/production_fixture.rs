@@ -5,15 +5,21 @@ use super::*;
 const MODE: &str = "isolated-linux-v1";
 const COMMAND_LIMIT: u64 = 32;
 
+#[cfg(target_os = "linux")]
+#[path = "production_fixture/log_job.rs"]
+mod log_job;
+
 #[derive(Debug, PartialEq, Eq)]
 enum Control {
     RevokeWriter,
+    FinishLogJob,
     Stop,
 }
 impl Control {
     fn parse(bytes: &[u8]) -> Option<Self> {
         match bytes {
             b"revoke-writer\n" => Some(Self::RevokeWriter),
+            b"finish-log-job\n" => Some(Self::FinishLogJob),
             b"stop\n" => Some(Self::Stop),
             _ => None,
         }
@@ -24,6 +30,7 @@ impl Control {
 fn control_protocol_has_no_paths_urls_or_arbitrary_commands() {
     assert_eq!(Control::parse(b"revoke-writer\n"), Some(Control::RevokeWriter));
     assert_eq!(Control::parse(b"stop\n"), Some(Control::Stop));
+    assert_eq!(Control::parse(b"finish-log-job\n"), Some(Control::FinishLogJob));
     for value in [b"".as_slice(), b"STOP\n", b"stop\nextra", b"http://example.test", b"/private/path"] {
         assert_eq!(Control::parse(value), None);
     }
@@ -70,7 +77,7 @@ mod linux {
         assert_ne!(uid, 0, "FIXTURE_ROOT_REFUSED");
     }
 
-    async fn seed(fixture: &Fixture) {
+    pub(super) async fn seed(fixture: &Fixture) {
         fixture.database.actions_settings().set_enabled(fixture.repo_id().await, true, Timestamp::now()).await.unwrap();
         let labels = vec!["ubuntu-latest".to_owned()];
         let jobs = [NewJob {
@@ -132,6 +139,7 @@ mod linux {
         let controls = UnixListener::bind(SOCKET).expect("FIXTURE_CONTROL_BIND_REFUSED");
         let fixture = Fixture::new_with_public_url("http://127.0.0.1:4189").await;
         seed(&fixture).await;
+        let log_job = super::log_job::LogJob::seed(&fixture).await;
         let repo = fixture.services.repositories.open(Some(&fixture.alice), "alice", "rocket").await.unwrap();
         fixture.services.collaborators.add(&fixture.alice, &repo, "bob", Permission::Write).await.unwrap();
         let router = fixture.router.clone().layer(Extension(LocaleResolver::new(Locale::English, true).unwrap()));
@@ -161,6 +169,10 @@ mod linux {
                     fixture.services.collaborators.remove(&fixture.alice, &repo, "bob").await.unwrap();
                     stream.write_all(b"REVOKED\n").await.expect("FIXTURE_ACK_REFUSED");
                 }
+                Control::FinishLogJob => {
+                    log_job.finish(&fixture).await;
+                    stream.write_all(b"LOG-FINISHED\n").await.expect("FIXTURE_ACK_REFUSED");
+                }
                 Control::Stop => break stream,
             }
         };
@@ -171,6 +183,7 @@ mod linux {
             .expect("FIXTURE_JOIN_REFUSED")
             .expect("FIXTURE_SERVE_REFUSED");
         drop(repo);
+        drop(log_job);
         let Fixture { _directory: directory, database, services, router, alice, owner, reader } = fixture;
         drop(router);
         services.shutdown().await;

@@ -1,6 +1,8 @@
 // One synthetic production run, never a caller-selected server or executable.
 export const productionOrigin = "http://127.0.0.1:4189";
 export const productionRun = "/alice/rocket/actions/runs/1";
+export const productionOverview = "/alice/rocket/actions";
+export const productionJob = "/alice/rocket/actions/runs/2/jobs/2";
 export const productionSocket = "/tmp/actions-production/control.sock";
 export const productionTest = "actions_pages::production_fixture::serve";
 export const productionAssetRoot = "/home/runner/work/rbit/rbit/crates/rbit-web/assets";
@@ -25,13 +27,18 @@ export function publicAssetPath(path) {
 
 // Repository navigation preloads are actual application GET behavior. Permit only
 // these exact synthetic-repository read routes, not arbitrary repository prefixes.
-const readPaths = new Set([productionRun, "/alice/rocket", "/alice/rocket/actions",
+const readPaths = new Set([productionRun, "/alice/rocket/actions/runs/2", productionJob,
+  `${productionJob}/logs`, `${productionJob}/logs/raw`, "/alice/rocket", productionOverview,
   "/alice/rocket/actions/workflows/ci.yml", ...["issues", "pulls", "commits", "branches", "tags", "releases", "activity"]
     .map(name => `/alice/rocket/${name}`), "/manifest.webmanifest", "/sw.js"]);
 export function allowedProductionRequest(value, method) {
   if (!["GET", "HEAD"].includes(method)) return false;
   try {
     const url = new URL(value);
+    if (url.pathname === `${productionJob}/logs`
+      && (url.searchParams.getAll("step").length !== 1 || !["0", "1"].includes(url.searchParams.get("step"))
+        || [...url.searchParams.keys()].some(key => key !== "step"))) return false;
+    if ([productionJob, `${productionJob}/logs/raw`].includes(url.pathname) && url.search) return false;
     return url.origin === productionOrigin && !url.username && !url.password
       && (readPaths.has(url.pathname) || (url.pathname.startsWith("/assets/") && publicAssetPath(url.pathname.slice(8))));
   } catch { return false; }

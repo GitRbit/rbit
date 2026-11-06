@@ -46,10 +46,16 @@ test("nextest identity selects exactly the existing Linux web integration target
 });
 
 test("production browser egress permits fixed synthetic reads and public asset types only", () => {
-  for (const path of ["/alice/rocket/actions/runs/1", "/alice/rocket/commits", "/assets/app.bundle.js?v=123", "/assets/vendor/htmx.min.js"]) {
+  for (const path of ["/alice/rocket/actions/runs/1", "/alice/rocket/actions/runs/2", "/alice/rocket/actions/runs/2/jobs/2",
+    "/alice/rocket/actions/runs/2/jobs/2/logs?step=0", "/alice/rocket/actions/runs/2/jobs/2/logs/raw",
+    "/alice/rocket/commits", "/assets/app.bundle.js?v=123", "/assets/vendor/htmx.min.js"]) {
     assert.equal(allowedProductionRequest(productionOrigin + path, "GET"), true);
   }
-  for (const path of ["/alice/rocket/actions/runs/2", "/alice/private/actions/runs/1", "/api/v1/users", "/assets/.env", "/assets/private.sqlite"]) {
+  for (const path of ["/alice/rocket/actions/runs/3", "/alice/private/actions/runs/1", "/api/v1/users", "/assets/.env", "/assets/private.sqlite"]) {
+    assert.equal(allowedProductionRequest(productionOrigin + path, "GET"), false);
+  }
+  for (const path of ["/alice/rocket/actions/runs/2/jobs/3", "/alice/rocket/actions/runs/2/jobs/2/logs?step=9",
+    "/alice/rocket/actions/runs/2/jobs/2/logs?step=0&step=1", "/alice/rocket/actions/runs/2/jobs/2/logs/raw?file=private"]) {
     assert.equal(allowedProductionRequest(productionOrigin + path, "GET"), false);
   }
   for (const method of ["POST", "PUT", "DELETE", "CONNECT"]) assert.equal(allowedProductionRequest(productionOrigin + "/alice/rocket/actions/runs/1", method), false);

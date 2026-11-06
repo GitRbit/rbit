@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { EventEmitter } from "node:events";
 import { readFile } from "node:fs/promises";
-import { ProductionFixture, parseFixtureReady } from "../../devtools/actions-visual/production-process.mjs";
+import { ProductionFixture, parseFixtureReady, fixtureCommand } from "../../devtools/actions-visual/production-process.mjs";
 import { productionBinary, productionOrigin, fixtureArguments } from "../../devtools/actions-visual/production-policy.mjs";
 
 const token = "a".repeat(43);
@@ -42,6 +42,20 @@ test("cookies remain private and are attached only to the fixed loopback origin"
   await owned.owner.stop();
   assert.deepEqual(events, ["stop\n"]);
   assert.equal(owned.owner.status().closed, true);
+});
+
+test("finishing the synthetic log job has one fixed private command and no caller-selected target", async () => {
+  const commands = [];
+  const owned = fake(async command => {
+    commands.push(command);
+    if (command === "stop\n") owned.child.emit("close", 0, null);
+  });
+  owned.ready(); await owned.owner.ready();
+  await owned.owner.finishLogJob(); await owned.owner.stop();
+  assert.deepEqual(commands, ["finish-log-job\n", "stop\n"]);
+  for (const command of ["finish-log-job 9\n", "finish-log-job /private\n", "finish-log-job\nstop\n"]) {
+    await assert.rejects(fixtureCommand(command), /FIXTURE_COMMAND_REFUSED/);
+  }
 });
 
 test("the private frame starts a new line after serial libtest's unterminated test name", async () => {

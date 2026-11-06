@@ -18,7 +18,7 @@ async function within(promise, ms, code) {
   finally { clearTimeout(timer); }
 }
 export function fixtureCommand(command) {
-  const expected = { "revoke-writer\n": "REVOKED\n", "stop\n": "STOPPED\n" }[command];
+  const expected = { "revoke-writer\n": "REVOKED\n", "finish-log-job\n": "LOG-FINISHED\n", "stop\n": "STOPPED\n" }[command];
   if (!expected) return Promise.reject(Error("FIXTURE_COMMAND_REFUSED"));
   return new Promise((resolve, reject) => {
     const socket = createConnection({ path: productionSocket });
@@ -81,6 +81,7 @@ export class ProductionFixture {
     await context.addCookies([{ name: "rbit_session", value: this.#token, url: productionOrigin, httpOnly: true, sameSite: "Lax" }]);
   }
   async revokeWriter() { this.healthy(); await this.#command("revoke-writer\n"); this.healthy(); }
+  async finishLogJob() { this.healthy(); await this.#command("finish-log-job\n"); this.healthy(); }
   status() { return { closed: !!this.#exit, exit: this.#exit ?? null }; }
   stop() {
     return this.#stop ??= (async () => {
