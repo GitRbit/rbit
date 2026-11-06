@@ -1,0 +1,23 @@
+  {% if steps.is_empty() %}
+  <div class="box mt-6">
+    {% call ui::empty_state("clock", "Not started yet", "The steps and their logs appear here once a runner takes this job.") %}{% endcall %}
+  </div>
+  {% else %}
+  <ol class="box mt-6 divide-y divide-line overflow-hidden">
+    {% for step in steps %}
+    <li>
+      <details {% if step.open %}open {% endif %}data-step="{{ step.number }}" data-state="{{ step.look.key }}">
+        <summary class="flex min-h-11 cursor-pointer items-center gap-3 px-3 hover:bg-subtle">
+          {% let look = step.look %}
+          {% include "actions/state.html" %}
+          <span class="min-w-0 flex-1 truncate text-[13px] font-medium">{{ step.name }}</span>
+          {% if let Some(duration) = step.duration %}<span class="shrink-0 whitespace-nowrap text-xs tabular-nums text-ink-faint">{{ duration }}</span>{% endif %}
+        </summary>
+        <div class="border-t border-line">
+          {% include "actions/step_body.html" %}
+        </div>
+      </details>
+    </li>
+    {% endfor %}
+  </ol>
+  {% endif %}
