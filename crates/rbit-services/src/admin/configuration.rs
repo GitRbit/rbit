@@ -89,6 +89,7 @@ impl AdminService {
 pub fn validate_configuration(config: &Config) -> Result<(), String> {
     config.auth.validate()?;
     config.branding.validate()?;
+    config.security.password_job_capacity()?;
     crate::instance::validate_site_name(&config.server.site_name).map_err(|e| e.to_string())?;
     let url = reqwest::Url::parse(&config.server.public_url).map_err(|_| "public URL must be an absolute HTTP or HTTPS URL")?;
     if !matches!(url.scheme(), "http" | "https")
