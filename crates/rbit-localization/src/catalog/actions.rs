@@ -1,5 +1,9 @@
 //! Typed text for the Actions run presentation; values are plain Unicode text.
 use super::{Catalog, LocalizedText};
+mod display;
+pub use display::ActionsDisplay;
+const RERUN_PREFIX: &str = "Re-run ";
+const SUMMARY_SUFFIX: &str = " summary";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ActionsMessage<'a> {
@@ -64,14 +68,14 @@ impl Catalog {
             ActionsMessage::Expires => "expires",
             ActionsMessage::RerunJob { name } => {
                 let mut output = String::new();
-                self.literal(&mut output, "Re-run ");
+                self.literal(&mut output, RERUN_PREFIX);
                 self.argument(&mut output, name);
                 return LocalizedText(output.into());
             }
             ActionsMessage::Summary { job } => {
                 let mut output = String::new();
                 self.argument(&mut output, job);
-                self.literal(&mut output, " summary");
+                self.literal(&mut output, SUMMARY_SUFFIX);
                 return LocalizedText(output.into());
             }
         };

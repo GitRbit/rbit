@@ -202,11 +202,11 @@ impl RunPage {
         super::RunText::new(self.page.locale)
     }
 
-    pub fn rerun_label(&self, name: &str) -> rbit_localization::LocalizedText {
-        rbit_localization::Catalog::new(self.page.locale).actions(rbit_localization::ActionsMessage::RerunJob { name })
+    pub fn rerun_label<'a>(&self, name: &'a str) -> rbit_localization::ActionsDisplay<'a> {
+        rbit_localization::Catalog::new(self.page.locale).actions_display(rbit_localization::ActionsMessage::RerunJob { name })
     }
 
-    pub fn summary_label(&self, job: &str) -> rbit_localization::LocalizedText {
-        rbit_localization::Catalog::new(self.page.locale).actions(rbit_localization::ActionsMessage::Summary { job })
+    pub fn summary_label<'a>(&self, job: &'a str) -> rbit_localization::ActionsDisplay<'a> {
+        rbit_localization::Catalog::new(self.page.locale).actions_display(rbit_localization::ActionsMessage::Summary { job })
     }
 }

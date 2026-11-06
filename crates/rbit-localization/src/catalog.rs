@@ -6,7 +6,7 @@ use crate::{Locale, pseudo};
 mod overview;
 pub use overview::ActionsOverviewMessage;
 mod actions;
-pub use actions::ActionsMessage;
+pub use actions::{ActionsDisplay, ActionsMessage};
 mod display;
 pub use display::LocalizedDisplay;
 use display::{PAGE_OF_SEPARATOR, PAGE_PREFIX, STARS_SUFFIX, SUBTITLE_PREFIX, SUBTITLE_SUFFIX};

@@ -151,3 +151,12 @@ listing implementation. This removes specific source-level formatting/String wor
 no allocator-count, end-to-end latency or renderer-winner claim follows without a
 controlled measurement. The default renderer and shared-shell experiment use the
 same methods and exact full/fragment owned-catalog equivalence fixtures.
+
+
+Actions run rerun/summary labels use the same deferred plain-Display contract via
+`Catalog::actions_display` and borrowed `ActionsDisplay`. English dynamic labels write
+shared catalog literals and existing job names directly to the destination. Diagnostic
+locales delegate to the existing owned Actions catalog without changing its output.
+RunPage methods return borrowed labels only at render time; templates introduce no
+English literals or HTML-safety bypass. This removes introduced per-label owned
+formatting buffers at the source level; no allocator-count or latency claim is made.
