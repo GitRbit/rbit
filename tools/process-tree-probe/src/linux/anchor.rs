@@ -68,7 +68,7 @@ impl Drop for AnchoredGroup {
             // Failure cleanup may request a kill only while the unreaped anchor is
             // still owned. A failed kill/wait is not a successful completion claim.
             if self.authority.check().is_ok() {
-                let _ = kill_process_group(self.pid, Signal::Kill);
+                let _ = kill_process_group(self.pid, Signal::KILL);
             }
             self.authority.revoke();
             let _ = child.wait();

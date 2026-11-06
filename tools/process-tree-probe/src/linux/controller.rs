@@ -41,7 +41,7 @@ pub(super) async fn verify(output: Option<PathBuf>) -> Result<()> {
         evidence["unrelated_sibling_survived"] = true.into();
         cases.push(evidence);
     }
-    sibling.signal(Signal::Kill)?;
+    sibling.signal(Signal::KILL)?;
     wire::until(|| sibling_process.exited()).await?;
     sibling.reap()?;
     let report = serde_json::json!({

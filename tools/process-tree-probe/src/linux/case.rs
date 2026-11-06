@@ -113,7 +113,7 @@ async fn observe(owner: &mut Case, scenario: &str, directory: &Path, leader: &Id
             fixture.kill()?;
         }
     } else {
-        owner.anchor.as_ref().context("anchor missing")?.signal(Signal::Term)?;
+        owner.anchor.as_ref().context("anchor missing")?.signal(Signal::TERM)?;
         if scenario == "escalation" {
             for role in ["root", "helper", "grandchild"] {
                 wire::until(|| Ok(directory.join(format!("{role}-term")).exists())).await?;
@@ -122,7 +122,7 @@ async fn observe(owner: &mut Case, scenario: &str, directory: &Path, leader: &Id
                 ensure!(!fixture.exited()?, "TERM fixture did not remain alive");
             }
             ensure!(owner.gate.available_permits() == 0, "TERM request released admission");
-            owner.anchor.as_ref().context("anchor missing")?.signal(Signal::Kill)?;
+            owner.anchor.as_ref().context("anchor missing")?.signal(Signal::KILL)?;
             escalated = true;
         }
         if scenario == "escape" {

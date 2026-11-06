@@ -49,7 +49,7 @@ impl FixtureProcess {
         Ok(polls[0].revents().contains(PollFlags::IN))
     }
     pub fn kill(&self) -> Result<()> {
-        match pidfd_send_signal(&self.fd, Signal::Kill) {
+        match pidfd_send_signal(&self.fd, Signal::KILL) {
             Ok(()) | Err(rustix::io::Errno::SRCH) => Ok(()),
             Err(error) => Err(error.into()),
         }
