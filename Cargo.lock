@@ -4270,6 +4270,7 @@ dependencies = [
  "rbit-kernel",
  "thiserror",
  "tokio",
+ "zeroize",
 ]
 
 [[package]]

@@ -11,6 +11,7 @@ rbit-kernel.workspace = true
 argon2.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+zeroize.workspace = true
 
 [lints]
 workspace = true

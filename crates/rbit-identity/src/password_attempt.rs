@@ -1,6 +1,8 @@
 //! A consuming crypto operation retains its reservation through real worker completion.
 
 use rbit_kernel::BlockingReservation;
+use std::future::Future;
+use zeroize::{ZeroizeOnDrop, Zeroizing};
 
 use crate::{PasswordError, credential};
 
@@ -9,6 +11,7 @@ use crate::{PasswordError, credential};
 /// It stores only capacity, never a password or stored PHC value. Each consuming
 /// method submits one blocking worker. Cancelling its waiter after submission leaves
 /// the worker's permit held until completion; cancelling before submission frees it.
+/// Inputs enter zeroizing ownership synchronously, including for unpolled futures.
 #[derive(Debug)]
 pub struct PasswordAttempt {
     reservation: BlockingReservation,
@@ -24,8 +27,8 @@ impl PasswordAttempt {
     /// # Errors
     ///
     /// Returns the existing hash or Tokio join error. Admission already succeeded.
-    pub async fn hash(self, password: String) -> Result<String, PasswordError> {
-        self.execute(move || credential::hash(&password)).await
+    pub fn hash(self, password: String) -> impl Future<Output = Result<String, PasswordError>> + Send {
+        self.execute_protected(Zeroizing::new(password), |password| credential::hash(&password))
     }
 
     /// Verifies a stored PHC value. Wrong passwords and malformed hashes return false.
@@ -33,8 +36,10 @@ impl PasswordAttempt {
     /// # Errors
     ///
     /// Returns the existing Tokio join error; malformed PHC input is not an error.
-    pub async fn verify(self, password: String, phc_hash: String) -> Result<bool, PasswordError> {
-        self.execute(move || Ok(credential::verify(&password, &phc_hash))).await
+    pub fn verify(self, password: String, phc_hash: String) -> impl Future<Output = Result<bool, PasswordError>> + Send {
+        self.execute_protected((Zeroizing::new(password), Zeroizing::new(phc_hash)), |(password, phc_hash)| {
+            Ok(credential::verify(&password, &phc_hash))
+        })
     }
 
     /// Performs missing-login dummy work without discarding worker failures.
@@ -45,12 +50,11 @@ impl PasswordAttempt {
     /// # Errors
     ///
     /// Returns the existing Tokio join error rather than disguising it as bad input.
-    pub async fn verify_dummy(self, password: String) -> Result<(), PasswordError> {
-        self.execute(move || {
+    pub fn verify_dummy(self, password: String) -> impl Future<Output = Result<(), PasswordError>> + Send {
+        self.execute_protected(Zeroizing::new(password), |password| {
             credential::verify_dummy(&password);
             Ok(())
         })
-        .await
     }
 
     /// Verifies the current password, then hashes its replacement inside the same slot.
@@ -62,19 +66,35 @@ impl PasswordAttempt {
     /// # Errors
     ///
     /// Returns the existing replacement-hash or Tokio join error.
-    pub async fn verify_and_hash(
+    pub fn verify_and_hash(
         self,
         current_password: String,
         current_phc: String,
         replacement: String,
-    ) -> Result<Option<String>, PasswordError> {
-        self.execute(move || {
-            if !credential::verify(&current_password, &current_phc) {
-                return Ok(None);
-            }
-            credential::hash(&replacement).map(Some)
-        })
-        .await
+    ) -> impl Future<Output = Result<Option<String>, PasswordError>> + Send {
+        self.execute_protected(
+            (Zeroizing::new(current_password), Zeroizing::new(current_phc), Zeroizing::new(replacement)),
+            |(current_password, current_phc, replacement)| {
+                let valid = credential::verify(&current_password, &current_phc);
+                drop(current_password);
+                drop(current_phc);
+                if !valid {
+                    return Ok(None);
+                }
+                credential::hash(&replacement).map(Some)
+            },
+        )
+    }
+
+    // The public, non-async entry points construct the wrappers before calling here.
+    // Both this unpolled future and its eventual blocking closure own protected inputs.
+    async fn execute_protected<S, F, T>(self, secrets: S, operation: F) -> Result<T, PasswordError>
+    where
+        S: ZeroizeOnDrop + Send + 'static,
+        F: FnOnce(S) -> Result<T, PasswordError> + Send + 'static,
+        T: Send + 'static,
+    {
+        self.execute(move || operation(secrets)).await
     }
 
     /// Hashes a candidate only if it differs from the password represented by `previous_phc`.
@@ -106,6 +126,9 @@ impl PasswordAttempt {
         self.reservation.spawn(operation).await?
     }
 }
+
+#[cfg(test)]
+mod secret_lifetime_tests;
 
 #[cfg(test)]
 mod tests {
