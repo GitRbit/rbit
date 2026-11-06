@@ -42,6 +42,27 @@ impl PasswordAttempt {
         })
     }
 
+    /// Verifies login credentials, covering absent or unusable hashes with dummy work.
+    ///
+    /// A real supported mismatch returns false without a second dummy verification.
+    /// Missing, malformed and unsupported credentials perform the existing dummy work
+    /// and then reject, all under this one reservation. Inputs are protected before
+    /// future construction, including when the returned future is never polled.
+    /// The caller owns input bounds, account lookup, throttling and authorization.
+    ///
+    /// # Errors
+    ///
+    /// Returns actual crypto or worker errors, never disguising them as wrong passwords.
+    pub fn verify_login(
+        self,
+        password: String,
+        stored_phc: Option<String>,
+    ) -> impl std::future::Future<Output = Result<bool, PasswordError>> + Send {
+        let password = Zeroizing::new(password);
+        let stored_phc = stored_phc.map(Zeroizing::new);
+        async move { self.execute(move || credential::verify_login(&password, stored_phc.as_ref().map(|hash| hash.as_str()))).await }
+    }
+
     /// Performs missing-login dummy work without discarding worker failures.
     ///
     /// The caller still rejects the missing login. This operation grants no identity

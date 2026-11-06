@@ -5,6 +5,9 @@
 
 use argon2::{Algorithm, Argon2, Params, PasswordHasher, PasswordVerifier, Version};
 
+mod login;
+pub(crate) use login::verify_login;
+
 #[derive(Debug, thiserror::Error)]
 pub enum PasswordError {
     #[error("password hashing failed: {0}")]
