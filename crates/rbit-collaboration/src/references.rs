@@ -21,3 +21,7 @@ pub use resolver::ReferenceResolver;
 mod commit_effects;
 #[cfg(feature = "applications")]
 pub use commit_effects::{CommitReference, CommitReferencePort, CommitReferences, MergeIssueClosures, MergeReferencePort};
+#[cfg(feature = "applications")]
+mod suggestions;
+#[cfg(feature = "applications")]
+pub use suggestions::{ReferenceSuggestions, SuggestionError, SuggestionPort, SuggestionThreadPort};

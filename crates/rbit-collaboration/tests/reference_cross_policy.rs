@@ -37,7 +37,7 @@ fn repo(id: RepoId) -> OwnedRepository {
             name: "repo".parse().unwrap(),
             description: None,
             visibility: Visibility::Private,
-            default_branch: "main".into(),
+            default_branch: "main".to_owned(),
             created_at: Timestamp(1),
             updated_at: Timestamp(1),
             pushed_at: None,

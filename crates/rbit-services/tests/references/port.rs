@@ -20,11 +20,11 @@ async fn empty_remote_only_and_combined_render_batches_keep_zero_zero_and_two_qu
     let alice = user(&database, "alice").await;
     services
         .repositories
-        .create(&alice, CreateRepository { name: "demo".into(), description: String::new(), visibility: Visibility::Public })
+        .create(&alice, CreateRepository { name: "demo".to_owned(), description: String::new(), visibility: Visibility::Public })
         .await
         .unwrap();
     let repo = services.repositories.open(Some(&alice), "alice", "demo").await.unwrap();
-    services.issues.create(&alice, &repo, NewIssueInput { title: "Target".into(), ..NewIssueInput::default() }).await.unwrap();
+    services.issues.create(&alice, &repo, NewIssueInput { title: "Target".to_owned(), ..NewIssueInput::default() }).await.unwrap();
     for texts in [Vec::<&str>::new(), vec!["alice/private#1"], vec!["`#1 @alice` [#1](target)"]] {
         let (result, work) = count_work(services.references.resolve(&repo, &texts)).await;
         assert_eq!(result.unwrap(), rbit_services::references::ReferenceSet::default());

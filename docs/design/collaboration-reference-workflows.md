@@ -79,3 +79,15 @@ default replay six/eight; default merged-pull close five/seven; nondefault merge
 two/two. These budgets await shared-lane Rust execution. Root command setup through
 the default-branch decision remains source-identical to the pre-port implementation.
 No Git, SQL, wire, registry-dependency or authorization change is claimed.
+
+## Suggestions
+
+ReferenceSuggestions now owns remaining autocomplete policy, using authorized repository
+ID/readability supplied by the unchanged RepoContext adapter. Prefix truncation remains
+100 Unicode characters; canonical numeric prefixes use the original exact lookup and
+all others retain whitespace search, limit 10/offset 0, order and English Issue/PR
+labels. Account selection preserves stored spelling/display name and creates no thread
+store. The thread branch retains its original single handle, including search's unused
+handle, and moves the same collected word Vec into SearchFilter. Independent and
+real-store fixtures are prepared; shared Rust/HTTP acceptance remains pending.
+The feature ledger records preparation paths without changing whole-group status.

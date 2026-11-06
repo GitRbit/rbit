@@ -28,7 +28,7 @@ impl ReferenceReadPort for Port {
                 number: IssueNumber::new(1).unwrap(),
                 kind: IssueKind::Issue,
                 state: IssueState::Open,
-                title: "Found".into(),
+                title: "Found".to_owned(),
             }],
             vec![Account {
                 id: AccountId(7),
@@ -48,7 +48,7 @@ async fn first_occurrence_batching_and_stored_case_mapping_preserve_contracts() 
     let set = app.resolve(RepoId(3), &["#2 #1 @Bob alice/private#99", "#1 @bob @alice"], scan_plain).await.unwrap();
     assert_eq!(
         port.0.lock().unwrap()[0],
-        (vec![IssueNumber::new(2).unwrap(), IssueNumber::new(1).unwrap()], vec!["bob".into(), "alice".into()])
+        (vec![IssueNumber::new(2).unwrap(), IssueNumber::new(1).unwrap()], vec!["bob".to_owned(), "alice".to_owned()])
     );
     assert_eq!(set.account("BOB"), Some("Bob"));
     assert_eq!(set.issue(IssueNumber::new(1).unwrap()).unwrap().title, "Found");

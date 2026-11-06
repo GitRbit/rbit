@@ -10,7 +10,8 @@
         "lib::timeline::writer::ThreadWriter",
         "lib::references::ReferenceService",
         "lib::references::ports::ReferenceView",
-        "lib::references::ports::RemoteView"
+        "lib::references::ports::RemoteView",
+        "lib::references::suggestions::SuggestionThreads"
       ]
     }
   ]
