@@ -193,6 +193,7 @@ mod tests {
 
     async fn page(headers: HeaderMap) -> axum::response::Html<String> {
         let page = Page {
+            locale: rbit_localization::Locale::default(),
             updates: rbit_services::updates::UpdateStatus::default(),
             site_name: "rbit".into(),
             branding: rbit_core::config::BrandingConfig::default(),

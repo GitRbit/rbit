@@ -4475,6 +4475,7 @@ dependencies = [
  "rbit-auth",
  "rbit-core",
  "rbit-git",
+ "rbit-localization",
  "rbit-services",
  "rbit-storage",
  "rbit-transport",

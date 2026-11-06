@@ -55,6 +55,7 @@ mod tests {
 
     fn page() -> Page {
         Page {
+            locale: rbit_localization::Locale::default(),
             updates: rbit_services::updates::UpdateStatus::default(),
             site_name: "rbit".to_owned(),
             branding: rbit_core::config::BrandingConfig::default(),

@@ -1,12 +1,15 @@
 //! Shared page chrome.
 
 use rbit_core::User;
+use rbit_localization::Locale;
 
 use crate::{AppState, assets, themes::Theme, views::components::Avatar};
 
 /// Data every full page needs: rendered by `templates/base.html`.
 #[derive(Debug, Clone)]
 pub struct Page {
+    /// Supported document language/direction; defaults to English outside adapters.
+    pub locale: Locale,
     pub updates: rbit_services::updates::UpdateStatus,
     pub site_name: String,
     pub branding: rbit_core::config::BrandingConfig,
@@ -39,6 +42,7 @@ impl Page {
         let mut settings = state.services.instance.current();
         settings.branding.show_version &= state.config.updates.report_version;
         Self {
+            locale: Locale::default(),
             updates: state.services.updates.status(),
             site_name: settings.site_name,
             branding: settings.branding,
@@ -55,6 +59,13 @@ impl Page {
             has_unread_notifications: false,
             theme: Theme::default(),
         }
+    }
+
+    /// The supported document language and direction for this request.
+    #[must_use]
+    pub fn with_locale(mut self, locale: Locale) -> Self {
+        self.locale = locale;
+        self
     }
 
     /// The page rendered in `theme`.
@@ -132,6 +143,7 @@ mod tests {
     fn initial_styles_render_verbatim_and_need_no_network_requests() {
         for slug in ["system", "dark", "base24-berlin"] {
             let page = Page {
+                locale: rbit_localization::Locale::default(),
                 updates: rbit_services::updates::UpdateStatus::default(),
                 site_name: "rbit".into(),
                 branding: rbit_core::config::BrandingConfig::default(),
@@ -161,6 +173,7 @@ mod tests {
     fn update_footer_notice_remains_generic_when_running_version_is_hidden() {
         let branding = rbit_core::config::BrandingConfig { show_version: false, ..rbit_core::config::BrandingConfig::default() };
         let page = Page {
+            locale: rbit_localization::Locale::default(),
             updates: rbit_services::updates::UpdateStatus {
                 revision: 1,
                 state: rbit_services::updates::UpdateState::Available,

@@ -10,6 +10,7 @@ autotests = false
 
 [dependencies]
 rbit-core.workspace = true
+rbit-localization.workspace = true
 rbit-auth.workspace = true
 rbit-git.workspace = true
 rbit-services.workspace = true

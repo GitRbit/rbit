@@ -1,0 +1,29 @@
+{% import "macros.html" as ui %}
+{% import "home/explore_components.html" as explore_ui %}
+<div id="explore-results" lang="{{ results.locale.tag() }}" dir="{{ results.locale.direction().as_str() }}">
+  <nav class="mb-3 flex items-center gap-1" aria-label="{{ results.labels.archive_filter }}">
+    {% for link in results.archived_filters %}
+    <a href="{{ link.url }}" class="rounded px-2 py-1 text-xs {% if link.is_active %}bg-hover font-medium text-ink{% else %}text-ink-muted hover:text-ink{% endif %}" {% if link.is_active %}aria-current="true"{% endif %}>{{ link.label }}</a>
+    {% endfor %}
+  </nav>
+  <div class="box">
+    <div class="box-header justify-between">
+      <span class="truncate text-[13px] text-ink-muted tabular-nums">{{ results.labels.count }}</span>
+      <nav class="flex shrink-0 items-center gap-1" aria-label="{{ results.labels.sort_by }}">
+        {% for link in results.sorts %}
+        <a href="{{ link.url }}" class="rounded px-2 py-1 text-xs {% if link.is_active %}bg-hover font-medium text-ink{% else %}text-ink-muted hover:text-ink{% endif %}" {% if link.is_active %}aria-current="true"{% endif %}>{{ link.label }}</a>
+        {% endfor %}
+      </nav>
+    </div>
+    {% if results.repos.is_empty() %}
+    {% if results.query_is_empty %}
+    {% call ui::empty_state("compass", results.labels.empty_title, results.labels.empty_description) %}{% endcall %}
+    {% else %}
+    {% call ui::empty_state("search", results.labels.no_match_title, results.labels.no_match_description) %}{% endcall %}
+    {% endif %}
+    {% else %}
+    <ul>{% for repo in results.repos %}{% call explore_ui::repo_row(repo) %}{% endcall %}{% endfor %}</ul>
+    {% endif %}
+  </div>
+  {% call explore_ui::pagination(results.pagination) %}{% endcall %}
+</div>

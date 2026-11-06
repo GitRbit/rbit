@@ -22,6 +22,7 @@ pub mod contributions;
 pub mod dashboards;
 pub mod edits;
 pub mod errors;
+pub mod explore;
 // Milestone 3: external sign-in (O).
 pub mod external_auth;
 pub mod forks;
@@ -56,6 +57,8 @@ pub mod ssh_keys;
 // Milestone 3: commit statuses (S).
 pub mod statuses;
 pub mod teams;
+#[cfg(test)]
+pub(crate) mod test_support;
 pub mod themes;
 pub mod timeline;
 pub mod transfer;

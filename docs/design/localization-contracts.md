@@ -59,6 +59,13 @@ Use textContent for DOM updates. The crate's integration test renders real Askam
 templates with malicious text and attribute arguments. Plain-text email/CLI consumers
 may use the text directly under their own terminal/header control-character rules.
 
+Static English labels borrow their compiled catalog literals through private
+`Cow<'static, str>` storage. Interpolated/count messages and diagnostic transformations
+own their resulting text. This keeps ordinary labels from adding heap allocations
+relative to the original static strings; representation tests enforce the distinction
+without exposing an allocation policy through the public presentation API. English
+literals have one authoritative match table used by both normal and pseudo rendering.
+
 Expansion accents and lengthens only literal message segments; arguments retain their
 identifiers. RTL diagnostics set document `dir=rtl` and wrap textual arguments in
 Unicode FSI/PDI. This tests layout and mixed-direction identifiers; it is neither an
@@ -81,3 +88,46 @@ access against this compiled implementation. The initial choice adds zero produc
 dependencies and avoids speculative language-engine overhead; it does not claim to
 have benchmarked Fluent. Real translations also require locale-aware dates/numbers,
 reviewed grammar, fallback policy and RTL/accessibility acceptance before enablement.
+
+## Web adapter status
+
+`rbit_web::localization::RequestLocale` resolves and memoizes one locale in request
+extensions. Its production default enables English only. Tests/embedded composition
+can inject a `LocaleResolver` explicitly; incoming locale headers cannot enable
+diagnostic catalogs. Trusted `LocaleChoices` extensions provide explicit/account
+preferences. No persisted account-locale schema or locale-setting endpoint exists
+yet; the identity/preference migration slice owns those integrations. The adapter
+accepts one bounded `rbit-locale` cookie value and one Accept-Language header;
+duplicate headers/cookie choices are disregarded rather than selected ambiguously.
+`Page` defaults to English and offers an explicit `with_locale` builder. Only Explore
+currently assigns its negotiated request locale and language/cache response headers.
+The generic Page extractor does not negotiate: unrelated pages such as login stay
+English/LTR even when diagnostic catalogs are injected into a host. This avoids
+partially changing document direction without a matching response/cache contract.
+This foundation does not claim that existing platform chrome or other routes have
+translated messages.
+
+## Explore production slice
+
+Explore continues to use the existing public-only repository search service and stable
+query values/URLs for search, sort, archive filters and paging. Feature-owned typed
+messages cover its title, description, controls, result count, empty states, archive
+badge, star label and pagination. Repository names/descriptions remain user content.
+Existing core relative timestamps and platform navigation chrome are still English;
+locale-aware date/relative-time formatting remains a later presentation contract.
+
+Full documents include `home/explore_results.html`. A live search with exactly one
+`HX-Request: true` and `HX-Target: explore-results` renders that same component
+directly, preceded by its updated document title. It does not render the base layout
+and cut HTML afterward. Requests carrying boosted/history-restore headers always get
+the full document, as do ordinary GETs and ambiguous/repeated shape headers. The
+form remains an ordinary GET form without JavaScript and retains HTMX push-URL and
+select/swap behavior. Both shapes report Content-Language and vary on language,
+cookies and response-shape headers; existing private revalidation remains in force.
+
+There is no locale mutation UI in this slice. Future locale-setting flows must reset
+locale-sensitive HTMX history/navigation caches before enabling account language
+switching; diagnostic resolver injection does not constitute that completed feature.
+HTTP regressions cover component equality, locale/direction consistency, full history
+fallback, private repositories even for their signed-in owner, malicious interpolation,
+shape-header ambiguity and existing URL/filter/pagination behavior.
