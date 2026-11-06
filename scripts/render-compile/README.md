@@ -52,24 +52,37 @@ Effective output-directory identities and the compatibility namespace are record
 An interrupted/failed child and already-written invalid samples remain in the
 report. Abnormal Cargo termination retains the helper's fail-closed lease; inspect
 the owned process tree using the existing recovery procedure before unlocking.
+Observer startup requires an actual ready frame; errors, early exits and startup
+timeouts stop the experiment before a timed compiler starts. Shutdown must prove
+both process closure and drained output pipes, including after kill escalation.
+If closure cannot be proved, the matrix stops and keeps its private control
+directory/stop file. The summary records its run UUID for local inspection under
+the worktree state's `render-compile` directory; no private path is serialized.
 
 `wallMs` is elapsed Cargo command time, including process startup, Cargo work,
 diagnostic capture and observer overhead. It excludes lease waiting, package clean,
 observer startup, source hashing and helper handoff/cache maintenance. Warmup is
 excluded explicitly. The runner emits raw observations and validity reasons; it
 does not silently discard outliers or calculate comparative aggregates.
+Summary counts distinguish compile-comparable/invalid and memory-comparable/invalid
+samples. A completed matrix with usable timing may still have zero usable memory
+observations. When memory was requested, unusable memory also yields a nonzero exit.
 
 The Windows observer reads process metadata without changing compiler processes.
 Ownership requires Cargo's parent/creation identity and an observed chain of
 descendants; PID reuse and unknown ancestry cannot establish ownership. Only
-owned cargo/rustc identities enter reports. Strict crate-name/target-triple tokens
-are extracted locally from rustc arguments; full command lines never leave the
-observer. Other compiler processes contribute only an anonymous contamination
+owned cargo/rustc identities enter reports. The global census never requests
+command lines. Separate argument queries require a proved Node/Cargo/rustc chain,
+filter by PID AND creation time at the provider and revalidate identity on return.
+Strict crate-name/target-triple tokens are extracted locally from these rustc
+arguments; full command lines never leave the observer. Other compiler processes contribute only an anonymous contamination
 count. Both working set and private committed bytes are sampled via Win32_Process.
 CIM enumerations are non-atomic and may miss short-lived processes. Each process's
 sampled maxima are lower bounds; different process lifetime peaks are NEVER added.
 No concurrent-tree peak is claimed. Missing Cargo/rustc or observer failure makes
 memory comparisons invalid; external compilers invalidate timing comparisons too.
+Library memory comparability specifically requires observing an owned
+`rbit_render_probe` rustc process. Observing only `build_script_build` is insufficient.
 
 Unmeasured: true lifetime or concurrent-tree memory peaks, linkers/other children,
 CPU time, OS-cold dependencies, incremental edit builds, test/doctest compilation,
@@ -80,5 +93,5 @@ ceiling, page-rendering winner, or production regression budget.
 Validation without invoking Cargo:
 
 ```sh
-node --test scripts/tests/render-compile.test.mjs scripts/tests/workspace-build.test.mjs
+node --test scripts/tests/render-compile.test.mjs scripts/tests/render-observer.test.mjs scripts/tests/workspace-build.test.mjs
 ```

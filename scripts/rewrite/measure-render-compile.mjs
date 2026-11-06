@@ -1,6 +1,6 @@
 // Explicit development experiment; importing modules never starts a compiler.
 import { open, rm } from "node:fs/promises";
-import { resolve, join } from "node:path";
+import { resolve, join, basename } from "node:path";
 import { randomUUID } from "node:crypto";
 import { cpus, totalmem, release } from "node:os";
 import { context, managedDirectory, guarded } from "../workspace/paths.mjs";
@@ -9,6 +9,7 @@ import { options, measurementEnv } from "../render-compile/options.mjs";
 import { sourceIdentity, flagIdentity, toolIdentity, cargoConfigIdentity, sha } from "../render-compile/identity.mjs";
 import { measuredJob } from "../render-compile/run.mjs";
 import { sequence } from "../render-compile/sequence.mjs";
+import { sampleCounts } from "../render-compile/summary.mjs";
 
 async function main() {
   const config = options(process.argv.slice(2));
@@ -16,7 +17,8 @@ async function main() {
   const env = measurementEnv(process.env);
   const output = await open(resolve(config.output), "wx", 0o600);
   const write = async (record) => { await output.write(`${JSON.stringify(record)}\n`); await output.sync(); };
-  let control, complete = false, comparable = 0, invalid = 0;
+  let control, complete = false, retainControl = false;
+  const summary = sampleCounts();
   try {
     control = await managedDirectory(ctx, join(ctx.state, "render-compile", randomUUID()));
     const baseline = await sourceIdentity(ctx);
@@ -30,18 +32,19 @@ async function main() {
     await sequence(config, async (job, phase) => {
       await measuredJob(ctx, config, job, baseline, control, async (record) => {
         await write(record);
-        if (record.kind === "sample") { if (record.validity?.compileComparable) comparable++; else invalid++; }
+        summary.observe(record);
       }, env, packages, phase);
     });
     complete = true;
   } catch (error) {
-    await write({ kind: "failure", category: error.name, diagnosticSha256: sha(String(error.message)) });
+    retainControl = error.retainControl === true;
+    await write({ kind: "failure", category: error.name, diagnosticSha256: sha(String(error.message)), observer: error.observerReport ?? null, retainControl });
     process.exitCode = 1;
   } finally {
-    await write({ kind: "summary", complete, comparable, invalid, aggregatesComputed: false });
+    await write({ kind: "summary", complete, ...summary.counts, controlRetained: retainControl, controlRunId: retainControl ? basename(control) : null, aggregatesComputed: false });
     await output.close();
-    if (control) { await guarded(ctx.root, control); await rm(control, { recursive: true }); }
-    if (invalid) process.exitCode = 1;
+    if (control && !retainControl) { await guarded(ctx.root, control); await rm(control, { recursive: true }); }
+    if (summary.counts.compileInvalid || (config.memory !== "none" && summary.counts.memoryInvalid)) process.exitCode = 1;
   }
 }
 

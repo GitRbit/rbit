@@ -50,7 +50,9 @@ export async function measuredJob(ctx, config, job, baseline, control, write, en
         });
       } catch (error) { failure = error; }
       const wallMs = performance.now() - started;
-      const memory = await observer.finish();
+      let memory, observerFailure;
+      try { memory = await observer.finish(); }
+      catch (error) { observerFailure = error; memory = error.observerReport; if (!memory) throw error; }
       const after = await sourceIdentity(ctx);
       const validity = phase === "sample" ? sampleValidity(artifacts, job, exit, before, after, memory)
         : { compileComparable: false, memoryComparable: false, reasons: ["warmup-excluded"], warmupSucceeded: exit?.code === 0 };
@@ -59,11 +61,13 @@ export async function measuredJob(ctx, config, job, baseline, control, write, en
         argv: args, wallMs, clean, exit: exit ?? null, artifacts, memory, validity, output: output.result(), sourceFingerprint: before.fingerprint, effectiveFlags: flagIdentity(effectiveEnv),
         outputNamespace: effectiveEnv.CARGO_TARGET_DIR.split(/[\\/]/).at(-3), outputDirectoriesSha256: sha(JSON.stringify([effectiveEnv.CARGO_TARGET_DIR, effectiveEnv.CARGO_BUILD_BUILD_DIR])) });
       recorded = true;
+      if (observerFailure) throw observerFailure;
       if (failure) throw failure;
       if (before.fingerprint !== baseline.fingerprint || after.fingerprint !== baseline.fingerprint) throw new Error("Measurement source changed");
     } });
   } catch (error) {
-    if (!recorded) await write({ kind: phase, job, valid: false, reason: "helper-or-preparation-failed", errorType: error.name });
+    if (!recorded) await write({ kind: phase, job, valid: false, reason: "helper-or-preparation-failed", errorType: error.name,
+      observer: error.observerReport ?? null, retainControl: error.retainControl === true });
     throw error;
   }
 }

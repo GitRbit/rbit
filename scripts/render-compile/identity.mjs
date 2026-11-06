@@ -79,5 +79,7 @@ export function sampleValidity(artifacts, job, exit, sourceBefore, sourceAfter, 
   if (probe.some((artifact) => artifact.features.join(",") !== expected)) reasons.push("probe-features-not-isolated");
   if (artifacts.some((artifact) => artifact.package !== "rbit-render-probe" && artifact.fresh === false)) reasons.push("dependency-compiled-during-timed-sample");
   if (memory.reasons.includes("external-compiler-observed")) reasons.push("external-compiler-contamination");
-  return { compileComparable: reasons.length === 0, memoryComparable: reasons.length === 0 && memory.reasons.length === 0, reasons };
+  const memoryReasons = [...memory.reasons];
+  if (!memory.perProcessSampledPeaks?.some((process) => process.kind === "rustc" && process.crateName === "rbit_render_probe")) memoryReasons.push("probe-library-rustc-not-observed");
+  return { compileComparable: reasons.length === 0, memoryComparable: reasons.length === 0 && memoryReasons.length === 0, reasons, memoryReasons };
 }
