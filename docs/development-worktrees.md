@@ -18,9 +18,11 @@ letters, digits and hyphens. Checkouts must remain below `worktrees/`.
 
 ## Builds, checks and tests
 
-Run these from the checkout whose source you want to build:
+Run these from the checkout whose source you want to build. On a cold checkout, or
+after dependency changes, bootstrap missing registry sources before guarded compilation:
 
 ```sh
+node scripts/workspace.mjs fetch --locked
 node scripts/workspace.mjs check --workspace --locked
 node scripts/workspace.mjs clippy --workspace --all-targets --locked -- -D warnings
 node scripts/workspace.mjs test --workspace --locked
@@ -29,6 +31,11 @@ node scripts/workspace.mjs build --package rbit-server --package rbit-runner --l
 node scripts/workspace.mjs run --release -- serve
 npm run dev
 ```
+
+`fetch` is an explicit noncompiler operation under the same lease and output-directory
+overrides. It can download dependencies, skips offline source admission and never
+approves local compiler units. It rejects managed-retention observation/candidate
+modes. Compilation still requires the unchanged offline metadata preflight.
 
 Both `CARGO_TARGET_DIR` and `CARGO_BUILD_BUILD_DIR` point into
 `.build-cache/<compiler-and-flags-key>/shared/`. The second override matters because

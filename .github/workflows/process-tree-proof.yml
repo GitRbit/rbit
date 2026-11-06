@@ -37,6 +37,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: clippy
+      # Bootstrap registry sources before guarded compilation's offline metadata scan.
+      - run: node scripts/workspace.mjs fetch --locked
       - name: Record host and toolchain
         run: |
           mkdir -p "$RUNNER_TEMP/process-tree-evidence"

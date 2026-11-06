@@ -26,8 +26,13 @@ OpenSSH client and skip when it is missing.
 ```bash
 npm ci
 npm run build          # vendors dependencies and builds the frontend assets
+node scripts/workspace.mjs fetch --locked  # cold dependency bootstrap under the shared lease
 node scripts/workspace.mjs run -- serve
 ```
+
+The source guard uses offline metadata before compilation. Run the locked fetch again
+when a changed lockfile requires registry sources that are not cached; it does not
+approve compiler outputs or bypass source validation.
 
 The first account you create becomes the site administrator. For day-to-day work the live
 development server rebuilds and restarts on every change to Rust sources, templates or

@@ -22,7 +22,7 @@ async function main() {
   else if (command === "cache-prune") result = await prune(ctx, Number(args[0]));
   else if (command === "ide-check") {
     await cargo(ctx, "check", args, { env: { ...process.env, RBIT_WORKSPACE_JSON: "1" } });
-  } else if (["build", "check", "clippy", "test", "nextest", "generate-lockfile"].includes(command)) {
+  } else if (["build", "check", "clippy", "test", "nextest", "generate-lockfile", "fetch"].includes(command)) {
     result = await cargo(ctx, command, args);
     // Environment may contain secrets: output only deliberate public build metadata.
     result = { namespace: result.namespace, executables: result.executables, ...(result.cache ? { cache: result.cache } : {}),
@@ -44,7 +44,7 @@ async function main() {
       stopping = true;
       stopTree(child).catch((error) => { console.error(error.message); process.exitCode = 1; });
     });
-  } else throw new Error("Usage: workspace.mjs new NAME [REV] | list | remove NAME | build/check/clippy/test/nextest [ARGS] | run [BUILD ARGS] -- [RUN ARGS] | cache-report | cache-prune MAX_BYTES");
+  } else throw new Error("Usage: workspace.mjs new NAME [REV] | list | remove NAME | build/check/clippy/test/nextest/fetch/generate-lockfile [ARGS] | run [BUILD ARGS] -- [RUN ARGS] | cache-report | cache-prune MAX_BYTES");
   // Small inactive binary copies are pruned only after successful commands.
   await pruneGenerations(ctx);
   if (result) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

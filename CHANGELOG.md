@@ -113,6 +113,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Fetch locked dependencies before guarded CI compilation so fresh runners can
+  resolve the offline source graph without approving compiler artifacts.
+
 - Windows shared builds own and drain their compiler processes by default, enabling
   verified warm-cache reuse. Explicit unowned mode remains available.
 

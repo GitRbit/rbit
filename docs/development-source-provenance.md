@@ -14,6 +14,12 @@ changes source mtimes or runs `cargo clean`.
 
 ## Before a compiler command
 
+Bootstrap a cold checkout with `node scripts/workspace.mjs fetch --locked` before
+the first compiler command, and repeat when changed dependencies are missing locally.
+This explicit noncompiler writer can use the network under the same shared lease and
+Cargo output-directory overrides. It skips source-proof admission, never approves
+units and rejects managed-retention observation/candidate modes.
+
 Read-only Cargo metadata uses `--locked --offline --all-features`; it cannot fetch
 dependencies or regenerate a lockfile. Local packages must have bounded, unambiguous
 names/roots and inspectable targets/dependencies. The guard hashes actual package

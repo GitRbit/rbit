@@ -78,9 +78,12 @@ function consumeCargo(ctx, args, env, onArtifact = () => {}, { spawnProcess = sp
 /** Only helpers acquire this lease. Direct Cargo/IDE builds must not use this lane. */
 export async function cargo(ctx, command, args = [], { execute = cargoProcess, env = process.env, key, reportMaintenance = reportCacheOverage, readRetentionInput,
   provenance = sourceProof, proofInputs } = {}) {
-  if (!["build", "check", "clippy", "test", "nextest", "generate-lockfile"].includes(command)) throw new Error("Unsupported Cargo command");
+  if (!["build", "check", "clippy", "test", "nextest", "generate-lockfile", "fetch"].includes(command)) throw new Error("Unsupported Cargo command");
   validateCargoArgs(args);
   cargoTreeMode(env);
+  if (command === "fetch" && env.RBIT_BUILD_MANAGED_RETENTION && env.RBIT_BUILD_MANAGED_RETENTION !== "off") {
+    throw new Error("fetch does not support managed retention observation or candidate modes");
+  }
   const retentionMode = managedRetentionMode(env);
   const requiredHeadroom = retentionMode === "measure-candidate" ? candidateHeadroom(env) : null;
   if (command === "nextest" && !["run", "list"].includes(args[0])) throw new Error("Use nextest run or list");
@@ -105,9 +108,9 @@ export async function cargo(ctx, command, args = [], { execute = cargoProcess, e
       const observation = retentionMode === "observe"
         ? await beginRetention(ctx, { namespace, command, args, env: buildEnv }, lease, { read: readRetentionInput }) : null;
       if (candidate) await startCandidate(candidate.handle, command, args, buildEnv, lease, { read: readRetentionInput });
-      // Lock generation is a noncompiler writer; do not require an already-valid
-      // lock through metadata or let it approve any cached compilation unit.
-      if (command !== "generate-lockfile") proof = await provenance.begin(ctx, { lane, namespace, command, args, env: buildEnv }, lease, proofInputs);
+      // Noncompiler writers bootstrap dependency/lock state without offline metadata
+      // admission. They never authorize any cached compilation unit.
+      if (!["generate-lockfile", "fetch"].includes(command)) proof = await provenance.begin(ctx, { lane, namespace, command, args, env: buildEnv }, lease, proofInputs);
       const artifacts = [], copies = observation || candidate ? [] : null;
       const json = ["build", "check", "clippy", "test"].includes(command);
       const format = buildEnv.RBIT_WORKSPACE_JSON === "1" ? "json" : "json-render-diagnostics";
