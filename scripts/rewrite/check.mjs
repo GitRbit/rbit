@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { checkIdentityFeatures, checkIdentityModelGraphs, checkIdentityTokenGraph, checkIdentitySessionGraph, checkInventoryGraph } from "./identity-features.mjs";
 import { checkCollaborationFeatures, checkCollaborationGraphs } from "./collaboration-features.mjs";
 import { checkUnifiedModelBoundary } from "./identity-model-boundary.mjs";
+import { checkInventoryCompileIsolation } from "./inventory-isolation.mjs";
 
 export const LIMIT = 400;
 const GENERATED = new Set([
@@ -137,7 +138,7 @@ export function check(root) {
   return { files: files.length, violations: [...checkSizes(files, baseline), ...checkEdges(metadata, baseline),
     ...checkIdentityFeatures(metadata), ...checkIdentityModelGraphs(root), ...checkIdentityTokenGraph(root), ...checkIdentitySessionGraph(root), ...checkInventoryGraph(root),
     ...checkCollaborationFeatures(metadata), ...checkCollaborationGraphs(root),
-    ...checkUnifiedModelBoundary(root, metadata),
+    ...checkUnifiedModelBoundary(root, metadata), ...checkInventoryCompileIsolation(root),
     ...checkMigrations(root, baseline), ...checkLedger(root, ledger)] };
 }
 

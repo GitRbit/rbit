@@ -44,6 +44,9 @@ jobs:
       - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --locked
       - run: node scripts/workspace.mjs test --package rbit-identity-models --no-default-features --locked
       - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --features credentials --locked
+      # The workspace test union enables identity password-work; compile this tool
+      # separately so an accidental application-only import cannot be hidden by it.
+      - run: node scripts/workspace.mjs test --package rbit-credential-inventory --no-default-features --locked
       - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --features session-tokens --locked
       - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --features sessions --locked
       - run: node scripts/workspace.mjs test --package rbit-collaboration --no-default-features --locked

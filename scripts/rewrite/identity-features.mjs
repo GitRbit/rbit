@@ -87,6 +87,8 @@ export function inventoryGraphViolations(tree) {
 }
 
 /** The offline tool owns no application store, startup or password-work owner.
+ * This is the isolated selected-package graph, not a full-workspace feature-union
+ * purity claim. A separate CI package test proves compilation in this scope.
  * Build-time graph inspection may fetch locked packages on a fresh CI host,
  * consistently with the other feature checks; this does not run the tool.
  */

@@ -74,6 +74,35 @@ counts count affected rows, not estimated unseen distinct groups. Increasing app
 inventory bounds requires an explicit source/configuration review; no hash-cost cap
 or compatibility change is introduced here.
 
+## Build and CI feature scope
+
+Build or test this optional tool as an explicitly selected package through the
+shared compiler helper, for example:
+
+```text
+node scripts/workspace.mjs test --package rbit-credential-inventory --no-default-features --locked
+node scripts/workspace.mjs build --package rbit-credential-inventory --no-default-features --release --locked
+```
+
+Its isolated normal graph requests identity's `credentials` feature, not
+`password-work` or `sessions`; the standalone package graph excludes the kernel
+and application stores/services. The existing read-only Cargo-tree guard checks
+that graph. Tree inspection is not compilation: CI also compiles and tests the
+tool in its own package invocation on Linux and Windows, separately from the
+workspace application feature union. The source guard requires that explicit
+locked invocation without additional application packages/features or skip rules.
+
+A full workspace test or metadata invocation can unify identity's password-work
+and session features through other selected application packages. Its normal
+closure then includes `rbit-credential-inventory -> rbit-identity -> rbit-kernel`.
+This is expected Cargo feature
+unification, not evidence that the tool constructs a password-work owner or starts
+application services. The scanner's source uses only identity inventory types and
+its explicitly supplied immutable SQLite connection. Do not claim a kernel-free
+full-workspace closure from the isolated check, or use workspace-only compilation
+as proof that accidental application-only imports would fail in the standalone
+release-package scope. The isolated package test prevents that masking gap.
+
 Acceptance (through the shared build helper/lane; never create per-worktree targets):
 
 ```text
