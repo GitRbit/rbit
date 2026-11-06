@@ -17,8 +17,10 @@
 import { clearNavigationResponses, isCachedNavigationResponse, rememberNavigationResponse, reuseNavigationResponse } from "./repo-navigation-cache.js";
 import { reconcileRepositoryBar } from "./repo-navigation-bar.js";
 import { installUpdateNotice } from "./update-notice.js";
+import { installRenderTiming } from "./render-time.js";
 
 installUpdateNotice(document);
+installRenderTiming(document);
 
 // Title-Case like any HTTP header name (the server lists them in `Vary` with that spelling).
 const EPOCH_HEADER = "Rbit-Nav-Epoch";
@@ -161,37 +163,6 @@ document.addEventListener("htmx:historyRestore", (event) => {
   if (event.detail.cacheMiss) settle();
 });
 document.addEventListener("htmx:historyCacheMissLoadError", settle);
-
-// ---------------------------------------------------------------- render time
-
-/** Mirrors `timing::format`: `412 µs`, `3.1 ms`, `1.20 s`. */
-function formatDuration(ms) {
-  if (ms < 1) return `${Math.round(ms * 1000)} µs`;
-  if (ms < 1000) return `${ms.toFixed(1)} ms`;
-  return `${(ms / 1000).toFixed(2)} s`;
-}
-
-let renderTime = null;
-/** Shows the last render time in `root` (by default the whole page). */
-const showRenderTime = (root = document) => {
-  if (renderTime === null) return;
-  for (const element of root.querySelectorAll("[data-render-time]")) element.textContent = renderTime;
-};
-
-document.addEventListener("htmx:afterRequest", (event) => {
-  if (!event.detail.successful) return;
-  const timing = event.detail.xhr?.getResponseHeader("Server-Timing");
-  const match = timing && /(?:^|,)\s*render;dur=([\d.]+)/.exec(timing);
-  if (!match) return;
-  renderTime = formatDuration(Number(match[1]));
-  showRenderTime();
-});
-// A full-page swap brings a new footer; it shows the same figure as the header. Only
-// the element swapped in can hold a new one.
-document.addEventListener("htmx:afterSettle", (event) => {
-  const root = event.detail.elt;
-  if (root?.querySelectorAll) showRenderTime(root);
-});
 
 // ---------------------------------------------------------------- partial swaps
 

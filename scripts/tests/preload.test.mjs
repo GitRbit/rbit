@@ -2,14 +2,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
+import { navigationModules } from "./fixtures/navigation-modules.mjs";
 
 const assets = new URL("../../crates/rbit-web/assets/", import.meta.url);
 const source = (await readFile(new URL("preload.js", assets), "utf8"))
   .replace(/^import .*;\r?\n/gm, "");
-const navigation = (await readFile(new URL("nav.js", assets), "utf8")).replace(/^import .*;\r?\n/gm, "").replace(/^export /gm, "");
-const navigationCache = (await readFile(new URL("repo-navigation-cache.js", assets), "utf8")).replace(/^export /gm, "");
-const updateNotice = (await readFile(new URL("update-notice.js", assets), "utf8")).replace(/^export /gm, "");
-const navigationBar = (await readFile(new URL("repo-navigation-bar.js", assets), "utf8")).replace(/^export /gm, "");
+const installNavigation = await navigationModules();
 const origin = "https://git.example.com";
 
 function page({ saveData = false, effectiveType = "4g", idleCallback = true, signedIn = false, visiblePaths = [] } = {}) {
@@ -130,12 +128,7 @@ function page({ saveData = false, effectiveType = "4g", idleCallback = true, sig
     };
     context.cancelIdleCallback = (handle) => idle.delete(handle);
   }
-  Object.assign(context, vm.runInContext(`(() => { ${navigationCache}\nreturn { clearNavigationResponses, hasNavigationResponse, isCachedNavigationResponse, rememberNavigationResponse, reuseNavigationResponse, trackNavigationPreload }; })()`, context));
-  Object.assign(context, vm.runInContext(`(() => { ${navigationBar}\nreturn { reconcileRepositoryBar }; })()`, context));
-  Object.assign(context, vm.runInContext(`(() => { ${updateNotice}\nreturn { installUpdateNotice }; })()`, context));
-  // Run the actual nav module first, just as preload.js's import does in the browser.
-  // Module locals stay private while the two public functions are shared.
-  Object.assign(context, vm.runInContext(`(() => { ${navigation}\nreturn { navigationEpoch, navigationHeaders }; })()`, context));
+  installNavigation(context);
   vm.runInContext(source, context);
   const dispatch = (name, event = {}) => {
     for (const callback of listeners.get(name) ?? []) callback({ detail: {}, ...event });
