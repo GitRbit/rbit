@@ -1,7 +1,8 @@
 # Linux process-group development proof
 
-Status: source prepared; native Linux execution is pending. This is not a
-production containment implementation or a claim of general group emptiness.
+Status: the first isolated Linux run passed all five native scenarios, five
+package tests and strict all-target Clippy; see [validation](linux-validation.md).
+This is not a production containment implementation or a claim of general group emptiness.
 
 ## APIs and ownership
 
@@ -81,6 +82,6 @@ exact copied executable, never the generic server command. Unsupported pidfd or
 subreaper capability is a failed/unproved experiment, not a passing skip.
 
 WSL was inspected read-only: a Linux host exists but has no Rust toolchain. No
-toolchain installation or local Linux build was performed. The hosted report must
-record actual kernel/toolchain details and the scenario evidence before adoption
-is considered.
+toolchain installation or local Linux build was performed. Hosted evidence now
+records the actual kernel/toolchain and scenario results. Broader coverage and
+production capability policy remain separate adoption requirements.

@@ -1,0 +1,82 @@
+{
+  "cases": [
+    {
+      "admission_closed": false,
+      "disposition": "known-fixture-completion",
+      "escalated": false,
+      "general_group_empty_claimed": false,
+      "hostile_descendant_containment_claimed": false,
+      "known_fixture_pidfds_exited": true,
+      "pump_completed": true,
+      "root_first_anchor_retained": true,
+      "root_reaped": true,
+      "scenario": "root-first",
+      "unrelated_sibling_survived": true
+    },
+    {
+      "admission_closed": false,
+      "disposition": "known-fixture-completion",
+      "escalated": false,
+      "general_group_empty_claimed": false,
+      "hostile_descendant_containment_claimed": false,
+      "known_fixture_pidfds_exited": true,
+      "pump_completed": true,
+      "root_first_anchor_retained": false,
+      "root_reaped": true,
+      "scenario": "cancel",
+      "unrelated_sibling_survived": true
+    },
+    {
+      "admission_closed": false,
+      "disposition": "known-fixture-completion",
+      "escalated": true,
+      "general_group_empty_claimed": false,
+      "hostile_descendant_containment_claimed": false,
+      "known_fixture_pidfds_exited": true,
+      "pump_completed": true,
+      "root_first_anchor_retained": false,
+      "root_reaped": true,
+      "scenario": "escalation",
+      "unrelated_sibling_survived": true
+    },
+    {
+      "admission_closed": true,
+      "disposition": "quarantined-even-after-fixture-cleanup",
+      "escalated": false,
+      "general_group_empty_claimed": false,
+      "hostile_descendant_containment_claimed": false,
+      "known_fixture_pidfds_exited": true,
+      "pump_completed": true,
+      "root_first_anchor_retained": true,
+      "root_reaped": true,
+      "scenario": "lost-anchor",
+      "unrelated_sibling_survived": true
+    },
+    {
+      "admission_closed": true,
+      "disposition": "quarantined-even-after-fixture-cleanup",
+      "escalated": false,
+      "general_group_empty_claimed": false,
+      "hostile_descendant_containment_claimed": false,
+      "known_fixture_pidfds_exited": true,
+      "pump_completed": true,
+      "root_first_anchor_retained": false,
+      "root_reaped": true,
+      "scenario": "escape",
+      "unrelated_sibling_survived": true
+    }
+  ],
+  "development_only": true,
+  "kernel": "7.0.0-1017-azure",
+  "limits": [
+    "no general group emptiness or hostile descendant containment proof",
+    "ECHILD is not membership evidence",
+    "setsid escapes group and requires quarantine",
+    "pidfd and pipe evidence applies only to the finite handshake-adopted fixtures",
+    "all group signals precede anchor consumption",
+    "no universal Unix portability claim"
+  ],
+  "platform": "linux",
+  "rustix": "1.1.5",
+  "scope": "known fixture process-group/anchor observations; not production containment"
+}

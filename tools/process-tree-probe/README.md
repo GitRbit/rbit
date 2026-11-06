@@ -1,8 +1,8 @@
 # Native process-tree development proof
 
 The analogous [Linux process-group/anchor experiment](unix-design.md) now has
-source and an isolated optional CI path. Its native execution remains pending;
-known fixture completion is deliberately weaker than general containment.
+passed its first isolated Linux CI run; see [the validation record](linux-validation.md).
+Known fixture completion is deliberately weaker than general containment.
 
 This unpublished tool evaluates a Windows root Job plus a safe per-operation Job.
 It is not used by the server, transport or runner. Source preparation does not mean
