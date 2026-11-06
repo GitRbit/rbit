@@ -17,7 +17,10 @@
         "lib::references::ports::RemoteView",
         "lib::references::suggestions::SuggestionThreads",
         "lib::issues::reader::IssueReader",
-        "lib::issues::deletion::DeletionEffects"
+        "lib::issues::deletion::DeletionEffects",
+        "lib::transfers::TransferService",
+        "lib::transfers::TransferBridge",
+        "lib::repositories::aliases::AliasView"
       ]
     },
     {

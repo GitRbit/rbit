@@ -21,6 +21,8 @@ use rbit_storage::{
 
 use crate::{EventBus, ServiceContext, ServiceError, StarSummary, timeline::OpenCounts};
 
+mod aliases;
+
 /// Upper bound on the dashboard list; it is a jumping-off point, not an archive.
 const DASHBOARD_LIMIT: u32 = 100;
 pub use rbit_repositories::discovery::{EXPLORE_PAGE_SIZE, RepoSearch, RepoSearchResults};
@@ -161,23 +163,14 @@ impl RepositoryService {
     /// it was renamed or transferred, so existing clones keep working over Git. A
     /// repository currently called `owner/name` always wins over an old name.
     pub async fn open_following_renames(&self, viewer: Option<&User>, owner: &str, name: &str) -> Result<RepoContext, ServiceError> {
-        let name = name.strip_suffix(".git").unwrap_or(name);
-        let repo = match self.store.find_by_path(owner, name).await? {
-            Some(repo) => repo,
-            None => self.store.find_by_old_path(owner, name).await?.ok_or(ServiceError::NotFound)?,
-        };
-        self.open_found(viewer, repo).await
+        rbit_repositories::aliases::RepositoryAliases::open(&aliases::AliasView { service: self, viewer }, owner, name).await
     }
 
     /// Where the repository formerly called `owner/name` lives now, if `viewer` may read
     /// it. `None` for names that were never moved away from, are taken again, or belong to
     /// a repository the viewer cannot see (so its new name does not leak).
     pub async fn moved_to(&self, viewer: Option<&User>, owner: &str, name: &str) -> Result<Option<OwnedRepository>, ServiceError> {
-        let Some(repo) = self.store.find_by_old_path(owner, name).await? else {
-            return Ok(None);
-        };
-        let grants = viewer_grants(&self.store, viewer, &repo).await?;
-        Ok(repo_access(viewer, &repo, &grants).can_read().then_some(repo))
+        rbit_repositories::aliases::RepositoryAliases::moved_to(&aliases::AliasView { service: self, viewer }, owner, name).await
     }
 
     async fn open_found(&self, viewer: Option<&User>, repo: OwnedRepository) -> Result<RepoContext, ServiceError> {

@@ -5,7 +5,9 @@
 //! authority over uniqueness, concurrency and row decoding; a model is not an access
 //! capability. Account projections use identity's model-only dependency surface.
 
+pub mod aliases;
 pub mod discovery;
+pub mod transfer;
 
 mod listing;
 mod model;
