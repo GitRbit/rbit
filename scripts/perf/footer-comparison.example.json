@@ -1,0 +1,61 @@
+{
+  "output": "footer-anonymous-run01.json",
+  "fixture": "fixture",
+  "notes": "Both release builds, identical cloned seed, fixed settings/theme/en, idle host; see FOOTER-COMPARISON.md. No browser or performance result is implied by this example.",
+  "rounds": 50,
+  "warmups": 5,
+  "acceptLanguage": "en",
+  "variants": [
+    {
+      "name": "main39f",
+      "baseUrl": "http://127.0.0.1:3305",
+      "metadata": "main-server.json"
+    },
+    {
+      "name": "candidate",
+      "baseUrl": "http://127.0.0.1:3306",
+      "metadata": "candidate-server.json"
+    }
+  ],
+  "pages": [
+    {
+      "name": "home",
+      "path": "/",
+      "requireFooter": true,
+      "requireTiming": true
+    },
+    {
+      "name": "explore",
+      "path": "/explore",
+      "requireFooter": true,
+      "requireTiming": true
+    },
+    {
+      "name": "login",
+      "path": "/login",
+      "requireFooter": true,
+      "requireTiming": true
+    },
+    {
+      "name": "home-revalidated",
+      "path": "/",
+      "requireFooter": true,
+      "requireTiming": true,
+      "mode": "revalidate"
+    },
+    {
+      "name": "explore-revalidated",
+      "path": "/explore",
+      "requireFooter": true,
+      "requireTiming": true,
+      "mode": "revalidate"
+    },
+    {
+      "name": "login-revalidated",
+      "path": "/login",
+      "requireFooter": true,
+      "requireTiming": true,
+      "mode": "revalidate"
+    }
+  ]
+}

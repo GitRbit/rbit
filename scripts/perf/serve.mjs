@@ -8,9 +8,10 @@ import { contains, context } from "../workspace/paths.mjs";
 import { runBinary } from "../workspace/runtime.mjs";
 import { launchTree, stopTree, verifyTreeStopped } from "../workspace/process-tree.mjs";
 import { randomUUID } from "node:crypto";
+import { serverEnvironment } from "./server-environment.mjs";
 
 export function serveOptions(argv, root) {
-  const options = { profile: "release", port: "3005", executable: "", "build-record": "", "target-dir": "", "data-dir": "target/perf/data", metadata: "", "source-revision": "", "source-dir": "." };
+  const options = { profile: "release", port: "3005", executable: "", "build-record": "", "target-dir": "", "data-dir": "target/perf/data", metadata: "", "source-revision": "", "source-dir": ".", isolated: "false" };
   for (let i = 0; i < argv.length; i += 2) {
     const key = argv[i].slice(2);
     if (!argv[i].startsWith("--") || !Object.hasOwn(options, key) || !argv[i + 1] || argv[i + 1].startsWith("--")) {
@@ -18,12 +19,13 @@ export function serveOptions(argv, root) {
     }
     options[key] = argv[i + 1];
   }
+  if (!["false", "true"].includes(options.isolated)) throw new Error("isolated must be true or false");
   if (!["release", "debug"].includes(options.profile)) throw new Error("profile must be release or debug");
   if (!/^\d+$/.test(options.port) || Number(options.port) < 1 || Number(options.port) > 65535) throw new Error("invalid port");
   if ([options.executable, options["build-record"], options["target-dir"]].filter(Boolean).length > 1) throw new Error("Select exactly one executable, build record or legacy target directory");
   const port = Number(options.port);
   return {
-    profile: options.profile, port,
+    profile: options.profile, port, isolated: options.isolated === "true",
     executable: options.executable ? resolve(root, options.executable) : options["target-dir"] ? resolve(root, options["target-dir"], options.profile, process.platform === "win32" ? "rbit.exe" : "rbit") : null,
     buildRecord: options["build-record"] ? resolve(root, options["build-record"]) : null,
     dataDir: resolve(root, options["data-dir"]),
@@ -58,14 +60,7 @@ async function main() {
   await new Promise((done, reject) => { log.once("open", done); log.once("error", reject); });
   const spawnOptions = {
     cwd: options.sourceDir, stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
-    env: {
-      ...process.env,
-      RBIT_SERVER__BIND: `127.0.0.1:${options.port}`,
-      RBIT_SERVER__PUBLIC_URL: options.baseUrl,
-      RBIT_STORAGE__DATA_DIR: options.dataDir,
-      RBIT_MAIL__TRANSPORT: "log",
-      RBIT_SSH__ENABLED: process.env.RBIT_SSH__ENABLED ?? "false",
-    },
+    env: serverEnvironment(options),
   };
   // Managed generation markers protect benchmark binaries from helper cleanup. The
   // fixture data, declared port, source fingerprint and log semantics stay unchanged.

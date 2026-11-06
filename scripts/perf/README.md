@@ -303,3 +303,17 @@ blame (`BlameLimits::max_file_bytes`); above it the blob page is plain text and 
 refuses. The big change (~25,000 changed lines) exceeds `DiffLimits::max_total_lines`
 (20,000), so the compare and pull request pages show the first files in full and the
 rest truncated, as a real oversized change would.
+
+
+## Paired footer and response timing
+
+See [the release footer comparison protocol](FOOTER-COMPARISON.md) and
+[example configuration](footer-comparison.example.json). The existing HTTP sampler
+can require both raw SSR footer and Server-Timing metrics, record conditional304
+cases separately, and authenticate each variant using a private credentialsFile.
+Credentials/cookies are never serialized; do not embed them in JSON or argv.
+`serve.mjs --isolated true` strips inherited application settings, refuses private
+source configuration and requires RBIT_PERF_SETUP_TOKEN_FILE for private bootstrap.
+`seed.mjs` accepts RBIT_PERF_FIXTURE, RBIT_PERF_CREDENTIALS_FILE and the same private
+setup-token file, so no per-worktree target fixture path is necessary. These are
+optional existing-harness extensions, not completed application performance results.
