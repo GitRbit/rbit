@@ -25,6 +25,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- A stable `CI required` result gate with revision, platform and validation summaries;
+  skipped or unsuccessful required jobs cannot produce a passing aggregate.
 - Typed localization foundations and shared Explore page/results rendering, including
   opt-in expansion and right-to-left diagnostic locales and direct HTMX fragments.
 - Development worktrees under `worktrees/`, shared Cargo output with guarded artifact
@@ -84,6 +86,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - What steps write to `GITHUB_STEP_SUMMARY` is shown as Markdown on the run page.
 - `rbit_actions_*` metrics: finished runs and jobs, queue and job durations, runner calls,
   log bytes, workflow errors, waiting jobs and online runners.
+
+### Fixed
+
+- Recovery email intake starts once and drains its current operation on shutdown.
+  Session cleanup finishes active store work before returning. HTTP bind failures
+  start no background subscribers, and HTTP serving errors run shutdown cleanup.
 
 ### Upgrade notes
 

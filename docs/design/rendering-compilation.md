@@ -1,7 +1,13 @@
 # Rendering compilation: evidence and experiment contract
 
-Status: source review and proposed experiment, not an implemented rendering migration.
-No compiler, expansion command or benchmark was run for this review. The inspected
+Status: synthetic probes are implemented and screened; no production rendering migration.
+The [runtime observations](rewrite/measurements/render-runtime-count8.md) and
+[72-sample compiler screening](rewrite/measurements/render-check-counts.md) record the
+executed experiments. Compiler timing passed its validity checks; the initial memory
+observations are rejected because crate arguments cannot distinguish a rustup proxy
+from the actual compiler. Real-page prototypes and real-web acceptance remain open.
+
+The original source review below did not execute compiler/expansion measurements. Its inspected
 source is the rewrite-localization branch through `6c44582`, based on GitHub main
 `39f932a00b7aa35b324e06a9ff2343a57d4bed76`. Record the integrated revision when executing.
 
