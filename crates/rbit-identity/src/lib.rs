@@ -33,3 +33,6 @@ pub use names::{AccountName, Email};
 pub use password_attempt::PasswordAttempt;
 #[cfg(feature = "password-work")]
 pub use password_work::PasswordWork;
+
+#[cfg(feature = "credentials")]
+pub mod inventory;

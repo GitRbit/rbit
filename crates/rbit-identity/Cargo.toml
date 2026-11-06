@@ -69,3 +69,7 @@ required-features = ["sessions"]
 [[test]]
 name = "session_application"
 required-features = ["sessions"]
+
+[[test]]
+name = "credential_inventory"
+required-features = ["credentials"]
