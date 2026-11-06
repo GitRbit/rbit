@@ -29,62 +29,71 @@ The kernel now coordinates password admission and its first statically owned bac
 
 ## Current validation checkpoint
 
-Published revision `07b3a7e9` contains reference contracts and applications,
-filtered collaboration reads, original-account password/MFA proof ownership,
-dormant epoch-bound session transactions, import startup coordination and
-runner-backed production Actions browser fixtures. Credential/session fencing is
-not active. These slices do not retire their complete feature-ledger groups.
+The current batch builds on published theme update `517c7896`, preserving its
+Appearance fallback and Colorblind filter. Repository creation/settings/deletion,
+issue deletion, persisted account locale, compiled Spanish presentation, original
+MFA write predicates and shared sign-in proof orchestration are composed as atomic
+changes. Durable session fencing remains inactive. These slices do not retire their
+complete feature-ledger groups.
 
-The current local checks pass 541 Node tests with seven platform skips, formatting,
-the source ratchet (1,544 authored files, zero violations), cumulative replacement
-type/component checks and the password boundary (161 files, zero violations).
-Storage passes its all-target compilation check with trusted source admission.
-Rebuilding frontend assets reproduces the committed CSS and JavaScript bytes.
+At composed source `982c5a4a`, 558 Node tests pass with seven platform skips.
+The source ratchet checks 1,602 authored files with zero violations. After adding
+the docs-only wiki plan, cumulative replacement type/component checks and the
+password boundary (168 files, zero violations) pass. Formatting and asset rebuild
+checks also pass. The unpublished history was consolidated without changing its
+final Git tree; published history was preserved.
 
-Strict workspace/all-target Clippy passes with the corrected shared helper and
-verified native Windows completion. Its recorded application source is
-`265c0bb39572b5ed8bb955009452dbe22f373ac9`, before publication and the later
-self-qualified storage re-export correction; it is not a latest-head full-suite
-claim. The command approved 118 units, invalidated 118 and rebuilt 117 compiler
-artifacts. All 22 native worktree scenarios also pass with the corrected helper.
-The previous rejection was caused by the helper's own completion metadata call
-updating Cargo global-home bookkeeping after a stable native compilation interval.
-Completion now observes policy before that maintenance; actual-command config
-creation/deletion and parent-churn refusal tests still pass.
+The shared helper verifies native Windows completion and trusted admission for all
+651 service tests: 218 unit and 433 integration cases, zero failures. Five focused
+repository application cases additionally pass, including exact injected HEAD/delete
+failures and successful deletion retry. Failure triggers are installed before the
+application pool opens and a gate row toggles retry; production SQL and pool tuning
+remain unchanged. The preceding storage run passes 207 integration tests with
+trusted completion, including writer-version compatibility, locale upgrades and
+original-proof claims. That storage source is `327b8656`, before later test-only,
+manifest-edge, theme and documentation composition; full current-head gates remain.
 
-The application batch passes 628 service tests with trusted admission. Its broader
-workspace run passes 2,579 Rust tests, zero failures and two ignored, including all
-110 E2E cases. That broader run used the earlier helper observation order and
-refused cache admission after successful tests, so it is not a successful full
-helper/provenance run. Full current-head validation remains required.
+The writer guard requires an explicit connection protocol for protected credential
+DML, including previously cached older statements. It is a software compatibility
+interlock, not authorization against a database owner or active session fencing.
+Account locale uses the existing indexed session lookup without a new query/join.
+Native language settings, private cache/304 contracts and isolated browser saves,
+reset, history and refresh checks are prepared; latest Rust web and hosted browser
+execution and visual review remain required.
 
-At published head, [CI run 42304734686](https://github.com/GitRbit/rbit/actions/runs/42304734686)
-passes Linux tests, both platform contract jobs, formatting/Clippy, frontend,
-runner image, advisories/licenses and the release build. Windows nextest is still
-running at this observation; no overall green conclusion is claimed. The separate
-native ownership and prototype visual workflows pass. Prototype checks do not
-replace production-page browser and accessibility acceptance.
+Earlier strict workspace/all-target Clippy qualified native completion with helper
+`9ba9388c` and application source `265c0bb3` (118 approved units, 117 rebuilt compiler
+artifacts). All 22 native worktree scenarios pass with that corrected helper. Its
+completion policy observation precedes its own Cargo metadata maintenance while
+actual-command config create/delete and parent-churn refusals remain covered. This
+is not a latest-head Clippy or full-workspace acceptance claim.
 
-Repository creation/settings/deletion application ownership is the next unpublished
-batch. Its 25 focused feature tests pass; broader service integration has 424 passes
-and one reproducible deletion-retry failure following an injected SQLite trigger
-failure. Diagnosis and correction precede publication. Credential writer-version
-guards and persisted locale integration are queued separately and still require
-their Rust, migration and browser gates.
+CI on `07b3a7e9` passed Linux tests, both platform contracts, formatting/Clippy,
+frontend, runner image, advisories/licenses and release build; Windows nextest was
+cancelled when the separate published theme update superseded that run. The theme checkpoint workflow is [run 42310388773](https://github.com/GitRbit/rbit/actions/runs/42310388773).
+The candidate still needs its own full hosted, release and production-browser gates.
 
-The local optimized preview remains at `b923`; it is not the latest published
-source. [Matched footer observations](measurements/footer-b923-small-pages.md)
-show signed-in home medians of 233 to 234 microseconds and Explore medians of
-238 to 248.5 microseconds. The Explore difference remains unexplained. Cached
-local dependencies in those release builds were not qualified by the new guard;
-fresh guarded main/candidate builds and repeated paired measurements remain
-required. No operational speedup or performance acceptance is claimed.
+Local dogfooding now uses rbit's ordinary setup and scheduled public pull-mirror
+workflow for `GitRbit/rbit`. Both pinned main and the published rewrite ref match
+GitHub through rbit's Git endpoint, and the rewrite commit history is visible in
+the local UI. Mirroring refreshes every ten minutes; its Git content is read-only.
+No workstation-private refs or upstream token are imported. This newly initialized
+live data must be retained in the next stopped pre-upgrade snapshot.
 
-Unix owned completion, remaining feature/module migration, complete localization,
-the Actions engine/interface overhaul, full workloads, browser accessibility,
-migration, rollback and release acceptance remain open. The active compiler
-namespace is protected above its soft storage watermark; there is no hard storage
-bound or automatic namespace rotation claim.
+The local optimized executable remains `b923`, not the latest source. Earlier
+[matched footer observations](measurements/footer-b923-small-pages.md) show home
+medians 233 to 234 microseconds and Explore 238 to 248.5 microseconds; Explore remains
+unexplained. Cached dependencies in those release builds were not qualified by the
+new guard. Fresh guarded main/candidate builds and matched workloads are required.
+Dogfooding the full repository is a separate workload, not benchmark equivalence.
+
+The [repository wiki plan](../repository-wikis-plan.md) adds `rbit-wikis` and phased
+UI, localization, ACL, storage, recovery, performance and rollout gates. It is a
+planned new feature, not an implemented baseline port. Unix owned completion,
+remaining feature/module migration, full localization, Actions engine/interface
+work, browser accessibility, migration, rollback and release acceptance remain open.
+The protected compiler namespace exceeds its soft watermark; there is no hard
+storage bound or automatic namespace-rotation claim.
 
 ## Earlier shared-output validation checkpoint
 
