@@ -1,5 +1,8 @@
 //! Field definitions for the administrator configuration forms.
+mod security;
+
 use super::{Kind, Section, Spec};
+use security::SECURITY;
 
 const UPDATES: &[Spec] = &[
     Spec {
@@ -63,73 +66,6 @@ const STORAGE: &[Spec] = &[
         help: "Read-only here. The key that encrypts stored credentials; empty means secret.key in the data directory. Back it up with the database.",
         kind: Kind::Text,
         optional: true,
-        max: "",
-    },
-];
-
-const SECURITY: &[Spec] = &[
-    Spec {
-        key: "session_lifetime_days",
-        label: "Session lifetime (days)",
-        help: "How long a session stays valid without activity, in days.",
-        kind: Kind::Number,
-        optional: false,
-        max: "4294967295",
-    },
-    Spec {
-        key: "session_max_age_days",
-        label: "Maximum session age (days)",
-        help: "How long a session stays valid at most, however active, in days. 0 means no limit.",
-        kind: Kind::Number,
-        optional: false,
-        max: "4294967295",
-    },
-    Spec {
-        key: "min_password_length",
-        label: "Min password length",
-        help: "Minimum password length accepted at sign-up.",
-        kind: Kind::Number,
-        optional: false,
-        max: "18446744073709551615",
-    },
-    Spec {
-        key: "trusted_proxies",
-        label: "Trusted proxy networks",
-        help: "Reverse proxies (CIDR networks, e.g. 127.0.0.1/32, 10.0.0.0/8, ::1/128) whose X-Forwarded-For, Forwarded and X-Forwarded-Proto headers are believed. Empty (the default) means the TCP peer is always the client.",
-        kind: Kind::Lines,
-        optional: false,
-        max: "",
-    },
-    Spec {
-        key: "rate_limit",
-        label: "Enable rate limiting",
-        help: "Throttle sign-in, sign-up, two-factor codes, Git credentials and form posts per client. Only worth turning off for load tests.",
-        kind: Kind::Toggle,
-        optional: false,
-        max: "",
-    },
-    Spec {
-        key: "hsts",
-        label: "Send HSTS",
-        help: "Send Strict-Transport-Security (one year) when the public URL is https://, so browsers refuse plain HTTP to this host. Turn off only while moving away from HTTPS.",
-        kind: Kind::Toggle,
-        optional: false,
-        max: "",
-    },
-    Spec {
-        key: "hsts_include_subdomains",
-        label: "HSTS includes subdomains",
-        help: "Add includeSubDomains to that header, binding every subdomain of the host to HTTPS as well.",
-        kind: Kind::Toggle,
-        optional: false,
-        max: "",
-    },
-    Spec {
-        key: "external_images",
-        label: "Allow external images",
-        help: "Let pages show images from other sites, which also tells those sites who viewed the page. Off limits images to this instance and inline data: images.",
-        kind: Kind::Toggle,
-        optional: false,
         max: "",
     },
 ];

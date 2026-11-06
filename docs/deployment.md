@@ -36,6 +36,20 @@ production-minded values. The ones that matter most:
   `data_dir`.
 - `repository.git_binary` — the `git` used for smart HTTP, `git gc` and backups.
 
+### Password-work capacity
+
+`security.max_password_jobs` sizes the shared budget for bounded password hashing and
+verification work. It defaults to **2** and must be between **1 and 64**; zero and larger
+values are rejected at startup and when saving administrator configuration. Existing
+configuration files and saved settings that omit the field keep the default.
+
+Set it under `[security]` in the deployment file, through
+`RBIT_SECURITY__MAX_PASSWORD_JOBS`, or in Administration → Configuration → Security.
+Changes require a restart. The current `RBIT_*` variable takes precedence over saved
+settings, the deployment file and the legacy `RUSTIT_SECURITY__MAX_PASSWORD_JOBS`
+spelling. Increase capacity only after measuring CPU and memory headroom; the setting
+does not reduce Argon2's work or replace request-rate limits.
+
 ### Secret key
 
 Credentials rbit must be able to read back — TOTP seeds, webhook and push mirror secrets,

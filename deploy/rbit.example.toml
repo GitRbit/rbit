@@ -29,6 +29,9 @@ session_lifetime_days = 30
 # Sessions end this long after sign-in even when in constant use (0 = no limit).
 session_max_age_days = 90
 min_password_length = 12
+# Shared password hash/verification capacity (1..64). Default 2; restart required.
+# Increase only with measured CPU and memory headroom; this does not lower hash costs.
+max_password_jobs = 2
 # Requests from these proxies may set X-Forwarded-For / X-Forwarded-Proto. List exactly
 # the reverse proxy's address; anything broader lets clients spoof their IP address.
 # trusted_proxies = ["127.0.0.1/32", "::1/128"]
