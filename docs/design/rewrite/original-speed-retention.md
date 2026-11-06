@@ -83,8 +83,12 @@ and authenticated access, serial and concurrent traffic, overload and cancellati
 Preserve actual query/prepare/acquisition counts, cache work counts, CPU, memory and
 transfer/DOM evidence alongside latency distributions. Compare minimum to minimum
 only as supplementary information; use distributions and repeated runs for acceptance.
-The original approximately 500 microsecond footer observation remains a useful target
-to investigate, not a verified result for this rewrite.
+The original approximately 500 microsecond footer observation remains a useful target.
+The subsequent [matched release comparison](measurements/footer-small-pages.md)
+records sub-500-microsecond medians for both pinned main and checkpoint `7326e563`
+on six small anonymous/authenticated page cases. It also records tail differences
+and the limits of the fixture; this does not establish platform-wide parity or
+validate later ports.
 
 No optimization replacement is accepted solely because it passes compatibility tests.
 Investigate any regression against the plan's performance gates, including the cost of
