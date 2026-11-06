@@ -114,13 +114,16 @@ public static class WorkspaceJobLauncher {
                 while (!File.Exists(resumeGate) && !File.Exists(stop)) Thread.Sleep(50);
             }
             if (ResumeThread(process.thread) == UInt32.MaxValue) throw new Win32Exception(Marshal.GetLastWin32Error());
-            while (WaitForSingleObject(process.process, 100) == 258 && !File.Exists(stop)) { }
+            uint waitResult;
+            while ((waitResult = WaitForSingleObject(process.process, 100)) == 258 && !File.Exists(stop)) { }
             uint code; Require(GetExitCodeProcess(process.process, out code));
             // A supervisor exit is not evidence that workers exited. Stop the entire job.
             Require(TerminateJobObject(job, 0));
             stopped = WaitEmpty(job);
             if (!stopped) throw new IOException("Owned process tree did not stop");
-            return code == 259 ? 0 : unchecked((int)code);
+            // A signaled process may legitimately exit 259; it is no longer STILL_ACTIVE.
+            // Preserve the existing successful stop result for an unsignaled target.
+            return code == 259 && waitResult != 0 ? 0 : unchecked((int)code);
         } finally {
             // Every created target is already in the job; no post-creation assignment gap.
             if (!stopped && process.process != IntPtr.Zero) {

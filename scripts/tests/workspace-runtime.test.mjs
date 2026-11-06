@@ -139,6 +139,33 @@ test("failed target spawn acknowledges that no owned target survived", { timeout
   assert.equal(await verifyTreeStopped(child), true);
 });
 
+test("Windows normal exit 259 is preserved after the target wait signals", { timeout: 30_000, skip: process.platform !== "win32" }, async (t) => {
+  const ctx = await fixture(t);
+  const { child } = launch(ctx, ["-e", "process.exit(259)"]);
+  const observation = observeOwnedLaunch(child);
+  ctx.cleanup = () => observation.cleanup();
+  await preservingLaunchFailure(async () => {
+    assert.equal((await observation.wait(t.signal)).code, 259, "OWNED_LAUNCH_NORMAL_EXIT_259");
+    assert.equal(await verifyTreeStopped(child), true, "OWNED_LAUNCH_EXIT_259_PROOF");
+  }, ctx.cleanup);
+});
+
+test("Windows stop of a still-running target remains a successful owned shutdown", { timeout: 30_000, skip: process.platform !== "win32" }, async (t) => {
+  const ctx = await fixture(t);
+  const source = "require('node:fs').writeFileSync('running.json',JSON.stringify(process.pid));setInterval(()=>{},1000)";
+  const { child } = launch(ctx, ["-e", source]);
+  const observation = observeOwnedLaunch(child);
+  ctx.cleanup = () => observation.cleanup();
+  await preservingLaunchFailure(async () => {
+    const pid = await waitFor(join(ctx.root, "running.json")).catch(() => assert.fail("OWNED_LAUNCH_RUNNING_READY"));
+    assert.equal(alive(pid), true, "OWNED_LAUNCH_TARGET_RUNNING");
+    await stopTree(child);
+    assert.equal((await observation.wait(t.signal)).code, 0, "OWNED_LAUNCH_STOP_EXIT");
+    assert.equal(await verifyTreeStopped(child), true, "OWNED_LAUNCH_STOP_PROOF");
+    assert.equal(alive(pid), false, "OWNED_LAUNCH_TARGET_STOPPED");
+  }, ctx.cleanup);
+});
+
 async function supervisor(ctx) {
   const file = join(ctx.root, "supervisor.mjs");
   await writeFile(file, `import {spawn} from 'node:child_process';import {writeFileSync,existsSync,unlinkSync} from 'node:fs';
