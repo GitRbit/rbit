@@ -4,6 +4,8 @@
 mod contract;
 #[cfg(windows)]
 mod fixture;
+#[cfg(target_os = "linux")]
+mod linux;
 #[cfg(windows)]
 mod windows;
 #[cfg(windows)]
@@ -30,6 +32,10 @@ fn main() -> anyhow::Result<()> {
             }
         })
     }
-    #[cfg(not(windows))]
-    anyhow::bail!("native proof currently targets Windows; Unix anchor design is documented separately")
+    #[cfg(target_os = "linux")]
+    {
+        linux::run()
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
+    anyhow::bail!("native proof supports Windows and Linux only")
 }

@@ -4348,6 +4348,7 @@ version = "0.1.5"
 dependencies = [
  "anyhow",
  "processkit",
+ "rustix",
  "serde",
  "serde_json",
  "tempfile",

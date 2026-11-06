@@ -1,0 +1,54 @@
+name: Native process ownership experiment
+
+on:
+  pull_request:
+    paths:
+      - 'tools/process-tree-probe/**'
+      - 'scripts/workspace/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/process-tree-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: process-tree-proof-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  linux-proof:
+    name: Linux known-fixture ownership proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CARGO_INCREMENTAL: '0'
+      CARGO_BUILD_JOBS: '2'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy
+      - name: Record host and toolchain
+        run: |
+          mkdir -p "$RUNNER_TEMP/process-tree-evidence"
+          node -e "require('fs').writeFileSync(process.env.RUNNER_TEMP+'/process-tree-evidence/host.json',JSON.stringify({platform:process.platform,release:require('os').release(),rustc:require('child_process').execFileSync('rustc',['-vV'],{encoding:'utf8'}),git:require('child_process').execFileSync('git',['--version'],{encoding:'utf8'})}))"
+      - run: node scripts/workspace.mjs test --package rbit-process-tree-probe --locked
+      - run: node scripts/workspace.mjs clippy --package rbit-process-tree-probe --all-targets --locked -- -D warnings
+      - name: Run the exact copied fixture executable
+        run: node tools/process-tree-probe/run.mjs "$RUNNER_TEMP/process-tree-evidence/linux.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always()
+        with:
+          name: linux-process-tree-evidence
+          path: ${{ runner.temp }}/process-tree-evidence/*.json
+          retention-days: 3
+          if-no-files-found: error
