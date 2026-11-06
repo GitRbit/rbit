@@ -161,6 +161,12 @@ fn read_manifest(root: &Path, sources: &mut Sources, entries: &mut Vec<(String, 
             return;
         }
     };
+    // Cargo excludes conventional test files when autotests=false; explicit targets
+    // below remain authoritative. Scanning disabled files as extra crate roots gives
+    // their nested modules the wrong parent and can miss actual distributed impls.
+    if manifest.get("package").and_then(|package| package.get("autotests")).and_then(toml::Value::as_bool) == Some(false) {
+        entries.retain(|(name, _)| !name.starts_with("test:"));
+    }
     sources.foreign_roots.extend(["std", "core", "alloc"].map(str::to_owned));
     if let Some(name) = manifest.get("package").and_then(|package| package.get("name")).and_then(toml::Value::as_str) {
         sources.foreign_roots.insert(name.replace('-', "_"));

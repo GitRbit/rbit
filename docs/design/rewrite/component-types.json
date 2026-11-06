@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "components": [
+    {
+      "crate": "crates/rbit-services",
+      "types": [
+        "lib::timeline::ThreadServices",
+        "lib::timeline::reader::ThreadReader",
+        "lib::timeline::reader::ReadView",
+        "lib::timeline::writer::ThreadWriter"
+      ]
+    }
+  ]
+}

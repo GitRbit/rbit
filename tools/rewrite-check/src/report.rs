@@ -28,6 +28,14 @@ pub struct Report {
 }
 
 pub fn check(root: &Path, limit: usize) -> Report {
+    check_selected(root, limit, None)
+}
+
+pub fn check_components(root: &Path, limit: usize, required: &BTreeSet<Key>) -> Report {
+    check_selected(root, limit, Some(required))
+}
+
+fn check_selected(root: &Path, limit: usize, required: Option<&BTreeSet<Key>>) -> Report {
     let sources = scan::read_crate(root);
     let mut report = Report { crate_path: root.display().to_string(), limit, types: Vec::new(), violations: sources.errors.clone() };
     let mut groups: BTreeMap<Key, Vec<Lines>> = BTreeMap::new();
@@ -61,7 +69,21 @@ pub fn check(root: &Path, limit: usize) -> Report {
             }
         }
     }
+    if let Some(required) = required {
+        for key in required {
+            match sources.definitions.get(key) {
+                None => report.violations.push(format!("missing required component {}", key.join("::"))),
+                Some(definition) if definition.alias.is_some() => {
+                    report.violations.push(format!("required component {} must own its definition, not an alias", key.join("::")));
+                }
+                Some(_) => {}
+            }
+        }
+    }
     for (key, spans) in groups {
+        if required.is_some_and(|required| !required.contains(&key)) {
+            continue;
+        }
         let (lines, files) = count_lines(&spans);
         let name = key.join("::");
         if lines > limit {

@@ -30,6 +30,7 @@ async function main() {
   const binary = build.executables.find((item) => item.name === "rbit-rewrite-check");
   if (!binary) throw new Error("Cargo did not produce the structural checker");
   let code = await verifiedRun(ctx, binary.path, roots);
+  if (code === 0) code = await verifiedRun(ctx, binary.path, ["--components", ctx.checkout]);
   if (code === 0) code = await verifiedRun(ctx, binary.path, ["--password-boundary", ctx.checkout]);
   await pruneGenerations(ctx);
   process.exitCode = code;
