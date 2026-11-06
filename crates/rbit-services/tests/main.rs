@@ -35,6 +35,7 @@ mod edits;
 mod email_digests;
 mod external_auth;
 // The fake GitHub that imports and mirrors fetch from.
+mod epoch_sessions;
 #[path = "support/fake_forge.rs"]
 mod fake_forge;
 #[path = "support/fault_schema.rs"]

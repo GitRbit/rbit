@@ -30,8 +30,11 @@ pub use effects::PasswordChangeGuard;
 mod password_authentication;
 pub use password_authentication::OriginalProofOutcome;
 pub use rbit_identity::accounts::{OriginalProofReceipt, ProvenAccount};
+mod epoch_repository;
+mod original_sessions;
 mod registration;
 mod sessions;
+pub use original_sessions::{OriginalIssuedSession, OriginalResolvedSession};
 pub use registration::create_user_offline;
 
 pub use rbit_identity::accounts::SignUp;

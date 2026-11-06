@@ -18,6 +18,7 @@ mod collaboration_thread_text;
 mod collaboration_threads;
 pub mod error;
 mod identity_accounts;
+mod identity_epoch_sessions;
 mod identity_sessions;
 pub mod kv;
 mod repository_creation;
@@ -27,7 +28,7 @@ pub mod sqlite;
 mod work;
 
 pub use error::StorageError;
-pub use kv::{KvStore, SessionRecord, SessionStore};
+pub use kv::{EpochSessionStore, EpochSnapshot, KvStore, SessionRecord, SessionStore};
 pub use sealing::SealingKey;
 pub use sqlite::{AccessTokenStore, AccountStore, Database, NewAccessToken, NewRepository, NewUser, RepositoryStore, SessionUser};
 pub use work::{CapturedWork, Work, capture_work, count_work};

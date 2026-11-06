@@ -1,6 +1,7 @@
 //! Dormant epoch-bound redb operations. Legacy session APIs remain unchanged.
 //! No SQL lookup, proof verification, promotion or recovery happens in this module.
 mod binding;
+mod lifecycle;
 mod snapshot;
 
 use super::{ACCOUNT_SESSIONS, SESSIONS, SessionRecord, decode_session, encode_session, remove};
@@ -41,8 +42,20 @@ impl EpochSessionStore {
         account: AccountId,
         original: CredentialEpoch,
     ) -> Result<bool, StorageError> {
+        Ok(self.put_bound(digest, record, account, original).await?.is_some())
+    }
+
+    /// Same insertion transaction returns its original captured binding; no follow-up
+    /// read may adopt a replacement. Still dormant, without SQL or mode authority.
+    pub async fn put_bound(
+        &self,
+        digest: [u8; 32],
+        record: SessionRecord,
+        account: AccountId,
+        original: CredentialEpoch,
+    ) -> Result<Option<EpochSnapshot>, StorageError> {
         if record.account_id != account {
-            return Ok(false);
+            return Ok(None);
         }
         let binding = Binding::with_random(account, original, self.random)?;
         let encoded = encode_session(&record)?;
@@ -50,10 +63,10 @@ impl EpochSessionStore {
         tokio::task::spawn_blocking(move || {
             let tx = db.begin_write().map_err(kv_error)?;
             if !insert(&tx, digest, &record, &encoded, binding)? {
-                return Ok(false);
+                return Ok(None);
             }
             tx.commit().map_err(kv_error)?;
-            Ok(true)
+            Ok(Some(EpochSnapshot { digest, record, binding: Some(binding) }))
         })
         .await?
     }
@@ -62,6 +75,12 @@ impl EpochSessionStore {
     /// not scanned on this hot path. Missing sidecars yield explicit legacy INITIAL;
     /// such snapshots cannot mutate or adopt an epoch through these methods.
     pub async fn get_live(&self, digest: [u8; 32]) -> Result<Option<EpochSnapshot>, StorageError> {
+        Ok(self.get_snapshot(digest).await?.filter(|snapshot| !snapshot.record.is_expired()))
+    }
+
+    /// Captures expired records too, so logout/maintenance can compare their actual
+    /// incarnation. Missing sidecars stay explicit legacy INITIAL, never adopted.
+    pub async fn get_snapshot(&self, digest: [u8; 32]) -> Result<Option<EpochSnapshot>, StorageError> {
         let db = Arc::clone(&self.db);
         tokio::task::spawn_blocking(move || {
             let tx = db.begin_read().map_err(kv_error)?;
@@ -69,9 +88,6 @@ impl EpochSessionStore {
             let Some(record) = table.get(&digest).map_err(kv_error)?.and_then(|value| decode_session(value.value())) else {
                 return Ok(None);
             };
-            if record.is_expired() {
-                return Ok(None);
-            }
             let binding = match tx.open_table(EPOCHS) {
                 Ok(epochs) => {
                     epochs.get(&digest).map_err(kv_error)?.map(|value| Binding::decode(value.value(), record.account_id)).transpose()?
@@ -87,8 +103,12 @@ impl EpochSessionStore {
     /// Fixed captured binding, live-record recheck and monotonic timestamps, without
     /// upsert, sidecar adoption, epoch refresh or revoked-session resurrection.
     pub async fn renew(&self, expected: &EpochSnapshot, expires: Timestamp, seen: Timestamp) -> Result<bool, StorageError> {
+        self.renew_captured(expected.clone(), expires, seen).await
+    }
+
+    /// Consuming form for an already-owned finalization, without a second metadata clone.
+    pub async fn renew_captured(&self, expected: EpochSnapshot, expires: Timestamp, seen: Timestamp) -> Result<bool, StorageError> {
         let Some(binding) = expected.binding else { return Ok(false) };
-        let expected = expected.clone();
         let db = Arc::clone(&self.db);
         tokio::task::spawn_blocking(move || {
             let tx = db.begin_write().map_err(kv_error)?;
@@ -108,8 +128,12 @@ impl EpochSessionStore {
     /// Delete only the captured incarnation. A late logout cannot delete a new record
     /// reusing the same digest/account/epoch. Missing-sidecar snapshots refuse mutation.
     pub async fn delete(&self, expected: &EpochSnapshot) -> Result<bool, StorageError> {
+        self.delete_captured(expected.clone()).await
+    }
+
+    /// Consuming form for an already-owned logout/revocation.
+    pub async fn delete_captured(&self, expected: EpochSnapshot) -> Result<bool, StorageError> {
         let Some(binding) = expected.binding else { return Ok(false) };
-        let expected = expected.clone();
         let db = Arc::clone(&self.db);
         tokio::task::spawn_blocking(move || {
             let tx = db.begin_write().map_err(kv_error)?;

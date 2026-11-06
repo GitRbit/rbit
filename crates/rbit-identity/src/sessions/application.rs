@@ -4,8 +4,8 @@ use super::{ActiveSession, ClientInfo, SessionRecord, SessionRepository, Session
 use crate::{SessionToken, User};
 use rbit_contracts::{AccountId, Timestamp};
 
-const DAY: i64 = 24 * 60 * 60;
-const LAST_SEEN_RESOLUTION: i64 = 5 * 60;
+pub(super) const DAY: i64 = 24 * 60 * 60;
+pub(super) const LAST_SEEN_RESOLUTION: i64 = 5 * 60;
 
 #[derive(Debug, Clone, Copy)]
 pub struct SessionPolicy {
@@ -21,7 +21,7 @@ impl SessionPolicy {
     pub fn maximum_end(self, created: Timestamp) -> Option<Timestamp> {
         (self.max_age_days > 0).then(|| Timestamp(created.seconds() + i64::from(self.max_age_days) * DAY))
     }
-    fn expiry(self, created: Timestamp, now: Timestamp) -> Timestamp {
+    pub(super) fn expiry(self, created: Timestamp, now: Timestamp) -> Timestamp {
         let idle = Timestamp(now.seconds() + self.lifetime_seconds());
         self.maximum_end(created).map_or(idle, |end| idle.min(end))
     }

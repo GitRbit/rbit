@@ -37,3 +37,21 @@ pub(super) fn same_identity(left: &SessionRecord, right: &SessionRecord) -> bool
         && left.ip_address == right.ip_address
         && left.user_agent == right.user_agent
 }
+
+impl rbit_identity_models::sessions::EpochSessionSnapshot for EpochSnapshot {
+    fn digest(&self) -> [u8; 32] {
+        self.digest
+    }
+    fn record(&self) -> &SessionRecord {
+        &self.record
+    }
+    fn epoch(&self) -> CredentialEpoch {
+        self.epoch()
+    }
+    fn is_bound(&self) -> bool {
+        self.binding.is_some()
+    }
+    fn into_stored(self) -> rbit_identity_models::sessions::StoredSession {
+        rbit_identity_models::sessions::StoredSession { digest: self.digest, record: self.record }
+    }
+}

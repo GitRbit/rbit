@@ -45,7 +45,7 @@ impl AccountService {
     pub fn session_lifetime_seconds(&self) -> i64 {
         self.session_application_policy().lifetime_seconds()
     }
-    fn session_application_policy(&self) -> SessionPolicy {
+    pub(super) fn session_application_policy(&self) -> SessionPolicy {
         SessionPolicy {
             lifetime_days: self.config.security.session_lifetime_days,
             max_age_days: self.config.security.session_max_age_days,
@@ -61,7 +61,7 @@ fn map(error: SessionError<StorageError, StorageError>) -> ServiceError {
     }
 }
 
-fn describe_session(record: &SessionRecord) -> String {
+pub(super) fn describe_session(record: &SessionRecord) -> String {
     let agent: String = record.user_agent.chars().take(80).collect();
     match &record.ip_address {
         Some(ip) => format!("{agent} from {ip}").trim().to_owned(),

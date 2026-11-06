@@ -2,6 +2,7 @@ use super::*;
 use redb::ReadableTableMetadata;
 
 mod integrity;
+mod lifecycle;
 mod races;
 
 fn store() -> (tempfile::TempDir, super::super::SessionStore, EpochSessionStore) {
