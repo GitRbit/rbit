@@ -3,11 +3,14 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const pickerModule = await readFile(new URL('../../crates/rbit-web/assets/theme-picker.js', import.meta.url), 'utf8');
+const pickerModule = (await readFile(new URL('../../crates/rbit-web/assets/theme-picker.js', import.meta.url), 'utf8')).replaceAll('\r\n', '\n');
 const indexModule = await readFile(new URL('../../crates/rbit-web/assets/theme-picker-index.js', import.meta.url), 'utf8');
 const indexImport = 'import { syncIndex, watchIndexScroll } from "./theme-picker-index.js";';
-assert.ok(pickerModule.startsWith(indexImport));
-const pickerSource = indexModule.replace(/^export /gm, '') + pickerModule.slice(indexImport.length);
+const labelImport = 'import { pickerCount, pickerCredit, pickerApply } from "./theme-picker-labels.js";';
+const labelModule = await readFile(new URL('../../crates/rbit-web/assets/theme-picker-labels.js', import.meta.url), 'utf8');
+assert.ok(pickerModule.startsWith(labelImport + "\n" + indexImport));
+const pickerSource = indexModule.replace(/^export /gm, '') + labelModule.replace(/^export /gm, '')
+  + pickerModule.slice(labelImport.length + 1 + indexImport.length);
 const fallbackSource = await readFile(new URL('../../crates/rbit-web/assets/theme.js', import.meta.url), 'utf8');
 
 function picker({ slug = 'system', scheme, dark = false } = {}) {

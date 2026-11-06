@@ -11,6 +11,8 @@ mod job;
 pub use job::{ActionsJobMessage, JobDisplay};
 mod display;
 mod language;
+mod theme;
+pub use theme::ThemeMessage;
 mod spanish;
 pub use language::LanguageMessage;
 mod chrome;

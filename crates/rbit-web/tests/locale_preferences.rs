@@ -154,3 +154,25 @@ async fn catalog_validators_and_refresh_guard_preserve_private_html_and_raw_boun
         assert!(!response.headers().contains_key("hx-refresh"), "raw/error responses must not reload");
     }
 }
+
+#[tokio::test]
+async fn shared_picker_negotiates_spanish_before_validators_without_new_account_queries() {
+    let fixture = Fixture::new().await;
+    let (english, english_work) = count_work(fixture.get("/themes/picker", &[("accept-language", "en")])).await;
+    let english_tag = english.headers().get(header::ETAG).cloned();
+    let english_html = html(english).await;
+    let (spanish, spanish_work) = count_work(fixture.get("/themes/picker", &[("accept-language", "es")])).await;
+    assert_eq!(english_work, spanish_work);
+    assert_eq!(spanish.headers()[header::CONTENT_LANGUAGE], "es");
+    assert!(spanish.headers()[header::VARY].to_str().unwrap().contains("Accept-Language"));
+    if let Some(tag) = english_tag {
+        assert_ne!(spanish.headers().get(header::ETAG), Some(&tag));
+    }
+    let spanish_html = html(spanish).await;
+    assert!(spanish_html.contains("aria-label=\"Elegir un tema\""));
+    assert!(english_html.contains("aria-label=\"Choose a theme\""));
+    for value in ["dark", "light", "colorblind"] {
+        let filter = format!("data-tpk-variant=\"{value}\"");
+        assert!(english_html.contains(&filter) && spanish_html.contains(&filter));
+    }
+}

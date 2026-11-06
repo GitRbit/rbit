@@ -137,3 +137,24 @@ fn colorblind_themes_are_searchable_and_render_their_own_toggle_pair() {
         assert!(html.contains(&format!("value=\"{}\" data-theme-toggle", theme.toggled().slug())));
     }
 }
+
+#[test]
+fn spanish_picker_preserves_theme_identity_and_escapes_site_content() {
+    use rbit_localization::Locale;
+    let english = ThemePicker::new(&page(Theme::System));
+    let mut localized = page(Theme::System).with_locale(Locale::Spanish);
+    localized.site_name = "Forge <script> & friends".into();
+    let spanish = ThemePicker::new(&localized);
+    let identities = |picker: &ThemePicker| {
+        picker.groups.iter().flat_map(|group| &group.rows).map(|row| (row.card.slug, row.card.variant)).collect::<Vec<_>>()
+    };
+    assert_eq!(identities(&english), identities(&spanish));
+    let html = spanish.render().unwrap();
+    assert!(html.contains("lang=\"es\" dir=\"ltr\" aria-label=\"Elegir un tema\""));
+    assert!(html.contains("aria-label=\"Buscar temas\""));
+    assert!(html.contains("data-tpk-variant=\"colorblind\" aria-pressed=\"false\">Daltonismo</button>"));
+    assert!(html.contains("data-label-applied=\"Aplicado\""));
+    assert!(html.contains("lang=\"en\" dir=\"ltr\" data-theme=\"system\""));
+    assert!(!html.contains("Forge <script>"));
+    assert!(html.contains("&#60;script&#62;"));
+}

@@ -1,3 +1,4 @@
+import { pickerCount, pickerCredit, pickerApply } from "./theme-picker-labels.js";
 import { syncIndex, watchIndexScroll } from "./theme-picker-index.js";
 
 // Instant theme switching and the theme gallery. Every control here is a plain form or
@@ -391,18 +392,17 @@ function syncSide() {
   if (!option) return;
   part("preview").dataset.theme = option.value;
   part("name").textContent = option.querySelector(".tpk-name").textContent;
-  part("meta").textContent = `${option.dataset.family} · ${option.querySelector(".tpk-variant").textContent}`;
+  part("meta").textContent = `${option.dataset.familyLabel} · ${option.querySelector(".tpk-variant").textContent}`;
   // Row titles read "Name by Author" or "Name · built in".
   const credit = option.title;
-  const by = credit.indexOf(" by ");
-  part("author").textContent = by >= 0 ? `By ${credit.slice(by + 4)}` : "Built into rbit";
+  part("author").textContent = pickerCredit(dialog, credit);
   const button = part("apply");
   const isCurrent = option.value === applied.slug;
   button.value = option.value;
   button.dataset.variant = option.dataset.variant;
   button.dataset.counterpart = option.dataset.counterpart;
   button.disabled = isCurrent;
-  button.textContent = isCurrent ? "Applied" : "Apply";
+  button.textContent = pickerApply(dialog, isCurrent);
 }
 
 function renderRecent() {
@@ -459,7 +459,7 @@ function filterDialog() {
   for (const link of dialog.querySelectorAll("[data-tpk-jump]")) {
     link.hidden = document.getElementById(link.dataset.tpkJump)?.hidden ?? true;
   }
-  part("count").textContent = `${shown} ${shown === 1 ? "theme" : "themes"}`;
+  part("count").textContent = pickerCount(dialog, shown);
   part("empty").hidden = shown > 0;
   list.scrollTop = 0;
   activate(reachable()[0] ?? null, { scroll: false });

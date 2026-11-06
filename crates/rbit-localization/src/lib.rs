@@ -12,7 +12,7 @@ mod pseudo;
 
 pub use catalog::{
     ActionsDisplay, ActionsJobMessage, ActionsMessage, ActionsOverviewMessage, Catalog, ChromeDisplay, ChromeMessage, JobDisplay,
-    LanguageMessage, LocalizedDisplay, LocalizedText, Message, RepositoryVisibility,
+    LanguageMessage, LocalizedDisplay, LocalizedText, Message, RepositoryVisibility, ThemeMessage,
 };
 pub use locale::{Direction, Locale};
 pub use negotiation::{LocalePreferences, LocaleResolver, PreferenceSource, ResolvedLocale, UnsupportedDefault};

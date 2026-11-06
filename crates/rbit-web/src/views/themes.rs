@@ -7,6 +7,9 @@
 
 use std::sync::OnceLock;
 
+mod labels;
+use labels::PickerLabels;
+
 use askama::Template;
 use askama_web::WebTemplate;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
@@ -263,8 +266,6 @@ pub struct PickerRow {
     pub card: ThemeCard,
     /// What the dialog's search matches: name, family, author and variant, lowercased.
     pub search: String,
-    /// `Light`, `Dark` or `Auto`.
-    pub variant_label: &'static str,
     /// Starts a new letter in the long list of standalone schemes.
     pub letter: Option<char>,
 }
@@ -282,6 +283,7 @@ pub struct PickerGroup {
 #[template(path = "themes/picker.html")]
 pub struct ThemePicker {
     pub page: Page,
+    pub labels: PickerLabels,
     pub groups: Vec<PickerGroup>,
     pub total: usize,
     pub stylesheet: String,
@@ -291,14 +293,19 @@ pub struct ThemePicker {
 impl ThemePicker {
     pub fn new(page: &Page) -> Self {
         let gallery = Gallery::new(page, SettingsSection::Appearance.url(), VariantFilter::All, None);
+        let labels = PickerLabels::new(page.locale);
         let row = |card: ThemeCard, family: &'static str, letter: Option<char>| {
-            let variant_label = match card.variant {
-                "light" => "Light",
-                "dark" => "Dark",
-                _ => "Auto",
-            };
-            let search = format!("{} {family} {} {}", card.name, card.credit, card.variant).to_lowercase();
-            PickerRow { card, search, variant_label, letter }
+            let search = if page.locale == rbit_localization::Locale::English {
+                format!("{} {family} {} {}", card.name, card.credit, card.variant)
+            } else {
+                if card.slug == "system" {
+                    format!("{} {family} {} {} {} {}", card.name, card.credit, card.variant, labels.variant(card.variant), labels.system())
+                } else {
+                    format!("{} {family} {} {} {}", card.name, card.credit, card.variant, labels.variant(card.variant))
+                }
+            }
+            .to_lowercase();
+            PickerRow { card, search, letter }
         };
         let mut groups = vec![
             PickerGroup { name: "Built in", rows: gallery.defaults.into_iter().map(|card| row(card, "", None)).collect() },
@@ -324,6 +331,7 @@ impl ThemePicker {
         }
         Self {
             page: page.clone(),
+            labels,
             groups,
             total: themes::tinted().len() + Theme::BUILT_IN.len() + Theme::CLASSIC.len(),
             stylesheet: gallery.stylesheet,
