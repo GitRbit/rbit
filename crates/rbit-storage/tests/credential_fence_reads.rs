@@ -23,7 +23,9 @@ impl Fixture {
         let database = Database::open(&path).await.unwrap();
         let raw = SqlitePoolOptions::new()
             .max_connections(1)
-            .connect_with(SqliteConnectOptions::new().filename(&path).foreign_keys(true))
+            .connect_with(
+                rbit_storage::sqlite::writer_compatibility::register(SqliteConnectOptions::new().filename(&path)).foreign_keys(true),
+            )
             .await
             .unwrap();
         sqlx::raw_sql(

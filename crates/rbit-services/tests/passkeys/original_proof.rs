@@ -45,7 +45,11 @@ async fn stale_original_passkey_rejects_before_counter_consumption() {
     config.storage.data_dir = fixture.directory.path().to_path_buf();
     let raw = SqlitePoolOptions::new()
         .max_connections(1)
-        .connect_with(SqliteConnectOptions::new().filename(config.storage.sqlite_path()).foreign_keys(true))
+        .connect_with(
+            rbit_storage::sqlite::writer_compatibility::register(SqliteConnectOptions::new())
+                .filename(config.storage.sqlite_path())
+                .foreign_keys(true),
+        )
         .await
         .unwrap();
     let mut tx = raw.begin().await.unwrap();

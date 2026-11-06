@@ -37,3 +37,6 @@ mod teams;
 mod two_factor;
 mod upgrade;
 mod webhooks;
+mod writer_compatibility;
+#[path = "common/writer_connection.rs"]
+mod writer_connection;

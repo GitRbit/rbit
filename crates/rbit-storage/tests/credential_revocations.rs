@@ -13,7 +13,7 @@ mod transactions;
 async fn database() -> SqlitePool {
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
-        .connect_with(SqliteConnectOptions::new().in_memory(true).foreign_keys(true))
+        .connect_with(rbit_storage::sqlite::writer_compatibility::register(SqliteConnectOptions::new().in_memory(true)).foreign_keys(true))
         .await
         .unwrap();
     sqlx::migrate!("./migrations").run(&pool).await.unwrap();

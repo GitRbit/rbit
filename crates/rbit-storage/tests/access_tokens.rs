@@ -137,7 +137,11 @@ async fn upgrading_keeps_existing_tokens() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("rbit.db");
     let options = SqliteConnectOptions::new().filename(&path).create_if_missing(true).foreign_keys(true);
-    let pool = SqlitePoolOptions::new().max_connections(1).connect_with(options).await.unwrap();
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(rbit_storage::sqlite::writer_compatibility::register(options))
+        .await
+        .unwrap();
     sqlx::migrate!("./migrations").run_to(11, &pool).await.unwrap();
     sqlx::raw_sql(
         "INSERT INTO accounts (id, kind, name, created_at, updated_at) VALUES (7, 'user', 'alice', 1, 1); \

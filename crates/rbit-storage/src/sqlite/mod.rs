@@ -57,10 +57,11 @@ pub mod statuses;
 pub mod teams;
 pub mod two_factor;
 pub mod webhooks;
+pub mod writer_compatibility;
 
-use std::{path::Path, str::FromStr, time::Duration};
+use std::path::Path;
 
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteSynchronous};
+use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 
 pub use self::accounts::{AccountStore, LoginRecord, NewUser, SessionUser};
 pub use self::repositories::{ForkParent, NewRepository, RepositoryPage, RepositoryStore};
@@ -91,15 +92,7 @@ impl Database {
     /// was lost or misplaced, and a new one would make them unreadable. Secrets stored in
     /// plaintext (before sealing existed) are sealed before this returns.
     pub async fn open_with_key_file(path: &Path, key_file: &Path) -> Result<Self, StorageError> {
-        let options = SqliteConnectOptions::from_str("sqlite:")?
-            .filename(path)
-            .create_if_missing(true)
-            .journal_mode(SqliteJournalMode::Wal)
-            .synchronous(SqliteSynchronous::Normal)
-            .foreign_keys(true)
-            .busy_timeout(Duration::from_secs(5))
-            .pragma("mmap_size", "268435456")
-            .pragma("temp_store", "memory");
+        let options = writer_compatibility::database_options(path)?;
 
         let pool = SqlitePoolOptions::new()
             .max_connections(std::thread::available_parallelism().map_or(4, |n| n.get().clamp(2, 16)).try_into().unwrap_or(4))

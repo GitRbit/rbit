@@ -15,7 +15,11 @@ async fn upgrade_preserves_existing_accounts_and_passwords_with_zero_epochs() {
     let path = dir.path().join("upgrade.db");
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
-        .connect_with(SqliteConnectOptions::new().filename(&path).create_if_missing(true).foreign_keys(true))
+        .connect_with(
+            rbit_storage::sqlite::writer_compatibility::register(SqliteConnectOptions::new().filename(&path))
+                .create_if_missing(true)
+                .foreign_keys(true),
+        )
         .await
         .unwrap();
     sqlx::migrate!("./migrations").run_to(59, &pool).await.unwrap();
@@ -73,7 +77,11 @@ async fn upgrade_preserves_existing_accounts_and_passwords_with_zero_epochs() {
 }
 
 async fn reopen(path: &std::path::Path) -> SqlitePool {
-    SqlitePoolOptions::new().max_connections(1).connect_with(SqliteConnectOptions::new().filename(path).foreign_keys(true)).await.unwrap()
+    SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(rbit_storage::sqlite::writer_compatibility::register(SqliteConnectOptions::new().filename(path)).foreign_keys(true))
+        .await
+        .unwrap()
 }
 
 #[tokio::test]

@@ -9,7 +9,6 @@ use rbit_storage::{
     Database, NewRepository, NewUser,
     sqlite::issues::{IssueStore, NewIssue, StoredTimelineItem, TimelineCursor, TimelineItemId},
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 struct Fixture {
     dir: tempfile::TempDir,
@@ -44,7 +43,7 @@ impl Fixture {
 
     /// Runs raw SQL against the same file, for rows the store would never write.
     async fn execute(&self, sql: &str) {
-        let pool = SqlitePoolOptions::new().connect(&format!("sqlite:{}", self.dir.path().join("rbit.db").display())).await.unwrap();
+        let pool = super::writer_connection::pool(&self.dir.path().join("rbit.db")).await;
         sqlx::query(sqlx::AssertSqlSafe(sql.to_owned())).execute(&pool).await.unwrap();
         pool.close().await;
     }

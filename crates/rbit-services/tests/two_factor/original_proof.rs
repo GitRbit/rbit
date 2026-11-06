@@ -11,7 +11,11 @@ async fn raw(fixture: &Fixture) -> sqlx::SqlitePool {
     config.storage.data_dir = fixture.directory.path().to_path_buf();
     SqlitePoolOptions::new()
         .max_connections(1)
-        .connect_with(SqliteConnectOptions::new().filename(config.storage.sqlite_path()).foreign_keys(true))
+        .connect_with(
+            rbit_storage::sqlite::writer_compatibility::register(SqliteConnectOptions::new())
+                .filename(config.storage.sqlite_path())
+                .foreign_keys(true),
+        )
         .await
         .unwrap()
 }
