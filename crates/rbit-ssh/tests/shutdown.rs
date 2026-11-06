@@ -143,10 +143,10 @@ mod unix {
         channel.exec(true, "git-upload-pack 'alice/project.git'").await.unwrap();
         let pid = tokio::time::timeout(Duration::from_secs(5), async {
             loop {
-                if let Ok(pid) = tokio::fs::read_to_string(&pid_file).await {
-                    if !pid.is_empty() {
-                        break pid;
-                    }
+                if let Ok(pid) = tokio::fs::read_to_string(&pid_file).await
+                    && !pid.is_empty()
+                {
+                    break pid;
                 }
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
