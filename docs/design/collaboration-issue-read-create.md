@@ -108,3 +108,19 @@ node scripts/workspace.mjs test --package rbit-web --test main --locked
 The normal full service/web suites remain necessary for pull creation and consumers
 of the shared model aliases. The existing hosted collaboration model/application
 matrix automatically includes the new tests. No compile or runtime speedup is claimed.
+
+## Store-construction fast paths
+
+The catalog and numbered-thread applications take concrete repository factories.
+Factories run only when the original main-branch operation constructed its store;
+constructing or dropping an unpolled future does no store work. This restores the
+rejected-request fast paths without repeating validation or adding a lazy lock.
+Count-and-create/default-seed label operations still share one acquired handle.
+Label creation acquires after validation but before count/throttle; label updates
+and milestone creates/updates acquire after throttle and before their clock read.
+Thread creation acquires after validation, throttle, and the `NewIssue` clock read.
+Denied thread opening does not construct a store. Existing SQL/transaction work,
+no-op reads, transient publication and cancellation boundaries are unchanged.
+
+Direct factory-counter policy tests supplement SQL counters, which cannot detect
+pool-handle clones. These tests are source-prepared pending the shared Rust lane.

@@ -36,22 +36,24 @@ pub enum MilestoneError<E, P = E> {
 
 /// Statically composed catalog policy using the caller's already-resolved access.
 #[derive(Debug)]
-pub struct MilestoneApplication<'a, R> {
-    repository: &'a R,
+pub struct MilestoneApplication<F> {
+    repository: F,
     access: MilestoneAccess,
 }
 
-impl<'a, R: MilestoneRepository> MilestoneApplication<'a, R> {
-    pub fn new(repository: &'a R, access: MilestoneAccess) -> Self {
+impl<R: MilestoneRepository, F: Fn() -> R> MilestoneApplication<F> {
+    pub fn new(repository: F, access: MilestoneAccess) -> Self {
         Self { repository, access }
     }
 
     pub async fn list(&self, state: Option<IssueState>) -> Result<Vec<MilestoneProgress>, MilestoneError<R::Error>> {
-        self.repository.milestones(self.access.repo, state).await.map_err(MilestoneError::Store)
+        let repository = (self.repository)();
+        repository.milestones(self.access.repo, state).await.map_err(MilestoneError::Store)
     }
 
     pub async fn counts(&self) -> Result<(u64, u64), MilestoneError<R::Error>> {
-        self.repository.milestone_counts(self.access.repo).await.map_err(MilestoneError::Store)
+        let repository = (self.repository)();
+        repository.milestone_counts(self.access.repo).await.map_err(MilestoneError::Store)
     }
 
     pub async fn find(&self, id: MilestoneId) -> Result<MilestoneProgress, MilestoneError<R::Error>> {
@@ -60,11 +62,8 @@ impl<'a, R: MilestoneRepository> MilestoneApplication<'a, R> {
     }
 
     pub async fn titled(&self, title: &str) -> Result<Milestone, MilestoneError<R::Error>> {
-        self.repository
-            .find_milestone_by_title(self.access.repo, title)
-            .await
-            .map_err(MilestoneError::Store)?
-            .ok_or(MilestoneError::NotFound)
+        let repository = (self.repository)();
+        repository.find_milestone_by_title(self.access.repo, title).await.map_err(MilestoneError::Store)?.ok_or(MilestoneError::NotFound)
     }
 
     pub async fn create<P>(
@@ -76,7 +75,8 @@ impl<'a, R: MilestoneRepository> MilestoneApplication<'a, R> {
         self.access.require_writer()?;
         let fields = milestone_fields(input).map_err(MilestoneError::Invalid)?;
         spend().map_err(MilestoneError::Throttle)?;
-        self.repository.create_milestone(self.access.repo, &fields, now()).await.map_err(MilestoneError::Store)
+        let repository = (self.repository)();
+        repository.create_milestone(self.access.repo, &fields, now()).await.map_err(MilestoneError::Store)
     }
 
     pub async fn update<P>(
@@ -89,7 +89,8 @@ impl<'a, R: MilestoneRepository> MilestoneApplication<'a, R> {
         self.access.require_writer()?;
         let fields = milestone_fields(input).map_err(MilestoneError::Invalid)?;
         spend().map_err(MilestoneError::Throttle)?;
-        self.repository
+        let repository = (self.repository)();
+        repository
             .update_milestone(self.access.repo, id, &fields, now())
             .await
             .map_err(MilestoneError::Store)?
@@ -104,7 +105,8 @@ impl<'a, R: MilestoneRepository> MilestoneApplication<'a, R> {
         now: impl FnOnce() -> Timestamp,
     ) -> Result<Milestone, MilestoneError<R::Error>> {
         self.access.require_writer()?;
-        self.repository
+        let repository = (self.repository)();
+        repository
             .set_milestone_state(self.access.repo, id, state, now())
             .await
             .map_err(MilestoneError::Store)?
@@ -113,6 +115,7 @@ impl<'a, R: MilestoneRepository> MilestoneApplication<'a, R> {
 
     pub async fn delete(&self, id: MilestoneId) -> Result<Milestone, MilestoneError<R::Error>> {
         self.access.require_writer()?;
-        self.repository.delete_milestone(self.access.repo, id).await.map_err(MilestoneError::Store)?.ok_or(MilestoneError::NotFound)
+        let repository = (self.repository)();
+        repository.delete_milestone(self.access.repo, id).await.map_err(MilestoneError::Store)?.ok_or(MilestoneError::NotFound)
     }
 }

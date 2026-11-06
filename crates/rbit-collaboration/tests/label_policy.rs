@@ -92,7 +92,7 @@ fn access(can_write: bool, archived: bool) -> LabelAccess {
 async fn authorization_archive_and_validation_precede_count_throttle_and_clock() {
     let store = Catalog::default();
     for (can_write, archived) in [(false, true), (true, true)] {
-        let result = LabelApplication::new(&store, access(can_write, archived))
+        let result = LabelApplication::new(|| &store, access(can_write, archived))
             .create(&LabelInput::default(), || -> Result<(), ()> { panic!("throttle") }, || panic!("clock"))
             .await;
         if can_write {
@@ -101,7 +101,7 @@ async fn authorization_archive_and_validation_precede_count_throttle_and_clock()
             assert!(matches!(result, Err(LabelError::Forbidden)));
         }
     }
-    let result = LabelApplication::new(&store, access(true, false))
+    let result = LabelApplication::new(|| &store, access(true, false))
         .create(&LabelInput::default(), || -> Result<(), ()> { panic!("throttle") }, || panic!("clock"))
         .await;
     assert!(matches!(result, Err(LabelError::Invalid(message)) if message == "label name must not be empty"));
@@ -111,14 +111,14 @@ async fn authorization_archive_and_validation_precede_count_throttle_and_clock()
 #[tokio::test]
 async fn create_count_limit_throttle_and_sql_errors_keep_their_original_precedence() {
     let full = Catalog { count: 200, ..Catalog::default() };
-    let result = LabelApplication::new(&full, access(true, false))
+    let result = LabelApplication::new(|| &full, access(true, false))
         .create(&input(), || -> Result<(), ()> { panic!("throttle") }, || panic!("clock"))
         .await;
     assert!(matches!(result, Err(LabelError::Invalid(_))));
     assert_eq!(*full.calls.lock().unwrap(), ["count"]);
 
     let store = Catalog { fail_create: true, ..Catalog::default() };
-    let app = LabelApplication::new(&store, access(true, false));
+    let app = LabelApplication::new(|| &store, access(true, false));
     assert!(matches!(app.create(&input(), || Err("limited"), || panic!("clock")).await, Err(LabelError::Throttle("limited"))));
     assert_eq!(*store.calls.lock().unwrap(), ["count"]);
     store.calls.lock().unwrap().clear();
@@ -142,13 +142,13 @@ async fn create_count_limit_throttle_and_sql_errors_keep_their_original_preceden
 #[tokio::test]
 async fn defaults_are_conditional_and_keep_storage_insert_count_without_a_second_count() {
     let store = Catalog { count: 1, ..Catalog::default() };
-    let result = LabelApplication::new(&store, access(true, false))
+    let result = LabelApplication::new(|| &store, access(true, false))
         .seed_defaults(|| -> Result<(), ()> { panic!("throttle") }, || panic!("clock"))
         .await;
     assert!(matches!(result, Ok(0)));
     assert_eq!(*store.calls.lock().unwrap(), ["count"]);
     let empty = Catalog::default();
-    let result = LabelApplication::new(&empty, access(true, false)).seed_defaults(|| Ok::<_, ()>(()), || Timestamp(9)).await;
+    let result = LabelApplication::new(|| &empty, access(true, false)).seed_defaults(|| Ok::<_, ()>(()), || Timestamp(9)).await;
     assert!(matches!(result, Ok(8)), "concurrent defaults may already exist at insertion");
     assert_eq!(*empty.calls.lock().unwrap(), ["count", "defaults"]);
 }
@@ -156,7 +156,7 @@ async fn defaults_are_conditional_and_keep_storage_insert_count_without_a_second
 #[tokio::test]
 async fn update_missing_is_after_throttle_delete_is_one_operation_and_reads_keep_ascii_matching() {
     let store = Catalog::default();
-    let app = LabelApplication::new(&store, access(true, false));
+    let app = LabelApplication::new(|| &store, access(true, false));
     assert!(matches!(
         app.update(
             LabelId(8),
@@ -179,4 +179,93 @@ async fn update_missing_is_after_throttle_delete_is_one_operation_and_reads_keep
     assert!(matches!(app.named("unknown").await, Err(LabelError::NotFound)));
     app.list().await.unwrap();
     app.usage().await.unwrap();
+}
+
+#[tokio::test]
+async fn lazy_factory_keeps_rejected_and_unpolled_catalog_paths_without_store_construction() {
+    let store = Catalog::default();
+    for (writer, archived) in [(false, true), (true, true)] {
+        let app = LabelApplication::new(
+            || {
+                store.record("construct");
+                &store
+            },
+            access(writer, archived),
+        );
+        let _ = app.create(&input(), || Ok::<_, ()>(()), || Timestamp(9)).await;
+        let _ = app.update(LabelId(7), &input(), || Ok::<_, ()>(()), || Timestamp(9)).await;
+        let _ = app.delete(LabelId(7)).await;
+        let _ = app.seed_defaults(|| Ok::<_, ()>(()), || Timestamp(9)).await;
+    }
+    let app = LabelApplication::new(
+        || {
+            store.record("construct");
+            &store
+        },
+        access(true, false),
+    );
+    let invalid = LabelInput::default();
+    assert!(matches!(app.create(&invalid, || Ok::<_, ()>(()), || Timestamp(9)).await, Err(LabelError::Invalid(_))));
+    assert!(matches!(app.update(LabelId(7), &invalid, || Ok::<_, ()>(()), || Timestamp(9)).await, Err(LabelError::Invalid(_))));
+    assert!(matches!(
+        app.update(LabelId(7), &input(), || Err("throttled"), || panic!("clock")).await,
+        Err(LabelError::Throttle("throttled"))
+    ));
+    let valid = input();
+    let unpolled = app.create(&valid, || Ok::<_, ()>(()), || Timestamp(9));
+    drop(unpolled);
+    assert_eq!(*store.calls.lock().unwrap(), Vec::<&str>::new());
+}
+
+#[tokio::test]
+async fn count_and_create_or_seed_reuse_one_handle_and_keep_the_original_clock_point() {
+    let store = Catalog::default();
+    let app = LabelApplication::new(
+        || {
+            store.record("construct");
+            &store
+        },
+        access(true, false),
+    );
+    app.create(
+        &input(),
+        || {
+            store.record("spend");
+            Ok::<_, ()>(())
+        },
+        || {
+            store.record("clock");
+            Timestamp(9)
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(*store.calls.lock().unwrap(), ["construct", "count", "spend", "clock", "create"]);
+    store.calls.lock().unwrap().clear();
+    app.seed_defaults(
+        || {
+            store.record("spend");
+            Ok::<_, ()>(())
+        },
+        || {
+            store.record("clock");
+            Timestamp(9)
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(*store.calls.lock().unwrap(), ["construct", "count", "spend", "clock", "defaults"]);
+    store.calls.lock().unwrap().clear();
+    assert!(matches!(app.create(&input(), || Err("throttled"), || panic!("clock")).await, Err(LabelError::Throttle("throttled"))));
+    assert_eq!(*store.calls.lock().unwrap(), ["construct", "count"]);
+    let full = Catalog { count: 1, ..Catalog::default() };
+    let app = LabelApplication::new(
+        || {
+            full.record("construct");
+            &full
+        },
+        access(true, false),
+    );
+    assert_eq!(app.seed_defaults(|| -> Result<(), ()> { panic!("spend") }, || panic!("clock")).await.unwrap(), 0);
+    assert_eq!(*full.calls.lock().unwrap(), ["construct", "count"]);
 }

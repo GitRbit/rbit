@@ -98,7 +98,7 @@ fn input() -> MilestoneInput {
 async fn denied_and_archived_writes_do_not_validate_throttle_read_or_consult_clock() {
     let store = Catalog::default();
     for (writer, archived) in [(false, true), (true, true)] {
-        let app = MilestoneApplication::new(&store, access(writer, archived));
+        let app = MilestoneApplication::new(|| &store, access(writer, archived));
         let result = app.create(&MilestoneInput::default(), || -> Result<(), ()> { panic!("throttle") }, || panic!("clock")).await;
         if writer {
             assert!(matches!(result, Err(MilestoneError::Archived)));
@@ -114,7 +114,7 @@ async fn denied_and_archived_writes_do_not_validate_throttle_read_or_consult_clo
 #[tokio::test]
 async fn validation_throttle_clock_and_sql_error_order_is_preserved_without_preflight_reads() {
     let store = Catalog { fail_create: true, ..Catalog::default() };
-    let app = MilestoneApplication::new(&store, access(true, false));
+    let app = MilestoneApplication::new(|| &store, access(true, false));
     assert!(matches!(
         app.create(&MilestoneInput::default(), || -> Result<(), ()> { panic!("throttle") }, || panic!("clock")).await,
         Err(MilestoneError::Invalid(_))
@@ -141,7 +141,7 @@ async fn validation_throttle_clock_and_sql_error_order_is_preserved_without_pref
 #[tokio::test]
 async fn id_lookup_keeps_list_progress_and_missing_mutations_keep_single_store_calls() {
     let store = Catalog::default();
-    let app = MilestoneApplication::new(&store, access(true, false));
+    let app = MilestoneApplication::new(|| &store, access(true, false));
     let progress = app.find(MilestoneId(7)).await.unwrap();
     assert_eq!((progress.open_issues, progress.closed_issues), (4, 2));
     assert!(matches!(app.find(MilestoneId(8)).await, Err(MilestoneError::NotFound)));
@@ -164,4 +164,84 @@ async fn id_lookup_keeps_list_progress_and_missing_mutations_keep_single_store_c
     assert!(matches!(app.set_state(MilestoneId(8), IssueState::Closed, || Timestamp(9)).await, Err(MilestoneError::NotFound)));
     assert!(matches!(app.delete(MilestoneId(8)).await, Err(MilestoneError::NotFound)));
     assert_eq!(*store.calls.lock().unwrap(), ["list", "list", "titled", "counts", "list", "spend", "update", "state", "delete"]);
+}
+
+#[tokio::test]
+async fn lazy_factory_is_not_called_for_rejected_unpolled_or_throttled_writes() {
+    let store = Catalog::default();
+    for (writer, archived) in [(false, true), (true, true)] {
+        let app = MilestoneApplication::new(
+            || {
+                store.record("construct");
+                &store
+            },
+            access(writer, archived),
+        );
+        let _ = app.create(&input(), || Ok::<_, ()>(()), || Timestamp(9)).await;
+        let _ = app.update(MilestoneId(7), &input(), || Ok::<_, ()>(()), || Timestamp(9)).await;
+        let _ = app.set_state(MilestoneId(7), IssueState::Closed, || Timestamp(9)).await;
+        let _ = app.delete(MilestoneId(7)).await;
+    }
+    let app = MilestoneApplication::new(
+        || {
+            store.record("construct");
+            &store
+        },
+        access(true, false),
+    );
+    let invalid = MilestoneInput::default();
+    assert!(matches!(app.create(&invalid, || Ok::<_, ()>(()), || Timestamp(9)).await, Err(MilestoneError::Invalid(_))));
+    assert!(matches!(app.update(MilestoneId(7), &invalid, || Ok::<_, ()>(()), || Timestamp(9)).await, Err(MilestoneError::Invalid(_))));
+    assert!(matches!(app.create(&input(), || Err("throttled"), || panic!("clock")).await, Err(MilestoneError::Throttle("throttled"))));
+    assert!(matches!(
+        app.update(MilestoneId(7), &input(), || Err("throttled"), || panic!("clock")).await,
+        Err(MilestoneError::Throttle("throttled"))
+    ));
+    let valid = input();
+    let unpolled = app.create(&valid, || Ok::<_, ()>(()), || Timestamp(9));
+    drop(unpolled);
+    assert_eq!(*store.calls.lock().unwrap(), Vec::<&str>::new());
+}
+
+#[tokio::test]
+async fn accepted_milestone_write_constructs_once_after_throttle_before_clock() {
+    let store = Catalog::default();
+    let app = MilestoneApplication::new(
+        || {
+            store.record("construct");
+            &store
+        },
+        access(true, false),
+    );
+    app.create(
+        &input(),
+        || {
+            store.record("spend");
+            Ok::<_, ()>(())
+        },
+        || {
+            store.record("clock");
+            Timestamp(9)
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(*store.calls.lock().unwrap(), ["spend", "construct", "clock", "create"]);
+    store.calls.lock().unwrap().clear();
+    let result = app
+        .update(
+            MilestoneId(7),
+            &input(),
+            || {
+                store.record("spend");
+                Ok::<_, ()>(())
+            },
+            || {
+                store.record("clock");
+                Timestamp(9)
+            },
+        )
+        .await;
+    assert!(matches!(result, Err(MilestoneError::NotFound)));
+    assert_eq!(*store.calls.lock().unwrap(), ["spend", "construct", "clock", "update"]);
 }

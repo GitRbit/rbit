@@ -37,31 +37,35 @@ pub enum LabelError<E, P = E> {
 
 /// A statically dispatched catalog application; no runtime or adapter ownership.
 #[derive(Debug)]
-pub struct LabelApplication<'a, R> {
-    repository: &'a R,
+pub struct LabelApplication<F> {
+    repository: F,
     access: LabelAccess,
 }
 
-impl<'a, R: LabelRepository> LabelApplication<'a, R> {
-    pub fn new(repository: &'a R, access: LabelAccess) -> Self {
+impl<R: LabelRepository, F: Fn() -> R> LabelApplication<F> {
+    pub fn new(repository: F, access: LabelAccess) -> Self {
         Self { repository, access }
     }
 
     pub async fn list(&self) -> Result<Vec<Label>, LabelError<R::Error>> {
-        self.repository.labels(self.access.repo).await.map_err(LabelError::Store)
+        let repository = (self.repository)();
+        repository.labels(self.access.repo).await.map_err(LabelError::Store)
     }
 
     pub async fn usage(&self) -> Result<Vec<LabelUsage>, LabelError<R::Error>> {
         // Usage counts open issues, not pull requests, exactly as the existing UI.
-        self.repository.label_usage(self.access.repo, "issue").await.map_err(LabelError::Store)
+        let repository = (self.repository)();
+        repository.label_usage(self.access.repo, "issue").await.map_err(LabelError::Store)
     }
 
     pub async fn named(&self, name: &str) -> Result<Label, LabelError<R::Error>> {
-        self.repository.find_label_by_name(self.access.repo, name).await.map_err(LabelError::Store)?.ok_or(LabelError::NotFound)
+        let repository = (self.repository)();
+        repository.find_label_by_name(self.access.repo, name).await.map_err(LabelError::Store)?.ok_or(LabelError::NotFound)
     }
 
     pub async fn named_many(&self, names: &[String]) -> Result<Vec<Label>, LabelError<R::Error>> {
-        let labels = self.repository.labels_named(self.access.repo, names).await.map_err(LabelError::Store)?;
+        let repository = (self.repository)();
+        let labels = repository.labels_named(self.access.repo, names).await.map_err(LabelError::Store)?;
         if let Some(missing) = names.iter().find(|name| !labels.iter().any(|label| label.name.eq_ignore_ascii_case(name))) {
             return Err(LabelError::Invalid(format!("there is no label called “{missing}”")));
         }
@@ -76,11 +80,12 @@ impl<'a, R: LabelRepository> LabelApplication<'a, R> {
     ) -> Result<Label, LabelError<R::Error, P>> {
         self.access.require_writer()?;
         let fields = label_fields(input).map_err(LabelError::Invalid)?;
-        if self.repository.count_labels(self.access.repo).await.map_err(LabelError::Store)? >= MAX_LABELS_PER_REPO {
+        let repository = (self.repository)();
+        if repository.count_labels(self.access.repo).await.map_err(LabelError::Store)? >= MAX_LABELS_PER_REPO {
             return Err(LabelError::Invalid(format!("a repository can have at most {MAX_LABELS_PER_REPO} labels")));
         }
         spend().map_err(LabelError::Throttle)?;
-        self.repository.create_label(self.access.repo, &fields, now()).await.map_err(LabelError::Store)
+        repository.create_label(self.access.repo, &fields, now()).await.map_err(LabelError::Store)
     }
 
     pub async fn update<P>(
@@ -93,13 +98,15 @@ impl<'a, R: LabelRepository> LabelApplication<'a, R> {
         self.access.require_writer()?;
         let fields = label_fields(input).map_err(LabelError::Invalid)?;
         spend().map_err(LabelError::Throttle)?;
-        self.repository.update_label(self.access.repo, id, &fields, now()).await.map_err(LabelError::Store)?.ok_or(LabelError::NotFound)
+        let repository = (self.repository)();
+        repository.update_label(self.access.repo, id, &fields, now()).await.map_err(LabelError::Store)?.ok_or(LabelError::NotFound)
     }
 
     /// Deletion neither spends content throttle nor appends timeline/audit events.
     pub async fn delete(&self, id: LabelId) -> Result<Label, LabelError<R::Error>> {
         self.access.require_writer()?;
-        self.repository.delete_label(self.access.repo, id).await.map_err(LabelError::Store)?.ok_or(LabelError::NotFound)
+        let repository = (self.repository)();
+        repository.delete_label(self.access.repo, id).await.map_err(LabelError::Store)?.ok_or(LabelError::NotFound)
     }
 
     pub async fn seed_defaults<P>(
@@ -108,7 +115,8 @@ impl<'a, R: LabelRepository> LabelApplication<'a, R> {
         now: impl FnOnce() -> Timestamp,
     ) -> Result<u64, LabelError<R::Error, P>> {
         self.access.require_writer()?;
-        if self.repository.count_labels(self.access.repo).await.map_err(LabelError::Store)? > 0 {
+        let repository = (self.repository)();
+        if repository.count_labels(self.access.repo).await.map_err(LabelError::Store)? > 0 {
             return Ok(0);
         }
         spend().map_err(LabelError::Throttle)?;
@@ -120,6 +128,6 @@ impl<'a, R: LabelRepository> LabelApplication<'a, R> {
                 description: (*description).to_owned(),
             })
             .collect::<Vec<_>>();
-        self.repository.create_missing_labels(self.access.repo, &labels, now()).await.map_err(LabelError::Store)
+        repository.create_missing_labels(self.access.repo, &labels, now()).await.map_err(LabelError::Store)
     }
 }

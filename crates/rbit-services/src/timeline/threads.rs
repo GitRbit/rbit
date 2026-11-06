@@ -25,7 +25,7 @@ fn error<P: Into<ServiceError>>(error: ThreadError<StorageError, P>) -> ServiceE
 impl TimelineService {
     /// A thread and author in one statement; permission shaping retains the legacy table.
     pub async fn open(&self, viewer: Option<&User>, repo: RepoContext, number: IssueNumber) -> Result<IssueContext, ServiceError> {
-        let (issue, author) = ThreadApplication::new(&self.ctx.database.issues(), access(&repo)).open(number).await.map_err(error)?;
+        let (issue, author) = ThreadApplication::new(|| self.ctx.database.issues(), access(&repo)).open(number).await.map_err(error)?;
         let permissions = thread_permissions(viewer, &repo, &issue);
         Ok(IssueContext { repo, issue, author, permissions })
     }
@@ -33,7 +33,7 @@ impl TimelineService {
     /// Open issues and pull requests of `repo`, in one indexed query.
     pub async fn open_counts(&self, repo: RepoId) -> Result<OpenCounts, ServiceError> {
         let scope = ThreadAccess { repo, can_read: true, archived: false };
-        ThreadApplication::new(&self.ctx.database.issues(), scope).counts().await.map_err(error)
+        ThreadApplication::new(|| self.ctx.database.issues(), scope).counts().await.map_err(error)
     }
 
     /// Validates, spends content throttle, then inserts the original row transaction.
@@ -47,7 +47,7 @@ impl TimelineService {
         body: &str,
     ) -> Result<Issue, ServiceError> {
         let draft = ThreadDraft { author: actor.id(), kind, title, body };
-        ThreadApplication::new(&self.ctx.database.issues(), access(repo))
+        ThreadApplication::new(|| self.ctx.database.issues(), access(repo))
             .create(draft, || self.spend(actor), Timestamp::now)
             .await
             .map_err(error)

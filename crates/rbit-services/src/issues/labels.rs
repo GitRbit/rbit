@@ -29,32 +29,32 @@ impl IssueService {
 
     /// The labels of `repo`, by name.
     pub async fn labels(&self, repo: &RepoContext) -> Result<Vec<Label>, ServiceError> {
-        LabelApplication::new(&self.label_store(), access(repo)).list().await.map_err(error)
+        LabelApplication::new(|| self.label_store(), access(repo)).list().await.map_err(error)
     }
 
     /// The labels of `repo` with their open issues.
     pub async fn label_usage(&self, repo: &RepoContext) -> Result<Vec<LabelUsage>, ServiceError> {
-        LabelApplication::new(&self.label_store(), access(repo)).usage().await.map_err(error)
+        LabelApplication::new(|| self.label_store(), access(repo)).usage().await.map_err(error)
     }
 
     /// The label of `repo` called `name` (case-insensitively).
     pub async fn label_named(&self, repo: &RepoContext, name: &str) -> Result<Label, ServiceError> {
-        LabelApplication::new(&self.label_store(), access(repo)).named(name).await.map_err(error)
+        LabelApplication::new(|| self.label_store(), access(repo)).named(name).await.map_err(error)
     }
 
     /// The labels of `repo` among `names`; unknown names are invalid.
     pub async fn labels_named(&self, repo: &RepoContext, names: &[String]) -> Result<Vec<Label>, ServiceError> {
-        LabelApplication::new(&self.label_store(), access(repo)).named_many(names).await.map_err(error)
+        LabelApplication::new(|| self.label_store(), access(repo)).named_many(names).await.map_err(error)
     }
 
     /// Creates a label (writers; at most 200 per repository; names unique ignoring case).
     pub async fn create_label(&self, actor: &User, repo: &RepoContext, input: &LabelInput) -> Result<Label, ServiceError> {
-        LabelApplication::new(&self.label_store(), access(repo)).create(input, || self.spend(actor), Timestamp::now).await.map_err(error)
+        LabelApplication::new(|| self.label_store(), access(repo)).create(input, || self.spend(actor), Timestamp::now).await.map_err(error)
     }
 
     /// Changes label `id` of `repo` (writers).
     pub async fn update_label(&self, actor: &User, repo: &RepoContext, id: LabelId, input: &LabelInput) -> Result<Label, ServiceError> {
-        LabelApplication::new(&self.label_store(), access(repo))
+        LabelApplication::new(|| self.label_store(), access(repo))
             .update(id, input, || self.spend(actor), Timestamp::now)
             .await
             .map_err(error)
@@ -62,11 +62,11 @@ impl IssueService {
 
     /// Deletes a label, removing thread associations without timeline events or throttle.
     pub async fn delete_label(&self, repo: &RepoContext, id: LabelId) -> Result<Label, ServiceError> {
-        LabelApplication::new(&self.label_store(), access(repo)).delete(id).await.map_err(error)
+        LabelApplication::new(|| self.label_store(), access(repo)).delete(id).await.map_err(error)
     }
 
     /// Adds the default labels only to an empty catalog; returns the inserted count.
     pub async fn create_default_labels(&self, actor: &User, repo: &RepoContext) -> Result<u64, ServiceError> {
-        LabelApplication::new(&self.label_store(), access(repo)).seed_defaults(|| self.spend(actor), Timestamp::now).await.map_err(error)
+        LabelApplication::new(|| self.label_store(), access(repo)).seed_defaults(|| self.spend(actor), Timestamp::now).await.map_err(error)
     }
 }

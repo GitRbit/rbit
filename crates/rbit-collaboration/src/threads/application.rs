@@ -38,13 +38,13 @@ pub struct OpenCounts {
 }
 
 #[derive(Debug)]
-pub struct ThreadApplication<'a, R> {
-    repository: &'a R,
+pub struct ThreadApplication<F> {
+    repository: F,
     access: ThreadAccess,
 }
 
-impl<'a, R: ThreadRepository> ThreadApplication<'a, R> {
-    pub fn new(repository: &'a R, access: ThreadAccess) -> Self {
+impl<R: ThreadRepository, F: Fn() -> R> ThreadApplication<F> {
+    pub fn new(repository: F, access: ThreadAccess) -> Self {
         Self { repository, access }
     }
 
@@ -52,12 +52,14 @@ impl<'a, R: ThreadRepository> ThreadApplication<'a, R> {
         if !self.access.can_read {
             return Err(ThreadError::NotFound);
         }
-        self.repository.find_by_number_with_author(self.access.repo, number).await.map_err(ThreadError::Store)?.ok_or(ThreadError::NotFound)
+        let repository = (self.repository)();
+        repository.find_by_number_with_author(self.access.repo, number).await.map_err(ThreadError::Store)?.ok_or(ThreadError::NotFound)
     }
 
     /// Counts retain their existing caller-owned visibility gate; no new check/read.
     pub async fn counts(&self) -> Result<OpenCounts, ThreadError<R::Error>> {
-        let (issues, pulls) = self.repository.open_counts(self.access.repo).await.map_err(ThreadError::Store)?;
+        let repository = (self.repository)();
+        let (issues, pulls) = repository.open_counts(self.access.repo).await.map_err(ThreadError::Store)?;
         Ok(OpenCounts { issues, pulls })
     }
 
@@ -77,6 +79,7 @@ impl<'a, R: ThreadRepository> ThreadApplication<'a, R> {
         let body = IssueText::body(draft.body).map_err(ThreadError::Text)?;
         spend().map_err(ThreadError::Throttle)?;
         let new = NewIssue { repo: self.access.repo, kind: draft.kind, title, body, author: draft.author, at: now() };
-        self.repository.create(&new).await.map_err(ThreadError::Store)
+        let repository = (self.repository)();
+        repository.create(&new).await.map_err(ThreadError::Store)
     }
 }

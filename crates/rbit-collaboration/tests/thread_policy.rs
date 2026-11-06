@@ -43,7 +43,7 @@ fn draft() -> ThreadDraft<'static> {
 async fn visibility_archive_text_throttle_and_clock_keep_precedence_and_sql_errors() {
     let store = Store::default();
     for (read, archived) in [(false, true), (true, true)] {
-        let app = ThreadApplication::new(&store, ThreadAccess { repo: RepoId(3), can_read: read, archived });
+        let app = ThreadApplication::new(|| &store, ThreadAccess { repo: RepoId(3), can_read: read, archived });
         let result = app.create(draft(), || -> Result<(), ()> { panic!("spend") }, || panic!("clock")).await;
         if read {
             assert!(matches!(result, Err(ThreadError::Archived)));
@@ -51,7 +51,7 @@ async fn visibility_archive_text_throttle_and_clock_keep_precedence_and_sql_erro
             assert!(matches!(result, Err(ThreadError::NotFound)));
         }
     }
-    let app = ThreadApplication::new(&store, ThreadAccess { repo: RepoId(3), can_read: true, archived: false });
+    let app = ThreadApplication::new(|| &store, ThreadAccess { repo: RepoId(3), can_read: true, archived: false });
     let invalid = ThreadDraft { title: "", ..draft() };
     assert!(matches!(app.create(invalid, || -> Result<(), ()> { panic!("spend") }, || panic!("clock")).await, Err(ThreadError::Text(_))));
     assert!(matches!(app.create(draft(), || Err("limited"), || panic!("clock")).await, Err(ThreadError::Throttle("limited"))));
@@ -76,13 +76,63 @@ async fn visibility_archive_text_throttle_and_clock_keep_precedence_and_sql_erro
 #[tokio::test]
 async fn archived_reads_join_author_once_and_counts_keep_their_existing_caller_gate() {
     let store = Store::default();
-    let denied = ThreadApplication::new(&store, ThreadAccess { repo: RepoId(3), can_read: false, archived: true });
+    let denied = ThreadApplication::new(|| &store, ThreadAccess { repo: RepoId(3), can_read: false, archived: true });
     assert!(matches!(denied.open(IssueNumber::new(1).unwrap()).await, Err(ThreadError::NotFound)));
     assert_eq!(*store.calls.lock().unwrap(), Vec::<&str>::new());
     let counts = denied.counts().await.unwrap();
     assert_eq!((counts.issues, counts.pulls), (2, 3));
-    let app = ThreadApplication::new(&store, ThreadAccess { repo: RepoId(3), can_read: true, archived: true });
+    let app = ThreadApplication::new(|| &store, ThreadAccess { repo: RepoId(3), can_read: true, archived: true });
     let (_, author) = app.open(IssueNumber::new(1).unwrap()).await.unwrap();
     assert!(author.is_none());
     assert_eq!(*store.calls.lock().unwrap(), ["counts", "open"]);
+}
+
+#[tokio::test]
+async fn lazy_thread_factory_preserves_pre_store_validation_throttle_and_clock() {
+    let store = Store::default();
+    for (can_read, archived) in [(false, true), (true, true)] {
+        let app = ThreadApplication::new(
+            || {
+                store.calls.lock().unwrap().push("construct");
+                &store
+            },
+            ThreadAccess { repo: RepoId(3), can_read, archived },
+        );
+        let _ = app.create(draft(), || Ok::<_, ()>(()), || Timestamp(9)).await;
+        if !can_read {
+            let _ = app.open(IssueNumber::new(1).unwrap()).await;
+        }
+    }
+    let app = ThreadApplication::new(
+        || {
+            store.calls.lock().unwrap().push("construct");
+            &store
+        },
+        ThreadAccess { repo: RepoId(3), can_read: true, archived: false },
+    );
+    let _ = app.create(ThreadDraft { title: "", ..draft() }, || Ok::<_, ()>(()), || Timestamp(9)).await;
+    let _ = app.create(draft(), || Err("limited"), || panic!("clock")).await;
+    drop(app.create(draft(), || Ok::<_, ()>(()), || Timestamp(9)));
+    assert_eq!(*store.calls.lock().unwrap(), Vec::<&str>::new());
+    let result = app
+        .create(
+            draft(),
+            || {
+                store.calls.lock().unwrap().push("spend");
+                Ok::<_, ()>(())
+            },
+            || {
+                store.calls.lock().unwrap().push("clock");
+                Timestamp(9)
+            },
+        )
+        .await;
+    assert!(matches!(result, Err(ThreadError::Store("commit failed"))));
+    assert_eq!(*store.calls.lock().unwrap(), ["spend", "clock", "construct", "create"]);
+    store.calls.lock().unwrap().clear();
+    app.open(IssueNumber::new(1).unwrap()).await.unwrap();
+    assert_eq!(*store.calls.lock().unwrap(), ["construct", "open"]);
+    store.calls.lock().unwrap().clear();
+    app.counts().await.unwrap();
+    assert_eq!(*store.calls.lock().unwrap(), ["construct", "counts"]);
 }
