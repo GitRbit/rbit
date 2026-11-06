@@ -35,3 +35,9 @@ cargo clippy -p rbit-identity-models -p rbit-storage -p rbit-services --all-targ
 ```
 
 Run the existing isolated model/token dependency checks and workspace gates as well. No migration, manifest, lockfile or dependency-edge update is needed. Source authors did not use Cargo or inspect user credentials/databases.
+
+The original password first factor now has an explicit `Services::sign_in_original`
+orchestrator. It shares the legacy throttle/audit/verification worker and retains its
+receipt in the same pending owner. Routes remain legacy; see
+[the closed activation bundle](identity-activation-bundle.md) for the exact writer,
+mutation, session, recovery and production issuer changes that must ship together.

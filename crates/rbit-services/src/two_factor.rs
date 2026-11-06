@@ -47,6 +47,8 @@ mod pending;
 use pending::PendingSignIn;
 mod password_checks;
 mod password_operations;
+mod password_sign_in;
+pub use password_sign_in::OriginalSignInOutcome;
 mod sign_in;
 mod verification;
 

@@ -83,3 +83,22 @@ async fn successful_original_claims_match_legacy_statement_and_acquisition_count
         original.raw.close().await;
     }
 }
+
+#[tokio::test]
+async fn orchestrated_original_pending_never_downgrades_to_legacy_proof_consumption() {
+    for factor in Factor::ALL {
+        let fixture = Fixture::new().await;
+        let material = fixture.install(factor).await;
+        let pending = fixture.pending(true).await;
+        let answer = material.answer(&fixture, &pending).await;
+        let before = fixture.proof_state().await;
+        assert!(matches!(fixture.services.complete_sign_in(&pending, factor.proof(&answer), &client()).await, Err(ServiceError::NotFound)));
+        assert_eq!(fixture.proof_state().await, before);
+        assert_eq!(fixture.services.two_factor.pending_account(&pending), Some(fixture.alice.id()));
+        let proven = fixture.services.complete_original_sign_in(&pending, factor.proof(&answer), &client()).await.unwrap();
+        assert_eq!(proven.receipt().account(), fixture.alice.id());
+        assert_eq!(proven.receipt().original_epoch().get(), 1);
+        assert!(fixture.services.two_factor.pending_account(&pending).is_none());
+        fixture.raw.close().await;
+    }
+}

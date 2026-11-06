@@ -1,5 +1,8 @@
 use super::{Authenticator, ClientInfo, SecondFactorProof, Services};
-use crate::{SignUp, two_factor::SignInOutcome};
+use crate::{
+    SignUp,
+    two_factor::{OriginalSignInOutcome, SignInOutcome},
+};
 use rbit_auth::{SessionToken, TotpSecret, totp::time_step};
 use rbit_core::{Config, Timestamp, User};
 use rbit_storage::{Database, KvStore, sqlite::credential_revocations as intents};
@@ -112,8 +115,10 @@ impl Fixture {
     }
     pub async fn pending(&self, original: bool) -> SessionToken {
         if original {
-            let proven = self.services.accounts.authenticate_original_proof("alice", PASSWORD.into(), |_| Ok(())).await.1.unwrap();
-            self.services.two_factor.start_original_password_pending(proven)
+            match self.services.sign_in_original("alice", PASSWORD.into(), &client()).await.unwrap() {
+                OriginalSignInOutcome::SecondFactorRequired(pending) => pending,
+                _ => panic!("fixture must require an original second factor"),
+            }
         } else {
             match self.services.sign_in("alice", PASSWORD.into(), &client()).await.unwrap() {
                 SignInOutcome::SecondFactorRequired(pending) => pending,
