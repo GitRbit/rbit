@@ -1,4 +1,4 @@
-//! Themes: the gallery, choosing a theme with and without JavaScript, and a signed-in
+//! Themes: the picker, choosing a theme with and without JavaScript, and a signed-in
 //! user's theme following them to a new device.
 
 use rbit_e2e::{Client, PASSWORD, StatusCode, TestServer};
@@ -20,13 +20,19 @@ async fn anonymous_visitors_choose_a_theme_without_javascript() {
     let server = TestServer::start();
     let visitor = server.client();
 
-    let gallery = visitor.get("/themes").await;
-    gallery.expect_status(StatusCode::OK).expect_contains(&[
-        "data-theme-gallery",
+    visitor.get("/themes").await.expect_status(StatusCode::METHOD_NOT_ALLOWED);
+    let picker = visitor.get("/themes/picker").await;
+    picker.expect_status(StatusCode::OK).expect_contains(&[
+        "data-theme-dialog",
         "/assets/themes/all.css?v=",
-        &format!("data-theme=\"{DRACULA}\" value=\"{DRACULA}\""),
-        "<form method=\"post\" action=\"/themes\"",
+        &format!("value=\"{DRACULA}\""),
+        "method=\"post\" action=\"/themes\"",
     ]);
+    assert!(!picker.body.contains("Open gallery"));
+    assert!(!picker.body.contains("href=\"/themes\""));
+    let home = visitor.get("/explore").await;
+    home.expect_contains(&["data-theme-dialog-open"]);
+    assert!(!home.body.contains("href=\"/themes\""));
     assert_eq!(rendered_theme(&visitor).await, None, "System by default");
 
     let chosen = visitor.post("/themes", &[("theme", DRACULA), ("next", "/explore")]).await;
@@ -45,9 +51,8 @@ async fn anonymous_visitors_choose_a_theme_without_javascript() {
     visitor.post("/themes", &[("theme", "base16-nope")]).await.expect_status(StatusCode::BAD_REQUEST);
     visitor.post("/themes", &[("theme", "dark"), ("next", "//evil.example")]).await.expect_redirect("/");
 
-    // Filters work server-side too.
-    let dark = visitor.get("/themes?variant=dark&q=dracula").await;
-    dark.expect_status(StatusCode::OK).expect_contains(&["aria-current=\"true\">Dark", "value=\"dracula\""]);
+    // Plain forms without a return path land on an existing page.
+    visitor.post("/themes", &[("theme", "dark")]).await.expect_redirect("/");
 }
 
 #[tokio::test]

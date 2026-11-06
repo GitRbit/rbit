@@ -10,7 +10,7 @@ import { syncIndex, watchIndexScroll } from "./theme-picker-index.js";
 //   click, staying within a tinted scheme's family (Gruvbox dark ↔ light) when it has a
 //   sibling. Its value is the theme it switches to; after every switch it is pointed back
 //   at the theme it came from, so toggling twice always returns to where you started.
-// * The header's palette button (`[data-theme-dialog-open]`, a link to the gallery) opens the
+// * The header's palette button (`[data-theme-dialog-open]`, a link to Appearance settings) opens the
 //   theme picker dialog instead, fetched from `/themes/picker` the first time. It searches and
 //   filters as you type; the highlighted row (arrow keys or the pointer) shows in the dialog's
 //   preview pane, and Enter, a click or the pane's Apply button applies it to the page.
@@ -420,19 +420,25 @@ function renderRecent() {
   section.dataset.empty = String(!section.querySelector("[data-tpk-option]"));
 }
 
+/** The same filter applies to the catalog and recent themes, including System. */
+function matchesPickerFilter(option, variant) {
+  if (variant === "colorblind") return option.value.startsWith("colorblind-");
+  return !variant || !option.dataset.variant || option.dataset.variant === variant;
+}
+
 function filterDialog() {
   const words = part("search").value.toLowerCase().split(/\s+/).filter(Boolean);
   const variant = dialog.querySelector('[data-tpk-variant][aria-pressed="true"]')?.dataset.tpkVariant ?? "";
   let shown = 0;
-  for (const { option, variant: rowVariant, text } of rows) {
-    const visible = (!variant || !rowVariant || rowVariant === variant) && words.every((word) => text.includes(word));
+  for (const { option, text } of rows) {
+    const visible = matchesPickerFilter(option, variant) && words.every((word) => text.includes(word));
     option.hidden = !visible;
     if (visible) shown++;
   }
   const list = listOf();
   const recent = part("recent");
   for (const option of recent.querySelectorAll("[data-tpk-option]")) {
-    option.hidden = Boolean(variant) && Boolean(option.dataset.variant) && option.dataset.variant !== variant;
+    option.hidden = !matchesPickerFilter(option, variant);
   }
   recent.hidden = words.length > 0 || !recent.querySelector("[data-tpk-option]:not([hidden])");
   for (const group of list.querySelectorAll("[data-tpk-group]")) {

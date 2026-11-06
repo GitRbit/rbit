@@ -28,9 +28,9 @@ function picker({ slug = 'system', scheme, dark = false } = {}) {
     createElement: () => ({}),
     addEventListener: (type, handler) => { if (!listeners.has(type)) listeners.set(type, []); listeners.get(type).push(handler); },
   };
-  vm.runInNewContext(pickerSource, { document, Element, HTMLFormElement, HTMLButtonElement, URLSearchParams, location: { protocol: 'https:' }, matchMedia: () => ({ matches: dark }), getComputedStyle: () => ({ backgroundColor: '#141516' }), clearTimeout() {}, fetch: () => Promise.resolve(), localStorage: { getItem: () => null, setItem() {} } });
+  const matchesFilter = vm.runInNewContext(pickerSource + "\nmatchesPickerFilter;", { document, Element, HTMLFormElement, HTMLButtonElement, URLSearchParams, location: { protocol: 'https:' }, matchMedia: () => ({ matches: dark }), getComputedStyle: () => ({ backgroundColor: '#141516' }), clearTimeout() {}, fetch: () => Promise.resolve(), localStorage: { getItem: () => null, setItem() {} } });
   const submit = (button = toggle) => listeners.get('submit')[0]({ target: new HTMLFormElement(), submitter: button, preventDefault() {} });
-  return { root, toggle, document, manifest, submit, choose: (slug) => submit(new HTMLButtonElement(slug, false)), settle: () => listeners.get('htmx:afterSettle')[0]() };
+  return { root, toggle, document, manifest, matchesFilter, submit, choose: (slug) => submit(new HTMLButtonElement(slug, false)), settle: () => listeners.get('htmx:afterSettle')[0]() };
 }
 
 test('system header toggle pins opposite DNA variant and keeps the DNA pair through navigation', () => {
@@ -179,3 +179,21 @@ for (const slug of ['colorblind-light', 'colorblind-dark']) {
     });
   }
 }
+
+
+test('Colorblind picker filter includes both accessible variants and excludes System and ordinary themes', () => {
+  const { matchesFilter } = picker();
+  const options = [
+    { value: 'system', dataset: { variant: '' } },
+    { value: 'dna-day', dataset: { variant: 'light' } },
+    { value: 'dna-dark', dataset: { variant: 'dark' } },
+    { value: 'base24-dracula', dataset: { variant: 'dark' } },
+    { value: 'colorblind-light', dataset: { variant: 'light' } },
+    { value: 'colorblind-dark', dataset: { variant: 'dark' } },
+  ];
+  const shown = (filter) => options.filter((option) => matchesFilter(option, filter)).map((option) => option.value);
+  assert.deepEqual(shown('colorblind'), ['colorblind-light', 'colorblind-dark']);
+  assert.equal(shown('').length, options.length);
+  assert.deepEqual(shown('dark'), ['system', 'dna-dark', 'base24-dracula', 'colorblind-dark']);
+  assert.deepEqual(shown('light'), ['system', 'dna-day', 'colorblind-light']);
+});

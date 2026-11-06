@@ -1,4 +1,4 @@
-{#- The theme gallery, shared by /themes and /settings/appearance; expects `gallery: views::themes::Gallery`. -#}
+{#- The Appearance settings gallery; expects `gallery: views::themes::Gallery`. -#}
 <div data-theme-gallery data-filter="{{ gallery.variant }}" data-asset-version="{{ gallery.asset_version }}">
   {#- In the body rather than <head>, so boosted navigations (which swap only the body) bring it along. -#}
   <link rel="stylesheet" href="{{ gallery.stylesheet }}">

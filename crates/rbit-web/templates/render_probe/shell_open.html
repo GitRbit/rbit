@@ -10,7 +10,7 @@
     <span class="when-dark">Light mode</span><span class="when-light">Dark mode</span>
   </button>
 </form>
-<a class="menu-item sm:hidden" href="/themes" hx-boost="false" aria-haspopup="dialog" data-theme-dialog-open>{% call ui::icon("palette", "menu-icon") %}{% endcall %}Themes</a>
+<a class="menu-item sm:hidden" href="/settings/appearance" hx-boost="false" aria-haspopup="dialog" data-theme-dialog-open>{% call ui::icon("palette", "menu-icon") %}{% endcall %}Themes</a>
 {% endmacro %}
 <!doctype html>
 <html lang="{{ page.locale.tag() }}" dir="{{ page.locale.direction().as_str() }}"{% if let Some(theme) = page.theme.attribute() %} data-theme="{{ theme }}"{% endif %}{% if let Some(scheme) = page.theme.scheme() %} data-scheme="{{ scheme }}"{% endif %}>
@@ -77,8 +77,8 @@
             {% call ui::icon("moon", "size-4 when-light") %}{% endcall %}
           </button>
         </form>
-        {#- Opens the theme picker dialog; without scripts, the gallery. -#}
-        <a href="/themes" class="btn btn-ghost btn-icon hidden sm:inline-flex" hx-boost="false" aria-haspopup="dialog" aria-label="Choose a theme" title="Choose a theme" data-theme-dialog-open>
+        {#- Opens the theme picker dialog; without scripts, Appearance settings. -#}
+        <a href="/settings/appearance" class="btn btn-ghost btn-icon hidden sm:inline-flex" hx-boost="false" aria-haspopup="dialog" aria-label="Choose a theme" title="Choose a theme" data-theme-dialog-open>
           {% call ui::icon("palette", "size-4") %}{% endcall %}
         </a>
 

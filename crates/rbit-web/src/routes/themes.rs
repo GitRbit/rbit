@@ -1,4 +1,4 @@
-//! `/themes`: the theme gallery and the endpoint every theme picker posts to.
+//! Theme picker fragment and the endpoint every theme control posts to.
 //!
 //! Frontend workstream T owns this file. Choosing a theme sets the `rbit-theme` cookie
 //! (anonymous visitors included) and, for signed-in users, stores it in their preferences
@@ -6,10 +6,10 @@
 
 use axum::{
     Form, Router,
-    extract::{Query, State},
+    extract::State,
     http::StatusCode,
     response::{IntoResponse, Redirect, Response},
-    routing::get,
+    routing::{get, post},
 };
 use axum_extra::extract::CookieJar;
 use serde::Deserialize;
@@ -23,12 +23,12 @@ use crate::{
     urls::safe_redirect_target,
     views::{
         layout::Page,
-        themes::{GALLERY_URL, PICKER_URL, ThemePicker, ThemesPage, VariantFilter},
+        themes::{CHOOSE_URL, PICKER_URL, ThemePicker},
     },
 };
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route(GALLERY_URL, get(gallery).post(choose)).route(PICKER_URL, get(picker))
+    Router::new().route(CHOOSE_URL, post(choose)).route(PICKER_URL, get(picker))
 }
 
 /// `GET /themes/picker`: the header's theme picker dialog, fetched by `theme-picker.js`.
@@ -41,11 +41,6 @@ pub async fn picker(page: Page) -> ThemePicker {
 pub struct GalleryQuery {
     pub variant: Option<String>,
     pub q: Option<String>,
-}
-
-/// `GET /themes`
-pub async fn gallery(page: Page, Query(query): Query<GalleryQuery>) -> ThemesPage {
-    ThemesPage::new(page, VariantFilter::parse(query.variant.as_deref()), query.q.as_deref())
 }
 
 #[derive(Debug, Deserialize)]
@@ -73,6 +68,6 @@ pub async fn choose(
     if form.js.is_some() {
         return Ok((StatusCode::NO_CONTENT, jar).into_response());
     }
-    let next = safe_redirect_target(form.next.as_deref().or(Some(GALLERY_URL)));
+    let next = safe_redirect_target(form.next.as_deref());
     Ok((jar, Redirect::to(next)).into_response())
 }

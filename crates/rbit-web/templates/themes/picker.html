@@ -1,7 +1,7 @@
 {% import "macros.html" as ui %}
 {% import "repo/diff_counts.html" as stats %}
 {#- The header's theme picker: a dialog fetched by theme-picker.js the first time the palette
-    button is pressed (without scripts that button is a link to the gallery). Rows are plain
+    button is pressed (without scripts that button links to Appearance settings). Rows are plain
     submit buttons of a theme form; each row's chip carries its own `data-theme`, so it renders
     in that theme's colours from the combined stylesheet linked here. Highlighting a row (the
     pointer or the arrow keys) shows it in the preview pane; choosing one applies it. -#}
@@ -19,6 +19,7 @@
         <button type="button" data-tpk-variant="" aria-pressed="true">All</button>
         <button type="button" data-tpk-variant="dark" aria-pressed="false">Dark</button>
         <button type="button" data-tpk-variant="light" aria-pressed="false">Light</button>
+        <button type="button" data-tpk-variant="colorblind" aria-pressed="false">Colorblind</button>
       </div>
       <p class="ml-auto text-xs text-ink-faint" data-tpk-count aria-live="polite">{{ total }} themes</p>
     </div>
@@ -107,6 +108,5 @@
       <span><kbd class="kbd">↵</kbd> or click Apply</span>
       <span><kbd class="kbd">Esc</kbd> Close</span>
     </p>
-    <a class="ml-auto inline-flex items-center gap-1 hover:text-ink" href="{{ gallery_url }}">Open gallery {% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</a>
   </footer>
 </dialog>

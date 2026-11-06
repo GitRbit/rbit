@@ -10,7 +10,7 @@
     <span class="when-dark">Light mode</span><span class="when-light">Dark mode</span>
   </button>
 </form>
-<a class="menu-item sm:hidden" href="/themes" hx-boost="false" aria-haspopup="dialog" data-theme-dialog-open>{% call ui::icon("palette", "menu-icon") %}{% endcall %}Themes</a>
+<a class="menu-item sm:hidden" href="/settings/appearance" hx-boost="false" aria-haspopup="dialog" data-theme-dialog-open>{% call ui::icon("palette", "menu-icon") %}{% endcall %}Themes</a>
 {% endmacro %}
 <!doctype html>
 <html lang="{{ page.locale.tag() }}" dir="{{ page.locale.direction().as_str() }}"{% if let Some(theme) = page.theme.attribute() %} data-theme="{{ theme }}"{% endif %}{% if let Some(scheme) = page.theme.scheme() %} data-scheme="{{ scheme }}"{% endif %}>
@@ -77,8 +77,8 @@
             {% call ui::icon("moon", "size-4 when-light") %}{% endcall %}
           </button>
         </form>
-        {#- Opens the theme picker dialog; without scripts, the gallery. -#}
-        <a href="/themes" class="btn btn-ghost btn-icon hidden sm:inline-flex" hx-boost="false" aria-haspopup="dialog" aria-label="Choose a theme" title="Choose a theme" data-theme-dialog-open>
+        {#- Opens the theme picker dialog; without scripts, Appearance settings. -#}
+        <a href="/settings/appearance" class="btn btn-ghost btn-icon hidden sm:inline-flex" hx-boost="false" aria-haspopup="dialog" aria-label="Choose a theme" title="Choose a theme" data-theme-dialog-open>
           {% call ui::icon("palette", "size-4") %}{% endcall %}
         </a>
 
@@ -163,7 +163,6 @@
       </p>
       <nav class="flex max-w-full flex-wrap gap-x-4 gap-y-2 py-3" aria-label="Footer">
         <a href="/explore" class="hover:text-ink">Explore</a>
-        <a href="/themes" class="hover:text-ink">Themes</a>
         {% if !page.branding.support_url.is_empty() %}<a href="{{ page.branding.support_url }}" hx-boost="false">Support</a>{% endif %}
         {% if !page.branding.terms_url.is_empty() %}<a href="{{ page.branding.terms_url }}" hx-boost="false">Terms</a>{% endif %}
         {% if !page.branding.privacy_url.is_empty() %}<a href="{{ page.branding.privacy_url }}" hx-boost="false">Privacy</a>{% endif %}

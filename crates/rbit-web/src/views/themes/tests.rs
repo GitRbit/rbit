@@ -3,7 +3,7 @@
 use super::*;
 
 fn page(theme: Theme) -> Page {
-    crate::views::test_support::page(GALLERY_URL).with_theme(theme)
+    crate::views::test_support::page(SettingsSection::Appearance.url()).with_theme(theme)
 }
 
 fn all_cards(gallery: &Gallery) -> impl Iterator<Item = &ThemeCard> {
@@ -34,7 +34,7 @@ fn families_cover_every_theme_once() {
 
 #[test]
 fn defaults_come_first_and_the_current_theme_is_marked() {
-    let gallery = Gallery::new(&page(Theme::Dark), GALLERY_URL, VariantFilter::All, None);
+    let gallery = Gallery::new(&page(Theme::Dark), SettingsSection::Appearance.url(), VariantFilter::All, None);
     let slugs: Vec<_> = gallery.defaults.iter().map(|card| card.slug).collect();
     assert_eq!(slugs, ["system", "dna-day", "dna-dark", "colorblind-light", "colorblind-dark"]);
     assert_eq!(
@@ -51,7 +51,7 @@ fn defaults_come_first_and_the_current_theme_is_marked() {
 
 #[test]
 fn system_page_uses_dna_browser_colors_and_default_toggle() {
-    let html = ThemesPage::new(page(Theme::System), VariantFilter::All, None).render().unwrap();
+    let html = AppearancePage::new(page(Theme::System), VariantFilter::All, None).render().unwrap();
     assert_eq!(root_attribute(&html, "lang"), Some("en"));
     assert_eq!(root_attribute(&html, "dir"), Some("ltr"));
     assert_eq!(root_attribute(&html, "data-theme"), None, "unselected preferences follow the device");
@@ -63,18 +63,18 @@ fn system_page_uses_dna_browser_colors_and_default_toggle() {
 
 #[test]
 fn variant_filter_and_search_hide_cards() {
-    let dark = Gallery::new(&page(Theme::System), GALLERY_URL, VariantFilter::Dark, None);
+    let dark = Gallery::new(&page(Theme::System), SettingsSection::Appearance.url(), VariantFilter::Dark, None);
     assert!(all_cards(&dark).filter(|card| !card.hidden).all(|card| card.variant != "light"));
     assert!(dark.filters.iter().any(|link| link.is_active && link.key == "dark"));
 
-    let search = Gallery::new(&page(Theme::System), GALLERY_URL, VariantFilter::All, Some("  gruvbox   DARK "));
+    let search = Gallery::new(&page(Theme::System), SettingsSection::Appearance.url(), VariantFilter::All, Some("  gruvbox   DARK "));
     assert_eq!(search.query, "gruvbox DARK");
     let visible: Vec<_> = all_cards(&search).filter(|card| !card.hidden).collect();
     assert!(!visible.is_empty());
     assert!(visible.iter().all(|card| card.name.to_lowercase().contains("gruvbox") || card.slug == "system"));
     assert!(search.families.iter().any(|family| family.hidden), "families without matches are hidden");
-    assert_eq!(search.next, "/themes?q=gruvbox%20DARK");
-    assert_eq!(search.filters[1].url, "/themes?variant=dark&q=gruvbox%20DARK");
+    assert_eq!(search.next, "/settings/appearance?q=gruvbox%20DARK");
+    assert_eq!(search.filters[1].url, "/settings/appearance?variant=dark&q=gruvbox%20DARK");
 }
 
 #[test]
@@ -97,16 +97,19 @@ fn picker_lists_every_theme_grouped_with_the_current_one_marked() {
 
     let html = picker.render().unwrap();
     assert!(html.contains("<dialog class=\"tpk\""));
+    let filters: Vec<_> = html.split("data-tpk-variant=\"").skip(1).map(|part| part.split('"').next().unwrap()).collect();
+    assert_eq!(filters, ["", "dark", "light", "colorblind"]);
     assert!(html.contains("/assets/themes/all.css?v="), "chips render in their own theme");
     assert!(html.contains(&format!("value=\"{}\" role=\"option\" aria-selected=\"false\" aria-pressed=\"true\"", tinted.slug)));
     assert!(html.contains("<form class=\"tpk-list\" id=\"tpk-list\" method=\"post\" action=\"/themes\""), "works as a plain form");
+    assert!(!html.contains("href=\"/themes\""), "the retired gallery has no links");
     assert!(!html.contains("style="), "no inline styles under the CSP");
 }
 
 #[test]
 fn renders_live_preview_cards() {
     let tinted = &themes::tinted()[0];
-    let html = ThemesPage::new(page(Theme::Tinted(tinted)), VariantFilter::All, None).render().unwrap();
+    let html = AppearancePage::new(page(Theme::Tinted(tinted)), VariantFilter::All, None).render().unwrap();
     assert_eq!(root_attribute(&html, "lang"), Some("en"));
     assert_eq!(root_attribute(&html, "dir"), Some("ltr"));
     assert_eq!(root_attribute(&html, "data-theme"), Some(tinted.slug));
@@ -115,19 +118,20 @@ fn renders_live_preview_cards() {
     assert!(html.contains("/assets/themes/all.css?v="), "the gallery links every theme");
     assert!(html.contains(&format!("<style data-theme-stylesheet data-theme=\"{}\">", tinted.slug)), "the active theme's own sheet");
     assert!(html.contains("<form method=\"post\" action=\"/themes\""), "works without scripts");
+    assert!(!html.contains("href=\"/themes\""), "the retired gallery has no links");
     assert!(!html.contains("style="), "no inline styles under the CSP");
 }
 
 #[test]
 fn colorblind_themes_are_searchable_and_render_their_own_toggle_pair() {
     for theme in [Theme::ColorblindLight, Theme::ColorblindDark] {
-        let gallery = Gallery::new(&page(theme), GALLERY_URL, VariantFilter::All, Some("colorblind"));
+        let gallery = Gallery::new(&page(theme), SettingsSection::Appearance.url(), VariantFilter::All, Some("colorblind"));
         let visible: Vec<_> = gallery.defaults.iter().filter(|card| !card.hidden).collect();
         assert_eq!(visible.len(), 2);
         let current = visible.iter().find(|card| card.is_current).unwrap();
         assert_eq!(current.slug, theme.slug());
         assert_eq!(current.counterpart, theme.toggled().slug());
-        let html = ThemesPage::new(page(theme), VariantFilter::All, None).render().unwrap();
+        let html = AppearancePage::new(page(theme), VariantFilter::All, None).render().unwrap();
         assert_eq!(root_attribute(&html, "data-theme"), Some(theme.slug()));
         assert_eq!(root_attribute(&html, "data-scheme"), theme.scheme());
         assert!(html.contains(&format!("value=\"{}\" data-theme-toggle", theme.toggled().slug())));

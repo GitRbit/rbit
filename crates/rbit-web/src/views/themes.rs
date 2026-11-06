@@ -1,5 +1,4 @@
-//! The theme gallery: `/themes` for everyone, and the Appearance settings page that shows
-//! the same gallery inside the settings layout.
+//! The theme picker dialog and the gallery inside Appearance settings.
 //!
 //! Frontend workstream T owns this file. Every card is a live preview: it carries
 //! `data-theme`, so the tokens inside it are that theme's, and `assets/themes/all.css` (linked
@@ -21,8 +20,8 @@ use crate::{
     },
 };
 
-/// Where the public gallery lives.
-pub const GALLERY_URL: &str = "/themes";
+/// Where theme controls save the chosen theme.
+pub const CHOOSE_URL: &str = "/themes";
 /// Heading of the group collecting schemes that have no family of their own.
 const STANDALONE_FAMILY: &str = "More themes";
 /// Heading of the preserved monochrome themes' group.
@@ -255,21 +254,6 @@ pub fn families() -> &'static [(&'static str, Vec<&'static TintedTheme>)] {
     })
 }
 
-/// `GET /themes`
-#[derive(Debug, Template, WebTemplate)]
-#[template(path = "themes/index.html")]
-pub struct ThemesPage {
-    pub page: Page,
-    pub gallery: Gallery,
-}
-
-impl ThemesPage {
-    pub fn new(page: Page, variant: VariantFilter, query: Option<&str>) -> Self {
-        let gallery = Gallery::new(&page, GALLERY_URL, variant, query);
-        Self { page: page.titled("Themes"), gallery }
-    }
-}
-
 /// Where the header's theme picker dialog is fetched from.
 pub const PICKER_URL: &str = "/themes/picker";
 
@@ -302,12 +286,11 @@ pub struct ThemePicker {
     pub total: usize,
     pub stylesheet: String,
     pub asset_version: &'static str,
-    pub gallery_url: &'static str,
 }
 
 impl ThemePicker {
     pub fn new(page: &Page) -> Self {
-        let gallery = Gallery::new(page, GALLERY_URL, VariantFilter::All, None);
+        let gallery = Gallery::new(page, SettingsSection::Appearance.url(), VariantFilter::All, None);
         let row = |card: ThemeCard, family: &'static str, letter: Option<char>| {
             let variant_label = match card.variant {
                 "light" => "Light",
@@ -345,7 +328,6 @@ impl ThemePicker {
             total: themes::tinted().len() + Theme::BUILT_IN.len() + Theme::CLASSIC.len(),
             stylesheet: gallery.stylesheet,
             asset_version: gallery.asset_version,
-            gallery_url: GALLERY_URL,
         }
     }
 }

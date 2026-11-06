@@ -1520,7 +1520,7 @@ html:has(.tpk[open]) { overflow: hidden; }
 
 .tpk-search input::-webkit-search-cancel-button { display: none; }
 
-.tpk-bar { @apply flex items-center gap-3 px-4 pb-3; }
+.tpk-bar { @apply flex flex-wrap items-center gap-3 px-4 pb-3; }
 
 .tpk-segment { @apply h-8 sm:h-8; }
 
