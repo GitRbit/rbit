@@ -53,11 +53,13 @@ including a ghost human comment with no remaining author. This port preserves
 that policy rather than introducing unsupported per-run ownership.
 
 Create checks authority, archive and text before constructing one store and reading
-the clock. Edit retains the original early write-store construction, then a separate
-lookup-store construction after authority. Missing lookup wins before source,
+the clock. Edit and delete construct one store after authority and reuse it for the scoped
+lookup and any subsequent mutation. This removes the legacy duplicate pool-handle
+clone, including the early handle on forbidden edits. The constructors are infallible
+field initialization plus a shared pool clone; they establish no connection, SQL,
+transaction or snapshot. Missing lookup wins before source,
 archive and text; source wins before archive. An unchanged normalized edit does
-one query, no write/clock/log/publication. Delete constructs its write store only
-after the authorized source lookup and archive gate. There is no human content
+one query, no write/clock/log/publication. Delete still mutates only after the authorized source lookup and archive gate. There is no human content
 throttle. Original SQL, snapshots, transaction work, post-commit log text/fields,
 actor-less events and consumers are unchanged. Counters pin accepted create at
 one acquisition/two statements, unchanged edit at one/one, and changed edit/delete
@@ -70,3 +72,8 @@ notification/reference tests remain applicable. Rust validation remains pending;
 include collaboration applications tests, service `timeline::task_comments_port`,
 Actions task-token tests, notifications/references and HTTP task-comment routes in
 the shared acceptance run. No runtime speedup or feature-group retirement is claimed.
+
+The handle-reuse improvement changes no SQL/acquisition budget or permission, error,
+throttle, clock, logging or event behavior. Direct factory tests prove zero handles
+for denied edits and one for admitted edit/delete/no-op operations instead of two.
+No measured latency or runtime speedup is claimed.

@@ -42,14 +42,15 @@ impl TaskComments {
         &self,
         id: CommentId,
         factory: impl FnOnce() -> R,
-    ) -> Result<Comment, TaskCommentError<R::Error>> {
+    ) -> Result<(R, Comment), TaskCommentError<R::Error>> {
         self.authority()?;
-        let comment = factory().find(self.issue, id).await.map_err(TaskCommentError::Store)?.ok_or(TaskCommentError::NotFound)?;
+        let repository = factory();
+        let comment = repository.find(self.issue, id).await.map_err(TaskCommentError::Store)?.ok_or(TaskCommentError::NotFound)?;
         if comment.source != CommentSource::Actions {
             return Err(TaskCommentError::Forbidden);
         }
         self.writable()?;
-        Ok(comment)
+        Ok((repository, comment))
     }
     pub async fn create<R: TaskCommentRepository>(
         &self,
@@ -67,13 +68,12 @@ impl TaskComments {
         &self,
         id: CommentId,
         body: &str,
-        factory: impl Fn() -> R,
+        factory: impl FnOnce() -> R,
         now: impl FnOnce() -> Timestamp,
     ) -> Result<CommentEditResult, TaskCommentError<R::Error>> {
-        // The legacy edit acquires its write handle even before authority rejection,
-        // then acquires a separate lookup handle. Keep that observable construction order.
-        let repository = factory();
-        let comment = self.owned(id, &factory).await?;
+        // A store owns only a shared pool handle: reuse it across separate operations,
+        // without acquiring a connection or extending a database transaction.
+        let (repository, comment) = self.owned(id, factory).await?;
         let body = IssueText::comment(body).map_err(TaskCommentError::Text)?;
         if body == comment.body {
             return Ok(CommentEditResult { comment, previous_body: None });
@@ -84,9 +84,9 @@ impl TaskComments {
     pub async fn delete<R: TaskCommentRepository>(
         &self,
         id: CommentId,
-        factory: impl Fn() -> R,
+        factory: impl FnOnce() -> R,
     ) -> Result<Option<Comment>, TaskCommentError<R::Error>> {
-        self.owned(id, &factory).await?;
-        factory().delete(id).await.map_err(TaskCommentError::Store)
+        let (repository, _) = self.owned(id, factory).await?;
+        repository.delete(id).await.map_err(TaskCommentError::Store)
     }
 }
