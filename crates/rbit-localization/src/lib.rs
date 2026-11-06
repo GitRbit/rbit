@@ -11,7 +11,8 @@ mod negotiation;
 mod pseudo;
 
 pub use catalog::{
-    ActionsDisplay, ActionsMessage, ActionsOverviewMessage, Catalog, LocalizedDisplay, LocalizedText, Message, RepositoryVisibility,
+    ActionsDisplay, ActionsJobMessage, ActionsMessage, ActionsOverviewMessage, Catalog, JobDisplay, LocalizedDisplay, LocalizedText,
+    Message, RepositoryVisibility,
 };
 pub use locale::{Direction, Locale};
 pub use negotiation::{LocalePreferences, LocaleResolver, PreferenceSource, ResolvedLocale, UnsupportedDefault};

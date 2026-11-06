@@ -185,3 +185,15 @@ pub struct StepLogPage {
     pub active: bool,
     pub self_url: String,
 }
+
+impl JobPage {
+    pub fn labels(&self) -> super::JobText {
+        super::JobText::new(self.page.locale, self.steps.len())
+    }
+}
+
+impl StepLogPage {
+    pub fn labels(&self) -> super::JobText {
+        super::JobText::new(self.page.locale, 1)
+    }
+}

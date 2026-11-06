@@ -7,6 +7,8 @@ mod overview;
 pub use overview::ActionsOverviewMessage;
 mod actions;
 pub use actions::{ActionsDisplay, ActionsMessage};
+mod job;
+pub use job::{ActionsJobMessage, JobDisplay};
 mod display;
 pub use display::LocalizedDisplay;
 use display::{PAGE_OF_SEPARATOR, PAGE_PREFIX, STARS_SUFFIX, SUBTITLE_PREFIX, SUBTITLE_SUFFIX};

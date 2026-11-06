@@ -18,7 +18,9 @@ use rbit_core::{
 use rbit_services::actions::statuses::duration;
 
 mod job;
+mod job_text;
 pub use job::{JOB_PAGE_STEP_BYTES, JOB_PAGE_STEP_LINES, JobPage, StepLog, StepLogPage, StepView, log_line_html, open_one, strip_ansi};
+pub use job_text::JobText;
 
 mod overview_text;
 pub use overview_text::OverviewText;

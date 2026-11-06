@@ -13,10 +13,17 @@ async function expand(path) {
   return html;
 }
 
-test("job responsibility extraction preserves the exact existing template program", async () => {
+test("job presentation keeps the exact bounded line-rendering program and exposes real metadata", async () => {
   const html = await expand("actions/job.html");
-  assert.equal(createHash("sha256").update(html).digest("hex"),
-    "5d9ec9c2210fa1515b763d31911c362efb15637e62912b748a93cea66fb2bfa2");
+  const body = await read("templates/actions/step_body.html");
+  const lines = body.slice(body.indexOf('  <div class="overflow-x-auto">'), body.indexOf("  {% if log.truncated %}"));
+  assert.equal(createHash("sha256").update(lines).digest("hex"),
+    "6e800d00ecaa15bd0413ca345305f8cca69b76175ebb928c714a9dbe4484106b");
+  assert.match(html, /<header class="box overflow-hidden">/);
+  assert.match(html, /<dl /);
+  assert.match(html, /<bdi>{{ labels }}<\/bdi>/);
+  assert.match(html, /break-words text-\[13px\] font-medium">{{ step.name }}/);
+  assert.doesNotMatch(html, /data-simulate|live-toggle|Copy visible|Search logs|All checks passed/);
 });
 
 test("presentation keeps bounded service reads, native links and stable step identity", async () => {
@@ -37,4 +44,22 @@ test("presentation keeps bounded service reads, native links and stable step ide
   assert.match(body, /log\.more_before/);
   assert.match(body, /log\.truncated/);
   assert.match(body, /log\.expired/);
+});
+
+test("both refreshed roots carry locale direction and plain localized labels", async () => {
+  for (const name of ["job", "step_log"]) {
+    const html = await read(`templates/actions/${name}.html`);
+    assert.match(html, /lang="{{ page.locale.tag\(\) }}" dir="{{ page.locale.direction\(\).as_str\(\) }}"/);
+    assert.match(html, /{% let text = self.labels\(\) %}/);
+  }
+  // Compare only production formatting: Rust equivalence assertions intentionally
+  // materialize their reference strings inside the cfg(test) module.
+  const text = (await read("src/views/actions/job_text.rs")).split("\n#[cfg(test)]\n", 1)[0];
+  assert.doesNotMatch(text, /format!|\.to_string\(\)|\.to_owned\(\)/);
+  const html = await expand("actions/job.html");
+  assert.doesNotMatch(html, /(?:name|labels|look\.label|text\.[a-z_]+)\|safe/);
+  const body = await read("templates/actions/step_body.html");
+  for (const label of ["expired", "truncated", "no_output", "step_not_started", "earlier_lines", "show_more"]) {
+    assert.ok(body.includes(`text.${label}`));
+  }
 });

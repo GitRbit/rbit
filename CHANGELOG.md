@@ -36,6 +36,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Actions job pages group status, execution details and bounded step logs with typed
+  localized labels, retaining log anchors, full downloads and native writer controls.
+
 - Actions overview pages use responsive workflow navigation and visible native
   filter labels, with typed localized empty states and page counts. Existing
   dispatch, workflow controls, filter queries and result-only polling remain intact.

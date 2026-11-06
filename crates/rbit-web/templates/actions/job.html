@@ -3,11 +3,16 @@
 {% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
-<p class="mb-3 truncate text-xs text-ink-muted"><a class="hover:text-ink hover:underline hover:underline-offset-4" href="{{ run_url }}">{{ run.workflow }} #{{ run.number }}</a> · {{ run.title }}</p>
+{% let text = self.labels() %}
+<p class="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-muted">
+  <a class="min-w-0 break-words hover:text-ink hover:underline hover:underline-offset-4" href="{{ run_url }}">{{ run.workflow }} #{{ run.number }}</a>
+  <span aria-hidden="true">/</span><span class="min-w-0 break-words">{{ run.title }}</span>
+</p>
 
 {#- While the job is not finished the whole section refreshes itself; a reload does the same.
     assets/actions-log.js keeps the steps the viewer opened or closed, by `data-step`. -#}
-<section id="job" {% if active %}hx-get="{{ self_url }}" hx-trigger="every 3s" hx-select="#job" hx-target="this" hx-swap="outerHTML"{% endif %}>
+<section id="job" lang="{{ page.locale.tag() }}" dir="{{ page.locale.direction().as_str() }}"
+         aria-label="{{ text.details }}" {% if active %}hx-get="{{ self_url }}" hx-trigger="every 3s" hx-select="#job" hx-target="this" hx-swap="outerHTML"{% endif %}>
 {% include "actions/job/header.html" %}
 
 {% include "actions/job/steps.html" %}
