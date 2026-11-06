@@ -21,6 +21,8 @@
 
 mod assignee_attachments;
 mod creation;
+mod reader;
+pub use reader::IssueReader;
 pub mod hooks;
 pub mod json;
 mod label_attachments;
@@ -29,7 +31,6 @@ mod milestone_assignment;
 mod milestones;
 
 use std::{
-    collections::{BTreeSet, HashMap},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -39,10 +40,8 @@ use std::{
 
 use rbit_auth::repo_access;
 use rbit_core::{
-    Account, AccountId, Issue, IssueId, IssueKind, IssueNumber, IssueState, LabelId, RepoAccess, RepoId, StateReason,
-    Timestamp, User,
-    issue::{IssueAction, LabelSnapshot, issue_permissions},
-    issue_query::{IssueQuery, KindFilter, StateFilter, Who},
+    Account, AccountId, Issue, IssueId, IssueKind, IssueNumber, LabelId, RepoAccess, RepoId, StateReason, Timestamp, User,
+    issue::{IssueAction, issue_permissions},
     references,
     repository::OwnedRepository,
 };
@@ -68,8 +67,7 @@ use crate::{
 pub use rbit_collaboration::issues::{MAX_ASSIGNEES, MAX_LABELS_PER_ISSUE};
 /// Most users [`IssueService::assignable`] lists.
 pub const MAX_ASSIGNABLE: u32 = 100;
-/// Threads per page of a list.
-pub const ISSUES_PER_PAGE: u32 = 25;
+pub use rbit_collaboration::issues::ISSUES_PER_PAGE;
 pub use rbit_collaboration::milestones::{MAX_MILESTONE_DESCRIPTION_BYTES, MAX_MILESTONE_TITLE_CHARS};
 
 /// How long shutdown waits for the subscriber.
@@ -77,61 +75,11 @@ const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 
 pub use rbit_collaboration::labels::{DEFAULT_LABELS, MAX_LABEL_DESCRIPTION_CHARS, MAX_LABEL_NAME_CHARS, MAX_LABELS_PER_REPO};
 
-/// Labels, assignees and milestone of one issue or pull request, for lists, payloads and
-/// the API.
-#[derive(Debug, Clone, Default)]
-pub struct IssueMetadata {
-    pub labels: Vec<LabelSnapshot>,
-    pub assignees: Vec<Account>,
-    pub milestone: Option<MilestoneRef>,
-}
-
-pub use rbit_collaboration::milestones::MilestoneRef;
-
-pub use rbit_collaboration::issues::NewIssueInput;
-
-pub use rbit_collaboration::labels::LabelInput;
-
-pub use rbit_collaboration::milestones::MilestoneInput;
-
-/// One page of a list with its tab counts.
-#[derive(Debug, Clone)]
-pub struct IssueSearchResults {
-    pub issues: Vec<Issue>,
-    /// Authors of the listed threads, by id.
-    pub authors: HashMap<AccountId, Account>,
-    pub metadata: HashMap<IssueId, IssueMetadata>,
-    /// Threads matching the query, in its state.
-    pub total: u64,
-    /// The query's other filters, open and closed.
-    pub open: u64,
-    pub closed: u64,
-    /// 1-based page actually served.
-    pub page: u32,
-    pub per_page: u32,
-    /// Problems with the query (unknown qualifiers, `@me` signed out).
-    pub hints: Vec<String>,
-    /// The listed threads' repositories the viewer may read, by id: filled by
-    /// [`IssueService::dashboard`] (whose rows come from many repositories), empty
-    /// otherwise.
-    pub repositories: HashMap<RepoId, OwnedRepository>,
-}
-
-/// Which of a listed thread's metadata a page shows.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum MetadataNeeds {
-    /// Labels, assignees and milestone.
-    #[default]
-    All,
-    /// Labels only (the pull request list): one statement instead of three.
-    Labels,
-}
-
-impl IssueSearchResults {
-    pub fn page_count(&self) -> u32 {
-        u32::try_from(self.total.div_ceil(u64::from(self.per_page)).max(1)).unwrap_or(u32::MAX)
-    }
-}
+pub use rbit_collaboration::{
+    issues::{IssueMetadata, IssueSearchResults, MetadataNeeds, NewIssueInput},
+    labels::LabelInput,
+    milestones::{MilestoneInput, MilestoneRef},
+};
 
 // ------------------------------------------------------------------ validation
 
@@ -154,12 +102,6 @@ pub use rbit_collaboration::milestones::is_calendar_day;
 #[cfg(test)]
 fn milestone_fields(input: &MilestoneInput) -> Result<MilestoneFields, ServiceError> {
     rbit_collaboration::milestones::milestone_fields(input).map_err(ServiceError::Invalid)
-}
-
-/// Distinct items in their first order.
-fn distinct<T: Ord + Copy>(items: &[T]) -> Vec<T> {
-    let mut seen = BTreeSet::new();
-    items.iter().copied().filter(|item| seen.insert(*item)).collect()
 }
 
 // ------------------------------------------------------------------ the service
@@ -210,46 +152,6 @@ impl IssueService {
         Ok(repo_access(Some(user), repo, &grants))
     }
 
-    // ------------------------------------------------------------------ the hook
-
-    /// Labels, assignees and milestone of each of `issues`: every id gets an entry, empty
-    /// when it has none (or does not exist). One batch query per kind of metadata; a
-    /// single thread (its own page, the API) takes one statement for all three.
-    pub async fn metadata(&self, issues: &[IssueId]) -> Result<HashMap<IssueId, IssueMetadata>, ServiceError> {
-        let store = self.ctx.database.issue_meta();
-        if let [issue] = issues {
-            let one = store.metadata_of(*issue).await?;
-            let milestone = one.milestone.map(|milestone| MilestoneRef { id: milestone.id, title: milestone.title });
-            return Ok(HashMap::from([(*issue, IssueMetadata { labels: one.labels, assignees: one.assignees, milestone })]));
-        }
-        let (labels, assignees, milestones) =
-            tokio::try_join!(store.labels_of(issues), store.assignees_of(issues), store.milestones_of(issues))?;
-        let mut map: HashMap<IssueId, IssueMetadata> = issues.iter().map(|id| (*id, IssueMetadata::default())).collect();
-        for (issue, label) in labels {
-            map.entry(issue).or_default().labels.push(label);
-        }
-        for (issue, account) in assignees {
-            map.entry(issue).or_default().assignees.push(account);
-        }
-        for milestone in milestones {
-            map.entry(milestone.issue).or_default().milestone = Some(MilestoneRef { id: milestone.id, title: milestone.title });
-        }
-        Ok(map)
-    }
-
-    /// [`Self::metadata`] limited to what `needs` names.
-    async fn metadata_for(&self, issues: &[IssueId], needs: MetadataNeeds) -> Result<HashMap<IssueId, IssueMetadata>, ServiceError> {
-        if needs == MetadataNeeds::All {
-            return self.metadata(issues).await;
-        }
-        let labels = self.ctx.database.issue_meta().labels_of(issues).await?;
-        let mut map: HashMap<IssueId, IssueMetadata> = issues.iter().map(|id| (*id, IssueMetadata::default())).collect();
-        for (issue, label) in labels {
-            map.entry(issue).or_default().labels.push(label);
-        }
-        Ok(map)
-    }
-
     // ------------------------------------------------------------------ issues
 
     /// Deletes an issue (repository administrators only; pull requests cannot be
@@ -264,170 +166,6 @@ impl IssueService {
         self.audit.record(AuditEntry::new(AuditAction::IssueDeleted).by(actor).on(target).detail(snapshot.title.to_string())).await;
         self.publish(&snapshot.clone(), Some(actor.id()), IssueAction::Deleted { snapshot: Box::new(snapshot) });
         Ok(())
-    }
-
-    /// One page (1-based; clamped to the last) of `repo`'s threads matching `query` for
-    /// `viewer`, with tab counts, authors and metadata.
-    pub async fn search(
-        &self,
-        viewer: Option<&User>,
-        repo: &RepoContext,
-        query: &IssueQuery,
-        page: u32,
-    ) -> Result<IssueSearchResults, ServiceError> {
-        self.search_with(viewer, repo, query, page, MetadataNeeds::All).await
-    }
-
-    /// [`Self::search`], reading only the metadata the page shows (`needs`); the rest of
-    /// each entry of [`IssueSearchResults::metadata`] stays empty.
-    pub async fn search_with(
-        &self,
-        viewer: Option<&User>,
-        repo: &RepoContext,
-        query: &IssueQuery,
-        page: u32,
-        needs: MetadataNeeds,
-    ) -> Result<IssueSearchResults, ServiceError> {
-        if !repo.access.can_read() {
-            return Err(ServiceError::NotFound);
-        }
-        let (filter, hints) = self.search_filter(viewer, repo.repo.repo.id, query).await?;
-        self.search_results(&filter, hints, page, needs).await
-    }
-
-    async fn search_filter(
-        &self,
-        viewer: Option<&User>,
-        repo: RepoId,
-        query: &IssueQuery,
-    ) -> Result<(SearchFilter, Vec<String>), ServiceError> {
-        let mut hints: Vec<String> = query.ignored.iter().map(|term| format!("“{term}” is not understood and was ignored")).collect();
-        let mut filter = SearchFilter::new(repo);
-        filter.kind = query.kind.map(|kind| match kind {
-            KindFilter::Issue => IssueKind::Issue,
-            KindFilter::Pull => IssueKind::Pull,
-        });
-        filter.state = query.state.map(|state| match state {
-            StateFilter::Open => IssueState::Open,
-            StateFilter::Closed => IssueState::Closed,
-        });
-        filter.merged = query.merged;
-        filter.draft = query.draft;
-        filter.locked = query.locked;
-        filter.author = self.resolve_who(viewer, query.author.as_ref(), &mut hints).await?;
-        filter.assignee = self.resolve_who(viewer, query.assignee.as_ref(), &mut hints).await?;
-        filter.no_assignee = query.no_assignee;
-        filter.labels.clone_from(&query.labels);
-        filter.not_labels.clone_from(&query.not_labels);
-        filter.no_label = query.no_label;
-        filter.milestone.clone_from(&query.milestone);
-        filter.no_milestone = query.no_milestone;
-        filter.text.clone_from(&query.text);
-        filter.sort = query.sort;
-
-        Ok((filter, hints))
-    }
-
-    /// Personal threads across every repository the current active viewer can read.
-    pub async fn dashboard(
-        &self,
-        viewer: &User,
-        kind: IssueKind,
-        relation: DashboardRelation,
-        query: &IssueQuery,
-        page: u32,
-    ) -> Result<IssueSearchResults, ServiceError> {
-        let viewer = self.ctx.database.accounts().find_active_user(viewer.id()).await?.ok_or(ServiceError::NotFound)?;
-        let (mut filter, hints) = self.search_filter(Some(&viewer), RepoId(0), query).await?;
-        filter.kind = Some(kind);
-        filter.dashboard = Some(DashboardScope { viewer: viewer.id(), is_admin: viewer.is_admin, relation });
-        let mut results = self.search_results(&filter, hints, page, MetadataNeeds::All).await?;
-        // Each row's repository, access rechecked for the viewer just loaded: one batch
-        // over the page's distinct repositories.
-        let ids: Vec<RepoId> = distinct(&results.issues.iter().map(|issue| issue.repo_id).collect::<Vec<_>>());
-        results.repositories = self.ctx.database.repositories().readable_among(&ids, viewer.id(), viewer.is_admin).await?;
-        Ok(results)
-    }
-
-    async fn search_results(
-        &self,
-        filter: &SearchFilter,
-        hints: Vec<String>,
-        page: u32,
-        needs: MetadataNeeds,
-    ) -> Result<IssueSearchResults, ServiceError> {
-        let store = self.ctx.database.issue_search();
-        let (open, closed) = store.state_counts(filter).await?;
-        let total = match filter.state {
-            Some(IssueState::Open) => open,
-            Some(IssueState::Closed) => closed,
-            None => open + closed,
-        };
-        let mut results = IssueSearchResults {
-            issues: Vec::new(),
-            authors: HashMap::new(),
-            metadata: HashMap::new(),
-            total,
-            open,
-            closed,
-            page: page.max(1),
-            per_page: ISSUES_PER_PAGE,
-            hints,
-            repositories: HashMap::new(),
-        };
-        results.page = results.page.min(results.page_count());
-        let offset = u64::from(results.page - 1) * u64::from(ISSUES_PER_PAGE);
-        results.issues = store.search(filter, ISSUES_PER_PAGE, offset).await?;
-        let ids: Vec<IssueId> = results.issues.iter().map(|issue| issue.id).collect();
-        let author_ids: Vec<AccountId> = distinct(&results.issues.iter().filter_map(|issue| issue.author).collect::<Vec<_>>());
-        let (authors, metadata) = tokio::try_join!(
-            async { Ok::<_, ServiceError>(self.ctx.database.accounts().find_accounts(&author_ids).await?) },
-            self.metadata_for(&ids, needs)
-        )?;
-        results.authors = authors.into_iter().map(|account| (account.id, account)).collect();
-        results.metadata = metadata;
-        Ok(results)
-    }
-
-    /// One page (1-based, not clamped) of `per_page` threads of `repo` matching `filter`
-    /// (its `repo` is replaced by `repo`'s), with authors and metadata: the REST API's list.
-    pub async fn list(
-        &self,
-        repo: &RepoContext,
-        mut filter: SearchFilter,
-        page: u32,
-        per_page: u32,
-    ) -> Result<IssueSearchResults, ServiceError> {
-        if !repo.access.can_read() {
-            return Err(ServiceError::NotFound);
-        }
-        filter.repo = repo.repo.repo.id;
-        filter.dashboard = None;
-        let store = self.ctx.database.issue_search();
-        let (open, closed) = store.state_counts(&filter).await?;
-        let total = match filter.state {
-            Some(IssueState::Open) => open,
-            Some(IssueState::Closed) => closed,
-            None => open + closed,
-        };
-        let per_page = per_page.max(1);
-        let offset = u64::from(page.max(1) - 1) * u64::from(per_page);
-        let issues = store.search(&filter, per_page, offset).await?;
-        let ids: Vec<IssueId> = issues.iter().map(|issue| issue.id).collect();
-        let author_ids: Vec<AccountId> = distinct(&issues.iter().filter_map(|issue| issue.author).collect::<Vec<_>>());
-        let authors = self.ctx.database.accounts().find_accounts(&author_ids).await?;
-        Ok(IssueSearchResults {
-            metadata: self.metadata(&ids).await?,
-            authors: authors.into_iter().map(|account| (account.id, account)).collect(),
-            issues,
-            total,
-            open,
-            closed,
-            page: page.max(1),
-            per_page,
-            hints: Vec::new(),
-            repositories: HashMap::new(),
-        })
     }
 
     /// The users among `names` (case-insensitively); an unknown name is invalid.
@@ -445,28 +183,6 @@ impl IssueService {
     pub async fn comment_thread(&self, repo: &RepoContext, id: rbit_core::CommentId) -> Result<IssueNumber, ServiceError> {
         let found = self.ctx.database.issue_meta().comment_thread(repo.repo.repo.id, id).await?;
         found.map(|(_, number)| number).ok_or(ServiceError::NotFound)
-    }
-
-    /// The account id `who` names: unknown names match nothing (`AccountId(0)`), `@me`
-    /// without a viewer is ignored with a hint.
-    async fn resolve_who(
-        &self,
-        viewer: Option<&User>,
-        who: Option<&Who>,
-        hints: &mut Vec<String>,
-    ) -> Result<Option<AccountId>, ServiceError> {
-        Ok(match who {
-            None => None,
-            Some(Who::Me) => {
-                if viewer.is_none() {
-                    hints.push("Sign in to use @me".to_owned());
-                }
-                viewer.map(User::id)
-            }
-            Some(Who::Name(name)) => {
-                Some(self.ctx.database.accounts().find_account_by_name(name).await?.map_or(AccountId(0), |account| account.id))
-            }
-        })
     }
 
     // ------------------------------------------------------------------ triage

@@ -11,7 +11,8 @@
         "lib::references::ReferenceService",
         "lib::references::ports::ReferenceView",
         "lib::references::ports::RemoteView",
-        "lib::references::suggestions::SuggestionThreads"
+        "lib::references::suggestions::SuggestionThreads",
+        "lib::issues::reader::IssueReader"
       ]
     },
     {

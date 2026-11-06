@@ -16,3 +16,25 @@ mod creation_port;
 pub use creation::{IssueCreation, IssueCreationAccess, IssueCreationError};
 #[cfg(feature = "applications")]
 pub use creation_port::{IssueCreationPort, MetadataCreated};
+
+mod filter;
+mod metadata_rows;
+pub mod query;
+mod results;
+pub use filter::{DashboardRelation, DashboardScope, SearchFilter};
+pub use metadata_rows::{MetadataRows, OneIssueMetadata};
+pub use results::{ISSUES_PER_PAGE, IssueHydration, IssueMetadata, IssueSearchResults, MetadataNeeds};
+#[cfg(feature = "applications")]
+mod listing;
+#[cfg(feature = "applications")]
+mod metadata;
+#[cfg(feature = "applications")]
+mod query_resolution;
+#[cfg(feature = "applications")]
+mod read_port;
+#[cfg(feature = "applications")]
+pub use listing::IssueListing;
+#[cfg(feature = "applications")]
+pub use metadata::IssueMetadataReader;
+#[cfg(feature = "applications")]
+pub use read_port::{IssueMetadataPort, IssueReadAccess, IssueReadError, IssueReadPort, IssueSearchPort};

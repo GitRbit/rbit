@@ -1,5 +1,4 @@
 //! `SQLite` persistence via `sqlx`.
-
 mod access_tokens;
 mod accounts;
 // Actions: foundation (F).
@@ -26,6 +25,7 @@ pub mod forks;
 // Milestone 3: importing and push mirrors (M).
 pub mod imports;
 pub mod instance;
+mod issue_listing_ports;
 pub mod issue_meta;
 pub mod issue_search;
 pub mod issues;

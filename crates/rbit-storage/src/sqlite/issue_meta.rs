@@ -217,15 +217,7 @@ const ONE_ISSUE_METADATA: &str = "SELECT \
      (SELECT json_array(m.id, m.title) FROM milestones m \
       WHERE m.id = (SELECT milestone_id FROM issue_milestones WHERE issue_id = ?1)) AS milestone";
 
-/// What [`IssueMetaStore::metadata_of`] reads about one thread.
-#[derive(Debug, Clone, Default)]
-pub struct OneIssueMetadata {
-    /// By name, as [`IssueMetaStore::labels_of`] orders them.
-    pub labels: Vec<LabelSnapshot>,
-    /// By name, as [`IssueMetaStore::assignees_of`] orders them.
-    pub assignees: Vec<Account>,
-    pub milestone: Option<IssueMilestone>,
-}
+pub use rbit_collaboration::issues::OneIssueMetadata;
 
 /// An account as [`ONE_ISSUE_METADATA`] encodes it.
 type AccountColumns = (i64, String, String, Option<String>, Option<String>, i64);

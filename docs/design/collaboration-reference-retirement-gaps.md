@@ -78,3 +78,13 @@ and move the single snapshot without copying title/body, while retaining the one
 conditional delete, audit and transient event ordering. That is a concrete allocation
 candidate, not a measured speedup or permission/durability change. Keep it separate
 from the search port so each atomic behavior and budget is reviewable.
+
+## Prepared filtered-reader follow-up
+
+The prioritized filtered-thread reader is now activated in prepared source through
+IssueListing, IssueMetadataReader and borrowed IssueReader. Exact query/filter/result
+aliases, original statements, distinct HTML/API paths, active-user reload and selected
+page hydration are covered by policy and real-store fixtures. See
+[filtered thread read ownership](collaboration-filtered-thread-reads.md). Rust/HTTP
+acceptance is pending; this does not retire the broader ledger groups or background
+controller. The separate deletion improvement remains next.
