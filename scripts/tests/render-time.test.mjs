@@ -18,6 +18,39 @@ function fixture(performance) {
 }
 
 const navigation = duration => ({ getEntriesByType: () => [{ serverTiming: [{ name: "render", duration }] }] });
+const metrics = entries => ({ getEntriesByType: () => [{ serverTiming: entries }] });
+
+test("navigation prefers the footer view interval regardless of metric order", () => {
+  for (const entries of [[{ name: "render", duration: 25 }, { name: "view", duration: 0.5 }],
+    [{ name: "view", duration: 0.5 }, { name: "render", duration: 25 }]]) {
+    assert.equal(fixture(metrics(entries)).footer.textContent, "500 µs");
+  }
+});
+
+test("invalid view metrics fall back to a finite legacy render interval", () => {
+  for (const duration of [NaN, Infinity, -1, "0.5", undefined]) {
+    const page = fixture(metrics([{ name: "view", duration }, { name: "render", duration: 0.5 }]));
+    assert.equal(page.footer.textContent, "500 µs");
+    const value = duration === "0.5" ? "invalid" : String(duration);
+    page.emit("htmx:afterRequest", { successful: true, xhr: { getResponseHeader: () => `view;dur=${value}, render;dur=3.14` } });
+    assert.equal(page.footer.textContent, "3.1 ms");
+  }
+});
+
+test("HTMX view timing overrides total render timing including a revalidated response", () => {
+  const page = fixture(navigation(25));
+  page.emit("htmx:afterRequest", { successful: true, xhr: { status: 304, getResponseHeader: () => "render;dur=25, view;dur=0.512" } });
+  assert.equal(page.footer.textContent, "512 µs");
+  page.emit("htmx:afterRequest", { successful: true, xhr: { getResponseHeader: () => "view;dur=0, render;dur=3" } });
+  assert.equal(page.footer.textContent, "0 µs");
+});
+
+test("view precision keeps millisecond footer rounding on both navigation and HTMX", () => {
+  const page = fixture(metrics([{ name: "render", duration: 25 }, { name: "view", duration: 3.1501 }]));
+  assert.equal(page.footer.textContent, "3.2 ms");
+  page.emit("htmx:afterRequest", { successful: true, xhr: { getResponseHeader: () => "view;dur=3.150100, render;dur=25" } });
+  assert.equal(page.footer.textContent, "3.2 ms");
+});
 
 test("fresh navigation timing replaces the footer reused by HTTP revalidation", () => {
   const page = fixture(navigation(0.5));
