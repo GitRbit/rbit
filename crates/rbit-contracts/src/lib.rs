@@ -1,13 +1,18 @@
-//! Shared account and repository identities, independent of feature implementations.
+//! Small stable contracts shared across independent feature boundaries.
 //!
-//! These types preserve the existing signed-integer constructors and Serde newtype
-//! representation. They do not introduce validation, allocation, I/O or runtime state.
-//! Identity creation, persistence and authorization remain responsibilities of features.
-//! Other shared contracts should enter only when a concrete dependency boundary needs
-//! them; this crate is not a container for forge entities or configuration.
+//! IDs and Unix-second timestamps preserve signed tuple constructors and persisted
+//! Serde representations. Shared naming errors/slug grammar let identity and repository
+//! names retain one validation authority without importing each other's implementations.
+//! Timestamp's clock and English display helpers are retained compatibility behavior,
+//! not localized presentation or an injected application clock. These contracts own no
+//! feature configuration, store, task, runtime registry or authorization state.
 
 mod account_id;
+pub mod names;
 mod repository_id;
+mod timestamp;
 
 pub use account_id::AccountId;
+pub use names::NameError;
 pub use repository_id::RepoId;
+pub use timestamp::Timestamp;
