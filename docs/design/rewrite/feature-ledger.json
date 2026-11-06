@@ -62,5 +62,19 @@
     {"id":"presentation.themes-pwa","behavior":"Themes, installable PWA, mobile navigation and offline privacy","target":"rbit-presentation","status":"baseline-retained","source":"crates/rbit-web/src/routes/pwa.rs","test":"scripts/tests/service-worker.test.mjs"},
     {"id":"presentation.navigation","behavior":"HTMX/history, preloader limits, no-JS and safe fragment caching","target":"rbit-presentation","status":"baseline-retained","source":"crates/rbit-web/src/partial.rs","test":"scripts/tests/preload.test.mjs"},
     {"id":"delivery.releases","behavior":"Five binary platforms, paired runner, containers, checksums and provenance","target":"repository-ci","status":"baseline-retained","source":".github/workflows/release.yml","test":".github/workflows/ci.yml"}
+  ],
+  "plannedAdditions": [
+    {
+      "id": "wikis.repository-documentation",
+      "behavior": "Repository documentation: platform-native localized responsive UI; versioned pages/history/diff/restore/rename; link integrity/search/navigation/media; inherited ACL/archive and recoverable lifecycle/backup integration",
+      "target": "rbit-wikis",
+      "status": "planned",
+      "baselinePresence": "absent",
+      "implementation": "not-started",
+      "plan": "docs/design/repository-wikis-plan.md",
+      "acceptancePlan": "docs/design/repository-wikis-plan.md",
+      "delivery": ["W0 contracts and budgets", "W1 authorized read UI", "W2 recoverable versioned editing", "W3 complete documentation flows", "W4 lifecycle and operations", "W5 measured acceptance and ordinary-flow dogfooding"],
+      "acceptanceEvidence": []
+    }
   ]
 }

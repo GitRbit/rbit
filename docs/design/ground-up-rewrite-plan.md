@@ -40,7 +40,7 @@ The server remains deployable as one binary with embedded assets and migrations,
 
 ### Proposed crate responsibilities
 
-The following approximately 20 crates are a starting allocation. Confirm boundaries through a vertical slice and build measurements before freezing names. Modules can be split further within these crates without adding a crate per type.
+The following approximately 21 crates are a starting allocation. Confirm boundaries through a vertical slice and build measurements before freezing names. Modules can be split further within these crates without adding a crate per type.
 
 | Crate | Responsibility |
 | --- | --- |
@@ -49,6 +49,7 @@ The following approximately 20 crates are a starting allocation. Confirm boundar
 | `rbit-identity` | Accounts, sessions, tokens, recovery, MFA and external sign-in; private crypto submodules |
 | `rbit-access` | Organizations, teams, collaborators, permission decisions and pure ref/branch-access policy |
 | `rbit-repositories` | Repository lifecycle, browse/read models, edits, transfers, forks, mirrors, releases, LFS and insights |
+| `rbit-wikis` | Repository documentation pages, revisions, links/navigation/search/media contracts and recoverable applications behind static ports |
 | `rbit-collaboration` | Shared timeline, issues, pulls, reviews, merge/review requirements and statuses |
 | `rbit-notifications` | Inbox, subscriptions, digests, outbound integration coordination and durable delivery |
 | `rbit-actions` | Server scheduling, runners, jobs, leases, environments, secrets, caches and artifacts |
@@ -76,6 +77,12 @@ Dependency rules:
 5. Only composition can access all concrete modules. Runner/workflow shared types do not depend on server implementation details.
 
 The initial feature graph is explicit: identity and access each depend on shared identity contracts, not on each other's implementations; repositories depend on access policy contracts; collaboration may depend on repository public contracts, while repositories never import collaboration. Put pure ref/branch-access decisions in the access boundary and expose review/status requirements through a narrow gate port injected by composition. Actions depends on access and workflow contracts; notification/integration consumers receive typed feature events. Composition supplies bridges for cross-feature ports rather than creating reverse imports. Keep DTOs used by Git and storage ports feature-owned or in small shared contracts, so implementing a port never forces a feature to import its concrete adapter. The architecture check enforces these edges before the first slice merges.
+
+The new wiki feature has a directed domain edge to shared contracts, pure access policy
+and repository public contracts. It has no concrete storage/Git/HTTP/runtime dependency;
+storage/Git adapters and presentation consume its narrow ports/models through explicit
+composition. Repositories do not import the wiki implementation. Feature-union purity,
+adapter graph and build footprint must be checked before those edges are activated.
 
 If runner-protocol churn proves independent of workflow syntax, extract `rbit-runner-protocol` as a further crate. Do the same for repository or collaboration subdomains only when ownership, compilation or testing benefits justify it. Record the measured effect on build time, code size and runtime before accepting a split.
 
@@ -118,11 +125,23 @@ Create a feature ledger before replacement begins. Derive it from route registra
 | Access and social | Organizations, teams, collaborators, stars/stargazers, read/write/admin, branch protection, required statuses, archived read-only behavior on every ingress and access-filtered listings |
 | Integrations | API schemas/status codes/pagination, webhook payloads/HMAC/retries, notifications/digests/unsubscribe, email threading and external status checks |
 | Actions | Discovery, supported workflow syntax/events/expressions/matrices/dependencies/reuse/schedules, concurrency, runners/backends, leases, permissions, fork safety, logs/masking, caches/artifacts, environments/approval/timers, rerun/cancel and status reporting |
+| Repository wikis (new planned addition) | Platform-native responsive documentation UI; localized/a11y/mobile/no-JS reads and writes; versioned pages/history/diff/restore/rename; safe links/navigation/search/media; repository ACL/archive/CAS/crash/backup/lifecycle integration |
 | Operations and UI | CLI/client, environment/config behavior, admin monitoring/config/restart, backups/key material/restore, metrics/health, update privacy, themes, PWA, mobile, accessibility and no-JavaScript flows |
 
 Preserve API paths and machine error codes, persisted IDs and issue numbers, repository layout, Git wire behavior, webhook semantics and documented configuration aliases. Version runner/server contracts and explicitly support a tested upgrade window. Keep stable machine states and audit event codes independent of translated display text.
 
 Use old tests as compatibility specifications after reviewing what they assert. Add missing black-box tests for externally observable guarantees, especially permission parity across HTTP, SSH, REST, browser actions and runner APIs. Do not replace behavior tests with tests that simply mirror new implementation details.
+
+### New repository wiki scope
+
+The rewrite now includes a cohesive `rbit-wikis` feature; it is not existing main
+functionality or a one-off UI prototype. Follow [the wiki delivery and acceptance
+plan](repository-wikis-plan.md) for its strongly typed ports, Git/SQLite/redb authority,
+CAS/recovery protocol, modern Askama/HTMX/Tailwind v4 workspace, localization and
+accessibility, security/media/cache boundaries, repository lifecycle integration and
+measured performance/footprint gates. Existing milestone exclusions/import limitations
+remain historical evidence. The ledger records this separately as a planned addition,
+not a ported baseline feature or passing implementation.
 
 ## 4 Persistence and reliable background work
 
@@ -346,6 +365,7 @@ Implementation follows plan review. A ground-up code organization does not requi
 | 1 Worktree and build foundation | Nested worktree helper, bounded shared lanes, exact executable handoff, disk reporting, new host and CI fast checks | Windows/concurrency/storage acceptance cases; no per-worktree compiler trees |
 | 2 First vertical slice | Identity/access, SQLite/redb adapters, locale/errors, repository listing, full HTML/HTMX, startup/shutdown/health | Login, ACL, locale, restart, overload and cache isolation pass; build/runtime architecture costs measured |
 | 3 Git and repository platform | Browse, transports/SSH, protection, edits, forks/imports/mirrors, LFS/releases/insights | Real Git clients and cross-ingress policy parity; recovery and performance gates |
+| 3W Repository wiki platform (new scope) | W0 through W5 wiki contracts, authorized read UI, recoverable versioned editing, links/search/media and repository lifecycle/operations | Wiki-specific CAS/crash/privacy/XSS/SSRF/backup/restore, localized mobile/a11y/no-JS, exact work/footprint and dogfooding acceptance in the linked plan |
 | 4 Collaboration and integrations | Timeline/issues/pulls/reviews/statuses, outbox, notifications/mail/hooks/API | Ledger/API parity, stale-ref and event replay/crash tests |
 | 5 Actions engine and runner | Language/planner modules, scheduler/leases, backends, logs/artifacts/cache/secrets/environments | Workflow corpus, malicious inputs, protocol upgrade and execution/cleanup parity |
 | 6 Actions interface and release pipeline | Screen redesign, incremental updates, localization/accessibility, hardened fast CI and signed packaging | Realistic browser fixtures, RTL/mobile/no-JS, measured update/build savings and release rehearsal |
@@ -354,6 +374,20 @@ Implementation follows plan review. A ground-up code organization does not requi
 Architecture, persistence, rendering/localization and CI/runner work can proceed as separate workstreams after shared contracts and the first vertical slice stabilize. Give each workstream owned paths and acceptance fixtures; use a single integrator for shared migrations, public contracts and dependency graph changes. Keep changes reviewable by feature slice. Rebase from GitHub main regularly and update the ledger for changes that land during the rewrite.
 
 Estimate schedule and staffing after phase 0 measures the feature inventory and phase 2 proves the architecture. Reserve explicit time for compatibility, translation review, security testing, platform packaging and migration rehearsals rather than assigning an unsupported completion date now.
+
+### Required local platform dogfooding
+
+Run the local rbit instance against the explicitly approved public `GitRbit/rbit`
+upstream through its existing scheduled pull-mirror UI/API flow, with public main
+and published rewrite heads/tags selectable and verified by source OID. No upstream
+PAT is required for public content. Do not copy all local workstation/worktree refs.
+Mirror Git contents remain read-only; use a separate ordinary writable repository
+for authenticated push validation. Exercise normal users, ACLs, authenticated Git,
+API/browser workflows and future wiki features through their actual policy rather
+than direct SQLite/redb insertion or privileged bypasses. Keep secrets, private local
+paths and internal tooling branding out of public content and evidence. Dogfooding
+is not a change to the pinned main baseline or a substitute for matched performance
+fixtures. See the wiki plan for the operational acceptance record.
 
 ## 13 Upgrade cutover and rollback
 
@@ -367,7 +401,7 @@ Rollback before incompatible writes may permit the prior binary against compatib
 
 ## 14 Decisions to settle through early evidence
 
-The default direction is concrete: static in-process modules, explicit dependencies, approximately 20 crates, 400-line limits, one embedded persistence authority, durable required events, compile-time templates, locale-aware rendering and bounded shared build lanes.
+The default direction is concrete: static in-process modules, explicit dependencies, approximately 21 crates, 400-line limits, one embedded persistence authority, durable required events, compile-time templates, locale-aware rendering and bounded shared build lanes.
 
 Phase 0 and the first slice must settle the catalog implementation, precise crate splits, absolute latency/RSS/binary budgets, durability policy, supported runner upgrade window and shared-lane concurrency. Rendering experiments choose between existing block containment, windowed views and incremental streaming by workload. Security and feature parity remain mandatory under every option.
 
