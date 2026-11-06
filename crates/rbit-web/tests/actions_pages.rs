@@ -21,6 +21,8 @@ use tower::ServiceExt;
 mod control_parity;
 #[path = "actions_pages/overview_presentation.rs"]
 mod overview_presentation;
+#[path = "actions_pages/production_fixture.rs"]
+mod production_fixture;
 #[path = "actions_pages/run_presentation.rs"]
 mod run_presentation;
 
@@ -38,11 +40,18 @@ struct Fixture {
 
 impl Fixture {
     async fn new() -> Self {
+        Self::new_with_public_url("http://localhost:3000").await
+    }
+
+    async fn new_with_public_url(public_url: &str) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let mut config = Config::default();
+        config.server.public_url = public_url.to_owned();
         config.storage.data_dir = directory.path().join("data");
         config.security.rate_limit = false;
         config.actions.enabled = true;
+        // These synthetic UI fixtures never contact the upstream update service.
+        config.updates.check_for_updates = false;
         std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
         let kv = KvStore::open(&config.storage.kv_path()).unwrap();
