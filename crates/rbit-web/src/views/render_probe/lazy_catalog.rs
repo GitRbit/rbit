@@ -76,8 +76,11 @@ async fn real_full_fragment_and_shared_shell_keep_exact_owned_catalog_bytes() {
                         let actual = ExploreFragment { page: &view.page, results: &view.results }.render().unwrap();
                         assert_eq!(actual, old, "fragment {locale:?} {count} {page}/{pages}");
                         assert!(!actual.contains("<script>CATALOG_SUBTITLE_ONLY</script>"));
-                        // A fragment never requests the full-document subtitle.
-                        assert!(!actual.contains("CATALOG_SUBTITLE_ONLY"));
+                        // The title retains the escaped site name; results never
+                        // request the full-document subtitle.
+                        let (title, results) = actual.split_once("</title>").expect("fragment document title");
+                        assert!(title.contains("CATALOG_SUBTITLE_ONLY"));
+                        assert!(!results.contains("CATALOG_SUBTITLE_ONLY"));
                     })
                     .await;
                 }
