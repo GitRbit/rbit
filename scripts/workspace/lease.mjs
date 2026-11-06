@@ -46,19 +46,21 @@ export async function acquire(path, { timeout = 120_000, signal } = {}) {
     }
   }
   let released = false;
-  return async () => {
+  const release = async () => {
     if (released) return;
     const current = await owner(path);
     if (current?.token !== record.token) throw new Error(`Lease ownership changed: ${path}`);
     await rm(path, { recursive: true });
     released = true;
   };
+  release.ownership = { path, token: record.token };
+  return release;
 }
 
 export async function leased(path, task, options) {
   const release = await acquire(path, options);
   let retained = false;
-  try { return await task(); }
+  try { return await task(release.ownership); }
   catch (error) {
     if (error instanceof UncertainProcessTreeError) {
       retained = true;
