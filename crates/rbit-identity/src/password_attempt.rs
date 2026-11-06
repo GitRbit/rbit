@@ -108,14 +108,23 @@ impl PasswordAttempt {
     /// # Errors
     ///
     /// Returns the existing candidate-hash or Tokio join error.
-    pub async fn hash_if_different(self, password: String, previous_phc: String) -> Result<Option<String>, PasswordError> {
-        self.execute(move || {
-            if credential::verify(&password, &previous_phc) {
-                return Ok(None);
-            }
-            credential::hash(&password).map(Some)
-        })
-        .await
+    pub fn hash_if_different(
+        self,
+        password: String,
+        previous_phc: String,
+    ) -> impl std::future::Future<Output = Result<Option<String>, PasswordError>> + Send {
+        let password = Zeroizing::new(password);
+        let previous_phc = Zeroizing::new(previous_phc);
+        async move {
+            self.execute(move || {
+                if credential::verify(&password, &previous_phc) {
+                    return Ok(None);
+                }
+                drop(previous_phc);
+                credential::hash(&password).map(Some)
+            })
+            .await
+        }
     }
 
     async fn execute<F, T>(self, operation: F) -> Result<T, PasswordError>
