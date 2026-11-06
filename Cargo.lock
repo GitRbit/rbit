@@ -4181,6 +4181,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbit-access"
+version = "0.1.5"
+
+[[package]]
 name = "rbit-auth"
 version = "0.1.5"
 dependencies = [
@@ -4190,6 +4194,7 @@ dependencies = [
  "getrandom 0.4.3",
  "hmac",
  "p256",
+ "rbit-access",
  "rbit-core",
  "rbit-identity",
  "rsa",
@@ -4216,6 +4221,7 @@ version = "0.1.5"
 dependencies = [
  "proptest",
  "pulldown-cmark",
+ "rbit-access",
  "rbit-contracts",
  "serde",
  "serde_json",

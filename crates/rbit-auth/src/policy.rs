@@ -1,4 +1,4 @@
-//! Repository access rules.
+//! Domain-entity adapter for the pure repository rules owned by `rbit-access`.
 //!
 //! Kept as a pure function of (viewer, repository, grants) so it is exhaustively testable
 //! and shared by the web UI and the Git transports. Looking the grants up is the caller's
@@ -35,23 +35,23 @@ pub struct Grants {
 
 /// Computes what `viewer` (or an anonymous visitor) may do with `repo`.
 pub fn repo_access(viewer: Option<&User>, repo: &OwnedRepository, grants: &Grants) -> RepoAccess {
-    let baseline = if repo.repo.visibility.is_public() { RepoAccess::Read } else { RepoAccess::None };
-
-    let Some(user) = viewer else {
-        return baseline;
-    };
-    if user.is_admin || user.id() == repo.repo.owner_id {
-        return RepoAccess::Admin;
-    }
+    use rbit_access::{OrganizationAccess, RepositoryAccessFacts, ViewerAccessFacts};
 
     let granted = |permission: Option<Permission>| permission.map_or(RepoAccess::None, Permission::access);
-    let organisation = match grants.org_role {
-        _ if !repo.owner.is_organization() => RepoAccess::None,
-        Some(OrgRole::Owner) => RepoAccess::Admin,
-        Some(OrgRole::Member) => granted(grants.org_base).max(granted(grants.team)),
-        None => RepoAccess::None,
-    };
-    baseline.max(organisation).max(granted(grants.collaborator))
+    let viewer = viewer.map(|user| ViewerAccessFacts {
+        site_admin: user.is_admin,
+        repository_owner: user.id() == repo.repo.owner_id,
+        organization: match grants.org_role {
+            Some(OrgRole::Owner) => OrganizationAccess::Owner,
+            Some(OrgRole::Member) => OrganizationAccess::Member { base: granted(grants.org_base), team: granted(grants.team) },
+            None => OrganizationAccess::None,
+        },
+        collaborator: granted(grants.collaborator),
+    });
+    rbit_access::repo_access(
+        viewer,
+        RepositoryAccessFacts { public: repo.repo.visibility.is_public(), organization: repo.owner.is_organization() },
+    )
 }
 
 #[cfg(test)]

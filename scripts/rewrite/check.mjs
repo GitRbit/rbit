@@ -12,7 +12,7 @@ const GENERATED = new Set([
 const FEATURE_EDGES = {
   "rbit-kernel": [], "rbit-contracts": [], "rbit-localization": [], "rbit-rewrite-check": [], "rbit-render-probe": [],
   "rbit-identity": ["rbit-contracts", "rbit-kernel"],
-  "rbit-access": ["rbit-contracts"],
+  "rbit-access": [],
   "rbit-repositories": ["rbit-contracts", "rbit-access", "rbit-kernel"],
   "rbit-collaboration": ["rbit-contracts", "rbit-access", "rbit-repositories", "rbit-kernel"],
   "rbit-actions": ["rbit-contracts", "rbit-access", "rbit-workflow", "rbit-kernel"],
@@ -20,8 +20,8 @@ const FEATURE_EDGES = {
 };
 // Reviewed seams added to legacy adapters during incremental replacement.
 const ADDED_EDGES = {
-  "rbit-core": ["rbit-contracts"], "rbit-web": ["rbit-localization"],
-  "rbit-auth": ["rbit-identity"], "rbit-services": ["rbit-identity", "rbit-kernel"],
+  "rbit-core": ["rbit-contracts", "rbit-access"], "rbit-web": ["rbit-localization"],
+  "rbit-auth": ["rbit-identity", "rbit-access"], "rbit-services": ["rbit-identity", "rbit-kernel"],
 };
 // HTTP acceptance fixtures may inject the shared owner without adding production edges.
 const DEV_EDGES = { "rbit-web": ["rbit-identity", "rbit-kernel"] };
