@@ -8,6 +8,8 @@
         "lib::timeline::reader::ThreadReader",
         "lib::timeline::reader::ReadView",
         "lib::timeline::writer::ThreadWriter",
+        "lib::repo_settings::RepoSettingsService",
+        "lib::repo_settings::effects::SettingsEffects",
         "lib::references::ReferenceService",
         "lib::references::ports::ReferenceView",
         "lib::references::ports::RemoteView",

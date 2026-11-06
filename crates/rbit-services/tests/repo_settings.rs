@@ -335,3 +335,5 @@ async fn private_repositories_stay_hidden() {
     assert!(stars.starred_by(Some(&bob), &alice.account).await.unwrap().is_empty());
     assert!(stars.starred_by(None, &alice.account).await.unwrap().is_empty());
 }
+
+mod application;

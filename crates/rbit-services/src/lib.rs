@@ -288,7 +288,7 @@ impl Services {
             orgs: OrgService::new(ctx.clone(), instance.clone()),
             profiles: ProfileService::new(ctx.clone(), accounts, throttle.clone()),
             pushes: PushService::new(ctx.clone()),
-            repo_settings: RepoSettingsService::new(ctx.clone()),
+            repo_settings: RepoSettingsService::new(database.clone(), ctx.repositories.clone(), ctx.events.clone()),
             collaborators: CollaboratorService::new(ctx.clone()),
             teams: TeamService::new(ctx.clone()),
             transfers: TransferService::new(ctx.clone()),

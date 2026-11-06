@@ -16,3 +16,5 @@ pub use model::{ARCHIVED_READ_ONLY, OwnedRepository, Repository};
 pub use names::RepoName;
 pub use rbit_contracts::RepoId;
 pub use visibility::Visibility;
+
+pub mod settings;
