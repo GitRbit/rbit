@@ -13,6 +13,7 @@
 //! Creating, editing and commenting spend [`ThrottleScope::Content`] for the actor.
 
 mod human_comments;
+mod lifecycle;
 mod state_change;
 mod task_comments;
 mod text_edit;
@@ -113,38 +114,6 @@ pub struct TimelineService {
 impl TimelineService {
     pub(crate) fn new(ctx: ServiceContext, throttle: ThrottleService) -> Self {
         Self { ctx, throttle }
-    }
-
-    /// Closes a thread on behalf of the system: by a pushed commit (I) or by a merge (P).
-    /// No permission check and no throttle; records `event` and publishes
-    /// `IssueAction::Closed { reason }`. `false` when it was already closed (or is gone).
-    pub(crate) async fn close_as_system(
-        &self,
-        issue: IssueId,
-        actor: Option<AccountId>,
-        reason: StateReason,
-        event: TimelineEvent,
-    ) -> Result<bool, ServiceError> {
-        let store = self.ctx.database.issues();
-        let Some(updated) = store.set_state(issue, IssueState::Closed, Some(reason), actor, &event, Timestamp::now()).await? else {
-            return Ok(false);
-        };
-        self.publish_issue(&updated, actor, IssueAction::Closed { reason });
-        Ok(true)
-    }
-
-    /// Locks or unlocks the conversation (writers only). Publishes `Locked`/`Unlocked`
-    /// when it changed.
-    pub async fn set_locked(&self, actor: &User, ctx: &IssueContext, locked: bool) -> Result<(), ServiceError> {
-        if !permissions(actor, ctx).can_lock {
-            return Err(ServiceError::Forbidden);
-        }
-        ctx.repo.ensure_writable()?;
-        if self.ctx.database.issues().set_locked(ctx.issue.id, locked, actor.id(), Timestamp::now()).await? {
-            let action = if locked { IssueAction::Locked } else { IssueAction::Unlocked };
-            self.publish_issue(&ctx.issue, Some(actor.id()), action);
-        }
-        Ok(())
     }
 
     /// Comment `id` on this thread and its author (`None` once the account is deleted),
@@ -286,7 +255,7 @@ mod tests {
     use super::*;
     use crate::{CreateRepository, Services};
 
-    async fn fixture() -> (tempfile::TempDir, Services, User, RepoContext) {
+    pub(super) async fn fixture() -> (tempfile::TempDir, Services, User, RepoContext) {
         let dir = tempfile::tempdir().unwrap();
         let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
         let kv = KvStore::open(&dir.path().join("rbit.redb")).unwrap();
@@ -324,42 +293,5 @@ mod tests {
         assert_eq!((pull.number.get(), pull.kind), (2, IssueKind::Pull));
         assert!(events.try_recv().is_err(), "the creator publishes `Opened` once its own data is in place");
         assert_eq!(timeline.open_counts(repo.repo.repo.id).await.unwrap(), OpenCounts { issues: 1, pulls: 1 });
-    }
-
-    #[tokio::test]
-    async fn system_closes_record_their_event_once() {
-        let (_dir, services, alice, repo) = fixture().await;
-        let timeline = &services.timeline;
-        let issue = timeline.create(&alice, &repo, IssueKind::Issue, "Crash", "").await.unwrap();
-        let pull = timeline.create(&alice, &repo, IssueKind::Pull, "Fix", "").await.unwrap();
-        let mut events = services.events.subscribe();
-
-        let by_commit = TimelineEvent::Closed { reason: StateReason::Completed, commit: Some("abc1234".to_owned()), pull: None };
-        assert!(timeline.close_as_system(issue.id, None, StateReason::Completed, by_commit.clone()).await.unwrap());
-        assert!(!timeline.close_as_system(issue.id, None, StateReason::Completed, by_commit.clone()).await.unwrap(), "already closed");
-        let merged = TimelineEvent::Merged { commit: "def5678".to_owned(), strategy: Some(rbit_core::issue::MergeStrategy::Squash) };
-        assert!(timeline.close_as_system(pull.id, Some(alice.id()), StateReason::Merged, merged).await.unwrap());
-        assert!(!timeline.close_as_system(IssueId(999), None, StateReason::Completed, by_commit.clone()).await.unwrap());
-        let event_id = timeline.record(issue.id, None, TimelineEvent::Locked).await.unwrap();
-        assert!(event_id.0 > 0);
-
-        let published: Vec<_> = std::iter::from_fn(|| events.try_recv().ok()).collect();
-        assert_eq!(published.len(), 2);
-        assert!(matches!(
-            &published[0],
-            DomainEvent::Issue { actor: None, kind: IssueKind::Issue, action: IssueAction::Closed { reason: StateReason::Completed }, .. }
-        ));
-        assert!(matches!(&published[1], DomainEvent::Issue { action: IssueAction::Closed { reason: StateReason::Merged }, .. }));
-
-        let ctx = timeline.open(Some(&alice), repo.clone(), issue.number).await.unwrap();
-        assert_eq!((ctx.issue.state_reason, ctx.issue.closed_by), (Some(StateReason::Completed), None));
-        let entries = timeline.timeline(Some(&alice), &ctx, None, 10).await.unwrap().entries;
-        let recorded: Vec<_> = entries
-            .iter()
-            .filter_map(|entry| if let TimelineEntry::Event { event, .. } = entry { Some(event.clone()) } else { None })
-            .collect();
-        assert_eq!(recorded, [by_commit, TimelineEvent::Locked]);
-        let merged_pull = timeline.open(Some(&alice), repo, pull.number).await.unwrap();
-        assert_eq!(merged_pull.issue.state_reason, Some(StateReason::Merged));
     }
 }

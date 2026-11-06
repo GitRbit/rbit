@@ -30,3 +30,8 @@ pub use text_edit::{ThreadEditAccess, ThreadEditError, ThreadEditResult, ThreadE
 mod state_change;
 #[cfg(feature = "applications")]
 pub use state_change::{StateChange, ThreadStateAccess, ThreadStateChanger, ThreadStateError, ThreadStateRepository, ThreadStateResult};
+
+#[cfg(feature = "applications")]
+mod lifecycle;
+#[cfg(feature = "applications")]
+pub use lifecycle::{SystemThreadClosure, ThreadLifecycleRepository, ThreadLockError, ThreadLocking};
