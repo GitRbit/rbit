@@ -287,3 +287,70 @@ records are not automatically published or uploaded.
 [Cargo configuration hierarchy](https://doc.rust-lang.org/cargo/reference/config.html#hierarchical-structure)
 is the source for repository/ancestor/Cargo-home lookup; unsupported configuration
 mechanisms are deliberately unproved.
+
+
+## Explicit fresh-output candidate measurement
+
+`RBIT_BUILD_MANAGED_RETENTION=measure-candidate` is a separate, default-off helper
+path. It requires `windows-job` ownership and an explicit positive integer
+`RBIT_BUILD_CANDIDATE_HEADROOM_BYTES`. The helper checks actual free bytes against
+that operator-selected threshold before allocation. This is not reserved storage,
+a proven candidate-size estimate, or an automatic cold-cost/headroom approval.
+There is no default threshold or automatic activation.
+
+Within the live lease it reserves a singleton pointer with exclusive creation, then
+creates one fresh `managed/candidate-UUID` directory in the compatibility namespace.
+Cargo target and intermediate paths both point inside that directory. The legacy
+`shared` lane is retained and never adopted as owned generation output. Existing
+candidate, orphan, malformed, failed, uncertain or successful measurement state
+refuses another candidate; no JSON eligibility boolean authorizes reuse or cleanup.
+Exclusive pointer reservation also prevents two callers sharing one lease from
+creating two directories. Interrupted allocation leaves blocking evidence.
+
+The actual helper executes the selected command in that fresh lane, then publishes
+its exact independently copied executable handoff through the existing generation
+mechanism. Native completion and disk-derived graph/input checks precede successful
+measurement records. Per-generation and singleton records contain fixed statuses,
+hashes, counters, command wall time and boolean observations; no raw arguments,
+selectors, error text, environment values or local paths are retained. The two
+records are not an atomic transaction: partial publication stays blocking and is
+not promotion authority. The command wall interval includes native-launcher startup
+and excludes later byte scans/handoff validation; peak memory is not measured.
+
+Fresh Cargo output directories do **not** establish a cold compiler, registry or
+operating-system cache. The record explicitly says compiler-cache state unproved,
+OS/page-cache state unmeasured and `coldCostGateEligible:false`. A detected wrapper
+is recorded only as a boolean; Cargo-config/custom-toolchain caches may still exist.
+No environment is silently changed, and no claim of fully cold compilation follows.
+A later executor must not treat this fresh-output observation as approved fully cold
+cost evidence without a reviewed scope and measurement policy.
+
+A failed command with branded same-lease native completion is marked failed while
+retaining its candidate. Missing or uncertain completion retains uncertain evidence
+and the blocked lease. Preparation failure records that execution was not attempted;
+it does not invent a stopped-tree proof. Quarantine errors cannot replace the
+original uncertainty. Potentially active failed output is not scanned or hashed.
+No candidate is automatically promoted, retired, retried or recursively deleted.
+
+This measurement mode skips automatic cache pruning for its command. Independently,
+normal automatic maintenance and manual prune now protect **every namespace with
+managed state present**, without reading an eligibility boolean. Ordinary legacy-only
+namespace eviction is unchanged. This prevents a later command in another namespace
+from erasing measurement/quarantine evidence. Retained managed bytes can exceed the
+soft watermark; this slice does not implement a hard storage budget.
+
+Temporary-fixture tests exercise actual helper target selection/handoff, completed
+compiler failure and lease release, uncertain failure plus diagnostic failure,
+singleton races, opaque-handle/proof forgery, orphan refusal, cross-namespace/manual
+prune protection, headroom validation and cache-confidence/privacy fields. No real
+candidate, native job or Cargo invocation was executed during source preparation.
+Actual measurement acceptance, approved cold/headroom evidence, bounded promotion
+and the separately authorized retention executor remain required.
+
+
+Generation record replacement retries transient Windows sharing denials at most
+three times, rechecking the same lease, path and existing record identity each time.
+It never removes the old record to force replacement. Deterministic IO fixtures
+cover transient/persistent refusal and an unrelated record appearing between retries.
+Diagnostic attachment is best-effort for frozen errors: failure to record or attach
+a secondary error must not replace the original uncertain outcome or release its lease.

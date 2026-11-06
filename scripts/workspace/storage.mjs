@@ -7,7 +7,7 @@ import { leased, owner } from "./lease.mjs";
 
 export const DEFAULT_CACHE_MAX_BYTES = 16 * 1024 ** 3;
 
-/** Zero disables automatic maintenance; manual prune(0) still empties the cache. */
+/** Zero disables automatic maintenance; manual prune(0) still empties ordinary cache, preserving managed evidence. */
 export function cacheBudget(env = process.env) {
   const value = env.RBIT_BUILD_CACHE_MAX_BYTES;
   if (value === undefined) return DEFAULT_CACHE_MAX_BYTES;
@@ -55,10 +55,17 @@ async function pruneOwned(ctx, maxBytes, protectedNames, lease) {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new Error("max-bytes must be a nonnegative integer");
   await requireLease(ctx, lease);
   const report = await cacheReport(ctx);
-  const removed = [];
+  const removed = [], protectedManaged = [];
   for (const entry of report.entries.sort((a, b) => a.used - b.used || a.name.localeCompare(b.name))) {
     if (report.bytes <= maxBytes) break;
     if (protectedNames.has(entry.name)) continue;
+    // Managed-generation evidence is not ordinary inactive cache. Presence is a
+    // blocker; never let a mutable JSON eligibility flag authorize old pruning.
+    try {
+      await lstat(join(ctx.cache, entry.name, "managed"));
+      protectedManaged.push(entry.name);
+      continue;
+    } catch (error) { if (!["ENOENT", "ENOTDIR"].includes(error.code)) throw error; }
     await requireLease(ctx, lease);
     const path = await guarded(ctx.root, join(ctx.cache, entry.name));
     // Revalidate descendants immediately before recursive removal.
@@ -67,7 +74,7 @@ async function pruneOwned(ctx, maxBytes, protectedNames, lease) {
     report.bytes -= entry.bytes;
     removed.push(entry);
   }
-  return { bytes: report.bytes, removed };
+  return { bytes: report.bytes, removed, protectedManaged };
 }
 
 /** Automatic post-command policy. Caller must still own the build/test lease. */

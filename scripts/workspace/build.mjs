@@ -7,11 +7,12 @@ import { createInterface } from "node:readline";
 import { guarded, managedDirectory } from "./paths.mjs";
 import { leased, UncertainProcessTreeError } from "./lease.mjs";
 import { cacheBudget, enforceHighWater } from "./storage.mjs";
-import { cargoTreeMode, ownedCargo, verifiedCargoCompletion } from "./cargo-tree.mjs";
+import { cargoTreeMode, ownedCargo, verifiedCargoCompletion, failedCargoCompletion } from "./cargo-tree.mjs";
 import { managedRetentionMode, beginRetention, finishRetention } from "./retention/observe.mjs";
+import { candidateHeadroom, createCandidate, startCandidate, candidateExecutionStarting, candidateExecuted, completeCandidate, quarantineCandidate } from "./retention/candidate.mjs";
 
 function reportCacheOverage(report) {
-  if (report.overageBytes > 0) process.stderr.write(`Build cache remains ${report.overageBytes} bytes over its ${report.maxBytes}-byte soft limit (${report.bytes} bytes retained); current namespace is protected.\n`);
+  if (report.overageBytes > 0) process.stderr.write(`Build cache remains ${report.overageBytes} bytes over its ${report.maxBytes}-byte soft limit (${report.bytes} bytes retained); current or managed namespaces are protected.\n`);
 }
 
 export function compatibility(env = process.env, rustc = execFileSync("rustc", ["-vV"], { encoding: "utf8", windowsHide: true })) {
@@ -78,6 +79,7 @@ export async function cargo(ctx, command, args = [], { execute = cargoProcess, e
   validateCargoArgs(args);
   cargoTreeMode(env);
   const retentionMode = managedRetentionMode(env);
+  const requiredHeadroom = retentionMode === "measure-candidate" ? candidateHeadroom(env) : null;
   if (command === "nextest" && !["run", "list"].includes(args[0])) throw new Error("Use nextest run or list");
   const maxCacheBytes = cacheBudget(env);
   const buildEnv = { ...env, LIBSQLITE3_FLAGS: [env.LIBSQLITE3_FLAGS ?? "", "-DSQLITE_ENABLE_QPSG"].join(" ").trim() };
@@ -89,48 +91,71 @@ export async function cargo(ctx, command, args = [], { execute = cargoProcess, e
   // A repository-wide lease also serializes prune and caps active developer build lanes
   // at one. Namespaces separate compiler identities, not worktrees or branches.
   return leased(join(cache, ".lease"), async (lease) => {
-    const lane = await managedDirectory(ctx, join(cache, namespace, "shared"));
-    buildEnv.CARGO_TARGET_DIR = join(lane, "target");
-    buildEnv.CARGO_BUILD_TARGET_DIR = buildEnv.CARGO_TARGET_DIR;
-    buildEnv.CARGO_BUILD_BUILD_DIR = join(lane, "intermediates");
-    const observation = retentionMode === "observe"
-      ? await beginRetention(ctx, { namespace, command, args, env: buildEnv }, lease, { read: readRetentionInput }) : null;
-    const artifacts = [], copies = observation ? [] : null;
-    const json = ["build", "check", "clippy", "test"].includes(command);
-    const format = buildEnv.RBIT_WORKSPACE_JSON === "1" ? "json" : "json-render-diagnostics";
-    const completion = await execute(ctx, [command, ...(json ? [`--message-format=${format}`] : []), ...args], buildEnv, (item) => artifacts.push(item), { lease });
-    const result = { executables: [], environment: buildEnv, namespace };
-    if (verifiedCargoCompletion(completion, lease)) result.completion = completion;
-    if (observation && !result.completion) throw new Error("Managed observation requires verified native Cargo completion");
-    if (command === "build") {
-      const binaries = new Map();
-      for (const item of artifacts.filter((entry) => entry.target.kind.includes("bin"))) {
-        const name = basename(item.executable).toLowerCase();
-        const previous = binaries.get(name);
-        if (previous && (previous.executable !== item.executable || previous.target.name !== item.target.name)) {
-          throw new Error(`Ambiguous executable basename ${name}; build one package/target at a time`);
+    const candidate = retentionMode === "measure-candidate"
+      ? await createCandidate(ctx, namespace, requiredHeadroom, lease) : null;
+    const lane = candidate?.path ?? await managedDirectory(ctx, join(cache, namespace, "shared"));
+    let completion, executionAttempted = false;
+    try {
+      buildEnv.CARGO_TARGET_DIR = join(lane, "target");
+      buildEnv.CARGO_BUILD_TARGET_DIR = buildEnv.CARGO_TARGET_DIR;
+      buildEnv.CARGO_BUILD_BUILD_DIR = join(lane, "intermediates");
+      const observation = retentionMode === "observe"
+        ? await beginRetention(ctx, { namespace, command, args, env: buildEnv }, lease, { read: readRetentionInput }) : null;
+      if (candidate) await startCandidate(candidate.handle, command, args, buildEnv, lease, { read: readRetentionInput });
+      const artifacts = [], copies = observation || candidate ? [] : null;
+      const json = ["build", "check", "clippy", "test"].includes(command);
+      const format = buildEnv.RBIT_WORKSPACE_JSON === "1" ? "json" : "json-render-diagnostics";
+      if (candidate) candidateExecutionStarting(candidate.handle, lease);
+      executionAttempted = true;
+      completion = await execute(ctx, [command, ...(json ? [`--message-format=${format}`] : []), ...args], buildEnv, (item) => artifacts.push(item), { lease });
+      if (candidate) candidateExecuted(candidate.handle, lease);
+      const result = { executables: [], environment: buildEnv, namespace };
+      if (verifiedCargoCompletion(completion, lease)) result.completion = completion;
+      if ((observation || candidate) && !result.completion) throw new UncertainProcessTreeError("Managed execution requires verified native Cargo completion");
+      if (command === "build") {
+        const binaries = new Map();
+        for (const item of artifacts.filter((entry) => entry.target.kind.includes("bin"))) {
+          const name = basename(item.executable).toLowerCase();
+          const previous = binaries.get(name);
+          if (previous && (previous.executable !== item.executable || previous.target.name !== item.target.name)) {
+            throw new Error(`Ambiguous executable basename ${name}; build one package/target at a time`);
+          }
+          binaries.set(name, item);
         }
-        binaries.set(name, item);
+        const generation = await managedDirectory(ctx, join(ctx.state, "bin", randomUUID()));
+        for (const item of binaries.values()) {
+          await guarded(lane, item.executable);
+          const destination = join(generation, basename(item.executable));
+          await copyFile(item.executable, destination);
+          copies?.push({ source: item.executable, destination });
+          result.executables.push({ name: item.target.name, path: destination });
+        }
+        await writeFile(join(generation, "build.json"), JSON.stringify({ namespace, executables: result.executables }, null, 2));
+        await writeFile(join(generation, "handoff.json"), JSON.stringify({ pid: process.pid, host: (await import("node:os")).hostname() }));
       }
-      const generation = await managedDirectory(ctx, join(ctx.state, "bin", randomUUID()));
-      for (const item of binaries.values()) {
-        await guarded(lane, item.executable);
-        const destination = join(generation, basename(item.executable));
-        await copyFile(item.executable, destination);
-        copies?.push({ source: item.executable, destination });
-        result.executables.push({ name: item.target.name, path: destination });
+      await writeFile(join(cache, namespace, "last-used"), String(Date.now()));
+      // Keep hot IDE/check loops cheap: scan after builds and completed test runs, never
+      // during compilation or before exact executables have been copied out of the lane.
+      if (!candidate && (["build", "test"].includes(command) || (command === "nextest" && args[0] === "run"))) {
+        result.cache = await enforceHighWater(ctx, maxCacheBytes, namespace, lease);
+        await reportMaintenance(result.cache);
       }
-      await writeFile(join(generation, "build.json"), JSON.stringify({ namespace, executables: result.executables }, null, 2));
-      await writeFile(join(generation, "handoff.json"), JSON.stringify({ pid: process.pid, host: (await import("node:os")).hostname() }));
+      if (observation) result.retention = await finishRetention(observation, completion, copies, maxCacheBytes, lease);
+      if (candidate) result.retention = await completeCandidate(candidate.handle, completion, copies, lease);
+      return result;
+    } catch (error) {
+      const failure = candidate && executionAttempted && !verifiedCargoCompletion(completion, lease)
+        && !failedCargoCompletion(error, lease) && !(error instanceof UncertainProcessTreeError)
+        ? new UncertainProcessTreeError("Candidate command completion is unverified", { cause: error }) : error;
+      if (candidate) {
+        try { await quarantineCandidate(candidate.handle, failure, completion, lease); }
+        catch (diagnostic) {
+          // Diagnostic attachment is best-effort even for frozen caller errors;
+          // replacing an uncertainty error could incorrectly release the lease.
+          try { if (failure && typeof failure === "object") failure.candidateRecordError = diagnostic; } catch {}
+        }
+      }
+      throw failure;
     }
-    await writeFile(join(cache, namespace, "last-used"), String(Date.now()));
-    // Keep hot IDE/check loops cheap: scan after builds and completed test runs, never
-    // during compilation or before exact executables have been copied out of the lane.
-    if (["build", "test"].includes(command) || (command === "nextest" && args[0] === "run")) {
-      result.cache = await enforceHighWater(ctx, maxCacheBytes, namespace, lease);
-      await reportMaintenance(result.cache);
-    }
-    if (observation) result.retention = await finishRetention(observation, completion, copies, maxCacheBytes, lease);
-    return result;
   });
 }

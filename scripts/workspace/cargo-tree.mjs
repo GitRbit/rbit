@@ -9,6 +9,7 @@ import { UncertainProcessTreeError } from "./lease.mjs";
 import { launchTree, verifyTreeStopped } from "./process-tree.mjs";
 
 const receipts = new WeakMap();
+const failedReceipts = new WeakMap();
 export function cargoTreeMode(env, platform = process.platform) {
   const mode = env.RBIT_WORKSPACE_CARGO_TREE;
   if (mode === undefined || mode === "off") return "off";
@@ -20,6 +21,11 @@ export function cargoTreeMode(env, platform = process.platform) {
 export function verifiedCargoCompletion(receipt, lease) {
   return receipt !== null && typeof receipt === "object" && receipts.has(receipt)
     && typeof lease?.token === "string" && lease.token.length > 0 && receipts.get(receipt) === lease.token;
+}
+/** Failure status is separate from positive native tree-completion provenance. */
+export function failedCargoCompletion(error, lease) {
+  const receipt = error && typeof error === "object" ? failedReceipts.get(error) : undefined;
+  return verifiedCargoCompletion(receipt, lease) ? receipt : undefined;
 }
 async function cargoExecutable(ctx, env) {
   // Resolve the same operator PATH tool, then pass an absolute module name to CreateProcess.
@@ -46,7 +52,7 @@ export async function ownedCargo(ctx, args, env, artifact, options, consume) {
   const proofFile = join(control, "stopped");
   const launch = native.launch ?? launchTree;
   const verify = native.verify ?? verifyTreeStopped;
-  let uncertain = false, failure, child, proved = false;
+  let uncertain = false, failure, child, proved = false, receipt;
   try {
     const executable = await (native.resolve ?? cargoExecutable)(ctx, env);
     const result = await consume(ctx, args, env, artifact, {
@@ -60,7 +66,7 @@ export async function ownedCargo(ctx, args, env, artifact, options, consume) {
           await requireLease(ctx, lease);
           if (!await verify(child)) throw new Error("Native completion proof is absent");
           proved = true;
-          const receipt = Object.freeze({ method: "windows-job", treeStopped: true });
+          receipt = Object.freeze({ method: "windows-job", treeStopped: true });
           receipts.set(receipt, lease.token);
           return receipt;
         } catch (cause) {
@@ -72,8 +78,9 @@ export async function ownedCargo(ctx, args, env, artifact, options, consume) {
   } catch (error) {
     failure = child && !proved && !(error instanceof UncertainProcessTreeError)
       ? new UncertainProcessTreeError("Owned Cargo completion was interrupted before proof", { cause: error }) : error;
+    if (receipt && failure && typeof failure === "object") failedReceipts.set(failure, receipt);
     uncertain = failure instanceof UncertainProcessTreeError;
-    if (uncertain) failure.control = control;
+    if (uncertain) { try { failure.control = control; } catch {} }
     throw failure;
   } finally {
     if (!uncertain) {
@@ -88,8 +95,11 @@ export async function ownedCargo(ctx, args, env, artifact, options, consume) {
         }
         await rm(control, { recursive: true });
       } catch (cleanupError) {
-        if (failure) failure.cleanupError = cleanupError;
-        else throw cleanupError;
+        if (failure) { try { failure.cleanupError = cleanupError; } catch {} }
+        else {
+          if (receipt && cleanupError && typeof cleanupError === "object") failedReceipts.set(cleanupError, receipt);
+          throw cleanupError;
+        }
       }
     }
   }

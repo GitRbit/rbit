@@ -183,3 +183,12 @@ test("a real branded receipt cannot be replayed against another real owned lease
   });
  }
 });
+
+test("a frozen callback uncertainty stays original even after native proof and control diagnostics", async t => {
+ const ctx=await fixture(t),child=fake();
+ const original=Object.freeze(new UncertainProcessTreeError("frozen callback uncertainty"));
+ const running=leased(join(ctx.cache,".lease"),lease=>run(ctx,lease,child,{}, {onMessage:()=>{throw original;}}));
+ const rejected=assert.rejects(running,error=>error===original);
+ await child.launched;child.stdout.write('{"reason":"build-finished"}\n');await close(child);await rejected;
+ await assert.rejects(acquire(join(ctx.cache,".lease"),{timeout:0}),/Blocked lease/);
+});

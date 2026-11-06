@@ -65,7 +65,9 @@ export async function leased(path, task, options) {
     if (error instanceof UncertainProcessTreeError) {
       retained = true;
       try { await writeFile(join(path, "blocked.json"), JSON.stringify({ reason: error.message, at: new Date().toISOString() })); }
-      catch (diagnostic) { error.blockedRecordError = diagnostic; } // retain ownership and the original uncertainty
+      catch (diagnostic) {
+        try { error.blockedRecordError = diagnostic; } catch {} // frozen errors still retain original uncertainty
+      }
     }
     throw error;
   } finally { if (!retained) await release(); }
