@@ -62,4 +62,11 @@ test("both refreshed roots carry locale direction and plain localized labels", a
   for (const label of ["expired", "truncated", "no_output", "step_not_started", "earlier_lines", "show_more"]) {
     assert.ok(body.includes(`text.${label}`));
   }
+  const route = await read("src/routes/actions/jobs.rs");
+  const presentation = route.slice(route.indexOf("pub async fn show("), route.indexOf("pub async fn raw("));
+  assert.equal(presentation.match(/locale: RequestLocale/g)?.length, 2);
+  assert.equal(presentation.match(/page\.with_locale\(locale\.0\.locale\)/g)?.length, 2);
+  assert.equal(presentation.match(/Ok\(locale\.response\(view\.into_response\(\)\)\)/g)?.length, 2);
+  assert.match(presentation, /return Ok\(axum::response::Redirect::to\(&job_url\)\.into_response\(\)\)/);
+  assert.doesNotMatch(route.slice(route.indexOf("pub async fn raw(")), /RequestLocale|locale\.response|with_locale/);
 });

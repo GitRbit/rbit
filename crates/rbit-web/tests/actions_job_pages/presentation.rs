@@ -12,7 +12,8 @@ async fn localized(router: &Router, path: &str, cookie: &str, language: &str, ht
         .header(header::COOKIE, cookie)
         .header(header::ACCEPT_LANGUAGE, language);
     if htmx {
-        request = request.header("HX-Request", "true").header("HX-Target", "job");
+        let target = if path.contains("/logs?step=") { "step" } else { "job" };
+        request = request.header("HX-Request", "true").header("HX-Target", target);
     }
     let ((body, headers), work) = count_work(async {
         let response = router.clone().oneshot(request.body(Body::empty()).unwrap()).await.unwrap();
@@ -23,6 +24,39 @@ async fn localized(router: &Router, path: &str, cookie: &str, language: &str, ht
     })
     .await;
     (body, headers, work)
+}
+
+#[tokio::test]
+async fn presentation_locale_leaves_raw_bytes_redirects_and_errors_unchanged() {
+    let fixture = Fixture::new().await;
+    let credential = fixture.runner(&["linux"]).await;
+    let run = seed(&fixture, &[payload(&template("build", &["linux"], &[]))]).await;
+    let job = fixture.database.actions_runs().jobs(run.id).await.unwrap().remove(0);
+    let path = format!("/alice/rocket/actions/runs/{}/jobs/{}", run.number, job.id.0);
+    let task = spec(&poll(&fixture, &credential, Some("raw-locale")).await.1).task_id.0;
+    logs(&fixture, &credential, task, 0, "raw <log>\n").await;
+    let token = fixture.services.accounts.start_session(&fixture.alice).await.unwrap();
+    let router = fixture.router.clone().layer(Extension(LocaleResolver::new(Locale::English, true).unwrap()));
+    for (suffix, expected) in [("/logs", StatusCode::SEE_OTHER), ("/logs?step=999", StatusCode::NOT_FOUND), ("/logs/raw", StatusCode::OK)] {
+        let request = Request::builder()
+            .uri(format!("{path}{suffix}"))
+            .header(header::HOST, "localhost:3000")
+            .header(header::COOKIE, format!("rbit_session={}", token.encode()))
+            .header(header::ACCEPT_LANGUAGE, "ar-XB")
+            .body(Body::empty())
+            .unwrap();
+        let response = router.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), expected);
+        assert!(!response.headers().contains_key(header::CONTENT_LANGUAGE));
+        if suffix == "/logs" {
+            assert_eq!(response.headers()[header::LOCATION], path.as_str());
+        }
+        if suffix == "/logs/raw" {
+            assert_eq!(response.headers()[header::CONTENT_TYPE], "text/plain; charset=utf-8");
+            assert_eq!(response.headers()[header::CONTENT_SECURITY_POLICY], "sandbox; default-src 'none'");
+            assert_eq!(to_bytes(response.into_body(), usize::MAX).await.unwrap().as_ref(), b"raw <log>\n");
+        }
+    }
 }
 
 #[tokio::test]

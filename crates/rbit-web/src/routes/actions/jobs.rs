@@ -25,6 +25,7 @@ use crate::{
     AppState,
     error::{WebError, WebResult},
     extract::Viewer,
+    localization::RequestLocale,
     routes::repo::RepoPage,
     views::{
         actions::{
@@ -65,8 +66,9 @@ pub async fn show(
     State(state): State<AppState>,
     viewer: Viewer,
     page: Page,
+    locale: RequestLocale,
     Path((owner, repo, run, job)): Path<(String, String, String, String)>,
-) -> WebResult<JobPage> {
+) -> WebResult<Response> {
     let actions = actions(&state)?;
     let (number, job) = ids(&run, &job)?;
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
@@ -89,8 +91,14 @@ pub async fn show(
     let people = read.people;
     let finished = detail.job.status.is_done();
     let can_rerun = loaded.ctx.can_write_content() && finished && detail.run.status.is_done();
-    Ok(JobPage {
-        page: page.titled(format!("{} · {} #{} · {}", detail.job.name, detail.run.workflow_name, number, loaded.ctx.repo.full_name())),
+    let view = JobPage {
+        page: page.with_locale(locale.0.locale).titled(format!(
+            "{} · {} #{} · {}",
+            detail.job.name,
+            detail.run.workflow_name,
+            number,
+            loaded.ctx.repo.full_name()
+        )),
         header: loaded.header(&state, "actions"),
         run: RunSummary::new(&detail.run, &people, &urls, loaded.urls.commit(&detail.run.sha)),
         run_url: urls.run(number),
@@ -103,7 +111,8 @@ pub async fn show(
         steps,
         raw_url: detail.job.task_id.map(|_| format!("{job_url}/logs/raw")),
         rerun_url: can_rerun.then(|| format!("{job_url}/rerun")),
-    })
+    };
+    Ok(locale.response(view.into_response()))
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -118,6 +127,7 @@ pub async fn logs(
     State(state): State<AppState>,
     viewer: Viewer,
     page: Page,
+    locale: RequestLocale,
     Path((owner, repo, run, job)): Path<(String, String, String, String)>,
     Query(query): Query<StepQuery>,
 ) -> WebResult<Response> {
@@ -137,8 +147,8 @@ pub async fn logs(
     };
     let log = step_log(actions, &loaded.ctx, task, step, STEP_VIEW_LINES, STEP_VIEW_BYTES).await?;
     let view = StepView::new(step, log, String::new());
-    Ok(StepLogPage {
-        page: page.titled(format!("{} · {} · {}", step.name, detail.job.name, loaded.ctx.repo.full_name())),
+    let view = StepLogPage {
+        page: page.with_locale(locale.0.locale).titled(format!("{} · {} · {}", step.name, detail.job.name, loaded.ctx.repo.full_name())),
         header: loaded.header(&state, "actions"),
         job_name: detail.job.name.clone(),
         active: !step.status.is_done(),
@@ -146,8 +156,8 @@ pub async fn logs(
         raw_url: format!("{job_url}/logs/raw"),
         job_url,
         step: view,
-    }
-    .into_response())
+    };
+    Ok(locale.response(view.into_response()))
 }
 
 /// `GET /{owner}/{repo}/actions/runs/{run}/jobs/{job}/logs/raw`
