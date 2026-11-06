@@ -4267,6 +4267,7 @@ name = "rbit-identity"
 version = "0.1.5"
 dependencies = [
  "argon2",
+ "rbit-kernel",
  "thiserror",
  "tokio",
 ]

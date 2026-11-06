@@ -16,7 +16,9 @@ pub enum PasswordError {
 /// A well-formed Argon2id hash of a random password; see [`Passwords::verify_dummy`].
 const DUMMY_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHRzb21lc2FsdA$Zf3xIZKjFtw3Ua2Hn1z0vNfS0d1oR0Q2O9iZb6v3m1o";
 
-/// Stateless facade over the configured Argon2id instance.
+/// Legacy stateless facade over Argon2id; it schedules directly without admission.
+///
+/// Production callers migrating to bounded work use [`crate::PasswordWork`] instead.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Passwords;
 
@@ -28,15 +30,12 @@ impl Passwords {
 
     /// Returns a PHC string (`$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>`) with a fresh random salt.
     pub async fn hash(password: String) -> Result<String, PasswordError> {
-        tokio::task::spawn_blocking(move || {
-            Self::argon2().hash_password(password.as_bytes()).map(|hash| hash.to_string()).map_err(PasswordError::Hash)
-        })
-        .await?
+        tokio::task::spawn_blocking(move || hash(&password)).await?
     }
 
     /// Constant-time verification. Malformed stored hashes simply fail to verify.
     pub async fn verify(password: String, phc_hash: String) -> Result<bool, PasswordError> {
-        Ok(tokio::task::spawn_blocking(move || Self::argon2().verify_password(password.as_bytes(), phc_hash.as_str()).is_ok()).await?)
+        Ok(tokio::task::spawn_blocking(move || verify(&password, &phc_hash)).await?)
     }
 
     /// A valid hash of a random password, verified against when a login name does not exist
@@ -44,6 +43,18 @@ impl Passwords {
     pub async fn verify_dummy(password: String) {
         let _ = Self::verify(password, DUMMY_HASH.to_owned()).await;
     }
+}
+
+pub(crate) fn hash(password: &str) -> Result<String, PasswordError> {
+    Passwords::argon2().hash_password(password.as_bytes()).map(|hash| hash.to_string()).map_err(PasswordError::Hash)
+}
+
+pub(crate) fn verify(password: &str, phc_hash: &str) -> bool {
+    Passwords::argon2().verify_password(password.as_bytes(), phc_hash).is_ok()
+}
+
+pub(crate) fn verify_dummy(password: &str) {
+    let _ = verify(password, DUMMY_HASH);
 }
 
 #[cfg(test)]
