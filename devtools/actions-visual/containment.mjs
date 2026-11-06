@@ -1,10 +1,10 @@
 import { allowedRequest } from "./policy.mjs";
-export async function contain(context) {
+export async function contain(context, allow = allowedRequest) {
   const faults = [];
   // Only stable categories are retained; URLs, page text and stacks are never logged.
   await context.route("**/*", route => {
     const request = route.request();
-    if (allowedRequest(request.url(), request.method())) return route.continue();
+    if (allow(request.url(), request.method())) return route.continue();
     faults.push("unexpected-request");
     return route.abort("blockedbyclient");
   });
