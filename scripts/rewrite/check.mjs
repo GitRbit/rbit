@@ -59,6 +59,21 @@ export function sourceFiles(root) {
   return result.sort();
 }
 
+/** Decode authored bytes strictly before Cargo metadata or expensive Rust gates. */
+export function authoredSources(root) {
+  const paths = sourceFiles(root), files = [], violations = [];
+  const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+  for (const path of paths) {
+    const bytes = readFileSync(join(root, path));
+    try { files.push([path, decoder.decode(bytes)]); }
+    catch (error) {
+      if (error.code !== "ERR_ENCODING_INVALID_ENCODED_DATA") throw error;
+      violations.push(`${path}: invalid UTF-8; save authored source as UTF-8`);
+    }
+  }
+  return { count: paths.length, files, violations };
+}
+
 export function checkSizes(files, baseline) {
   const ceilings = new Map(baseline.authoredSizeBaseline.map((entry) => [entry.path, entry.lines]));
   return [...files].flatMap(([path, source]) => {
@@ -128,10 +143,12 @@ export function checkLedger(root, ledger) {
 }
 
 export function check(root) {
+  const sources = authoredSources(root);
+  if (sources.violations.length) return { files: sources.count, violations: sources.violations };
   const baseline = JSON.parse(readFileSync(join(root, "docs/design/rewrite/main-inventory.json"), "utf8"));
   const ledger = JSON.parse(readFileSync(join(root, "docs/design/rewrite/feature-ledger.json"), "utf8"));
   if (ledger.baseline !== baseline.baseline) throw new Error("Ledger and inventory baselines differ");
-  const files = sourceFiles(root).map((path) => [path, readFileSync(join(root, path), "utf8")]);
+  const { files } = sources;
   const metadata = JSON.parse(execFileSync("cargo", ["metadata", "--no-deps", "--locked", "--format-version=1"], {
     cwd: root, encoding: "utf8", windowsHide: true, stdio: ["pipe", "pipe", "pipe"], maxBuffer: 8 * 1024 * 1024,
   }));
