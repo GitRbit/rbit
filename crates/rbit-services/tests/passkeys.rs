@@ -26,7 +26,7 @@ const PASSWORD: &str = "correct horse battery";
 const ORIGIN: &str = "http://localhost:3000";
 
 struct Fixture {
-    _dir: tempfile::TempDir,
+    directory: tempfile::TempDir,
     database: Database,
     services: Services,
     passwords: PasswordWork,
@@ -43,7 +43,7 @@ impl Fixture {
         let kv = KvStore::open(&config.storage.kv_path()).unwrap();
         let passwords = PasswordWork::new(BlockingBudget::new(std::num::NonZeroUsize::new(1).unwrap()));
         let services = Services::with_password_work(config, &database, &kv, passwords.clone()).await.unwrap();
-        Self { _dir: dir, database, services, passwords }
+        Self { directory: dir, database, services, passwords }
     }
 
     async fn user(&self, name: &str) -> User {
@@ -327,3 +327,5 @@ async fn overload_preserves_a_passkey_challenge_but_an_attempted_wrong_password_
         fixture.services.regenerate_recovery_codes(&alice, PASSWORD.into(), SecondFactorProof::Passkey(&response), &client()).await;
     assert!(matches!(replay, Err(ServiceError::InvalidCredentials)));
 }
+
+mod original_proof;

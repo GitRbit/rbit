@@ -43,8 +43,11 @@ use crate::{
     audit::{AuditAction, AuditEntry, AuditService},
 };
 
+mod pending;
+use pending::PendingSignIn;
 mod password_checks;
 mod password_operations;
+mod sign_in;
 
 /// Recovery codes issued per enrolment (and per regeneration).
 pub const RECOVERY_CODE_COUNT: usize = 10;
@@ -164,18 +167,6 @@ pub enum PasskeyRegistered {
     Added,
     /// The account's first factor: these fresh recovery codes must be shown once.
     FirstFactor(Vec<String>),
-}
-
-#[derive(Debug, Clone)]
-struct PendingSignIn {
-    account: AccountId,
-    started: Instant,
-    failures: u8,
-    /// The passkey challenge last shown on the second-step page.
-    challenge: Option<Challenge>,
-    /// How the first step was passed, for the audit log: `password`, or (milestone 3, O)
-    /// the name of the external sign-in provider.
-    method: String,
 }
 
 /// What a settings-page challenge is for.
@@ -419,70 +410,6 @@ impl TwoFactorService {
         }
         self.request_options(&passkeys, &challenge)
     }
-
-    // ------------------------------------------------------------------ pending sign-ins
-
-    fn lock_pending(&self) -> std::sync::MutexGuard<'_, HashMap<TokenDigest, PendingSignIn>> {
-        self.pending.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-
-    /// Opens a pending sign-in for `account`, whose first step was `method` (see
-    /// [`PendingSignIn`]); external sign-in (milestone 3, O) continues here too.
-    pub(crate) fn start_pending(&self, account: AccountId, method: &str) -> SessionToken {
-        let token = SessionToken::generate();
-        let now = Instant::now();
-        let mut pending = self.lock_pending();
-        pending.retain(|_, entry| now.duration_since(entry.started) < PENDING_SIGN_IN_TTL);
-        if pending.len() >= MAX_PENDING_SIGN_INS
-            && let Some(oldest) = pending.iter().min_by_key(|(_, entry)| entry.started).map(|(digest, _)| *digest)
-        {
-            pending.remove(&oldest);
-        }
-        pending.insert(token.digest(), PendingSignIn { account, started: now, failures: 0, challenge: None, method: method.to_owned() });
-        token
-    }
-
-    /// The account waiting for its second factor under `token`, if still valid.
-    pub fn pending_account(&self, token: &SessionToken) -> Option<AccountId> {
-        let mut pending = self.lock_pending();
-        let digest = token.digest();
-        match pending.get(&digest) {
-            Some(entry) if entry.started.elapsed() < PENDING_SIGN_IN_TTL => Some(entry.account),
-            Some(_) => {
-                pending.remove(&digest);
-                None
-            }
-            None => None,
-        }
-    }
-
-    /// Claims a successfully verified sign-in exactly once, provided it has not expired
-    /// or been cancelled while its proof was being checked.
-    fn finish_pending(&self, token: &SessionToken) -> Option<String> {
-        self.lock_pending().remove(&token.digest()).filter(|entry| entry.started.elapsed() < PENDING_SIGN_IN_TTL).map(|entry| entry.method)
-    }
-
-    /// Takes the pending sign-in's passkey challenge, so each works once.
-    fn take_pending_challenge(&self, token: &SessionToken) -> Option<Challenge> {
-        self.lock_pending().get_mut(&token.digest()).and_then(|entry| entry.challenge.take())
-    }
-
-    /// Counts a wrong code; after too many the pending sign-in is dropped.
-    fn pending_failed(&self, token: &SessionToken) {
-        let mut pending = self.lock_pending();
-        let digest = token.digest();
-        if let Some(entry) = pending.get_mut(&digest) {
-            entry.failures += 1;
-            if entry.failures >= PENDING_SIGN_IN_ATTEMPTS {
-                pending.remove(&digest);
-            }
-        }
-    }
-
-    /// Abandons a pending sign-in (completed, or cancelled by the user).
-    pub fn end_pending(&self, token: &SessionToken) {
-        self.lock_pending().remove(&token.digest());
-    }
 }
 
 fn new_recovery_codes() -> Vec<RecoveryCode> {
@@ -528,52 +455,6 @@ fn passkey_name(name: &str) -> Result<String, ServiceError> {
 // ---------------------------------------------------------------------- flows across services
 
 impl Services {
-    /// Finishes a pending sign-in with an authenticator code, a recovery code or a passkey
-    /// (answering [`TwoFactorService::sign_in_options`]). [`ServiceError::NotFound`] when
-    /// the pending sign-in expired or was used up (start over),
-    /// [`ServiceError::InvalidCredentials`] for a wrong proof.
-    pub async fn complete_sign_in<'a>(
-        &self,
-        pending: &SessionToken,
-        proof: impl Into<SecondFactorProof<'a>>,
-        client: &ClientInfo,
-    ) -> Result<User, ServiceError> {
-        let proof = proof.into();
-        let account = self.two_factor.pending_account(pending).ok_or(ServiceError::NotFound)?;
-        let key = account.0.to_string();
-        self.throttle.check(ThrottleScope::TwoFactor, &key)?;
-        let Some(user) = self.two_factor.accounts.find_active_user(account).await? else {
-            self.two_factor.end_pending(pending);
-            return Err(ServiceError::NotFound);
-        };
-
-        let challenge = matches!(proof, SecondFactorProof::Passkey(_)).then(|| self.two_factor.take_pending_challenge(pending)).flatten();
-        match self.two_factor.verify(&user, proof, challenge).await {
-            Ok(factor) => {
-                let method = self.two_factor.finish_pending(pending).ok_or(ServiceError::NotFound)?;
-                self.throttle.reset(ThrottleScope::TwoFactor, &key);
-                let entry = match factor {
-                    SecondFactor::Authenticator => AuditEntry::new(AuditAction::SignIn).detail(format!("{method} and authenticator code")),
-                    SecondFactor::Passkey => AuditEntry::new(AuditAction::SignIn).detail(format!("{method} and passkey")),
-                    SecondFactor::RecoveryCode => {
-                        AuditEntry::new(AuditAction::RecoveryCodeUsed).detail(format!("{method} and recovery code"))
-                    }
-                };
-                self.audit.record(entry.by(&user).from_ip(client.ip)).await;
-                Ok(user)
-            }
-            Err(ServiceError::InvalidCredentials) => {
-                self.throttle.record_failure(ThrottleScope::TwoFactor, &key);
-                self.two_factor.pending_failed(pending);
-                self.audit
-                    .record(AuditEntry::new(AuditAction::TwoFactorFailed).by(&user).from_ip(client.ip).detail("during sign-in"))
-                    .await;
-                Err(ServiceError::InvalidCredentials)
-            }
-            Err(other) => Err(other),
-        }
-    }
-
     /// Enables a pending authenticator enrolment with a code from the app (throttled per
     /// account). Returns the recovery codes to show once if this is the account's first
     /// factor, `None` if it keeps its existing codes.

@@ -17,7 +17,7 @@ use rbit_storage::{Database, KvStore};
 const PASSWORD: &str = "correct horse battery";
 
 struct Fixture {
-    _dir: tempfile::TempDir,
+    directory: tempfile::TempDir,
     database: Database,
     services: Services,
 }
@@ -31,7 +31,7 @@ impl Fixture {
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
         let kv = KvStore::open(&config.storage.kv_path()).unwrap();
         let services = Services::new(config, &database, &kv).await.unwrap();
-        Self { _dir: dir, database, services }
+        Self { directory: dir, database, services }
     }
 
     async fn user(&self, name: &str) -> User {
@@ -314,3 +314,5 @@ async fn wrong_passwords_are_throttled_and_audited() {
     assert!(failures.items.iter().filter(|event| event.action == AuditAction::SignInFailed).count() >= 5);
     assert!(failures.items.iter().any(|event| event.ip_address.as_deref() == Some("203.0.113.5")));
 }
+
+mod original_proof;
