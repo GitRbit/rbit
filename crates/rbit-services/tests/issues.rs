@@ -196,44 +196,7 @@ async fn assignees_must_be_writers_and_at_most_ten() {
     assert_eq!((assigned, unassigned), (2, 1));
 }
 
-#[tokio::test]
-async fn milestones_one_per_issue_with_events() {
-    let fixture = Fixture::new().await;
-    let repo = fixture.repo(&fixture.alice).await;
-    let issues = &fixture.services.issues;
-    let make = |title: &str| MilestoneInput { title: title.into(), description: "Plan".into(), due_on: "2026-12-31".into() };
-    let v1 = issues.create_milestone(&fixture.alice, &repo, &make("v1")).await.unwrap();
-    let v2 = issues.create_milestone(&fixture.alice, &repo, &make("v2")).await.unwrap();
-    assert!(matches!(issues.create_milestone(&fixture.alice, &repo, &make("V1")).await, Err(ServiceError::Conflict(_))));
-    assert!(matches!(
-        issues
-            .create_milestone(
-                &fixture.alice,
-                &repo,
-                &MilestoneInput { title: "v3".into(), due_on: "2026-02-30".into(), ..MilestoneInput::default() }
-            )
-            .await,
-        Err(ServiceError::Invalid(_))
-    ));
-    let number = fixture.create(&fixture.alice, "Crash", "").await;
-    let ctx = fixture.open(&fixture.alice, number).await;
-    issues.set_milestone(&fixture.alice, &ctx, Some(v1.id)).await.unwrap();
-    issues.set_milestone(&fixture.alice, &ctx, Some(v1.id)).await.unwrap();
-    issues.set_milestone(&fixture.alice, &ctx, Some(v2.id)).await.unwrap();
-    issues.set_milestone(&fixture.alice, &ctx, None).await.unwrap();
-    let events = fixture.events_of(&fixture.alice, number).await;
-    let kinds: Vec<&str> = events.iter().map(TimelineEvent::kind).collect();
-    assert_eq!(kinds, ["milestoned", "demilestoned", "milestoned", "demilestoned"]);
-
-    issues.set_milestone(&fixture.alice, &ctx, Some(v2.id)).await.unwrap();
-    let progress = issues.milestone(&repo, v2.id).await.unwrap();
-    assert_eq!((progress.open_issues, progress.closed_issues), (1, 0));
-    issues.set_milestone_state(&repo, v2.id, IssueState::Closed).await.unwrap();
-    assert_eq!(issues.milestone_counts(&repo).await.unwrap(), (1, 1));
-    issues.delete_milestone(&repo, v2.id).await.unwrap();
-    assert!(issues.metadata(&[ctx.issue.id]).await.unwrap()[&ctx.issue.id].milestone.is_none());
-    assert!(matches!(issues.milestone(&repo, v2.id).await, Err(ServiceError::NotFound)));
-}
+mod milestones_port;
 
 #[tokio::test]
 async fn only_admins_delete_issues_and_never_pull_requests() {

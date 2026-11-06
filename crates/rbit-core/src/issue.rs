@@ -30,9 +30,7 @@ pub struct EventId(pub i64);
 
 pub use rbit_collaboration::labels::LabelId;
 
-/// Database id of a milestone.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct MilestoneId(pub i64);
+pub use rbit_collaboration::milestones::MilestoneId;
 
 /// Database id of a pull request review.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -159,12 +157,7 @@ text_enum!(
     }
 );
 
-text_enum!(
-    IssueState {
-        Open => "open",
-        Closed => "closed",
-    }
-);
+pub use rbit_collaboration::IssueState;
 
 text_enum!(
     /// Why a thread was closed. `Merged` is only possible for pull requests.

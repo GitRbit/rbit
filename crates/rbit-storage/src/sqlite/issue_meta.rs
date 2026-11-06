@@ -79,36 +79,7 @@ const MENTION_CANDIDATES: &str = "SELECT id, kind, name, display_name, bio, crea
 
 pub use rbit_collaboration::labels::{Label, LabelFields, LabelUsage};
 
-/// A repository's milestone.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Milestone {
-    pub id: MilestoneId,
-    pub repo_id: RepoId,
-    pub title: String,
-    pub description: String,
-    /// `YYYY-MM-DD`.
-    pub due_on: Option<String>,
-    pub state: IssueState,
-    pub closed_at: Option<Timestamp>,
-    pub created_at: Timestamp,
-    pub updated_at: Timestamp,
-}
-
-/// A milestone's fields, already validated.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MilestoneFields {
-    pub title: String,
-    pub description: String,
-    pub due_on: Option<String>,
-}
-
-/// A milestone with how many of its threads are open and closed.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MilestoneProgress {
-    pub milestone: Milestone,
-    pub open_issues: u64,
-    pub closed_issues: u64,
-}
+pub use rbit_collaboration::milestones::{Milestone, MilestoneFields, MilestoneProgress};
 
 /// The milestone of one thread.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -10,6 +10,7 @@
 //! Stores speak in `rbit-core` domain types; SQL rows never leak out of this crate.
 
 mod collaboration_labels;
+mod collaboration_milestones;
 pub mod error;
 mod identity_accounts;
 mod identity_sessions;

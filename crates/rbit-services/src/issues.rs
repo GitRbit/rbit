@@ -22,6 +22,7 @@
 pub mod hooks;
 pub mod json;
 mod labels;
+mod milestones;
 
 use std::{
     collections::{BTreeSet, HashMap},
@@ -43,6 +44,7 @@ use rbit_core::{
 };
 #[cfg(test)]
 use rbit_storage::sqlite::issue_meta::LabelFields;
+#[cfg(test)]
 use rbit_storage::sqlite::issue_meta::MilestoneFields;
 pub use rbit_storage::sqlite::{
     issue_meta::{Label, LabelUsage, Milestone, MilestoneProgress},
@@ -67,10 +69,7 @@ pub const MAX_ASSIGNEES: usize = 10;
 pub const MAX_ASSIGNABLE: u32 = 100;
 /// Threads per page of a list.
 pub const ISSUES_PER_PAGE: u32 = 25;
-/// Longest milestone title, in characters.
-pub const MAX_MILESTONE_TITLE_CHARS: usize = 100;
-/// Longest milestone description, in bytes.
-pub const MAX_MILESTONE_DESCRIPTION_BYTES: usize = 10_000;
+pub use rbit_collaboration::milestones::{MAX_MILESTONE_DESCRIPTION_BYTES, MAX_MILESTONE_TITLE_CHARS};
 
 /// How long shutdown waits for the subscriber.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
@@ -86,12 +85,7 @@ pub struct IssueMetadata {
     pub milestone: Option<MilestoneRef>,
 }
 
-/// The milestone an issue belongs to.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MilestoneRef {
-    pub id: MilestoneId,
-    pub title: String,
-}
+pub use rbit_collaboration::milestones::MilestoneRef;
 
 /// A new issue as submitted. Labels, assignees and the milestone are applied only when
 /// the author may triage (they are ignored otherwise, as on GitHub).
@@ -106,13 +100,7 @@ pub struct NewIssueInput {
 
 pub use rbit_collaboration::labels::LabelInput;
 
-/// A milestone as submitted (`due_on`: `YYYY-MM-DD` or empty).
-#[derive(Debug, Clone, Default)]
-pub struct MilestoneInput {
-    pub title: String,
-    pub description: String,
-    pub due_on: String,
-}
+pub use rbit_collaboration::milestones::MilestoneInput;
 
 /// One page of a list with its tab counts.
 #[derive(Debug, Clone)]
@@ -169,49 +157,11 @@ fn label_fields(input: &LabelInput) -> Result<LabelFields, ServiceError> {
     rbit_collaboration::labels::label_fields(input).map_err(ServiceError::Invalid)
 }
 
-/// Whether `value` is a real calendar day written `YYYY-MM-DD`.
-pub fn is_calendar_day(value: &str) -> bool {
-    let bytes = value.as_bytes();
-    if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
-        return false;
-    }
-    let number = |range: std::ops::Range<usize>| value.get(range).filter(|s| s.bytes().all(|b| b.is_ascii_digit()))?.parse::<u32>().ok();
-    let (Some(year), Some(month), Some(day)) = (number(0..4), number(5..7), number(8..10)) else { return false };
-    let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
-    let days = match month {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
-        2 if leap => 29,
-        2 => 28,
-        _ => return false,
-    };
-    year >= 1 && (1..=days).contains(&day)
-}
+pub use rbit_collaboration::milestones::is_calendar_day;
 
+#[cfg(test)]
 fn milestone_fields(input: &MilestoneInput) -> Result<MilestoneFields, ServiceError> {
-    let title = input.title.trim();
-    if title.is_empty() {
-        return Err(invalid("milestone title must not be empty"));
-    }
-    if title.chars().count() > MAX_MILESTONE_TITLE_CHARS {
-        return Err(invalid(format!("milestone title must be at most {MAX_MILESTONE_TITLE_CHARS} characters")));
-    }
-    if title.chars().any(char::is_control) {
-        return Err(invalid("milestone title must not contain control characters"));
-    }
-    let description = input.description.replace("\r\n", "\n");
-    if description.len() > MAX_MILESTONE_DESCRIPTION_BYTES {
-        return Err(invalid(format!("milestone description must be at most {MAX_MILESTONE_DESCRIPTION_BYTES} bytes")));
-    }
-    let due_on = input.due_on.trim();
-    let due_on = if due_on.is_empty() {
-        None
-    } else if is_calendar_day(due_on) {
-        Some(due_on.to_owned())
-    } else {
-        return Err(invalid("due date must be a day written YYYY-MM-DD"));
-    };
-    Ok(MilestoneFields { title: title.to_owned(), description, due_on })
+    rbit_collaboration::milestones::milestone_fields(input).map_err(ServiceError::Invalid)
 }
 
 /// Distinct items in their first order.
@@ -736,82 +686,6 @@ impl IssueService {
             self.publish(&ctx.issue, Some(actor.id()), IssueAction::Milestoned { milestone: new.id });
         }
         Ok(())
-    }
-
-    // ------------------------------------------------------------------ labels
-
-    fn require_writer(repo: &RepoContext) -> Result<(), ServiceError> {
-        if !repo.access.can_write() {
-            return Err(ServiceError::Forbidden);
-        }
-        repo.ensure_writable()
-    }
-
-    // ------------------------------------------------------------------ milestones
-
-    /// The milestones of `repo` (in `state` if given) with their progress.
-    pub async fn milestones(&self, repo: &RepoContext, state: Option<IssueState>) -> Result<Vec<MilestoneProgress>, ServiceError> {
-        Ok(self.ctx.database.issue_meta().milestones(repo.repo.repo.id, state).await?)
-    }
-
-    /// How many milestones of `repo` are open and closed.
-    pub async fn milestone_counts(&self, repo: &RepoContext) -> Result<(u64, u64), ServiceError> {
-        Ok(self.ctx.database.issue_meta().milestone_counts(repo.repo.repo.id).await?)
-    }
-
-    /// Milestone `id` of `repo` with its progress.
-    pub async fn milestone(&self, repo: &RepoContext, id: MilestoneId) -> Result<MilestoneProgress, ServiceError> {
-        let all = self.ctx.database.issue_meta().milestones(repo.repo.repo.id, None).await?;
-        all.into_iter().find(|progress| progress.milestone.id == id).ok_or(ServiceError::NotFound)
-    }
-
-    /// The milestone of `repo` titled `title` (case-insensitively).
-    pub async fn milestone_titled(&self, repo: &RepoContext, title: &str) -> Result<Milestone, ServiceError> {
-        self.ctx.database.issue_meta().find_milestone_by_title(repo.repo.repo.id, title).await?.ok_or(ServiceError::NotFound)
-    }
-
-    /// Creates an open milestone (writers).
-    pub async fn create_milestone(&self, actor: &User, repo: &RepoContext, input: &MilestoneInput) -> Result<Milestone, ServiceError> {
-        Self::require_writer(repo)?;
-        let fields = milestone_fields(input)?;
-        self.spend(actor)?;
-        Ok(self.ctx.database.issue_meta().create_milestone(repo.repo.repo.id, &fields, Timestamp::now()).await?)
-    }
-
-    /// Changes milestone `id` of `repo` (writers).
-    pub async fn update_milestone(
-        &self,
-        actor: &User,
-        repo: &RepoContext,
-        id: MilestoneId,
-        input: &MilestoneInput,
-    ) -> Result<Milestone, ServiceError> {
-        Self::require_writer(repo)?;
-        let fields = milestone_fields(input)?;
-        self.spend(actor)?;
-        self.ctx
-            .database
-            .issue_meta()
-            .update_milestone(repo.repo.repo.id, id, &fields, Timestamp::now())
-            .await?
-            .ok_or(ServiceError::NotFound)
-    }
-
-    /// Closes or reopens milestone `id` of `repo` (writers).
-    pub async fn set_milestone_state(&self, repo: &RepoContext, id: MilestoneId, state: IssueState) -> Result<Milestone, ServiceError> {
-        Self::require_writer(repo)?;
-        self.ctx
-            .database
-            .issue_meta()
-            .set_milestone_state(repo.repo.repo.id, id, state, Timestamp::now())
-            .await?
-            .ok_or(ServiceError::NotFound)
-    }
-
-    /// Deletes milestone `id` of `repo` (writers); its threads keep no milestone.
-    pub async fn delete_milestone(&self, repo: &RepoContext, id: MilestoneId) -> Result<Milestone, ServiceError> {
-        Self::require_writer(repo)?;
-        self.ctx.database.issue_meta().delete_milestone(repo.repo.repo.id, id).await?.ok_or(ServiceError::NotFound)
     }
 
     // ------------------------------------------------------------------ references in the background
