@@ -43,7 +43,8 @@ At `c4c84e3`, [CI run 42221344674](https://github.com/GitRbit/rbit/actions/runs/
 passes Linux tests/contracts, Clippy, frontend, advisories/licenses and runner image.
 Two Windows observation tests fail because their temporary root uses an 8.3 alias;
 the new fixture canonicalization correction retains production containment checks.
-The remaining Windows and release jobs require their own terminal result.
+The Windows test and release jobs also pass; the overall run fails solely on the two
+Windows observation fixtures. Native ownership and prototype visual runs pass.
 
 - Integrated local checks at `c4c84e3`: 409 Node tests pass, five platform skips;
   1,372 authored files and no source-policy violations. Formatting, strict workspace/
@@ -85,13 +86,38 @@ applications restore the original store-construction points; borrowed English la
 formatters preserve plain-text escaping and diagnostic catalog output. Construction/
 ordering tests complement SQL counters, which cannot detect pool-handle clones.
 
-This integration passes 438 Node tests with five platform skips; source policy covers
-1,407 authored files with no violations. A fresh asset
-build reproduces the committed generated assets. Removed diff columns release resize
-observers and theme-picker scroll bursts share one pending animation frame; real browser
-performance remains unmeasured. Rust tests, structural execution,
-strict Clippy and fresh hosted gates remain pending the shared compiler lane. These
-ports do not retire their complete feature groups or establish runtime speed gains.
+The expanded integration passes the complete local Windows workspace suite: 2,506
+passed, zero failed and two ignored across 103 result sets, including doctests.
+Strict workspace/all-target Clippy passes. The final JavaScript suite passes 467
+cases with six platform skips; source policy checks 1,467 authored files with no
+violations. Formatting and whitespace checks pass. A fresh asset build reproduces
+the committed generated assets.
+
+The structural checker passes all 28 tests. Its actual component mode checks the
+selected legacy replacements as well as strict replacement crates: ThreadServices
+79 lines, ReadView 40, ThreadReader 34 and ThreadWriter 204. Password-boundary
+coverage is 153 files. This does not claim all legacy types already meet the limit.
+
+This batch also owns bounded timeline reads and explicit thread composition, human
+and Actions comment applications, thread locking/system closure, production Job
+presentation and typed locale response boundaries. Removed diff columns release
+resize observers and theme-picker scroll bursts share one pending animation frame.
+An early full run exposed workspace-control environment leakage into application
+children, a sole-administrator fixture mistake and missing Job locale negotiation;
+all three are corrected and the full suite rerun successfully. Application unknown-
+field validation remains strict.
+
+SQL migration 0060 and alternate epoch snapshot reads are dormant foundations, not
+active credential fencing or cross-store recovery. An older executable rejects the
+new migration version. Before any local preview upgrade, retain a complete stopped
+data/configuration/key snapshot; an older binary alone is not a rollback plan.
+
+The contained production browser harness now reuses a verified existing Linux test
+binary and public assets. Its actual hosted execution and screenshot review remain
+pending. Prototype capture-origin correction retains keyboard and geometry checks.
+Fresh hosted gates, release build, latest paired performance measurements and full
+migration/rollback acceptance remain open. The current preview still runs c4c84e3.
+These ports do not retire their complete feature groups or establish speed gains.
 
 ## Historical validation checkpoints
 
@@ -146,4 +172,4 @@ Session application and enforcement are now a further production slice. Identity
 
 Automatic cache maintenance evicts inactive compatibility namespaces after successful builds/tests while retaining the current namespace. The watermark is soft: a protected namespace can exceed it and reports its overage. Zero disables automatic maintenance; manual zero-budget pruning still empties an inactive cache. Crashed or uncertain build leases require process inspection before recovery. Account locale persistence, translations beyond English, global UI/email localization, runtime performance acceptance and full platform feature parity remain open.
 
-The [cache investigation](../build-cache-retention.md) records retained artifact growth and a whole-lane retention proposal. Automatic rotation is deferred until its cold-build cost, transient space requirements and ownership gates are measured. The [Actions prototype](../prototypes/actions/README.md) remains a review artifact. Its isolated browser checks pass; production run/overview are integrated, while production job integration, browser and accessibility acceptance remain open.
+The [cache investigation](../build-cache-retention.md) records retained artifact growth and a whole-lane retention proposal. Automatic rotation is deferred until its cold-build cost, transient space requirements and ownership gates are measured. The [Actions prototype](../prototypes/actions/README.md) remains a review artifact. Its isolated browser checks pass; production run/overview are integrated, while production Job presentation is integrated locally and production browser and accessibility acceptance remain open.
