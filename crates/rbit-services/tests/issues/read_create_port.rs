@@ -41,7 +41,7 @@ async fn empty_metadata_create_joined_open_and_counts_keep_exact_sql_work_and_ev
     let opened = opened.unwrap();
     assert_eq!((work.acquisitions, work.statements), (1, 1));
     assert_eq!(opened.author.unwrap().id, fixture.alice.id());
-    assert!(opened.permissions.can_edit);
+    assert_eq!(opened.permissions, rbit_core::issue::IssuePermissions::default());
     let (counts, work) = count_work(fixture.services.timeline.open_counts(repo.repo.repo.id)).await;
     assert_eq!(counts.unwrap().issues, 1);
     assert_eq!(work.statements, 1);

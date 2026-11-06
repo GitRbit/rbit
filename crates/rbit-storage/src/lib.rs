@@ -16,10 +16,10 @@ pub mod error;
 mod identity_accounts;
 mod identity_sessions;
 pub mod kv;
+mod repository_discovery;
 pub mod sealing;
 pub mod sqlite;
 mod work;
-mod repository_discovery;
 
 pub use error::StorageError;
 pub use kv::{KvStore, SessionRecord, SessionStore};

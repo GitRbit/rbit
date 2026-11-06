@@ -11,7 +11,7 @@ use rbit_core::{
 use rbit_services::{
     CreateRepository, DomainEvent, IssueContext, RepoContext, ServiceError, Services,
     events::RefUpdate,
-    issues::{LabelInput, MilestoneInput, NewIssueInput},
+    issues::{LabelInput, NewIssueInput},
     timeline::{StateChange, TimelineEntry},
 };
 use rbit_storage::{Database, KvStore, NewUser};

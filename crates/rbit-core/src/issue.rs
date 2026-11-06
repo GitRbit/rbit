@@ -12,7 +12,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{AccountId, PushSource, RepoAccess, RepoId, Timestamp, User};
+use crate::{AccountId, PushSource, RepoAccess, Timestamp, User};
 
 // ------------------------------------------------------------------ ids
 
@@ -448,7 +448,7 @@ pub fn comment_permissions(viewer: Option<&User>, permissions: IssuePermissions,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Account, AccountKind, AccountName, Email};
+    use crate::{Account, AccountKind, AccountName, Email, RepoId};
 
     fn user(id: i64) -> User {
         User {

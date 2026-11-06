@@ -50,13 +50,13 @@ pub mod refs;
 pub mod releases;
 #[cfg(test)]
 mod render_probe;
-#[cfg(feature = "shared-shell-experiment")]
-mod shared_shell;
 pub mod repo;
 pub mod repo_files;
 pub mod repo_settings;
 pub mod security;
 pub mod settings;
+#[cfg(feature = "shared-shell-experiment")]
+mod shared_shell;
 pub mod ssh_keys;
 // Milestone 3: commit statuses (S).
 pub mod statuses;
