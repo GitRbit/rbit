@@ -64,6 +64,9 @@ test("production checks require native no-JS controls, real-poll drafts and subs
   assert.equal(model.contexts[1].options.javaScriptEnabled, false);
   assert.equal(model.contexts[2].options.viewport.width, 360);
   assert.equal(model.contexts[2].options.extraHTTPHeaders["Accept-Language"], "ar-XB");
+  assert.equal(model.contexts[2].options.locale, "ar-XB", "browser locale must agree with the diagnostic request language");
+  assert.equal(model.contexts[0].options.locale, "en-US");
+  assert.equal(model.contexts[1].options.locale, "en-US");
   assert.ok(model.contexts.every(context => context.closed && context.options.serviceWorkers === "block"));
   assert.equal(model.stages.at(-1), "permission-removal");
 });

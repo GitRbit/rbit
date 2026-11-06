@@ -5,7 +5,9 @@ import { contain } from "./containment.mjs";
 import { postRevocationPoll } from "./production-poll.mjs";
 
 async function context(browser, fixture, { width, rtl = false, dark = false, javascript = true }) {
-  const result = await browser.newContext({ viewport: { width, height: 1000 }, locale: "en-US", timezoneId: "UTC",
+  // Chromium also derives Accept-Language from its emulated browser locale.
+  // Keep that setting consistent with the requested diagnostic catalog.
+  const result = await browser.newContext({ viewport: { width, height: 1000 }, locale: rtl ? "ar-XB" : "en-US", timezoneId: "UTC",
     reducedMotion: "reduce", deviceScaleFactor: 1, serviceWorkers: "block", javaScriptEnabled: javascript,
     colorScheme: dark ? "dark" : "light", extraHTTPHeaders: { "Accept-Language": rtl ? "ar-XB" : "en" } });
   result.setDefaultTimeout(10000); result.setDefaultNavigationTimeout(10000);
@@ -74,7 +76,9 @@ export async function productionChecks(browser, fixture, capture, stage) {
   stage("mobile-rtl-navigation");
   await session(browser, fixture, { width: 360, rtl: true, dark: true }, async (page, faults) => {
     await openRun(page);
+    stage("mobile-rtl-language");
     assert.equal(await page.locator("#run").getAttribute("lang"), "ar-XB");
+    stage("mobile-rtl-direction");
     assert.equal(await page.locator("#run").getAttribute("dir"), "rtl");
     stage("mobile-htmx-draft"); await retainDraft(page);
     await checkPage(page, faults);
