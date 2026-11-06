@@ -9,6 +9,7 @@ license.workspace = true
 autotests = false
 
 [dependencies]
+rbit-repositories.workspace = true
 rbit-core.workspace = true
 rbit-storage.workspace = true
 rbit-auth.workspace = true

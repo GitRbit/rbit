@@ -4250,6 +4250,7 @@ dependencies = [
  "rbit-access",
  "rbit-contracts",
  "rbit-identity",
+ "rbit-repositories",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -4366,6 +4367,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbit-repositories"
+version = "0.1.5"
+dependencies = [
+ "rbit-contracts",
+ "rbit-identity",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rbit-rewrite-check"
 version = "0.1.5"
 dependencies = [
@@ -4457,6 +4468,7 @@ dependencies = [
  "rbit-identity",
  "rbit-kernel",
  "rbit-mail",
+ "rbit-repositories",
  "rbit-storage",
  "rbit-workflow",
  "reqwest",
@@ -4510,6 +4522,7 @@ dependencies = [
  "postcard",
  "rbit-core",
  "rbit-identity",
+ "rbit-repositories",
  "redb",
  "serde",
  "serde_json",

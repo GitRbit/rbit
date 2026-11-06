@@ -13,9 +13,8 @@ use std::{path::PathBuf, sync::Arc};
 
 use rbit_auth::{Grants, repo_access};
 use rbit_core::{
-    Account, AccountId, Config, OrgRole, Permission, RepoAccess, RepoId, RepoName, RepoSort, User, Visibility,
-    mirror::Mirror,
-    repository::{ArchivedFilter, OwnedRepository},
+    Account, AccountId, Config, OrgRole, Permission, RepoAccess, RepoId, RepoName, User, Visibility, mirror::Mirror,
+    repository::OwnedRepository,
 };
 use rbit_git::{RepositoryReader, RepositoryStorage};
 use rbit_storage::{
@@ -28,10 +27,7 @@ use crate::{DomainEvent, EventBus, ServiceContext, ServiceError, StarSummary, ti
 const MAX_DESCRIPTION_LEN: usize = 350;
 /// Upper bound on the dashboard list; it is a jumping-off point, not an archive.
 const DASHBOARD_LIMIT: u32 = 100;
-/// Explore results per page.
-pub const EXPLORE_PAGE_SIZE: u32 = 30;
-/// Longer search text is truncated; nothing useful is that long.
-const MAX_SEARCH_LEN: usize = 100;
+pub use rbit_repositories::discovery::{EXPLORE_PAGE_SIZE, RepoSearch, RepoSearchResults};
 
 /// Raw "new repository" input, exactly as submitted.
 #[derive(Debug, Clone, Default)]
@@ -109,44 +105,6 @@ pub struct RepoHeaderData {
     pub parent: Option<ForkParent>,
     pub mirror: Option<Mirror>,
     pub open_counts: OpenCounts,
-}
-
-/// Explore page input, exactly as requested (`?q=…&sort=…&page=…`).
-#[derive(Debug, Clone, Default)]
-pub struct RepoSearch {
-    pub text: String,
-    pub sort: RepoSort,
-    /// Archived repositories are listed unless this says otherwise.
-    pub archived: ArchivedFilter,
-    /// 1-based; `0` is treated as `1`.
-    pub page: u32,
-}
-
-/// One page of explore results.
-#[derive(Debug, Clone)]
-pub struct RepoSearchResults {
-    pub repos: Vec<OwnedRepository>,
-    /// Matches across all pages.
-    pub total: u64,
-    /// 1-based page number actually served.
-    pub page: u32,
-    pub per_page: u32,
-}
-
-impl RepoSearchResults {
-    /// Number of pages (at least 1, so "page 1 of 1" holds for empty results).
-    pub fn page_count(&self) -> u32 {
-        let pages = self.total.div_ceil(u64::from(self.per_page)).max(1);
-        u32::try_from(pages).unwrap_or(u32::MAX)
-    }
-
-    pub fn has_previous(&self) -> bool {
-        self.page > 1
-    }
-
-    pub fn has_next(&self) -> bool {
-        self.page < self.page_count()
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -322,14 +280,7 @@ impl RepositoryService {
     /// One page of public repositories matching `search` (name or description).
     /// Pages past the end are clamped to the last page.
     pub async fn explore(&self, search: &RepoSearch) -> Result<RepoSearchResults, ServiceError> {
-        let text: String = search.text.trim().chars().take(MAX_SEARCH_LEN).collect();
-        let total = u64::try_from(self.store.count_public(&text, search.archived).await?).unwrap_or_default();
-        let mut results = RepoSearchResults { repos: Vec::new(), total, page: search.page.max(1), per_page: EXPLORE_PAGE_SIZE };
-        results.page = results.page.min(results.page_count());
-
-        let offset = (results.page - 1).saturating_mul(EXPLORE_PAGE_SIZE);
-        results.repos = self.store.search_public(&text, search.sort, search.archived, EXPLORE_PAGE_SIZE, offset).await?;
-        Ok(results)
+        Ok(rbit_repositories::discovery::RepositoryDiscovery::new(&self.store).explore(search).await?)
     }
 
     /// The largest file size rendered inline in the browser.

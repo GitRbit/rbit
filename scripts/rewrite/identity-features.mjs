@@ -2,6 +2,7 @@
 import { execFileSync } from "node:child_process";
 
 const consumers = {
+  "rbit-repositories": { normal: [] },
   "rbit-core": { normal: [] },
   "rbit-storage": { normal: [] },
   "rbit-auth": { normal: ["credentials", "session-tokens"] },
@@ -33,7 +34,7 @@ export function modelGraphViolations(name, tree) {
 
 /** Cargo tree is read-only: no compiler, build script, target directory or lock update. */
 export function checkIdentityModelGraphs(root) {
-  return ["rbit-identity", "rbit-core"].flatMap((name) => {
+  return ["rbit-identity", "rbit-core", "rbit-repositories"].flatMap((name) => {
     const tree = execFileSync("cargo", ["tree", "--package", name, "--no-default-features", "--edges", "normal", "--prefix", "none", "--locked"], {
       cwd: root, encoding: "utf8", windowsHide: true, stdio: ["pipe", "pipe", "pipe"], maxBuffer: 8 * 1024 * 1024,
     });

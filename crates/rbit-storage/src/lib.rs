@@ -16,6 +16,7 @@ pub mod kv;
 pub mod sealing;
 pub mod sqlite;
 mod work;
+mod repository_discovery;
 
 pub use error::StorageError;
 pub use kv::{KvStore, SessionRecord, SessionStore};

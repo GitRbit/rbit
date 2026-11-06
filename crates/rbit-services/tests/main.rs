@@ -55,6 +55,7 @@ mod recovery;
 mod references;
 mod releases;
 mod repo_settings;
+mod repository_discovery;
 mod sessions;
 mod statuses;
 mod teams;
