@@ -1,0 +1,85 @@
+name: Actions prototype visual review
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/actions-visual.yml'
+      - 'devtools/actions-visual/**'
+      - 'docs/design/prototypes/actions/**'
+      - 'scripts/tests/rewrite-actions-*.test.mjs'
+      - 'scripts/tests/fixtures/actions-*'
+      - 'crates/rbit-web/styles/**'
+      - 'crates/rbit-web/assets/logo-384.avif'
+      - 'package.json'
+      - 'package-lock.json'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/actions-visual.yml'
+      - 'devtools/actions-visual/**'
+      - 'docs/design/prototypes/actions/**'
+      - 'crates/rbit-web/styles/**'
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: actions-visual-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  prototype:
+    name: Sandboxed Linux candidate images (optional)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+      - name: Verify harness contracts without launching a browser
+        run: node --test scripts/tests/rewrite-actions-visual.test.mjs
+      - name: Build fresh same-revision theme CSS
+        run: |
+          npm ci --ignore-scripts
+          npm run build:css
+      - name: Install exact isolated browser tooling and audit its lockfile
+        run: |
+          npm ci --ignore-scripts --prefix devtools/actions-visual
+          npm audit --prefix devtools/actions-visual --audit-level=high
+      - name: Capture contained candidate images
+        run: node devtools/actions-visual/container.mjs
+      - name: Remove only the positively owned container (including cancellation)
+        if: ${{ always() }}
+        run: node devtools/actions-visual/cleanup.mjs
+      - name: Verify bounded artifact allowlist
+        id: artifacts
+        if: ${{ always() && !cancelled() }}
+        run: node devtools/actions-visual/artifacts.mjs actions-visual-artifacts
+      - name: Retain candidate images and sanitized evidence
+        if: ${{ always() && !cancelled() && steps.artifacts.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: actions-prototype-linux-${{ github.run_id }}-${{ github.run_attempt }}
+          path: actions-visual-artifacts/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+      - name: Explain acceptance status
+        if: ${{ always() && !cancelled() }}
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
+          ## Actions prototype visual review
+          Candidate screenshots require human inspection; no pixel baselines are auto-approved.
+          This optional workflow does not change the seven required CI jobs.
+          Sandbox launch/proof failures fail this workflow; no insecure fallback is permitted.
+          The artifact manifest records capture failures, source/CSS hashes and browser identity.
+          Container evidence records pull/test wall time; network bytes and peak RSS remain unmeasured.
+          SUMMARY

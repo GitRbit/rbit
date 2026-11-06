@@ -103,3 +103,15 @@ test("feature retirement requires replacement and acceptance evidence", () => {
     assert.match(checkLedger(root, { features: [feature] })[0], /decision/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test("development harness sources count toward source ceilings but installed packages do not", () => {
+  const root = mkdtempSync(join(tmpdir(), "rbit-development-policy-"));
+  try {
+    mkdirSync(join(root, "devtools/harness/node_modules/dependency"), { recursive: true });
+    writeFileSync(join(root, "devtools/harness/runner.mjs"), "export const own = true;\n");
+    writeFileSync(join(root, "devtools/harness/node_modules/dependency/index.js"), "third party\n");
+    assert.deepEqual(sourceFiles(root), ["devtools/harness/runner.mjs"]);
+    assert.equal(checkSizes(new Map([["devtools/harness/runner.mjs", "x\n".repeat(401)]]),
+      { authoredSizeBaseline: [] }).length, 1);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

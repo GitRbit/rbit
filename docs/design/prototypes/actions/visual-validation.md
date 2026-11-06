@@ -1,21 +1,22 @@
-# Proposed isolated visual gate
+# Isolated visual gate design and pending acceptance
 
-Design proposal only. No browser dependency, image, package manifest, lockfile or
-workflow is added by this prototype. Visual acceptance remains pending. Review
-the footprint and trust boundary before implementing this separately from the
-production renderer or Actions engine.
+The isolated implementation is in [devtools/actions-visual](../../../../devtools/actions-visual/README.md)
+and the optional `actions-visual.yml` workflow. The exact isolated lockfile and
+pinned image implement the reviewed containment proposal below. No browser has
+been launched locally; visual acceptance remains pending an isolated CI run and
+human screenshot review. This is separate from production rendering/Actions.
 
 ## Recommended first gate
 
 Use a disposable Linux CI worker and a fresh headless Chromium context, without
 personal browser profiles, sessions, storage, extensions or native UI automation.
 The sole test origin is fixed `http://127.0.0.1:4187`; the test starts its own
-allowlisted prototype server with `reuseExistingServer: false` and fails if the
-port is occupied. No caller-supplied target URL is accepted.
+allowlisted prototype server and fails if the port is occupied rather than
+reusing an existing server. No caller-supplied target URL is accepted.
 
 Keep an exact test dependency and lockfile in an isolated development directory,
 for example `devtools/actions-visual/`, outside production and root asset tooling.
-Use `npm ci`, then its locally installed binary; never install an unpinned `npx`
+Use `npm ci`, then its locally installed library; never install an unpinned `npx`
 package. No browser assets or Node runtime ship with rbit.
 
 Verified candidate on 2026-11-05:
@@ -28,7 +29,7 @@ Verified candidate on 2026-11-05:
 
 These three package payloads total 19,062,349 bytes before browsers, installation
 metadata and output artifacts. Registry SHA-512 integrity values to preserve in
-the future lockfile:
+the isolated lockfile:
 
 ```text
 @playwright/test sha512-iGURLGuKDLakSEl7Pgfv8h7f+XLT+V861Wfhz0zlEl5nyFuKUopdkFBPKqTllTUp06aOwPuH8iuUEb3yp3MpbQ==
@@ -58,7 +59,8 @@ Only registry metadata was read: no image was pulled. The amd64 manifest reports
 seven layers totalling 1,002,814,156 compressed bytes. Unpacked disk, pull time,
 setup time and test RSS are unmeasured. This image also includes browser families
 the first gate will not use. That is a significant ephemeral CI cost, so keep the
-initial job manual/main-only and measure its setup cost before broad PR adoption.
+initial job limited to prototype/visual-source pull-request paths, matching main pushes
+and manual dispatch. Measure setup cost before making this a required/broader gate.
 
 The smaller alternative is an ordinary hosted Linux worker installing only the
 pinned Chromium/headless shell. It avoids pulling unused Firefox/WebKit images,
@@ -79,11 +81,11 @@ boundary and the requirement to match image and package versions.
 - Read-only workflow permissions; no secrets, publication tokens, saved browser
   state, production server, credentials, personal paths or runtime databases.
 - Pinned checkout/setup-node/artifact Actions, `persist-credentials: false`; obtain
-  only `app-css` from the compatible same-revision asset job, verify its digest.
+  fresh CSS built by the same checkout in the dedicated visual job, record its digest.
 - Allowlist only localhost GET/HEAD page/asset paths in browser request routing;
   abort every other origin/method, unexpected popup and service worker. The Node
   preview also rejects mutation methods and serves no checkout/runtime directory.
-  These application/browser restrictions are not a claim of OS-wide egress isolation.
+  The container additionally uses `--network none`; internal loopback remains available.
 - One worker, no Rust build, no new target directories. Keep installation and
   screenshots inside the disposable CI job, separate from developer shared caches.
 - Record revision, package/lock integrity, image/architecture/browser version,

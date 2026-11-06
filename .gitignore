@@ -7,6 +7,8 @@
 
 # Front-end tooling (build-time only)
 /node_modules
+/.actions-visual-control/
+/actions-visual-artifacts/
 
 # Generated stylesheet: run `npm run build:css`
 /crates/rbit-web/assets/app.css

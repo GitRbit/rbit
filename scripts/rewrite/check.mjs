@@ -44,11 +44,11 @@ export function sourceFiles(root) {
     for (const entry of readdirSync(join(root, path), { withFileTypes: true })) {
       const next = `${path}/${entry.name}`;
       if (entry.isSymbolicLink()) throw new Error(`Source tree contains a link: ${next}`);
-      if (entry.isDirectory()) visit(next);
+      if (entry.isDirectory() && !(path.startsWith("devtools") && entry.name === "node_modules")) visit(next);
       else if (entry.isFile() && authored(next)) result.push(next);
     }
   }
-  for (const directory of ["crates", "scripts", "tools", "docs/design/prototypes"]) {
+  for (const directory of ["crates", "scripts", "tools", "devtools", "docs/design/prototypes"]) {
     try { visit(directory); } catch (error) { if (error.code !== "ENOENT") throw error; }
   }
   return result.sort();
