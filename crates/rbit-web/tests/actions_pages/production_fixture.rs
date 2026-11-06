@@ -35,7 +35,7 @@ fn control_protocol_has_no_paths_urls_or_arbitrary_commands() {
 async fn serve() {
     assert_eq!(std::env::var("RBIT_ACTIONS_VISUAL_FIXTURE").as_deref(), Ok(MODE), "FIXTURE_MODE_REFUSED");
     #[cfg(target_os = "linux")]
-    linux::serve().await;
+    Box::pin(linux::serve()).await;
     #[cfg(not(target_os = "linux"))]
     panic!("FIXTURE_PLATFORM_REFUSED");
 }
