@@ -125,3 +125,7 @@ Only proceed to a small real-page prototype if the synthetic result supports the
 hypothesis. Full real-app acceptance still requires the document's no-JS, HTMX/history,
 private-cache/authorization, theme/CSP/asset, locale/accessibility and runtime gates.
 No variant becomes the default production renderer on the strength of this package.
+
+For an external compiler experiment with shared storage, cold probe-package work,
+balanced serial ordering and sampled owned-process memory, see
+[the development compiler measurement runner](../../scripts/render-compile/README.md).
