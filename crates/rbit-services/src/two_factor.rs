@@ -48,6 +48,7 @@ use pending::PendingSignIn;
 mod password_checks;
 mod password_operations;
 mod sign_in;
+mod verification;
 
 /// Recovery codes issued per enrolment (and per regeneration).
 pub const RECOVERY_CODE_COUNT: usize = 10;
@@ -267,55 +268,6 @@ impl TwoFactorService {
         };
         self.audit.record(AuditEntry::new(AuditAction::TwoFactorEnabled).by(user).from_ip(client.ip).detail("authenticator app")).await;
         Ok(first_factor.then_some(codes))
-    }
-
-    /// Checks a second factor for an enrolled account: a 6-digit code (each time step
-    /// works once), an unused recovery code (spent) or a passkey's answer to `challenge`.
-    /// [`ServiceError::InvalidCredentials`] otherwise.
-    async fn verify(&self, user: &User, proof: SecondFactorProof<'_>, challenge: Option<Challenge>) -> Result<SecondFactor, ServiceError> {
-        let code = match proof {
-            SecondFactorProof::Code(code) => code,
-            SecondFactorProof::Passkey(response) => {
-                let challenge = challenge.ok_or(ServiceError::InvalidCredentials)?;
-                return self.verify_passkey(user, &challenge, response).await.map(|()| SecondFactor::Passkey);
-            }
-        };
-        if let Some(recovery) = RecoveryCode::parse(code) {
-            return if self.store.spend_recovery_code(user.id(), &recovery.digest(user.id().0)).await? {
-                Ok(SecondFactor::RecoveryCode)
-            } else {
-                Err(ServiceError::InvalidCredentials)
-            };
-        }
-        let Some(record) = self.store.find(user.id()).await?.filter(TwoFactorRecord::is_enabled) else {
-            return Err(ServiceError::InvalidCredentials);
-        };
-        let secret = TotpSecret::from_bytes(&record.secret).ok_or(ServiceError::InvalidCredentials)?;
-        match secret.verify(code, Timestamp::now().seconds()) {
-            Some(step) if self.store.claim_step(user.id(), &record.secret, step).await? => Ok(SecondFactor::Authenticator),
-            _ => Err(ServiceError::InvalidCredentials),
-        }
-    }
-
-    async fn verify_passkey(&self, user: &User, challenge: &Challenge, response: &str) -> Result<(), ServiceError> {
-        if response.len() > MAX_RESPONSE_LEN {
-            return Err(ServiceError::InvalidCredentials);
-        }
-        let rp = self.relying_party()?;
-        let refused = |error: rbit_auth::WebauthnError| {
-            tracing::info!(user = %user.name(), %error, "passkey sign-in refused");
-            ServiceError::InvalidCredentials
-        };
-        let credential_id = RelyingParty::assertion_credential_id(response).map_err(refused)?;
-        let Some(passkey) = self.store.find_passkey(user.id(), &credential_id).await? else {
-            return Err(ServiceError::InvalidCredentials);
-        };
-        let count = rp.verify_assertion(challenge, response, &passkey.public_key, passkey.sign_count).map_err(refused)?;
-        if self.store.use_passkey(user.id(), passkey.id, passkey.sign_count, count).await? {
-            Ok(())
-        } else {
-            Err(ServiceError::InvalidCredentials)
-        }
     }
 
     // ------------------------------------------------------------------ passkeys

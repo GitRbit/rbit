@@ -2,6 +2,15 @@
 //! These freely constructible snapshots are NOT authentication or session-issuance receipts.
 use crate::accounts::LoginRecord;
 
+/// One-use persistence outcome for the inactive original-proof protocol, not a
+/// receipt. Invalidated origins must not be counted as an incorrect second factor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CredentialProofWrite {
+    Claimed,
+    Rejected,
+    Invalidated,
+}
+
 /// SQLite's nonnegative signed-integer epoch domain; never wraps or accepts negatives.
 /// No Serde implementation: this is a local persistence fact, not a wire credential.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]

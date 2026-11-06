@@ -53,6 +53,19 @@ impl Services {
         client: &ClientInfo,
         original_only: bool,
     ) -> Result<CompletedSignIn, ServiceError> {
+        self.complete_second_factor_after(pending, proof, client, original_only, std::future::ready(())).await
+    }
+
+    // Private static test seam: production passes Ready (no allocation or I/O),
+    // while real-store unit tests pause precisely after the authoritative lookup.
+    async fn complete_second_factor_after(
+        &self,
+        pending: &SessionToken,
+        proof: SecondFactorProof<'_>,
+        client: &ClientInfo,
+        original_only: bool,
+        after_lookup: impl std::future::Future<Output = ()> + Send,
+    ) -> Result<CompletedSignIn, ServiceError> {
         let (account, original) = self.two_factor.pending_proof(pending).ok_or(ServiceError::NotFound)?;
         if original.is_some() != original_only {
             return Err(ServiceError::NotFound);
@@ -69,8 +82,13 @@ impl Services {
             self.two_factor.end_pending(pending);
             return Err(ServiceError::NotFound);
         };
+        after_lookup.await;
         let challenge = matches!(proof, SecondFactorProof::Passkey(_)).then(|| self.two_factor.take_pending_challenge(pending)).flatten();
-        match self.two_factor.verify(&user, proof, challenge).await {
+        let verified = match original.as_ref() {
+            Some(receipt) => self.two_factor.verify_original(&user, proof, challenge, receipt).await,
+            None => self.two_factor.verify(&user, proof, challenge).await,
+        };
+        match verified {
             Ok(factor) => {
                 let method = self.claim_sign_in(pending, original.as_ref()).ok_or(ServiceError::NotFound)?;
                 let result = match original {
@@ -96,6 +114,10 @@ impl Services {
                     .await;
                 Err(ServiceError::InvalidCredentials)
             }
+            Err(ServiceError::NotFound) if original.is_some() => {
+                self.two_factor.end_pending(pending);
+                Err(ServiceError::NotFound)
+            }
             Err(other) => Err(other),
         }
     }
@@ -106,3 +128,6 @@ impl Services {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
