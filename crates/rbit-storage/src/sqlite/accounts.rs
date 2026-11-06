@@ -32,16 +32,7 @@ const SESSION_USER: &str = "SELECT a.id, a.kind, a.name, a.display_name, a.bio, 
      AS has_unread_notifications \
      FROM accounts a JOIN user_logins l ON l.account_id = a.id WHERE a.id = ?1 AND l.suspended_at IS NULL";
 
-/// An active (not suspended) user as a signed-in request sees them, from
-/// [`AccountStore::find_session_user`].
-#[derive(Debug, Clone)]
-pub struct SessionUser {
-    pub user: User,
-    /// An administrator provided the password; everything but replacing it is refused.
-    pub password_change_required: bool,
-    /// Something in the inbox is unread (always `false` when notifications are off).
-    pub has_unread_notifications: bool,
-}
+pub use rbit_identity::sessions::SessionUser;
 
 #[derive(Debug, sqlx::FromRow)]
 struct SessionUserRow {

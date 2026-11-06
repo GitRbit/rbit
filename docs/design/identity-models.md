@@ -18,14 +18,15 @@ The existing identity crate provides three small layers:
 
 | Selection | Available API | Normal dependencies |
 | --- | --- | --- |
-| No default features | Account domain models and validated names | contracts, Serde |
+| No default features | Account/session models, validated names and pure account port | contracts, Serde |
 | `credentials` | Models plus existing Passwords/PasswordError API | above plus Argon2, thiserror, Tokio |
-| `password-work` | Above plus injected PasswordWork/PasswordAttempt | above plus kernel, zeroize |
+| `password-work` | Credential layer plus injected work and account applications | credential layer plus kernel, zeroize, subtle, getrandom |
+| `session-tokens` | Models plus fixed-width session token/codec API | contracts, Serde, base64, sha2, getrandom |
 | Default | Complete existing password API | same as password-work |
 
 The asynchronous legacy Passwords facade inherently needs Tokio. Model-only
 consumers do not activate it. The workspace dependency must disable defaults;
-core uses that model-only dependency, auth explicitly enables credentials, and
+core uses that model-only dependency, auth explicitly enables credentials and session-tokens, and
 services plus web development fixtures explicitly enable password-work. Cargo
 unifies requested capabilities when building the server; feature selection is
 compile-time dependency organization, not a runtime security sandbox.

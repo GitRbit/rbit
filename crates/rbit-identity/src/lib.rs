@@ -8,6 +8,11 @@
 pub mod account;
 pub mod accounts;
 pub mod names;
+pub mod sessions;
+pub mod token;
+#[cfg(feature = "session-tokens")]
+pub use token::SessionToken;
+pub use token::TokenDigest;
 
 #[cfg(feature = "credentials")]
 mod credential;

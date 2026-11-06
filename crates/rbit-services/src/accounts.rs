@@ -17,8 +17,6 @@
 
 use std::{
     collections::HashMap,
-    fmt::Write as _,
-    net::IpAddr,
     sync::{Arc, Mutex, PoisonError},
 };
 
@@ -26,7 +24,7 @@ use rbit_auth::{SessionToken, TokenDigest};
 use rbit_core::{Account, AccountId, Config, RegistrationMode, Timestamp, User};
 use rbit_identity::PasswordWork;
 pub use rbit_storage::SessionUser;
-use rbit_storage::{AccountStore, SessionRecord, SessionStore, kv::StoredSession};
+use rbit_storage::{AccountStore, SessionRecord, SessionStore};
 use tokio::sync::broadcast::{self, error::TryRecvError};
 
 use crate::{
@@ -41,53 +39,10 @@ pub use registration::create_user_offline;
 
 /// `last_seen_at` is rewritten at most this often, to keep most requests write-free.
 const LAST_SEEN_RESOLUTION_SECONDS: i64 = 5 * 60;
-/// Bytes of the token digest used as a session's public identifier.
-const SESSION_ID_BYTES: usize = 12;
 pub use rbit_identity::accounts::SignUp;
 
-/// Where a request comes from, recorded with new sessions and audit entries.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ClientInfo {
-    pub ip: Option<IpAddr>,
-    /// The `User-Agent` header, empty when absent.
-    pub user_agent: String,
-}
-
-/// A session as shown to its owner. Never carries the token.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ActiveSession {
-    /// Public identifier for revocation: a prefix of the token's digest, hex-encoded.
-    pub id: String,
-    pub created_at: Timestamp,
-    pub last_seen_at: Timestamp,
-    pub expires_at: Timestamp,
-    pub ip_address: Option<String>,
-    pub user_agent: String,
-    /// The session making the request.
-    pub is_current: bool,
-}
-
-impl ActiveSession {
-    fn new(stored: StoredSession, current: Option<&TokenDigest>) -> Self {
-        let StoredSession { digest, record } = stored;
-        Self {
-            id: session_id(&digest),
-            created_at: record.created_at,
-            last_seen_at: record.last_seen_at,
-            expires_at: record.expires_at,
-            ip_address: record.ip_address,
-            user_agent: record.user_agent,
-            is_current: current == Some(&digest),
-        }
-    }
-}
-
-fn session_id(digest: &TokenDigest) -> String {
-    digest[..SESSION_ID_BYTES].iter().fold(String::with_capacity(SESSION_ID_BYTES * 2), |mut hex, byte| {
-        let _ = write!(hex, "{byte:02x}");
-        hex
-    })
-}
+use rbit_identity::sessions::session_id;
+pub use rbit_identity::sessions::{ActiveSession, ClientInfo};
 
 #[derive(Debug, Clone)]
 pub struct AccountService {
@@ -244,7 +199,7 @@ impl AccountService {
     pub async fn sessions(&self, user: &User, current: Option<&SessionToken>) -> Result<Vec<ActiveSession>, ServiceError> {
         let current = current.map(SessionToken::digest);
         let sessions = self.sessions.list_for_account(user.id()).await?;
-        Ok(sessions.into_iter().map(|stored| ActiveSession::new(stored, current.as_ref())).collect())
+        Ok(sessions.into_iter().map(|stored| ActiveSession::from_stored(stored, current.as_ref())).collect())
     }
 
     /// Ends one of the user's sessions by its public id. [`ServiceError::NotFound`] if the
@@ -544,7 +499,7 @@ mod tests {
     #[test]
     fn session_ids_are_short_hex_prefixes() {
         let id = session_id(&[0xab; 32]);
-        assert_eq!(id.len(), SESSION_ID_BYTES * 2);
+        assert_eq!(id.len(), 24);
         assert!(id.chars().all(|c| c == 'a' || c == 'b'));
     }
 }

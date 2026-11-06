@@ -4,11 +4,11 @@ import { execFileSync } from "node:child_process";
 const consumers = {
   "rbit-core": { normal: [] },
   "rbit-storage": { normal: [] },
-  "rbit-auth": { normal: ["credentials"] },
+  "rbit-auth": { normal: ["credentials", "session-tokens"] },
   "rbit-services": { normal: ["password-work"] },
   "rbit-web": { dev: ["password-work"] },
 };
-const runtime = new Set(["argon2", "tokio", "tokio-util", "rbit-kernel", "zeroize"]);
+const runtime = new Set(["argon2", "tokio", "tokio-util", "rbit-kernel", "zeroize", "base64", "sha2", "getrandom", "subtle"]);
 
 export function checkIdentityFeatures(metadata) {
   const violations = [];
@@ -39,4 +39,21 @@ export function checkIdentityModelGraphs(root) {
     });
     return modelGraphViolations(name, tree);
   });
+}
+
+export function tokenGraphViolations(tree) {
+  const packages = new Set(tree.trim().split(/\r?\n/).filter(Boolean).map(line => line.trim().split(/\s+/)[0]));
+  const required = ["rbit-identity", "base64", "sha2", "getrandom"];
+  if (required.some(name => !packages.has(name))) return ["identity session-tokens: incomplete normal dependency graph"];
+  const forbidden = ["argon2", "tokio", "tokio-util", "rbit-kernel", "zeroize", "subtle"];
+  return forbidden.filter(name => packages.has(name)).map(name => `identity session-tokens: crypto-only graph unexpectedly includes ${name}`);
+}
+
+/** Token operations must remain independent of password algorithms and async work. */
+export function checkIdentityTokenGraph(root) {
+  const tree = execFileSync("cargo", ["tree", "--package", "rbit-identity", "--no-default-features", "--features", "session-tokens",
+    "--edges", "normal", "--prefix", "none", "--locked"], {
+    cwd: root, encoding: "utf8", windowsHide: true, stdio: ["pipe", "pipe", "pipe"], maxBuffer: 8 * 1024 * 1024,
+  });
+  return tokenGraphViolations(tree);
 }
