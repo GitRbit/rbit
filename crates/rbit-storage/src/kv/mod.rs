@@ -9,10 +9,10 @@ mod sessions;
 
 use std::{path::Path, sync::Arc};
 
+pub use self::sessions::{EpochSessionStore, EpochSnapshot, SessionRecord, SessionStore, StoredSession};
 pub use insights::{
     CachedCommit, CachedComparisonCounts, CachedContributions, CachedLanguage, CachedLanguageStats, CachedLastCommits, InsightsCache,
 };
-pub use sessions::{EpochSessionStore, EpochSnapshot, SessionRecord, SessionStore, StoredSession};
 
 use crate::{StorageError, error::kv_error};
 

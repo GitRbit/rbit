@@ -13,6 +13,18 @@
         "lib::references::ports::RemoteView",
         "lib::references::suggestions::SuggestionThreads"
       ]
+    },
+    {
+      "crate": "crates/rbit-storage",
+      "types": [
+        "lib::kv::sessions::epoch::EpochSessionStore",
+        "lib::kv::sessions::epoch::snapshot::EpochSnapshot",
+        "lib::kv::sessions::epoch::binding::Binding",
+        "lib::sqlite::accounts::fenced::LoginSnapshotRow",
+        "lib::sqlite::credential_revocations::RevocationIntent",
+        "lib::sqlite::credential_revocations::RevocationOutcome",
+        "lib::sqlite::credential_revocations::Completion"
+      ]
     }
   ]
 }

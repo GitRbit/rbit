@@ -5,6 +5,9 @@ definitions. The extra `rbit-rewrite-check --components <repository-root>` mode
 continuously enforces 400 cumulative authored lines for replacement types that still
 live inside legacy crates. ThreadServices, ThreadReader, ThreadWriter and ReadView
 are the initial required definitions; aliases do not substitute for their ownership.
+Reference service adapters and the new dormant SQL/redb credential components are
+also mapped explicitly, including internal bindings and row projections. Their
+location in legacy storage does not exempt new types from the cumulative limit.
 
 The mode shares the ordinary full-crate scanner, alias/import resolver and unique
 line-span aggregation. Every discovered inherent and trait impl is resolved before
