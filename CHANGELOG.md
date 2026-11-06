@@ -9,6 +9,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- Add inactive credential epochs and revocation-intent storage for future crash-safe
+  session fencing. Password/session behavior remains unchanged. Migration 0060 requires
+  a stopped pre-upgrade snapshot for downgrade; see [upgrade and rollback](docs/design/identity-revocation-storage.md#upgrade-and-rollback).
+
 - HTTP Git advertisements retain admission until cancelled or timed-out child work
   has been reaped. Controlled Git exchanges join their input/output tasks, and SSH
   shutdown drains owned sessions and Git work before returning. Operating-system

@@ -17,6 +17,7 @@ pub mod actions_settings;
 pub mod admin;
 pub mod audit;
 pub mod collaborators;
+pub mod credential_revocations;
 // Email digests.
 pub mod email_digests;
 // Milestone 3: external sign-in (O).
@@ -47,6 +48,7 @@ mod repositories;
 mod reseal;
 pub mod reviews;
 mod rows;
+mod schema;
 pub mod server_secrets;
 pub mod ssh_keys;
 // Milestone 3: commit statuses (S).
@@ -117,23 +119,6 @@ impl Database {
         let database = Self { pool, key };
         database.optimize().await?;
         Ok(database)
-    }
-
-    /// Applies migrations embedded in the binary at compile time.
-    pub async fn migrate(&self) -> Result<(), StorageError> {
-        sqlx::migrate!("./migrations").run(&self.pool).await?;
-        Ok(())
-    }
-
-    /// Refreshes the query planner's table statistics where they are missing or out of
-    /// date (`PRAGMA optimize`), so it can tell a selective index from a poor one. Run
-    /// after migrations (new indexes) and from periodic maintenance: `SQLite` only
-    /// analyses tables whose size changed a lot since their last analysis, with a bounded
-    /// sample, so it usually does nothing. `0x10002` considers every table, not only those
-    /// the pooled connection it happens to run on has queried.
-    pub async fn optimize(&self) -> Result<(), StorageError> {
-        sqlx::query("PRAGMA optimize = 0x10002").execute(&self.pool).await?;
-        Ok(())
     }
 
     /// The shared pool, labelled with `store` for the contention metrics (`pool`).
