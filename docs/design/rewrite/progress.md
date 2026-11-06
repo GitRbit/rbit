@@ -48,7 +48,25 @@ because the returned import page is not successful. A diagnostic rerun is requir
 before assigning a cause. The latest completed hosted test run at `84150e1e` also
 fails four highlighting-style parity assertions on both Linux and Windows; those
 assertions require resolved keyword-weight inheritance after the theme update.
-The current published head therefore has no full green validation claim.
+The correction now passes all 15 highlighting Rust tests; production highlighting
+is unchanged, and its source, tests and CSS oracle are each below 400 lines.
+The focused import/mirror rerun also passes, so its earlier failure is intermittent.
+
+Both focused Cargo commands exit successfully, but their helper invocations reject
+source-proof admission: Cargo's global-home cache activity changes the parent
+directory watched for missing config files. A captured highlighting observation
+isolates the changed absence checks to the two global Cargo config filenames;
+the candidate source files remain unchanged. This is a conservative false-positive
+path, not trusted cache reuse. Keep the guard fail-closed until a target-specific
+mutation observation preserves config create/delete detection without treating
+unrelated cache writes as config changes. Neither rerun is reported as a successful
+helper/provenance check, and the candidate still has no full green validation claim.
+
+The integrated CI cache policy allows dependency saves within each PR merge-ref
+scope, retaining read-only permissions, existing action pins, and explicit exclusion
+of workspace crates, tools and failures. Policy and aggregate checks pass as part of
+515 Node tests (seven platform skips); 1,482 authored files pass the source ratchet.
+Hosted cache hit rates, archive sizes and time savings remain unmeasured.
 
 Earlier footer measurements retain their actual executable hashes and responses,
 but their cached local dependencies were not qualified by the new source guard.
