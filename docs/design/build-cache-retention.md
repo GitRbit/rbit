@@ -1,6 +1,7 @@
 # Shared build cache retention
 
-Status: investigation; automatic graph rotation is deferred pending measurement.
+Status: graph normalization and a non-mutating decision planner are implemented;
+automatic graph rotation remains deferred pending measurement and an executor review.
 
 The shared helper serializes compilation, tests, publication, and maintenance with
 one repository management lease. Compiler compatibility namespaces are shared
@@ -84,3 +85,91 @@ oversized-current requests; insufficient headroom; blocked/stale lease refusal;
 symlink containment; and unchanged runtime copies and pending handoffs. Tests
 should inject execution and storage observations rather than launch unnecessary
 compiler processes.
+
+## Implemented policy tools
+
+The modules are `scripts/workspace/retention/graph.mjs`, `planner.mjs`, and
+`scripts/workspace/retention-plan.mjs`. These dependency-free Node modules perform
+no Cargo execution, repository discovery, cache measurement, directory creation,
+copy, move, prune or rotation. The existing build helper and manual pruning behavior
+are unchanged. Every decision has `apply: false`, including simulated enabled
+rotation. No environment variable activates an executor because none exists yet.
+
+The graph normalizer accepts a command, an argument array, explicit environment
+observations and observed compatibility/manifest/configuration digests. It sorts
+package, exclusion, feature and target selections and removes duplicates. It
+separates command mode, Cargo profile and target selections from test-name filters,
+harness arguments, known output options and nextest runner profiles. Unknown
+switches or compiler arguments, conflicting options and missing policy observations
+produce a conservative graph which cannot justify replacement. Cargo still checks
+package/feature existence, source/dependency freshness and command validity; this
+is not a substitute argument validator or a claim to solve arbitrary Cargo aliases.
+
+Relevant profile environment entries are hashed in sorted order as whole-namespace
+policy, including custom/inherited profiles. Unrelated environment is ignored.
+Root manifest and effective configuration digests must be supplied by an eventual
+verified helper adapter; the dry tool never reads live root inputs. The configuration
+digest must cover effective workspace, nested and Cargo-home configuration and
+applicable profile policy, not just one convenient file. Compatibility must come
+from the existing actual compiler/flag identity. A changed compatibility policy
+requires namespace handling before rotation, rather than silently promoting a
+candidate under a different policy. Lockfile and commit IDs are not graph directory
+keys. `normalizeGraph` retains canonical selectors in memory; public dry-tool output
+contains only hashes, confidence, fixed reasons and validated generation identifiers.
+
+The planner consumes injected observations with:
+
+- `phase`: `after-success`, `before-command` or `candidate-complete`;
+- an owned lease with a verified token and certain stopped process tree;
+- one successful current lane, at most one retired warm lane and one candidate;
+- completed namespace/free-space observations, a soft byte budget and pending flag;
+- normalized requested/current/candidate graph identities;
+- independent runtime-copy and safe pending-handoff observations;
+- explicit cold-cost/headroom measurement and simulated `rotationEnabled` control.
+
+Lane records carry an opaque ID, bytes and last-used observation. IDs are never
+interpreted as paths. A candidate also needs status, completed execution and exact
+completed handoff before promotion. A command producing no external executable
+still needs an explicit verified no-handoff-needed completion, represented by exact
+completed handoff observations; it is never inferred from absent fields.
+
+The planner records completed overage first, preserves oversized same-graph reuse,
+defers unknown graphs/unmeasured cold costs/insufficient headroom, and blocks stale,
+blocked or uncertain ownership. A failed stopped candidate can only be discarded
+while retaining the last successful current generation. Successful promotion keeps
+at most one retired warm lane by recency and budget, after exact handoff. Unknown
+bytes are retained and included in overage reporting. Current-only overage remains
+explicitly soft; there is no false hard bound or repeated cold rebuild for filters.
+
+For a dry JSON request, call:
+
+```sh
+node scripts/workspace/retention-plan.mjs < retention-observations.json
+node --test scripts/tests/workspace-retention*.test.mjs
+```
+
+The input object has `request` and `observation` fields. `request` is the graph
+normalizer input; `observation.current.request` and optional
+`observation.candidate.request` use that same shape. Other observation fields match
+the planner contract above. The CLI caps input at 64 KiB, writes JSON only to stdout,
+omits raw selectors/profile environment, and never touches compiler/runtime/data
+paths. Fixtures in the two test files provide complete runnable observation examples.
+The boolean ownership and protection observations are not self-authenticating proof;
+the dry CLI cannot verify a live lease and cannot authorize a real mutation.
+
+## Remaining activation work
+
+Measure representative graph cold rebuild time/size and temporary free-space needs
+first. Then review a separately implemented executor/adapter which obtains these
+observations under the existing management lease, validates the exact owner token,
+captures complete post-command usage, and guards every generation/leaf path against
+symlinks and reparse traversal. It must retain that lease across candidate creation,
+build/test, exact publication, promotion and cleanup; it must preserve blocked leases
+on uncertain termination and bound failed-candidate recovery. Source, runtime copies,
+data, downloads and unknown paths must never be deletion candidates. Symlink
+containment and real process/copy lifetime tests belong to that activation, not a
+claim made by this pure planner's injected metadata tests. No automatic rotation or
+new cache generation directories are enabled by this policy implementation.
+
+Argument semantics are grounded in the official [Cargo test options](https://doc.rust-lang.org/cargo/commands/cargo-test.html)
+and [nextest Cargo/runner options](https://nexte.st/docs/running/).
