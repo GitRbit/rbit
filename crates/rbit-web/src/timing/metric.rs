@@ -1,5 +1,5 @@
 //! Format known numeric timing fields without an intermediate owned String.
-//! HeaderValue still owns its final validated bytes; the header wire format is unchanged.
+//! `HeaderValue` still owns its final validated bytes; the header wire format is unchanged.
 use axum::http::HeaderValue;
 use std::{
     fmt::{self, Write},
