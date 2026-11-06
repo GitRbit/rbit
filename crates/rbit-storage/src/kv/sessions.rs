@@ -5,6 +5,10 @@
 //! Both tables are written in the same transaction, so the index never drifts from the
 //! sessions it points to.
 
+mod epoch;
+
+pub use epoch::{EpochSessionStore, EpochSnapshot};
+
 use std::sync::Arc;
 
 use rbit_core::{AccountId, Timestamp};
@@ -35,6 +39,12 @@ pub struct SessionStore {
 impl SessionStore {
     pub(crate) fn new(db: Arc<redb::Database>) -> Self {
         Self { db }
+    }
+
+    /// Inactive alternate persistence seam; no tables or production behavior change
+    /// until explicitly used. Mixing it with legacy mutations is not activation-safe.
+    pub fn epoch_sidecar(&self) -> EpochSessionStore {
+        EpochSessionStore::new(Arc::clone(&self.db))
     }
 
     /// Creates the tables so read transactions never fail on a fresh database, and drops

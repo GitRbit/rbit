@@ -12,7 +12,7 @@ use std::{path::Path, sync::Arc};
 pub use insights::{
     CachedCommit, CachedComparisonCounts, CachedContributions, CachedLanguage, CachedLanguageStats, CachedLastCommits, InsightsCache,
 };
-pub use sessions::{SessionRecord, SessionStore, StoredSession};
+pub use sessions::{EpochSessionStore, EpochSnapshot, SessionRecord, SessionStore, StoredSession};
 
 use crate::{StorageError, error::kv_error};
 
