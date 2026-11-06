@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import http from "node:http";
 import { StringDecoder } from "node:string_decoder";
+import { DEFAULT_PAGE_MARKER, streamingMarker, validateMarker } from "./http-marker.mjs";
 import { renderHeaderMs, viewHeaderMs, footerSsrMs } from "./http-timing.mjs";
 import { sessionCookie, publicConfiguration } from "./http-auth.mjs";
 import { cpus, freemem, platform, release, totalmem } from "node:os";
@@ -40,6 +41,7 @@ export function validateConfig(input) {
   for (const page of config.pages) {
     if (!page.name || pages.has(page.name) || typeof page.path !== "string" || !page.path.startsWith("/") || page.path.startsWith("//") || /[\\#\r\n]/.test(page.path)) throw new Error("invalid or duplicate page");
     pages.add(page.name);
+    validateMarker(page.contains === undefined ? DEFAULT_PAGE_MARKER : page.contains);
     if (page.mode !== undefined && !["document", "partial", "preload", "revalidate"].includes(page.mode)) throw new Error("invalid page mode");
     if (page.status !== undefined && ![200, 204, 304].includes(page.status)) throw new Error("expected status must be 200, 204 or 304");
     if (page.status === 304 && page.mode !== "revalidate") throw new Error("304 cases must use revalidate mode");
@@ -51,6 +53,7 @@ export function validateConfig(input) {
 }
 
 export function requestSample(url, page, options, agent) {
+  const marker = streamingMarker(page.contains === undefined ? DEFAULT_PAGE_MARKER : page.contains);
   const headers = { "Accept-Encoding": "identity", Accept: "text/html", "Accept-Language": options.acceptLanguage ?? "en" };
   if (options.cookie) headers.Cookie = options.cookie;
   if (options.ifNoneMatch) headers["If-None-Match"] = options.ifNoneMatch;
@@ -62,7 +65,6 @@ export function requestSample(url, page, options, agent) {
     const request = http.get(url, { agent, headers }, (response) => {
       const headersMs = performance.now() - start;
       let bytes = 0;
-      let prefix = "";
       let tail = "";
       const decoder = new StringDecoder("utf8");
       const hash = createHash("sha256");
@@ -75,13 +77,16 @@ export function requestSample(url, page, options, agent) {
           return;
         }
         hash.update(chunk);
-        tail = (tail + decoder.write(chunk)).slice(-65536);
-        if (prefix.length < 65536) prefix += chunk.toString("utf8").slice(0, 65536 - prefix.length);
+        const decoded = decoder.write(chunk);
+        marker.push(decoded);
+        tail = (tail + decoded).slice(-65536);
       });
       // A truncated body can fail after headers without a request-level error.
       response.once("error", (error) => { clearTimeout(timer); reject(error); });
       response.once("end", () => {
-        tail = (tail + decoder.end()).slice(-65536);
+        const decoded = decoder.end();
+        marker.push(decoded);
+        tail = (tail + decoded).slice(-65536);
         const totalMs = performance.now() - start;
         clearTimeout(timer);
         const errors = [];
@@ -89,7 +94,7 @@ export function requestSample(url, page, options, agent) {
         if (status !== (page.status ?? (page.mode === "revalidate" ? 304 : 200))) errors.push(`unexpected HTTP ${status}`);
         if (response.headers["content-encoding"] && response.headers["content-encoding"] !== "identity") errors.push("server ignored identity encoding");
         if (status === 200 && !String(response.headers["content-type"]).includes("text/html")) errors.push("expected HTML");
-        if (status === 200 && !prefix.includes(page.contains ?? 'id="main"')) errors.push("expected page marker missing from first 64 KiB");
+        if (status === 200 && !marker.found) errors.push("expected page marker missing from streamed HTML");
         if ([204, 304].includes(status) && bytes !== 0) errors.push("empty-status response contained a body");
         const timing = response.headers["server-timing"] ?? "";
         const render = renderHeaderMs(timing);

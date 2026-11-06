@@ -9,6 +9,7 @@ import test from "node:test";
 import { requestSample, validateConfig } from "./measure.mjs";
 import { footerSsrMs, renderHeaderMs, viewHeaderMs } from "./http-timing.mjs";
 import { serverEnvironment } from "./server-environment.mjs";
+import { streamingMarker, validateMarker } from "./http-marker.mjs";
 
 const footer = value => `<span data-render-time>${value}</span>`;
 test("footer and total-header parsers reject ambiguity and keep distinct units", () => {
@@ -124,4 +125,43 @@ test("view is an independent footer interval and never falls back to total rende
   assert.equal(candidate.valid,true);assert.equal(candidate.viewMs,0.5);assert.equal(candidate.renderMs,9);assert.equal(candidate.footerSsrMs,0.5);
   const conditional=await requestSample(base+"/candidate",{mode:"revalidate",requireFooter:true,requireTiming:true},{...options,requireViewTiming:true,ifNoneMatch:candidate.responseHeaders.etag});
   assert.equal(conditional.valid,true);assert.equal(conditional.footerSsrMs,null);assert.equal(conditional.viewMs,0.5);assert.equal(conditional.renderMs,9);
+});
+
+
+test("streamed markers use bounded carry and match every chunk split",()=> {
+  for(const expected of ['id="main"','action="/logout"','é界🚀','x']) {
+    for(let split=0;split<=expected.length;split++) {
+      const marker=streamingMarker(expected);
+      marker.push("padding".repeat(20_000));
+      marker.push(expected.slice(0,split));marker.push(expected.slice(split));
+      assert.equal(marker.found,true);
+      marker.push("unrelated later content");assert.equal(marker.found,true);
+    }
+  }
+  const absent=streamingMarker('id="main"');
+  for(let n=0;n<20;n++) absent.push("padding".repeat(20_000));
+  assert.equal(absent.found,false);
+  for(const invalid of ["", " ", null, 123, "x".repeat(4097),"界".repeat(1366)]) assert.throws(()=>validateMarker(invalid),/nonempty.*4096/);
+  assert.equal(validateMarker("x".repeat(4096)).length,4096);
+  const config={fixture:"fixture",output:"report.json",notes:"synthetic-only",variants:[{name:"a",baseUrl:"http://127.0.0.1:3305",metadata:"a.json"},{name:"b",baseUrl:"http://127.0.0.1:3306",metadata:"b.json"}]};
+  for(const contains of ["",null,123,"x".repeat(4097)]) assert.throws(()=>validateConfig({...config,pages:[{name:"page",path:"/",contains}]}),/nonempty.*4096/);
+});
+
+test("real HTTP markers after large inline styles and across chunks validate anonymous and signed-in chrome",async t=> {
+  const base=await server(t,(_request,response)=> {
+    response.writeHead(200,{"Content-Type":"text/html","Server-Timing":"render;dur=2, view;dur=0.5"});
+    response.write(`<html><head><style>${"x".repeat(100_000)}</style></head><body><main id="ma`);
+    setImmediate(()=> {
+      response.write('in">fixture</main><form action="/log');
+      setImmediate(()=>response.end(`out"></form>${footer("500 µs")}</body></html>`));
+    });
+  });
+  const options={timeoutMs:1000,maxBytes:200_000,requireViewTiming:true};
+  for(const contains of [undefined,'action="/logout"']) {
+    const sample=await requestSample(base,{contains,requireFooter:true,requireTiming:true},options);
+    assert.equal(sample.valid,true);assert.equal(sample.footerSsrMs,0.5);
+  }
+  const absent=await requestSample(base,{contains:'never-present'},options);
+  assert.equal(absent.valid,false);assert.ok(absent.errors.some(error=>error.includes("streamed HTML")));
+  assert.throws(()=>requestSample(base,{contains:""},options),/nonempty/);
 });

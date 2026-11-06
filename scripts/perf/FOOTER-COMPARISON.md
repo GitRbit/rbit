@@ -29,7 +29,9 @@ unknown build/data/cache conditions and is not this baseline's measured result.
 The HTTP sampler now records raw footer, view and total metrics independently, rejects required missing/
 malformed values, keeps304 footer null, and records every cache prime separately. It
 reads a bounded tail so the real footer can follow more than64KiB of page content.
-This does not measure browser paint, JS/CSS execution, cached transfer bytes or scrolling.
+Document/authentication markers are searched across the complete decoded stream with
+a bounded marker-length carry, not just a64KiB prefix: inline styles can precede them.
+Markers must be nonblank strings of at most4096UTF8bytes. This does not measure browser paint, JS/CSS execution, cached transfer bytes or scrolling.
 
 ## Source/assets/build preparation
 
