@@ -22,3 +22,9 @@ impl HumanCommentRepository for IssueStore {
         self.delete_comment(id).await
     }
 }
+
+impl rbit_collaboration::comments::TaskCommentRepository for IssueStore {
+    async fn add_actions(&self, issue: IssueId, body: &IssueText, at: Timestamp) -> Result<Option<Comment>, Self::Error> {
+        self.add_actions_comment(issue, body, at).await
+    }
+}

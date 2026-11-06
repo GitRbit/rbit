@@ -11,3 +11,8 @@ mod repository;
 pub use application::{CommentEditResult, HumanCommentError, HumanComments};
 #[cfg(feature = "applications")]
 pub use repository::HumanCommentRepository;
+
+#[cfg(feature = "applications")]
+mod task;
+#[cfg(feature = "applications")]
+pub use task::{TaskCommentError, TaskCommentRepository, TaskComments};

@@ -37,3 +37,36 @@ Source/Node checks and formatting pass; Rust execution remains pending the share
 compiler lane. Required gates are collaboration models/applications tests, service
 `--test main timeline::human_comments_port` and complete timeline/issue suites,
 core/storage tests, strict all-target Clippy, structural checks, and web HTTP tests.
+
+## Actions comment lifecycle
+
+`TaskComments` additionally owns create/edit/delete policy for Actions-authored
+comments. The service still computes the same repository equality and
+`TaskGrant::can_comment_on` predicate; token authentication, running-task checks,
+run trust, permissions and HTTP/API budgets remain with Actions and the API.
+The application receives only that resolved predicate and the thread/archive data.
+
+Existing provenance is `CommentSource::Actions`, with no originating run/job/task
+column on a comment. Any correctly authorized task in the same repository may
+edit/delete an Actions comment from another run. A human comment is forbidden,
+including a ghost human comment with no remaining author. This port preserves
+that policy rather than introducing unsupported per-run ownership.
+
+Create checks authority, archive and text before constructing one store and reading
+the clock. Edit retains the original early write-store construction, then a separate
+lookup-store construction after authority. Missing lookup wins before source,
+archive and text; source wins before archive. An unchanged normalized edit does
+one query, no write/clock/log/publication. Delete constructs its write store only
+after the authorized source lookup and archive gate. There is no human content
+throttle. Original SQL, snapshots, transaction work, post-commit log text/fields,
+actor-less events and consumers are unchanged. Counters pin accepted create at
+one acquisition/two statements, unchanged edit at one/one, and changed edit/delete
+at two/three. Direct policy tests also pin factory calls, which SQL counters miss.
+
+Prepared fixtures cover repository/kind permissions, locked threads, human source
+refusal, scoped lookup/error precedence, source/archive order, cross-run Actions
+authority, normalization/no-op behavior and actor-less event payloads. Actions
+notification/reference tests remain applicable. Rust validation remains pending;
+include collaboration applications tests, service `timeline::task_comments_port`,
+Actions task-token tests, notifications/references and HTTP task-comment routes in
+the shared acceptance run. No runtime speedup or feature-group retirement is claimed.
