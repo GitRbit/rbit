@@ -56,10 +56,32 @@ settings, anonymous repository reads and commit navigation work; the mirror incl
 `3aa41f3a` and pinned main. These checks cover this local installation, not
 production-scale backup, restore, durability or performance acceptance.
 
-Workflow, Mail and Auth decomposition is queued separately for cumulative native
-validation before publication. Security activation, complete Wiki publication/UI,
-feature retirement, full localization, paired performance, bounded build retention
-and release-platform gates remain open. Earlier evidence below is historical.
+At public `050c0951`, the 13-commit Workflow/Mail/Auth module cut is published.
+Its tree matches the reviewed merge of `56c8fd4f` and `70756491`
+(`7f9ba42d2373deae15672b3f591c6df7cb54f8f4`). Whole-crate bounds cover Workflow's
+100 authored files (maximum 384 lines), Mail's 14 (maximum 378), and Auth's 19
+(maximum 392), alongside cumulative logical-type checks. Qualified native Windows
+validation includes 120 Workflow tests at `c5e6bea7`, 69 Mail/Auth tests at
+`44abc5a0`, and workspace/all-target Clippy at `56c8fd4f`, with trusted source admission
+and verified stopped completion. Later numeric-fixture formatting does not change
+its test cases. The composed public Node checkpoint passes 584 tests with seven
+skips. These are modularity/privacy and functional checks, not platform completion
+or performance results.
+
+[Hosted CI at `70756491`](https://github.com/GitRbit/rbit/actions/runs/42340465357)
+passed all required core jobs. Its production capture was skipped on the exact
+documentation-only delta after earlier relevant runs were cancelled; that green
+result supplies no new production screenshots or language/theme acceptance.
+The separate [production visual workflow](../../../.github/workflows/actions-production-visual.yml)
+now admits a focused Linux fixture build/capture independently of required CI and
+its Windows matrix. An irrelevant later delta cannot cancel an already running
+capture. The default pending queue may still replace a pending relevant run.
+A fresh hosted execution, exact provenance checks and human review remain required;
+latest actual production browser evidence still has the late language failure.
+
+Security activation, complete Wiki publication/UI, remaining feature retirement,
+full localization, paired performance, bounded build retention and release-platform
+gates remain open. Earlier evidence below is historical.
 
 ## Earlier composed validation checkpoint
 
