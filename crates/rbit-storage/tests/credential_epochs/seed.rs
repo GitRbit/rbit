@@ -39,6 +39,10 @@ async fn unknown_sequence_and_unsupported_manual_epoch_histories_refuse_seed() {
         let mut tx = pool.begin().await.unwrap();
         intents::stage(&mut tx, AccountId(1), Timestamp(20)).await.unwrap();
         tx.commit().await.unwrap();
+        // Inject corruption only after the valid pre-allocator schema is current.
+        // Migration 62 adds a CHECK column and revalidates existing constraints;
+        // this fixture must exercise migration 63's history refusal itself.
+        sqlx::migrate!("./migrations").run_to(62, &pool).await.unwrap();
         match kind {
             "missing" => {
                 sqlx::query("DELETE FROM sqlite_sequence WHERE name='credential_revocations'").execute(&pool).await.unwrap();
