@@ -73,7 +73,7 @@ impl FromStr for WikiRevisionId {
             ObjectBytes::Sha1(bytes) => bytes,
             ObjectBytes::Sha256(bytes) => bytes,
         };
-        for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
+        for (index, pair) in value.as_bytes().as_chunks::<2>().0.iter().enumerate() {
             target[index] = (nibble(pair[0]) << 4) | nibble(pair[1]);
         }
         if target.iter().all(|byte| *byte == 0) {
