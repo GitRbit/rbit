@@ -1,5 +1,5 @@
 //! Expression contexts, allowed functions and scalar expression validation.
-use super::syntax::{error, mapping, text_field};
+use super::syntax::{error, text_field};
 use crate::error::{Location, WorkflowError};
 use crate::expr::{Condition, Expr, Function, Template};
 use crate::yaml::{Mapping, Node, ScalarValue};
