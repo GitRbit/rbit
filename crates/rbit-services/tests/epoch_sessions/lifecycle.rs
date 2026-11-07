@@ -1,6 +1,6 @@
 use super::fixture::*;
 use rbit_core::Timestamp;
-use rbit_identity_models::{AccountLocale, credential::CredentialEpoch, sessions::EpochSessionSnapshot};
+use rbit_identity_models::{AccountLocale, credential::CredentialEpoch};
 use rbit_services::{ServiceError, accounts::ClientInfo};
 use rbit_storage::{SessionRecord, Work, count_work};
 
