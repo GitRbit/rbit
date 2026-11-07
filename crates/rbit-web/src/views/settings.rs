@@ -502,13 +502,19 @@ mod tests {
     fn settings_nav_marks_active_section() {
         let nav = SettingsSection::AccessTokens.nav();
         let labels: Vec<_> = nav.iter().map(|link| link.label).collect();
-        assert_eq!(labels, ["Profile", "Account", "Appearance", "Security", "SSH keys", "Access tokens", "Notifications", "Actions"]);
+        assert_eq!(
+            labels,
+            ["Profile", "Account", "Appearance", "Language", "Security", "SSH keys", "Access tokens", "Notifications", "Actions"]
+        );
         let only_with_actions: Vec<_> = nav.iter().filter(|link| link.needs_actions).map(|link| link.url).collect();
         assert_eq!(only_with_actions, ["/settings/actions"]);
         assert_eq!(nav.iter().filter(|link| link.is_active).count(), 1);
         let active = nav.iter().find(|link| link.is_active).unwrap();
         assert_eq!(active.url, "/settings/tokens");
         assert!(SettingsSection::Profile.nav()[0].is_active);
+        let language = SettingsSection::Language.nav();
+        let active = language.iter().find(|link| link.is_active).unwrap();
+        assert_eq!((active.label, active.url, active.needs_actions), ("Language", "/settings/language", false));
     }
 
     fn user() -> User {
