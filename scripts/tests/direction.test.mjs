@@ -61,9 +61,10 @@ test("chrome component rules use only logical sides", async () => {
 test("direction tokens follow every explicit dir, so LTR islands stay LTR", async () => {
   const direction = await css("direction.css");
   assert.match(await read("styles/app.css"), /@import "\.\/direction\.css";/);
-  assert.match(direction, /:root,\s*\[dir="ltr"\]\s*\{\s*--inline-sign:\s*1;\s*--inline-end:\s*right;\s*\}/);
-  assert.match(direction, /\[dir="rtl"\]\s*\{\s*--inline-sign:\s*-1;\s*--inline-end:\s*left;\s*\}/);
+  assert.match(direction, /:root,\s*\[dir="ltr"\]\s*\{\s*--inline-sign:\s*1;\s*--inline-end:\s*right;\s*--inline-start:\s*left;\s*\}/);
+  assert.match(direction, /\[dir="rtl"\]\s*\{\s*--inline-sign:\s*-1;\s*--inline-end:\s*left;\s*--inline-start:\s*right;\s*\}/);
   assert.match(direction, /\.dir-icon\s*\{\s*scale:\s*var\(--inline-sign\) 1;\s*\}/);
+  assert.match(direction, /@utility rotate-inline-90\s*\{\s*rotate:\s*calc\(var\(--inline-sign\) \* 90deg\);\s*\}/);
 });
 
 test("directional icons, and only those, are marked to mirror", async () => {
