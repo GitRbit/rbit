@@ -285,12 +285,29 @@ document.addEventListener("htmx:historyRestore", removeMarker);
 // it, usually answered with a 304.
 const MAX_SNAPSHOT_CHARS = 64_000;
 
+// A snapshot serialises the live page, so any style set through CSSOM (by a script, a
+// browser extension or automation; caret hiding leaves `style=""` on every input) comes
+// back as a `style` attribute. Restoring parses the snapshot into this page, whose
+// `style-src` refuses every style attribute and reports each refusal as a console error;
+// a restored page could never apply them, so they are left out of the snapshot. A
+// DOMParser document carries no policy, so removing them there reports nothing.
+const STYLE_ATTRIBUTE = / style="/;
+
+function withoutStyleAttributes(content) {
+  if (!STYLE_ATTRIBUTE.test(content)) return content;
+  const body = new DOMParser().parseFromString(`<body>${content}`, "text/html").body;
+  for (const element of body.querySelectorAll("[style]")) element.removeAttribute("style");
+  return body.innerHTML;
+}
+
 document.addEventListener("htmx:historyItemCreated", (event) => {
   const item = event.detail.item;
   if (item.content.length > MAX_SNAPSHOT_CHARS) {
     item.content = "";
     item.url = "\u0000too-large";
+    return;
   }
+  item.content = withoutStyleAttributes(item.content);
 });
 
 // ---------------------------------------------------------------- line links

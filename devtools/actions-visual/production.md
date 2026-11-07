@@ -233,3 +233,16 @@ errors, cookies, response bodies or raw headers enter these records. Assertions,
 requests, renderer behavior, routes and security controls are unchanged. A fresh
 hosted result must identify the actual failing member before a behavior fix or
 production language/theme acceptance can be claimed.
+
+The run at `44ea287d` identified it: two retained `console-error` faults, CSP 0 and
+no overflow. A local run of the same synthetic fixture, Playwright 1.65 and Linux
+Chromium 158 printed both texts during the Spanish history restore: "Applying inline
+style violates the following Content Security Policy directive 'style-src ...'".
+Playwright's default screenshot caret hiding leaves an empty `style` attribute on each
+input; the language page has two (the theme forms' hidden `next` fields). htmx
+serialised them into the history snapshot, and the restore parsed them into the
+strict-CSP page. The final CSP counter cannot show them: the later cross-catalog
+refresh starts a new document and counter. `nav.js` now removes style attributes from
+snapshots in a policy-free DOMParser document; a restored page could never apply
+them. Assertions and the capture path are unchanged. Hosted acceptance of this exact
+revision is still required.

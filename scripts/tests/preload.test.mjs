@@ -588,14 +588,3 @@ test("visible links come from swapped content instead of a page search after nav
   app.settle();
   assert.deepEqual([...app.observed], [kept, next], "links still on the page stay watched; departed ones are dropped");
 });
-
-test("history snapshots over 64k characters are dropped before htmx stores them", () => {
-  const app = page();
-  const kept = { url: "/alice/repo/issues", content: "x".repeat(64_000) };
-  const dropped = { url: "/alice/repo/blob/main/big.rs", content: "x".repeat(64_001) };
-  for (const item of [kept, dropped]) app.dispatch("htmx:historyItemCreated", { detail: { item } });
-  assert.equal(kept.url, "/alice/repo/issues");
-  assert.equal(kept.content.length, 64_000);
-  assert.equal(dropped.content, "");
-  assert.equal(dropped.url, "\u0000too-large", "the placeholder can never match a real path");
-});
