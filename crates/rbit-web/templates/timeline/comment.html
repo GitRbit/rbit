@@ -10,7 +10,7 @@
       {% if comment.author.is_bot %}<span class="badge">bot</span>{% endif %}
       <span class="text-ink-muted">{% if comment.is_opening_post %}opened{% else %}commented{% endif %} <a href="#{{ comment.anchor }}" class="hover:text-ink hover:underline hover:underline-offset-4"><time datetime="{{ comment.when_iso }}" title="{{ comment.when_iso }}">{{ comment.when }}</time></a></span>
       {% if comment.edited %}<span class="text-xs text-ink-faint">edited</span>{% endif %}
-      <span class="ml-auto flex items-center gap-1">
+      <span class="ms-auto flex items-center gap-1">
         {% if comment.by_thread_author %}<span class="badge">Author</span>{% endif %}
         {% if comment.can_reply && !comment.editing %}
         <button type="button" class="btn btn-ghost h-8 px-2 text-xs sm:h-7" data-reply="{{ comment.anchor }}" data-reply-author="{% if !comment.author.is_ghost && !comment.author.is_bot %}{{ comment.author.name }}{% endif %}" hidden>Reply</button>

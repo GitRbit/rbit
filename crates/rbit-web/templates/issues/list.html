@@ -7,10 +7,10 @@
   <form method="get" action="{{ list_url }}" class="flex min-w-0 flex-1" role="search">
     <label class="sr-only" for="issue-query">Search issues</label>
     <span class="relative min-w-0 flex-1">
-      {% call ui::icon("search", "pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint") %}{% endcall %}
-      <input id="issue-query" class="input pl-8 font-mono text-xs" type="search" name="q" value="{{ query }}" maxlength="1000" placeholder="Search titles and descriptions…" aria-describedby="search-help" autocomplete="off" autocapitalize="none" spellcheck="false">
+      {% call ui::icon("search", "pointer-events-none absolute inset-s-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint") %}{% endcall %}
+      <input id="issue-query" class="input ps-8 font-mono text-xs" type="search" name="q" value="{{ query }}" maxlength="1000" placeholder="Search titles and descriptions…" aria-describedby="search-help" autocomplete="off" autocapitalize="none" spellcheck="false">
     </span>
-    <button type="submit" class="btn ml-2">Search</button>
+    <button type="submit" class="btn ms-2">Search</button>
   </form>
   <div class="flex shrink-0 gap-2">
     <a href="{{ labels_url }}" class="btn flex-1 sm:flex-none">{% call ui::icon("tag", "size-3.5") %}{% endcall %}Labels</a>
@@ -33,7 +33,7 @@
       <a href="{{ open_url }}" class="flex items-center gap-1.5 {% if showing_open %}font-medium text-ink{% else %}text-ink-muted hover:text-ink{% endif %}" {% if showing_open %}aria-current="page"{% endif %}>{% call ui::icon("circle-dot", "size-3.5") %}{% endcall %}<span class="tabular-nums">{{ open }}</span> Open</a>
       <a href="{{ closed_url }}" class="flex items-center gap-1.5 {% if showing_closed %}font-medium text-ink{% else %}text-ink-muted hover:text-ink{% endif %}" {% if showing_closed %}aria-current="page"{% endif %}>{% call ui::icon("check", "size-3.5") %}{% endcall %}<span class="tabular-nums">{{ closed }}</span> Closed</a>
     </nav>
-    <div class="scroll-tabs -mx-4 flex px-2 sm:relative sm:mx-0 sm:ml-auto sm:gap-x-1 sm:overflow-visible sm:px-0 sm:[mask-image:none]">
+    <div class="scroll-tabs -mx-4 flex px-2 sm:relative sm:mx-0 sm:ms-auto sm:gap-x-1 sm:overflow-visible sm:px-0 sm:[mask-image:none]">
       {% include "issues/filters.html" %}
     </div>
   </div>

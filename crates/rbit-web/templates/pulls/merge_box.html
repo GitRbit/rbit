@@ -17,7 +17,7 @@
     {% if !merge.conflict_paths.is_empty() %}
     <div class="border-t border-line px-3 py-2.5 sm:px-4">
       <p class="text-xs font-medium text-danger">Conflicting files</p>
-      <ul class="mt-1 space-y-0.5">{% for path in merge.conflict_paths %}<li class="truncate font-mono text-xs text-ink">{{ path }}</li>{% endfor %}</ul>
+      <ul class="mt-1 space-y-0.5">{% for path in merge.conflict_paths %}<li class="truncate font-mono text-xs text-ink" dir="ltr">{{ path }}</li>{% endfor %}</ul>
     </div>
     {% endif %}
     {% if merge.can_mark_ready %}

@@ -6,7 +6,7 @@
 <div class="mb-4 flex flex-wrap items-center gap-2">
   <a href="{{ issues_url }}" class="btn btn-ghost">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}Issues</a>
   <a href="{{ labels_url }}" class="btn btn-ghost">{% call ui::icon("tag", "size-3.5") %}{% endcall %}Labels</a>
-  {% if can_write %}<a href="{{ new_url }}" class="btn btn-primary ml-auto">{% call ui::icon("plus", "size-3.5") %}{% endcall %}New milestone</a>{% endif %}
+  {% if can_write %}<a href="{{ new_url }}" class="btn btn-primary ms-auto">{% call ui::icon("plus", "size-3.5") %}{% endcall %}New milestone</a>{% endif %}
 </div>
 
 <section class="box" aria-label="Milestones">

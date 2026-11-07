@@ -43,11 +43,11 @@
         <legend class="px-1 text-[13px] font-medium">Milestone</legend>
         <label class="sr-only" for="issue-milestone">Milestone</label>
         <div class="relative">
-          <select class="input cursor-pointer appearance-none pr-9 text-[13px]" id="issue-milestone" name="milestone">
+          <select class="input cursor-pointer appearance-none pe-9 text-[13px]" id="issue-milestone" name="milestone">
             <option value="">No milestone</option>
             {% for choice in milestones %}<option value="{{ choice.id }}" {% if choice.selected %}selected{% endif %}>{{ choice.label }}</option>{% endfor %}
           </select>
-          {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
+          {% call ui::icon("chevron-down", "pointer-events-none absolute inset-e-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
         </div>
       </fieldset>
     </div>

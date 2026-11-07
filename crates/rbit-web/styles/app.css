@@ -775,7 +775,7 @@
 
   .timeline::before {
     content: "";
-    @apply absolute inset-y-0 left-4 w-px bg-line;
+    @apply absolute inset-y-0 inset-s-4 w-px bg-line;
   }
 
   .timeline-item {
@@ -784,7 +784,7 @@
 
   /* A small event row ("alice added the bug label"): icon in a circle on the rule. */
   .timeline-event {
-    @apply relative flex min-h-8 min-w-0 items-center gap-2 pl-1 text-[13px] text-ink-muted;
+    @apply relative flex min-h-8 min-w-0 items-center gap-2 ps-1 text-[13px] text-ink-muted;
   }
 
   .timeline-badge {
@@ -1779,11 +1779,11 @@ html:has(.tpk[open]) { overflow: hidden; }
 .branch-graph tr:last-child td { border-bottom: 0; }
 .branch-graph-lanes { width: 1%; padding-block: 0; padding-inline: 12px 0; }
 
-/* Leading pull request filters open to the right to stay inside the viewport. */
+/* Leading pull request filters open toward the inline end to stay inside the viewport. */
 @media (width >= 40rem) {
   [aria-label="Pull request filters"] > details:nth-child(-n+2) > .menu {
-    left: 0;
-    right: auto;
+    inset-inline-start: 0;
+    inset-inline-end: auto;
   }
 }
 

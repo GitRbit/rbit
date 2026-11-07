@@ -13,7 +13,7 @@
     <div class="min-w-0 flex-1">
       <label class="label" for="pull-base">Base branch</label>
       <div class="relative" data-compare-field>
-        <input id="pull-base" class="input font-mono text-xs" name="base" value="{{ pull.base_branch }}" required autocomplete="off" data-compare-ref="base" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="pull-base-options">
+        <input id="pull-base" class="input font-mono text-xs" dir="ltr" name="base" value="{{ pull.base_branch }}" required autocomplete="off" data-compare-ref="base" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="pull-base-options">
         <div id="pull-base-options" class="menu inset-x-0 top-full max-h-64 overflow-y-auto" role="listbox" aria-label="Base branches" hidden></div>
         <p class="hint" data-compare-status aria-live="polite"></p>
       </div>
@@ -24,8 +24,8 @@
 </details>
 {% endif %}
 
-<div class="mt-6 flex flex-col gap-6 md:flex-row-reverse md:items-start">
-  <aside class="md:w-60 md:shrink-0" aria-label="Details">
+<div class="mt-6 flex flex-col gap-6 md:flex-row md:items-start">
+  <aside class="md:order-last md:w-60 md:shrink-0" aria-label="Details">
     <details class="box md:hidden">
       <summary class="flex min-h-11 cursor-pointer items-center gap-2 px-3 text-[13px] font-medium">{% call ui::icon("chevron-right", "size-3.5 text-ink-faint") %}{% endcall %}Details</summary>
       <div class="border-t border-line p-3">{% include "pulls/reviewers.html" %}{% include "issues/sidebar.html" %}</div>
@@ -49,7 +49,7 @@
         <span class="timeline-badge {% if closed.merged %}bg-inverted text-inverted-ink{% endif %}">{% if closed.merged %}{% call ui::icon("git-merge", "size-3.5") %}{% endcall %}{% else %}{% call ui::icon("git-pull-request-closed", "size-3.5") %}{% endcall %}{% endif %}</span>
         <div class="box flex min-w-0 flex-1 flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center sm:px-4">
           <p class="flex-1 text-[13px] text-ink-muted">
-            {% if closed.merged %}Pull request merged{% if let Some(commit) = closed.merge_commit %} as <a href="{{ commit.1 }}" class="font-mono text-xs text-ink hover:underline hover:underline-offset-4">{{ commit.0 }}</a>{% endif %}.{% else %}This pull request is closed.{% endif %}
+            {% if closed.merged %}Pull request merged{% if let Some(commit) = closed.merge_commit %} as <a href="{{ commit.1 }}" class="font-mono text-xs text-ink hover:underline hover:underline-offset-4" dir="ltr">{{ commit.0 }}</a>{% endif %}.{% else %}This pull request is closed.{% endif %}
           </p>
           {% if closed.can_delete_branch %}
           <form method="post" action="{{ closed.delete_url }}">

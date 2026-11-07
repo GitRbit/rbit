@@ -7,9 +7,9 @@
   <p class="min-w-0 flex-1 break-words leading-6">
     {% if let Some(url) = pull.author.url %}<a href="{{ url }}" class="font-medium text-ink hover:underline hover:underline-offset-4">{{ pull.author.name }}</a>{% else %}<span class="font-medium">{{ pull.author.name }}</span>{% endif %}
     {{ pull.verb }} {% call slots::phrase(pull.slot(crate::views::pulls::CountSlot::CommitsPhrase), pull.counts.commits_phrase(), false) %}{% endcall %} into
-    <a href="{{ pull.base_url }}" class="rounded-sm bg-subtle px-1 font-mono text-xs text-ink hover:underline hover:underline-offset-4">{{ pull.base_branch }}</a>
+    <a href="{{ pull.base_url }}" class="rounded-sm bg-subtle px-1 font-mono text-xs text-ink hover:underline hover:underline-offset-4" dir="ltr">{{ pull.base_branch }}</a>
     from
-    {% if let Some(url) = pull.head_url %}<a href="{{ url }}" class="rounded-sm bg-subtle px-1 font-mono text-xs text-ink hover:underline hover:underline-offset-4">{{ pull.head_label }}</a>{% else %}<span class="rounded-sm bg-subtle px-1 font-mono text-xs text-ink-faint">{{ pull.head_label }}</span>{% endif %}
+    {% if let Some(url) = pull.head_url %}<a href="{{ url }}" class="rounded-sm bg-subtle px-1 font-mono text-xs text-ink hover:underline hover:underline-offset-4" dir="ltr">{{ pull.head_label }}</a>{% else %}<span class="rounded-sm bg-subtle px-1 font-mono text-xs text-ink-faint" dir="ltr">{{ pull.head_label }}</span>{% endif %}
   </p>
 </div>
 <nav class="-mx-4 -mb-px mt-5 flex gap-5 border-b border-line px-4 scroll-tabs sm:mx-0 sm:px-0" aria-label="Pull request">

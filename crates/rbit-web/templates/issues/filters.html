@@ -1,7 +1,7 @@
       {% for menu in menus %}
       <details class="sm:relative" data-menu>
         <summary class="btn btn-ghost h-9 cursor-pointer px-2 text-xs sm:h-7 {% if menu.active %}text-ink{% else %}text-ink-muted{% endif %}">{{ menu.title }}{% call ui::icon("chevron-down", "size-3") %}{% endcall %}</summary>
-        <div class="menu inset-x-2 top-full max-h-80 min-w-0 overflow-y-auto sm:left-auto sm:right-0 sm:top-auto sm:w-56">
+        <div class="menu inset-x-2 top-full max-h-80 min-w-0 overflow-y-auto sm:inset-s-auto sm:inset-e-0 sm:top-auto sm:w-56">
           <p class="menu-label">{{ menu.title }}</p>
           <label class="sr-only" for="filter-{{ menu.title }}">Find {{ menu.title|lower }}</label>
           <input id="filter-{{ menu.title }}" type="search" class="input mb-2 text-xs" placeholder="Find {{ menu.title|lower }}…" data-filter="filter-options-{{ menu.title }}" autocomplete="off">

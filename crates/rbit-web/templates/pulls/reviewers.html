@@ -10,7 +10,7 @@
     <li class="flex min-h-8 items-center gap-2 text-[13px]">
       {% call ui::avatar(reviewer.actor.avatar, "size-5 text-[9px]") %}{% endcall %}
       {% if let Some(url) = reviewer.actor.url %}<a href="{{ url }}" class="min-w-0 truncate font-medium hover:underline hover:underline-offset-4">{{ reviewer.name }}</a>{% else %}<span class="min-w-0 truncate">{{ reviewer.name }}</span>{% endif %}
-      <span class="ml-auto shrink-0 text-xs {{ reviewer.tone }}">{{ reviewer.state }}</span>
+      <span class="ms-auto shrink-0 text-xs {{ reviewer.tone }}">{{ reviewer.state }}</span>
       {% if reviewers.can_request && reviewer.requested %}
       <form method="post" action="{{ reviewers.remove_url }}">
         <input type="hidden" name="reviewer" value="{{ reviewer.name }}">

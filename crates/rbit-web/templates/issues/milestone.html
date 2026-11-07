@@ -30,7 +30,7 @@
   <nav class="box-header flex items-center gap-4 text-[13px]" aria-label="State">
     <a href="{{ open_url }}" class="{% if !showing_closed %}font-medium text-ink{% else %}text-ink-muted hover:text-ink{% endif %}" {% if !showing_closed %}aria-current="page"{% endif %}><span class="tabular-nums">{{ milestone.open_issues }}</span> Open</a>
     <a href="{{ closed_url }}" class="{% if showing_closed %}font-medium text-ink{% else %}text-ink-muted hover:text-ink{% endif %}" {% if showing_closed %}aria-current="page"{% endif %}><span class="tabular-nums">{{ milestone.closed_issues }}</span> Closed</a>
-    <a href="{{ milestone.issues_url }}" class="ml-auto text-xs text-ink-muted hover:text-ink">Search these issues</a>
+    <a href="{{ milestone.issues_url }}" class="ms-auto text-xs text-ink-muted hover:text-ink">Search these issues</a>
   </nav>
   {% if rows.is_empty() %}
   {% call ui::empty_state("milestone", "Nothing here", "Issues and pull requests added to this milestone appear here.") %}{% endcall %}

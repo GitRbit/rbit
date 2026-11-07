@@ -14,7 +14,7 @@
       <a href="{{ commit.url }}" class="block truncate text-[13px] font-medium hover:underline hover:underline-offset-4" title="{{ commit.summary }}">{{ commit.summary }}</a>
       <p class="mt-0.5 truncate text-xs text-ink-muted">{{ commit.author }} · <time datetime="{{ commit.when_iso }}">{{ commit.when }}</time></p>
     </div>
-    <a href="{{ commit.url }}" class="btn h-7 shrink-0 px-2 font-mono text-xs sm:h-7">{{ commit.short_id }}</a>
+    <a href="{{ commit.url }}" class="btn h-7 shrink-0 px-2 font-mono text-xs sm:h-7" dir="ltr">{{ commit.short_id }}</a>
   </li>
   {% else %}
   <li>{% call ui::empty_state("commit", "No commits", "The head and the base point at the same commit.") %}{% endcall %}</li>
