@@ -38,10 +38,10 @@ impl RepositorySettingsPort for SettingsEffects<'_> {
     fn restore_failed(&self, error: &Self::Error) {
         match error {
             ServiceError::Internal(error) => {
-                tracing::error!(restore=%error,repo=%self.repo.repo.full_name(),"failed to restore HEAD after a failed settings update")
+                tracing::error!(restore=%error,repo=%self.repo.repo.full_name(),"failed to restore HEAD after a failed settings update");
             }
             error => {
-                tracing::error!(restore=%error,repo=%self.repo.repo.full_name(),"failed to restore HEAD after a failed settings update")
+                tracing::error!(restore=%error,repo=%self.repo.repo.full_name(),"failed to restore HEAD after a failed settings update");
             }
         }
     }

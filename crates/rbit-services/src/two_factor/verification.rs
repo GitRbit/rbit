@@ -1,5 +1,8 @@
 //! One cryptographic verifier with static legacy/original proof-write adapters.
-use super::*;
+use super::{
+    AccountId, Challenge, MAX_RESPONSE_LEN, RecoveryCode, RelyingParty, SecondFactor, SecondFactorProof, ServiceError, Timestamp,
+    TotpSecret, TwoFactorRecord, TwoFactorService, TwoFactorStore, User,
+};
 use crate::accounts::OriginalProofReceipt;
 use rbit_storage::sqlite::two_factor::CredentialProofWrite;
 use std::future::Future;
