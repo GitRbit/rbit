@@ -52,7 +52,7 @@
 </head>
 {#- The preloader (assets/preload.js) keeps a preloaded page as long as the server lets the browser cache it. #}
 <body hx-boost="true" data-preload-fresh="{{ crate::middleware::PRELOAD_MAX_AGE_SECONDS }}"{% if page.is_signed_in() %} data-signed-in{% endif %} class="flex min-h-dvh flex-col">
-  <a href="#main" class="btn sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-3 focus:z-50">{{ chrome.skip() }}</a>
+  <a href="#main" class="btn sr-only focus:not-sr-only focus:fixed focus:inset-s-4 focus:top-3 focus:z-50">{{ chrome.skip() }}</a>
 
   <div class="pointer-events-none fixed inset-x-0 top-0 z-50 h-0.5 overflow-hidden" aria-hidden="true">
     <div id="page-progress" class="h-full w-1/4 bg-ink"></div>
@@ -65,7 +65,7 @@
         {% block nav_context %}<a href="/" class="font-semibold tracking-tight">{{ page.site_name }}</a>{% endblock %}
       </div>
 
-      <div class="ml-auto flex shrink-0 items-center gap-1">
+      <div class="ms-auto flex shrink-0 items-center gap-1">
         <a href="/explore" class="btn btn-ghost hidden sm:inline-flex {% if page.is_at("/explore") %}text-ink{% endif %}">{{ chrome.explore() }}</a>
         {#- One click flips light/dark, keeping a tinted scheme's family (Gruvbox dark ↔ light);
             the palette menu next to it picks any theme. Both are plain forms without JS. On
@@ -91,11 +91,11 @@
         <a href="/new" class="btn btn-ghost btn-icon hidden sm:inline-flex" aria-label="{{ chrome.new_repository() }}" title="{{ chrome.new_repository() }}">
           {% call ui::icon("plus", "size-4") %}{% endcall %}
         </a>
-        <details class="relative ml-1" data-menu>
+        <details class="relative ms-1" data-menu>
           <summary class="flex size-9 cursor-pointer items-center justify-center rounded-full sm:size-8" aria-label="{{ chrome.account_menu() }}">
             {% call ui::avatar(user.avatar, "size-7 text-[10px]") %}{% endcall %}
           </summary>
-          <div class="menu right-0 w-60">
+          <div class="menu inset-e-0 w-60">
             <a class="menu-item" href="/issues">{{ chrome.issues() }}</a>
             <a class="menu-item" href="/pulls">{{ chrome.pulls() }}</a>
             <div class="flex items-center gap-2.5 px-2.5 py-2">
@@ -130,7 +130,7 @@
         {%- if !page.is_at("/login") %}<a href="/login" class="btn sm:hidden">{{ chrome.sign_in() }}</a>{% endif %}
         <details class="relative sm:hidden" data-menu>
           <summary class="btn btn-ghost btn-icon cursor-pointer" aria-label="{{ chrome.menu() }}">{% call ui::icon("menu", "size-4") %}{% endcall %}</summary>
-          <div class="menu right-0 w-60">
+          <div class="menu inset-e-0 w-60">
             <a class="menu-item" href="/explore">{% call ui::icon("compass", "menu-icon") %}{% endcall %}{{ chrome.explore() }}</a>
             <a class="menu-item" href="/signup">{% call ui::icon("user-plus", "menu-icon") %}{% endcall %}{{ chrome.create_account() }}</a>
             <div class="menu-divider"></div>
@@ -142,8 +142,9 @@
     </nav>
   </header>
   {#- Page tabs: sticky under the top bar from `md` up, scrolling with the page on phones
-      (app.css `.site-subnav`). Hidden when a page has none. -#}
-  <div class="site-subnav" lang="en" dir="ltr">{% block subnav %}{% endblock %}</div>
+      (app.css `.site-subnav`). Hidden when a page has none. The labels are still English,
+      but the tabs take the document direction like the rest of the chrome. -#}
+  <div class="site-subnav" lang="en">{% block subnav %}{% endblock %}</div>
 
   {#- Markers: where `partial.rs` cuts a page for partial responses (title, main). -#}
   <!--partial:main--><main id="main" lang="{{ page.content_locale.tag() }}" dir="{{ page.content_locale.direction().as_str() }}" class="mx-auto w-full max-w-[96rem] flex-1 px-4 pb-16 pt-6 sm:px-6 sm:pt-8">

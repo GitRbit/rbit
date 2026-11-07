@@ -1,8 +1,9 @@
 {#- Reusable UI fragments. Import with: {% import "macros.html" as ui %} -#}
 
-{#- Lucide-style 24px stroke icons, inlined so they inherit `currentColor` and need no requests. -#}
+{#- Lucide-style 24px stroke icons, inlined so they inherit `currentColor` and need no requests.
+    Glyphs pointing along the reading direction get `dir-icon` and mirror in RTL (direction.css). -#}
 {% macro icon(name, class) %}
-<svg class="{{ class }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<svg class="{{ class }}{% if name == "chevron-right" || name == "chevron-left" || name == "log-out" %} dir-icon{% endif %}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 {%- if name == "folder" -%}
 <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>
 {%- else if name == "folder-open" -%}

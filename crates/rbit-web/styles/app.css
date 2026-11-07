@@ -14,6 +14,7 @@
 @import "./branch-graph.css";
 @import "./repo-documents.css";
 @import "./monitoring.css";
+@import "./direction.css";
 @plugin "@tailwindcss/typography";
 
 @source "../templates";
@@ -555,7 +556,8 @@
 
   /* Rows of a list or table inside a .box. */
   /* Horizontally scrollable tab rows: no scrollbar, and on narrow screens a soft fade
-     at the right edge so cut-off tabs read as "more to scroll" rather than clipped. */
+     at the end edge (left in right-to-left pages) so cut-off tabs read as "more to scroll"
+     rather than clipped. */
   .scroll-tabs {
     @apply overflow-x-auto;
     scrollbar-width: none;
@@ -563,7 +565,7 @@
 
   @media (width < 64rem) {
     .scroll-tabs {
-      mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
+      mask-image: linear-gradient(to var(--inline-end), #000 calc(100% - 2rem), transparent);
     }
   }
 
@@ -657,7 +659,7 @@
 
   /* 40px rows on touch screens, 32px from `sm` up. */
   .menu-item {
-    @apply flex h-10 w-full items-center gap-2.5 rounded px-2.5 text-left text-sm text-ink hover:bg-hover sm:h-8 sm:gap-2
+    @apply flex h-10 w-full items-center gap-2.5 rounded px-2.5 text-start text-sm text-ink hover:bg-hover sm:h-8 sm:gap-2
       sm:text-[13px];
   }
 
@@ -789,7 +791,7 @@
 
   /* The unread indicator on the header's bell. */
   .notification-dot {
-    @apply pointer-events-none absolute right-1.5 top-1.5 size-2 rounded-full border border-canvas bg-inverted;
+    @apply pointer-events-none absolute inset-e-1.5 top-1.5 size-2 rounded-full border border-canvas bg-inverted;
   }
 }
 
@@ -844,8 +846,8 @@
 }
 
 @keyframes page-progress {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(400%); }
+  from { transform: translateX(calc(-100% * var(--inline-sign))); }
+  to { transform: translateX(calc(400% * var(--inline-sign))); }
 }
 
 /* ---------------------------------------------------------------- Sticky header */

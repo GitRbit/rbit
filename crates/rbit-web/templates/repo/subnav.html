@@ -46,25 +46,25 @@
     {% include "repo/star_button.html" %}
 
     <div class="flex shrink-0">
-      <a class="btn h-8 rounded-r-none px-2.5 sm:h-7" href="{{ header.fork_url }}" title="Fork this repository">{% call ui::icon("git-fork", "size-3.5 text-ink-muted") %}{% endcall %}<span class="hidden sm:inline">Fork</span></a>
-      <a class="btn -ml-px h-8 rounded-l-none px-2 tabular-nums sm:h-7" href="{{ header.forks_url }}" title="Forks" aria-label="{{ header.fork_count }} {% if header.fork_count == 1 %}fork{% else %}forks{% endif %}">{{ header.fork_count }}</a>
+      <a class="btn h-8 rounded-e-none px-2.5 sm:h-7" href="{{ header.fork_url }}" title="Fork this repository">{% call ui::icon("git-fork", "size-3.5 text-ink-muted") %}{% endcall %}<span class="hidden sm:inline">Fork</span></a>
+      <a class="btn -ms-px h-8 rounded-s-none px-2 tabular-nums sm:h-7" href="{{ header.forks_url }}" title="Forks" aria-label="{{ header.fork_count }} {% if header.fork_count == 1 %}fork{% else %}forks{% endif %}">{{ header.fork_count }}</a>
     </div>
 
     <details class="relative" data-menu>
       <summary class="btn h-8 cursor-pointer sm:h-7">
         Clone{% call ui::icon("chevron-down", "size-3.5 text-ink-muted") %}{% endcall %}
       </summary>
-      <div class="menu right-0 w-[min(24rem,calc(100vw-2rem))] p-3">
+      <div class="menu inset-e-0 w-[min(24rem,calc(100vw-2rem))] p-3">
         <p class="mb-2 text-xs font-medium text-ink-muted">HTTPS</p>
         <div class="flex">
-          <input id="clone-url" class="input h-8 rounded-r-none font-mono text-xs sm:h-8" value="{{ header.clone_url }}" readonly aria-label="Clone URL">
-          <button type="button" class="btn btn-icon -ml-px h-8 rounded-l-none sm:h-8" data-copy="clone-url" aria-label="Copy clone URL" title="Copy">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
+          <input id="clone-url" class="input h-8 rounded-e-none font-mono text-xs sm:h-8" value="{{ header.clone_url }}" readonly aria-label="Clone URL">
+          <button type="button" class="btn btn-icon -ms-px h-8 rounded-s-none sm:h-8" data-copy="clone-url" aria-label="Copy clone URL" title="Copy">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
         </div>
         {% if let Some(ssh_url) = header.ssh_clone_url %}
         <p class="mb-2 mt-3 text-xs font-medium text-ink-muted">SSH</p>
         <div class="flex">
-          <input id="ssh-clone-url" class="input h-8 rounded-r-none font-mono text-xs sm:h-8" value="{{ ssh_url }}" readonly aria-label="SSH clone URL">
-          <button type="button" class="btn btn-icon -ml-px h-8 rounded-l-none sm:h-8" data-copy="ssh-clone-url" aria-label="Copy SSH clone URL" title="Copy">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
+          <input id="ssh-clone-url" class="input h-8 rounded-e-none font-mono text-xs sm:h-8" value="{{ ssh_url }}" readonly aria-label="SSH clone URL">
+          <button type="button" class="btn btn-icon -ms-px h-8 rounded-s-none sm:h-8" data-copy="ssh-clone-url" aria-label="Copy SSH clone URL" title="Copy">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
         </div>
         <p class="mt-2 text-xs text-ink-faint">SSH needs a key in <a class="underline hover:text-ink" href="/settings/keys">your settings</a>.</p>
         {% endif %}
