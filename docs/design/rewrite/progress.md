@@ -105,6 +105,13 @@ passed every required job, including Windows/Ubuntu tests, and its
 [production visual run](https://github.com/GitRbit/rbit/actions/runs/42398520449)
 passed.
 
+The identity/session regression group now has barrier and forced-interleaving
+tests against the stores production selects: 13 storage races and 7 service
+scenarios, described in the [security contracts](security-contracts.md#identitysession-group-status).
+They found no defect. Reinstating an upserting stale renewal makes the three
+parked-revocation scenarios fail. This covers one of the seven mandatory groups;
+the inactive epoch session paths are not part of this claim.
+
 Security activation, complete Wiki publication/UI, remaining feature retirement,
 full localization, paired performance, bounded build retention and release-platform
 gates remain open. Earlier evidence below is historical.
