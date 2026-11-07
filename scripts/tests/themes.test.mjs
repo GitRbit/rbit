@@ -134,7 +134,7 @@ function contrast(a, b) {
 for (const [slug, parent] of [['colorblind-light', 'dna-day'], ['colorblind-dark', 'dna-dark']]) {
   test(`${slug} preserves rbit surfaces and readable text, syntax and status colours`, () => {
     const t = tokens(slug), original = tokens(parent);
-    for (const name of ['canvas', 'surface', 'subtle', 'hover']) assert.equal(t[name], original[name]);
+    for (const name of ['canvas', 'surface', 'subtle', 'hover', 'line']) assert.equal(t[name], original[name]);
     for (const name of ['ink', 'ink-muted', 'ink-faint', 'success', 'danger', 'warning', ...Object.keys(t).filter((name) => name.startsWith('syntax-'))]) {
       for (const background of ['canvas', 'surface', 'subtle', 'hover']) assert.ok(contrast(t[name], t[background]) >= 4.5, `${name} on ${background}: ${contrast(t[name], t[background])}`);
     }
@@ -145,13 +145,29 @@ for (const [slug, parent] of [['colorblind-light', 'dna-day'], ['colorblind-dark
     }
     for (const background of ['canvas', 'surface', 'subtle', 'hover']) {
       assert.ok(contrast(t['ink-muted'], t[background]) >= 7);
-      for (const border of ['line', 'line-strong']) assert.ok(contrast(t[border], t[background]) >= 3, `${border} on ${background}`);
+      // Hairline separators stay quiet; control borders meet the 3:1 non-text minimum.
+      assert.ok(contrast(t['line-strong'], t[background]) >= 3, `line-strong on ${background}`);
     }
     assert.ok(contrast(t.danger, t['danger-subtle']) >= 4.5);
     assert.ok(contrast(t['inverted-ink'], t.inverted) >= 4.5);
     assert.ok(contrast(t['inverted-ink'], t['inverted-hover']) >= 4.5);
     assert.notEqual(t.success, original.success);
     assert.notEqual(t.danger, original.danger);
+  });
+
+  test(`${slug} previews show distinct, visibly coloured accents`, () => {
+    const t = tokens(slug);
+    const chroma = (hex) => { const c = hex.slice(1).match(/../g).map((v) => parseInt(v, 16)); return (Math.max(...c) - Math.min(...c)) / 255; };
+    // The picker chip's four dots and the gallery card's swatch bar (see .tpk-chip and .tp-sw).
+    const chip = ['syntax-keyword', 'syntax-string', 'syntax-function', 'warning'].map((name) => t[name]);
+    const bar = ['danger', 'warning', 'success', 'syntax-attribute', 'syntax-function', 'syntax-keyword'].map((name) => t[name]);
+    assert.equal(new Set(chip).size, chip.length, `chip dots ${chip}`);
+    assert.ok(new Set(bar).size >= 5, `swatch bar ${bar}`);
+    for (const colour of [...chip, ...bar]) {
+      // Readable, but not pushed so far toward black (light) or white (dark) that the hue disappears.
+      assert.ok(chroma(colour) >= .25, `${colour} is saturated`);
+      assert.ok(contrast(colour, t.surface) <= 8, `${colour} on surface is ${contrast(colour, t.surface).toFixed(2)}:1, not a near-ink tint`);
+    }
   });
 }
 

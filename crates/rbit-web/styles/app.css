@@ -229,38 +229,41 @@
   --syntax-attribute: #007187;
 }
 
-/* Colorblind variants retain rbit surfaces, with stronger blue actions, blue additions,
- * amber deletions and violet warnings. Opaque diff fills, solid/dashed rails and deletion
- * hatching reinforce the existing text and icons without requiring hue recognition.
- * Full tokens and boundary resets keep gallery previews isolated. */
+/* Colorblind variants retain rbit surfaces and hairlines, with accents from the Okabe-Ito
+ * palette: blue additions and actions, orange deletions, reddish-purple warnings, and
+ * blue/green/sky/purple/orange syntax. Each accent is the most vivid shade of its hue that
+ * stays readable on every surface and diff fill, including under red/green simulation.
+ * Opaque diff fills, solid/dashed rails and deletion hatching reinforce the existing text
+ * and icons without requiring hue recognition. Full tokens and boundary resets keep
+ * gallery previews isolated. */
 [data-theme="colorblind-light"] {
   color-scheme: light;
   --canvas: #f5f7f9;
   --surface: #ffffff;
   --subtle: #f9fafc;
   --hover: #eef0f3;
-  --line: #7c8899;
-  --line-strong: #707e90;
+  --line: #dfe1e4;
+  --line-strong: #7f8999;
   --ink: #13161b;
   --ink-muted: #354052;
   --ink-faint: #4c5668;
-  --inverted: #004c9b;
-  --inverted-hover: #003875;
+  --inverted: #285ebe;
+  --inverted-hover: #1f4c9c;
   --inverted-ink: #ffffff;
-  --success: #003b70;
-  --danger: #783900;
-  --danger-subtle: #ffe0a3;
-  --warning: #642d83;
+  --success: #285ebe;
+  --danger: #a54900;
+  --danger-subtle: #fdecdc;
+  --warning: #a53a8c;
   --syntax-comment: #4c5668;
-  --syntax-keyword: #003b70;
-  --syntax-string: #653100;
-  --syntax-number: #642d83;
-  --syntax-function: #004d66;
-  --syntax-type: #653100;
-  --syntax-tag: #003b70;
-  --syntax-attribute: #642d83;
-  --diff-add-fill: #e3efff;
-  --diff-del-fill: #ffe0a3;
+  --syntax-keyword: #285ebe;
+  --syntax-string: #007354;
+  --syntax-number: #a53a8c;
+  --syntax-function: #336a89;
+  --syntax-type: #a54900;
+  --syntax-tag: #285ebe;
+  --syntax-attribute: #007354;
+  --diff-add-fill: #e8f1fc;
+  --diff-del-fill: #fdecdc;
   --diff-add-rail: inset 3px 0 0 var(--success);
   --diff-del-rail: repeating-linear-gradient(to bottom, var(--danger) 0 5px, transparent 5px 9px);
   --status-border: currentColor;
@@ -290,28 +293,28 @@
   --surface: #1d1e20;
   --subtle: #1f2024;
   --hover: #222429;
-  --line: #718096;
-  --line-strong: #8c9bb0;
+  --line: #313335;
+  --line-strong: #6b7584;
   --ink: #eceff1;
   --ink-muted: #c0c7d1;
   --ink-faint: #acb6c4;
   --inverted: #a8cdff;
   --inverted-hover: #c8dfff;
   --inverted-ink: #101c2b;
-  --success: #8ac4ff;
-  --danger: #ffdc83;
-  --danger-subtle: #493716;
-  --warning: #d8baff;
+  --success: #5499ff;
+  --danger: #e18b47;
+  --danger-subtle: #3a2412;
+  --warning: #cb81ba;
   --syntax-comment: #acb6c4;
-  --syntax-keyword: #8ac4ff;
-  --syntax-string: #ffdc83;
-  --syntax-number: #d8baff;
-  --syntax-function: #9bdfea;
-  --syntax-type: #ffdc83;
-  --syntax-tag: #8ac4ff;
-  --syntax-attribute: #d8baff;
-  --diff-add-fill: #172b42;
-  --diff-del-fill: #493716;
+  --syntax-keyword: #5499ff;
+  --syntax-string: #22ab86;
+  --syntax-number: #cb81ba;
+  --syntax-function: #56b4e9;
+  --syntax-type: #e18b47;
+  --syntax-tag: #5499ff;
+  --syntax-attribute: #22ab86;
+  --diff-add-fill: #162a40;
+  --diff-del-fill: #3a2412;
   --diff-add-rail: inset 3px 0 0 var(--success);
   --diff-del-rail: repeating-linear-gradient(to bottom, var(--danger) 0 5px, transparent 5px 9px);
   --status-border: currentColor;
