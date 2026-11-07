@@ -5,6 +5,7 @@ import { cargoTreeMode, verifiedCargoCompletion } from "../cargo-tree.mjs";
 import { inputSnapshot, hash } from "./inputs.mjs";
 import { scanUnits, invalidateStamp } from "./units.mjs";
 import { prepareExportWitnesses, freshExportTransition } from "./exports.mjs";
+import { selectionFailure } from "./diagnostics.mjs";
 import { ledger, saveLedger } from "./ledger.mjs";
 import { guarded, managedDirectory } from "../paths.mjs";
 import { UncertainProcessTreeError } from "../lease.mjs";
@@ -110,9 +111,10 @@ export async function finishSourceProof(handle, completion, lease) {
     }
     // Unknown stamps were removed before invocation. Only observed recreation or
     // changed compiler controls can authorize a new proof; presence alone cannot.
+    const selectedCandidates = candidates;
     candidates = candidates.filter(unit => value.invalidated.has(unit.id) || !value.units.has(unit.id)
       || value.units.get(unit.id).controlSignature !== unit.controlSignature);
-    if (candidates.length !== 1) throw new Error("SOURCE_PROOF_SELECTED_UNIT_UNOBSERVED");
+    if (candidates.length !== 1) throw selectionFailure(message, units, selectedCandidates, candidates, value, approved);
     const unit = candidates[0];
     approved[unit.id] = { provenance: unit.pkg.provenance, signature: unit.signature };
   }
