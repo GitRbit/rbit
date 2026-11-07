@@ -24,6 +24,7 @@ serde_json.workspace = true
 postcard.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tokio-util = { workspace = true, features = ["rt"] }
 tracing.workspace = true
 # Pool contention metrics (`sqlite::pool`); the web crate installs the recorder.
 metrics.workspace = true

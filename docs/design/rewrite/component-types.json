@@ -123,7 +123,13 @@
         "lib::sqlite::external_identities::insertion::GuardedIdentityLink",
         "lib::sqlite::wiki_mutations::ownership::WikiCatalogLease",
         "lib::sqlite::wiki_mutations::ownership::WikiCatalogLeaseError",
-        "lib::sqlite::wiki_mutations::ownership::files::Identity"
+        "lib::sqlite::wiki_mutations::ownership::files::Identity",
+        "lib::sqlite::wiki_mutations::AcceptedCommand",
+        "lib::sqlite::wiki_mutations::full::WikiCatalogHandle",
+        "lib::sqlite::wiki_mutations::full::WikiWriteError",
+        "lib::sqlite::wiki_mutations::full::CommittedWikiAcceptance",
+        "lib::sqlite::wiki_mutations::full::Writer",
+        "lib::sqlite::wiki_mutations::full::FullWikiWriter"
       ]
     },
     {

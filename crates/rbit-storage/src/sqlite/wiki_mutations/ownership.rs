@@ -123,3 +123,9 @@ impl WikiCatalogOwnership for WikiCatalogLease {
         Ok(())
     }
 }
+
+impl WikiCatalogLease {
+    pub(super) fn connection_options(&self) -> sqlx::sqlite::SqliteConnectOptions {
+        self.pool.connect_options().as_ref().clone()
+    }
+}
