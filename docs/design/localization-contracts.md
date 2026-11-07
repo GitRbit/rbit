@@ -62,7 +62,7 @@ Use textContent for DOM updates. The crate's integration test renders real Askam
 templates with malicious text and attribute arguments. Plain-text email/CLI consumers
 may use the text directly under their own terminal/header control-character rules.
 
-Static English labels borrow their compiled catalog literals through private
+Static English/Spanish labels borrow their compiled catalog literals through private
 `Cow<'static, str>` storage. Interpolated/count messages and diagnostic transformations
 own their resulting text. This keeps ordinary labels from adding heap allocations
 relative to the original static strings; representation tests enforce the distinction
@@ -89,8 +89,8 @@ require message/argument completeness and deterministic English fallback; benchm
 binary growth, resident catalog bytes, cold/warm formatting, allocations and concurrent
 access against this compiled implementation. The initial choice adds zero production
 dependencies and avoids speculative language-engine overhead; it does not claim to
-have benchmarked Fluent. Real translations also require locale-aware dates/numbers,
-reviewed grammar, fallback policy and RTL/accessibility acceptance before enablement.
+have benchmarked Fluent. Complete catalog rollout additionally requires locale-aware dates/numbers, reviewed
+grammar, fallback policy and RTL/accessibility acceptance beyond this partial activation.
 
 ## Web adapter status
 
@@ -127,9 +127,9 @@ form remains an ordinary GET form without JavaScript and retains HTMX push-URL a
 select/swap behavior. Both shapes report Content-Language and vary on language,
 cookies and response-shape headers; existing private revalidation remains in force.
 
-There is no locale mutation UI in this slice. Future locale-setting flows must reset
-locale-sensitive HTMX history/navigation caches before enabling account language
-switching; diagnostic resolver injection does not constitute that completed feature.
+The original Explore-only slice had no locale mutation UI. Public account activation
+now supplies the native `/settings/language` form and catalog-scoped history/navigation
+rules described above; diagnostic resolver injection remains a separate test seam.
 HTTP regressions cover component equality, locale/direction consistency, full history
 fallback, private repositories even for their signed-in owner, malicious interpolation,
 shape-header ambiguity and existing URL/filter/pagination behavior.
@@ -138,7 +138,7 @@ shape-header ambiguity and existing URL/filter/pagination behavior.
 ## Deferred Explore text
 
 `Catalog::display(Message)` returns plain borrowed `LocalizedDisplay`, with the same
-ordinary template escaping boundary as `LocalizedText`. English ExploreSubtitle,
+ordinary template escaping boundary as `LocalizedText`. English and Spanish ExploreSubtitle,
 PageOf and Stars format directly into the caller's writer from shared catalog
 literals. Diagnostic locales and other messages delegate to the existing owned
 catalog path; punctuation, plural wording and RTL isolation remain byte-compatible.
@@ -156,11 +156,11 @@ same methods and exact full/fragment owned-catalog equivalence fixtures.
 
 
 Actions run rerun/summary labels use the same deferred plain-Display contract via
-`Catalog::actions_display` and borrowed `ActionsDisplay`. English dynamic labels write
+`Catalog::actions_display` and borrowed `ActionsDisplay`. English/Spanish dynamic labels write
 shared catalog literals and existing job names directly to the destination. Diagnostic
 locales delegate to the existing owned Actions catalog without changing its output.
-RunPage methods return borrowed labels only at render time; templates introduce no
-English literals or HTML-safety bypass. This removes introduced per-label owned
+RunPage methods return borrowed labels only at render time, with ordinary template
+escaping and no HTML-safety bypass. Existing trust/deployment prose remains English. This removes introduced per-label owned
 formatting buffers at the source level; no allocator-count or latency claim is made.
 
 
@@ -177,3 +177,39 @@ and attribute escaping applies to the entire borrowed display value.
 This is a source-level removed copy/intermediate-buffer claim, not measured latency,
 CPU, allocation-count or whole-request performance acceptance. Real Rust/HTTP parity
 and current optimized paired page measurements remain necessary.
+## Public response boundaries and queued candidates
+
+The published checkpoint is `fb9f21dd`. Production `en`/`es` negotiation
+and native account language saving/resetting are implemented. `en-XA`/`ar-XB` require
+trusted diagnostic enablement and selected feature adapters; incoming arbitrary
+query/header text cannot enable them globally. Supported full pages and selected
+Actions roots report matching language/direction, with catalog identity applied
+before private revalidation. Machine filter values, route names, refs, theme slugs,
+log bytes, user content and stored protocol/error codes are never translated.
+
+Generic HTML errors are not raw responses: they use the shared real-document locale
+and catalog metadata. A pseudo-locale Actions request that falls through to a default
+HTML 404 has English catalog metadata; ordinary Spanish negotiation can retain a
+Spanish shell around the explicitly English legacy error body. Raw/API/static bodies,
+sandboxed user content, downloads and language-neutral immutable fragments retain
+their exclusions. Native redirects remain redirects and do not become localized HTML.
+The successful-GET catalog-mismatch refresh does not apply to errors or raw responses.
+
+Two candidates queued at that checkpoint are included in this integration source;
+their Rust, HTTP and browser acceptance remains pending:
+
+- `6dcba78f` plus browser candidate `00bf1acd` localize the shared theme picker in
+  English/Spanish, including accessible search and Colorblind controls and dynamic
+  counts. Theme identities and machine filter values stay unchanged. At the checkpoint
+  picker content was still English; Appearance settings and preview example code are not
+  claimed fully translated. Real Rust/HTTP and isolated hosted browser gates remain.
+- `162fee0a` changes Explore CountForQuery from its current owned count String to a
+  borrowed template-boundary display for English/Spanish, with unchanged owned API
+  and diagnostic fallback. It removes the intermediate copied query at source level;
+  Rust/full-fragment escaping parity and current performance gates remain unrun for
+  this candidate. No measured allocation-count or latency improvement is claimed.
+
+Spanish linguistic review, remaining legacy labels/dates, current production browser
+accessibility/history/no-JavaScript proof and matched performance measurements remain
+separate acceptance work. Historical measurement records and prototype captures keep
+their original source scope; neither publication nor this wording upgrades that evidence.

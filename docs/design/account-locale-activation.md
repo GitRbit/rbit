@@ -34,8 +34,10 @@ tests until run in the shared compiler lane, not measured latency claims.
 The session adapter supplies account preference before one memoized request locale
 resolution. The shared Page extractor selects the document locale while defaulting
 legacy body content to English. Localized feature constructors explicitly select
-their content locale too. The HTML pipeline annotates successful pages and HTML errors
-before partial slicing and validator generation. Raw/API/static, sandboxed user content,
+their content locale too. The HTML pipeline annotates successful pages and generic HTML errors before partial
+slicing and validator generation. Error prose retains the legacy English content
+boundary; a diagnostic feature request that becomes a default HTML error falls back
+to the real document catalog rather than enabling pseudo error rendering. Raw/API/static, sandboxed user content,
 downloads and language-neutral immutable commit-pinned fragments are excluded.
 
 HTML reports `Content-Language` and a bounded versioned `Rbit-Catalog-Key`. Validators

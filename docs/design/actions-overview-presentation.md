@@ -28,14 +28,19 @@ region, so typing or choosing inputs cannot be erased by list polling. Existing
 three-second active, ten-second newest-idle and older-page polling decisions are
 unchanged. No additional JavaScript or polling listener is introduced.
 
-New overview labels and empty states use compiled English plus opt-in expanded/RTL
-pseudo catalogs. Machine query values are never translated. Full documents and the
+Overview labels and empty states use compiled English and Spanish catalogs. The
+production account preference/browser negotiation is active; expanded/RTL pseudo
+catalogs remain trusted diagnostic opt-ins for selected feature routes. Machine query values are never translated. Full documents and the
 selected `#runs` root carry the negotiated language/direction; Content-Language and
 Vary retain locale/cache dimensions alongside existing privacy and CSP middleware.
-Dynamic names, titles, reference text and errors remain escaped. Logical filter
-padding and isolated metadata support RTL. Existing event/status option labels,
+Dynamic names, titles, reference text and errors remain escaped. Successful dispatch
+redirects and machine/protocol responses retain their existing contracts. Generic
+HTML errors use the shared shell/catalog pipeline; diagnostic requests fall back to
+the real document locale for those errors rather than enabling pseudo error text.
+Logical filter padding and isolated metadata support RTL. Existing event/status option labels,
 relative times and dispatch explanatory text retain their English representations;
-this remains an incremental text migration, not a shipped translation catalog.
+these remaining labels are not covered by the compiled Spanish presentation catalog.
+This is partial translation coverage, not a claim that all Actions text is translated.
 
 ## Acceptance
 
@@ -46,8 +51,20 @@ cache headers and unchanged pooled SQL work across locale representations. Exist
 Actions filter, workflow dispatch, disabled-workflow and control parity tests remain
 gates. Typed message tests cover the page-count meaning and English plural rules.
 
-No Cargo invocation was used to prepare this source. Selected integration and
-localization tests plus strict Clippy must pass through the shared build helper.
+The original preparation was source-only; publication of this implementation is not
+by itself an acceptance record for every subsequent revision. Selected integration,
+localization and strict Clippy results must be tied to their actual source revision.
 Fresh matching-revision CSS and isolated visual/keyboard/no-JavaScript review at
 360px, light/dark and RTL remain required. No screenshot acceptance or rendering
 speed improvement is claimed by this presentation-only slice.
+
+
+## Current coverage record
+
+This contract was checked against public `fb9f21dd`. Account locale, full/selected-root
+language attributes and compiled Spanish presentation are current behavior. See
+[account activation](account-locale-activation.md) for preference precedence and
+[the localization contract](localization-contracts.md) for the exact raw/error and
+queued theme-picker/Explore boundaries. Historical prototype images and earlier
+footer samples establish only their recorded revisions, not current production
+visual, accessibility or speed acceptance.

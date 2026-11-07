@@ -18,12 +18,19 @@ Line HTML, ANSI removal, blocks, anchors and virtual-row markup are unchanged.
 Retention expiry, no output, an unstarted step, omitted earlier lines and producer
 truncation remain distinct states.
 
-Typed compiled job/log messages are prepared once per document. Static English
-labels, including row state labels, borrow catalog literals; counts write directly
-to the formatting destination in English. Pseudo locales use the same typed catalog.
+Typed compiled job/log messages are prepared once per document. Static English/Spanish
+labels, including row state labels, borrow compiled catalog literals; supported real
+catalog count labels write directly to the formatting destination. Expanded/RTL
+pseudo locales use the same typed contract as trusted layout diagnostics, not as
+additional translated languages.
 Both selected refresh roots carry their own `lang` and `dir`; private cache/Vary
-semantics use the existing locale response adapter. Raw bytes, early redirects and
-errors do not opt into HTML translation. No JavaScript source or bundle
+semantics use the existing locale response adapter. Raw bytes and early redirects
+are outside the translated HTML contract. Generic
+HTML errors still pass through the shared document/catalog pipeline: a diagnostic
+job request that becomes the default HTML 404 reports the real English document
+catalog, not the requested pseudo catalog. Spanish document negotiation can select
+a Spanish shell while its existing error prose remains explicitly English. Error
+responses do not receive the successful-GET locale-mismatch refresh instruction. No JavaScript source or bundle
 changes are needed, and the existing step-open preservation logic is unchanged.
 
 Fixtures exercise real runner output across the 1000-line boundary, original line
@@ -33,3 +40,11 @@ and acquisition counts. Source contracts pin the untouched line-rendering progra
 These fixtures require the shared compiler gate. Source checks alone do not prove
 Rust rendering, real HTMX behavior, visual quality or accessibility acceptance.
 Fresh same-revision assets and isolated Linux browser review remain necessary.
+
+
+This record describes public `fb9f21dd`. Remaining legacy error prose, run event and
+relative-time representations are not a complete Spanish translation. Machine
+status keys, log content, ANSI-derived line HTML and raw downloads are never
+translated. Current compilation/HTTP/browser results must be recorded separately
+for their exact revision; historical captures and source parity fixtures do not
+establish current visual or performance acceptance.

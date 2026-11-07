@@ -17,8 +17,9 @@ The route's used presentation adapter is `routes/actions/runs/run_page.rs`.
 Header, review and results templates have separate responsibilities. The initial
 extraction's includes expand exactly to the old template source.
 
-New metadata/control labels use the same compiled English and opt-in expanded/RTL
-pseudo catalogs as Explore. Request locale negotiation supplies document direction,
+Metadata/control labels use the same compiled English/Spanish catalogs as Explore.
+Saved account language and browser negotiation are active. Expanded/RTL pseudo
+catalogs remain trusted opt-in layout diagnostics for selected feature routes. Request locale negotiation supplies document direction,
 Content-Language and Vary dimensions. This is an incremental text migration:
 existing status/event/relative-time labels, trust paragraphs and deployment prose
 still use their existing English representations. Pseudo output is a diagnostic,
@@ -58,8 +59,19 @@ fork approval and workflow error, assert native route/method/permission contract
 escaping, locale cache dimensions and full/HTMX document behavior. Existing reader/
 writer, environment, artifact and sanitized-summary integration tests remain gates.
 
-No compiler was run while preparing this slice. Run the selected integration and
-localization tests and strict Clippy through the shared build helper before merge.
+The initial preparation was source-only. Compilation, selected integration and
+localization tests and strict Clippy must be tracked at the actual integrated source
+revision; this presentation contract is not a substitute for those gate results.
 Fresh matching-revision CSS/JS builds, isolated Linux visual proof, 360px overflow,
 light/dark/RTL keyboard review and human screenshot acceptance remain required.
 No screenshot acceptance or production render-speed improvement is claimed here.
+
+
+This wording was reconciled with public `fb9f21dd`. Machine route/query values and
+status keys remain unchanged; translated display labels do not change persisted
+protocol/event history. Successful action redirects remain protocol responses.
+Generic HTML errors use the shared real-language shell/catalog rules, with legacy
+English error text and no successful-poll restoration or locale-refresh claim.
+Prototype captures and earlier performance samples remain historical evidence for
+their recorded revisions. Current production browser and paired speed acceptance
+are separate gates.
