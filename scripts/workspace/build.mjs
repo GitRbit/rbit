@@ -1,9 +1,9 @@
 // Shared Cargo execution and exact, generation-specific binary handoff.
 import { spawn, execFileSync } from "node:child_process";
 import { childEnvironment } from "./child-environment.mjs";
-import { createHash, randomUUID } from "node:crypto";
-import { copyFile, writeFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { createHash } from "node:crypto";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { guarded, managedDirectory } from "./paths.mjs";
 import { leased, UncertainProcessTreeError } from "./lease.mjs";
@@ -11,6 +11,7 @@ import { cacheBudget, enforceHighWater } from "./storage.mjs";
 import { cargoTreeMode, ownedCargo, verifiedCargoCompletion, failedCargoCompletion } from "./cargo-tree.mjs";
 import { managedRetentionMode, beginRetention, finishRetention } from "./retention/observe.mjs";
 import { candidateHeadroom, createCandidate, startCandidate, candidateExecutionStarting, candidateExecuted, completeCandidate, quarantineCandidate } from "./retention/candidate.mjs";
+import { copyExecutables } from "./artifacts.mjs";
 import { sourceProof } from "./source-proof/guard.mjs";
 
 function reportCacheOverage(report) {
@@ -36,7 +37,7 @@ export function cargoProcess(ctx, args, env, onArtifact = () => {}, options = {}
   return consumeCargo(ctx, args, env, onArtifact, options);
 }
 
-function consumeCargo(ctx, args, env, onArtifact = () => {}, { spawnProcess = spawn, output = process.stdout, diagnostics = process.stderr, onMessage = () => {}, captureStderr = false, verifyCompletion } = {}) {
+function consumeCargo(ctx, args, env, onArtifact = () => {}, { spawnProcess = spawn, output = process.stdout, diagnostics = process.stderr, onMessage = () => {}, captureStderr = false, verifyCompletion, onExit = () => {} } = {}) {
   return new Promise((done, reject) => {
     const child = spawnProcess("cargo", args, { cwd: ctx.checkout, env: childEnvironment(env), windowsHide: true, stdio: ["inherit", "pipe", captureStderr ? "pipe" : "inherit"] });
     let parseError, spawnError;
@@ -67,7 +68,11 @@ function consumeCargo(ctx, args, env, onArtifact = () => {}, { spawnProcess = sp
         if (!receipt && (signal || (!spawnError && code !== 0 && code !== 101) || (spawnError && child.pid))) {
           throw new UncertainProcessTreeError(`Cargo terminated abnormally (${signal ?? code}); compiler descendants may still be writing`);
         }
-        if (spawnError || parseError) throw spawnError ?? parseError;
+        try { onExit(code, signal); }
+        catch (error) {
+          if (!(parseError instanceof UncertainProcessTreeError)) parseError = error instanceof UncertainProcessTreeError ? error : parseError ?? error;
+        }
+        if (spawnError || parseError) throw parseError instanceof UncertainProcessTreeError ? parseError : spawnError ?? parseError;
         if (code !== 0) throw new Error(`Cargo ${signal ?? `exited ${code}`}`);
         return receipt;
       })().then(done, reject);
@@ -127,25 +132,9 @@ export async function cargo(ctx, command, args = [], { execute = cargoProcess, e
       if (verifiedCargoCompletion(completion, lease)) result.completion = completion;
       if ((observation || candidate) && !result.completion) throw new UncertainProcessTreeError("Managed execution requires verified native Cargo completion");
       if (command === "build") {
-        const binaries = new Map();
-        for (const item of artifacts.filter((entry) => entry.target.kind.includes("bin"))) {
-          const name = basename(item.executable).toLowerCase();
-          const previous = binaries.get(name);
-          if (previous && (previous.executable !== item.executable || previous.target.name !== item.target.name)) {
-            throw new Error(`Ambiguous executable basename ${name}; build one package/target at a time`);
-          }
-          binaries.set(name, item);
-        }
-        const generation = await managedDirectory(ctx, join(ctx.state, "bin", randomUUID()));
-        for (const item of binaries.values()) {
-          await guarded(lane, item.executable);
-          const destination = join(generation, basename(item.executable));
-          await copyFile(item.executable, destination);
-          copies?.push({ source: item.executable, destination });
-          result.executables.push({ name: item.target.name, path: destination });
-        }
-        await writeFile(join(generation, "build.json"), JSON.stringify({ namespace, executables: result.executables }, null, 2));
-        await writeFile(join(generation, "handoff.json"), JSON.stringify({ pid: process.pid, host: (await import("node:os")).hostname() }));
+        const output = await copyExecutables(ctx, lane, namespace, artifacts);
+        result.executables = output.executables;
+        copies?.push(...output.copies);
       }
       await writeFile(join(cache, namespace, "last-used"), String(Date.now()));
       // Keep hot IDE/check loops cheap: scan after builds and completed test runs, never
