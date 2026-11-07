@@ -19,6 +19,8 @@ impl EpochSessionStore {
         self.identity_store().pair_identity().await
     }
     pub async fn initialize_identity_if_empty(&self) -> Result<SessionPairIdentity, StorageError> {
+        #[cfg(test)]
+        self.mode.require_legacy()?;
         self.identity_store().initialize_identity_if_empty().await
     }
 }

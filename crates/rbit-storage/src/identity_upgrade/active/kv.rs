@@ -2,8 +2,8 @@
 use super::super::{IdentityUpgradeError as Error, IdentityUpgradeLimits, model::Checkpoint};
 use crate::kv::sessions::epoch::runtime;
 use crate::{error::kv_error, kv::sessions::epoch::stopped};
-use redb::{ReadableDatabase, ReadableTableMetadata, TableDefinition};
-const ACTIVE: TableDefinition<'_, u8, &[u8; 64]> = TableDefinition::new("credential_session_active_v3");
+use redb::{ReadableDatabase, ReadableTableMetadata};
+use runtime::ACTIVE;
 pub(super) fn verify_prepared(db: &redb::Database, checkpoint: Checkpoint, limits: IdentityUpgradeLimits) -> Result<(), Error> {
     if is_active(db, checkpoint, limits)? {
         return Err(Error::Mismatch);

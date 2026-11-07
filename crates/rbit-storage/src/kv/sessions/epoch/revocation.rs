@@ -16,6 +16,8 @@ pub struct AppliedSessionRevocation {
     request: SessionRevocationRequest,
     outcome: SessionRevocationOutcome,
     pair: SessionPairIdentity,
+    #[cfg(test)]
+    mode: super::runtime::SessionMode,
 }
 impl AppliedSessionRevocation {
     pub(crate) fn pair_identity(&self) -> SessionPairIdentity {
@@ -25,6 +27,10 @@ impl AppliedSessionRevocation {
         self.outcome
     }
     pub(crate) fn matches(&self, store: &EpochSessionStore, request: &SessionRevocationRequest) -> bool {
+        #[cfg(test)]
+        if self.mode != store.mode {
+            return false;
+        }
         Weak::ptr_eq(&self.owner, &Arc::downgrade(&store.db)) && self.request == *request
     }
 }
@@ -42,10 +48,14 @@ impl EpochSessionStore {
         request: SessionRevocationRequest,
         expected_pair: SessionPairIdentity,
     ) -> Result<AppliedSessionRevocation, StorageError> {
+        #[cfg(test)]
+        let mode = self.mode;
         let db = Arc::clone(&self.db);
         let owner = Arc::downgrade(&db);
         tokio::task::spawn_blocking(move || {
             let tx = db.begin_write().map_err(kv_error)?;
+            #[cfg(test)]
+            let tx = mode.prepare(tx)?;
             let pair = super::identity::in_write(&tx)?;
             if pair != expected_pair {
                 return Err(corrupt());
@@ -78,8 +88,17 @@ impl EpochSessionStore {
             } else {
                 SessionRevocationOutcome::EndedAll
             };
+            #[cfg(test)]
+            mode.advance(&tx, request.target())?;
             tx.commit().map_err(kv_error)?;
-            Ok(AppliedSessionRevocation { owner, request, outcome, pair })
+            Ok(AppliedSessionRevocation {
+                owner,
+                request,
+                outcome,
+                pair,
+                #[cfg(test)]
+                mode,
+            })
         })
         .await?
     }
@@ -91,9 +110,13 @@ impl EpochSessionStore {
     /// stale resolver cleanup still uses epoch-exact delete, never this operation.
     pub async fn logout_captured(&self, expected: EpochSnapshot) -> Result<bool, StorageError> {
         let Some(expected_binding) = expected.binding else { return Ok(false) };
+        #[cfg(test)]
+        let mode = self.mode;
         let db = Arc::clone(&self.db);
         tokio::task::spawn_blocking(move || {
             let tx = db.begin_write().map_err(kv_error)?;
+            #[cfg(test)]
+            let tx = mode.prepare(tx)?;
             if tx.open_table(SESSIONS).map_err(kv_error)?.get(&expected.digest).map_err(kv_error)?.is_none() {
                 return Ok(false);
             }
@@ -115,6 +138,8 @@ impl EpochSessionStore {
                 return Err(corrupt());
             }
             remove_bound(&tx, &expected.digest)?;
+            #[cfg(test)]
+            mode.advance(&tx, binding.epoch)?;
             tx.commit().map_err(kv_error)?;
             Ok(true)
         })

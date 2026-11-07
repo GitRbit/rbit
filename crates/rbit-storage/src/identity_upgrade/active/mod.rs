@@ -11,9 +11,17 @@ use std::sync::Arc;
 
 /// Construction requires real SQL/KV validation under the retained exclusive owner.
 /// No caller-supplied boolean, parsed marker or User can construct this capability.
-struct ActiveIdentityPair {
+pub(crate) struct ActiveIdentityPair {
     owner: StoppedIdentityUpgrade,
     checkpoint: Checkpoint,
+}
+impl ActiveIdentityPair {
+    pub(crate) fn runtime_parts(&self) -> (&Arc<redb::Database>, Checkpoint) {
+        (&self.owner.db, self.checkpoint)
+    }
+    fn session_store(&self) -> crate::SessionStore {
+        crate::kv::sessions::epoch::runtime::sessions(self)
+    }
 }
 impl std::fmt::Debug for ActiveIdentityPair {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

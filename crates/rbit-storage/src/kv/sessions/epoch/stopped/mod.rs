@@ -8,7 +8,7 @@ use crate::{
 };
 use redb::{MultimapTableHandle, ReadableDatabase, ReadableTable, ReadableTableMetadata, TableDefinition, TableHandle};
 pub(crate) use scan::Scan;
-const MODE: TableDefinition<'_, u8, &[u8; 64]> = TableDefinition::new("credential_session_protocol_v2");
+pub(super) const MODE: TableDefinition<'_, u8, &[u8; 64]> = TableDefinition::new("credential_session_protocol_v2");
 #[cfg(test)]
 pub(crate) fn matches_pair(db: &redb::Database, expected: [u8; 16]) -> Result<bool, Error> {
     let tx = db.begin_read().map_err(kv_error)?;

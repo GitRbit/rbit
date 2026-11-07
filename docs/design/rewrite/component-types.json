@@ -82,7 +82,11 @@
         "lib::identity_upgrade::owned::Outcome",
         "lib::identity_upgrade::layout::MigrationRow",
         "lib::identity_upgrade::active::ActiveIdentityPair",
-        "lib::identity_upgrade::active::pool::ActiveSqlPool"
+        "lib::identity_upgrade::active::pool::ActiveSqlPool",
+        "lib::kv::sessions::SessionStore",
+        "lib::kv::sessions::epoch::mutations::BoundSessionMutations",
+        "lib::kv::sessions::epoch::listing::BoundSessionListing",
+        "lib::kv::sessions::epoch::runtime::SessionMode"
       ]
     },
     {

@@ -3,6 +3,8 @@
 mod binding;
 mod identity;
 mod lifecycle;
+mod listing;
+mod mutations;
 mod revocation;
 #[cfg(test)]
 pub(crate) mod runtime;
@@ -27,6 +29,8 @@ const EPOCHS: TableDefinition<'_, &[u8; 32], &[u8; 32]> = TableDefinition::new("
 pub struct EpochSessionStore {
     db: Arc<redb::Database>,
     random: fn(&mut [u8]) -> Result<(), ()>,
+    #[cfg(test)]
+    mode: runtime::SessionMode,
 }
 impl std::fmt::Debug for EpochSessionStore {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -35,9 +39,18 @@ impl std::fmt::Debug for EpochSessionStore {
 }
 impl EpochSessionStore {
     pub(super) fn new(db: Arc<redb::Database>) -> Self {
-        Self { db, random: |bytes| getrandom::fill(bytes).map_err(|_| ()) }
+        Self {
+            db,
+            random: |bytes| getrandom::fill(bytes).map_err(|_| ()),
+            #[cfg(test)]
+            mode: runtime::SessionMode::legacy(),
+        }
     }
 
+    #[cfg(test)]
+    pub(super) fn new_mode(db: Arc<redb::Database>, mode: runtime::SessionMode) -> Self {
+        Self { mode, ..Self::new(db) }
+    }
     /// Insert-only: never replace a digest's record, matching index, or orphan binding.
     /// `original` comes from the eventual proof owner, never a fresh SQL epoch read here.
     /// Random-source failure occurs before opening a write transaction.
@@ -63,18 +76,13 @@ impl EpochSessionStore {
         if record.account_id != account {
             return Ok(None);
         }
+        #[cfg(test)]
+        if self.mode.requires_binding() && original == CredentialEpoch::INITIAL {
+            return Err(corrupt());
+        }
         let binding = Binding::with_random(account, original, self.random)?;
         let encoded = encode_session(&record)?;
-        let db = Arc::clone(&self.db);
-        tokio::task::spawn_blocking(move || {
-            let tx = db.begin_write().map_err(kv_error)?;
-            if !insert(&tx, digest, &record, &encoded, binding)? {
-                return Ok(None);
-            }
-            tx.commit().map_err(kv_error)?;
-            Ok(Some(EpochSnapshot { digest, record, binding: Some(binding) }))
-        })
-        .await?
+        mutations::BoundSessionMutations::for_store(self).put_bound(digest, record, encoded, binding).await
     }
 
     /// One read transaction snapshots record + sidecar. The derived account index is
@@ -87,6 +95,8 @@ impl EpochSessionStore {
     /// Captures expired records too, so logout/maintenance can compare their actual
     /// incarnation. Missing sidecars stay explicit legacy INITIAL, never adopted.
     pub async fn get_snapshot(&self, digest: [u8; 32]) -> Result<Option<EpochSnapshot>, StorageError> {
+        #[cfg(test)]
+        let mode = self.mode;
         let db = Arc::clone(&self.db);
         tokio::task::spawn_blocking(move || {
             let tx = db.begin_read().map_err(kv_error)?;
@@ -101,6 +111,10 @@ impl EpochSessionStore {
                 Err(redb::TableError::TableDoesNotExist(_)) => None,
                 Err(error) => return Err(kv_error(error)),
             };
+            #[cfg(test)]
+            if mode.requires_binding() && binding.is_none() {
+                return Err(corrupt());
+            }
             Ok(Some(EpochSnapshot { digest, record, binding }))
         })
         .await?
@@ -115,20 +129,7 @@ impl EpochSessionStore {
     /// Consuming form for an already-owned finalization, without a second metadata clone.
     pub async fn renew_captured(&self, expected: EpochSnapshot, expires: Timestamp, seen: Timestamp) -> Result<bool, StorageError> {
         let Some(binding) = expected.binding else { return Ok(false) };
-        let db = Arc::clone(&self.db);
-        tokio::task::spawn_blocking(move || {
-            let tx = db.begin_write().map_err(kv_error)?;
-            let Some(mut current) = matched(&tx, &expected, binding)? else { return Ok(false) };
-            if current.is_expired() {
-                return Ok(false);
-            }
-            current.expires_at = current.expires_at.max(expires);
-            current.last_seen_at = current.last_seen_at.max(seen);
-            tx.open_table(SESSIONS).map_err(kv_error)?.insert(&expected.digest, encode_session(&current)?.as_slice()).map_err(kv_error)?;
-            tx.commit().map_err(kv_error)?;
-            Ok(true)
-        })
-        .await?
+        mutations::BoundSessionMutations::for_store(self).renew_captured(expected, binding, expires, seen).await
     }
 
     /// Delete only the captured incarnation. A late logout cannot delete a new record
@@ -140,18 +141,7 @@ impl EpochSessionStore {
     /// Consuming form for an already-owned logout/revocation.
     pub async fn delete_captured(&self, expected: EpochSnapshot) -> Result<bool, StorageError> {
         let Some(binding) = expected.binding else { return Ok(false) };
-        let db = Arc::clone(&self.db);
-        tokio::task::spawn_blocking(move || {
-            let tx = db.begin_write().map_err(kv_error)?;
-            if matched(&tx, &expected, binding)?.is_none() {
-                return Ok(false);
-            }
-            remove(&tx, &expected.digest)?;
-            tx.open_table(EPOCHS).map_err(kv_error)?.remove(&expected.digest).map_err(kv_error)?;
-            tx.commit().map_err(kv_error)?;
-            Ok(true)
-        })
-        .await?
+        mutations::BoundSessionMutations::for_store(self).delete_captured(expected, binding).await
     }
 }
 

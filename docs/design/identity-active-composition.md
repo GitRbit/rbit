@@ -63,13 +63,39 @@ checks fixed publications and the bounded authority catalog, not a full session 
 There is no ordinary request mode/history query. Startup limits are explicit and an
 incomplete scan refuses acceptance rather than treating a prefix as complete.
 
-The `epoch/runtime.rs::advance_in` transaction helper is prepared, but existing issue,
-promotion, revocation and intent-cleanup transactions **do not select it yet**. All
-must advance that witness in their SAME durable KV transaction before any positive
-SQL acknowledgment or acknowledged credential/session effect. No-session revocation,
-account deletion and cleanup must retain it. This is a required closed-bundle gate,
-not an optional optimization. Current fixture coverage of this helper does not prove
-that production finalizers update it. Full cutpoint/ACK/consumer tests remain required.
+The accepted pair now supplies a sealed in-memory session mode to the EXISTING
+session implementation, still behind `cfg(test)`. Every bound issue, renewal,
+captured delete, logout, revoke-others, purge, keep promotion and applied intent
+cleanup advances the witness in its SAME durable KV transaction. EndAll stamps its
+fixed target even when no session exists. The completion proof also checks its mode,
+so a legacy completion on the same backend cannot prove active-protocol cleanup.
+The active legacy put/renew/get/delete/list/delete-account/purge/ensure/identity-init
+methods refuse before storage effects. Missing sidecars cannot produce INITIAL from
+an active read. No public mode constructor, caller bool or default fallback is added.
+
+Production does NOT select those capabilities yet. SQL legacy-method refusal,
+credential-service transactions/finalizers, complete issuer/resolver selection,
+startup ownership/drain and supported restore remain required. A test-gated store
+completion is not SQL intent acknowledgment or a network-ready receipt. The actual
+outer owned-operation wrapper and effect supervisor must span all selected operations
+before runtime exposure; the leaf redb future alone does not establish host shutdown.
+
+Original SQL work stays zero for these redb-only operations. The existing Work
+counter measures SQLite acquisitions/statements and insights cache writes, NOT session
+write transactions; no runtime session-TX count is claimed from it. The source keeps
+the same one write transaction per mutation and the same bounded purge batches. Active
+mode adds fixed metadata checks and a witness write inside that transaction, with
+Immediate durability. Legacy production builds compile out the gated mode; no new
+mode query, transaction, metadata clone, Box or allocation is introduced there.
+Put/renew/delete use a consuming write role with the original single Arc handoff,
+and listing retains its original batch projection/sort in a separate read role.
+
+Nine additional real-store tests are prepared for legacy refusal, missing bindings,
+all mutation rollback on witness failure, protocol-bound receipts, actual stopped
+SQL-snapshot rollback with empty-session KV witness, reopen, expiry/logout and caller
+cancellation of a queued real blocking worker. These fixtures are not executed here.
+The cancellation case proves a dispatched worker retains its transaction after its
+waiter is dropped; it is not a process-kill, power-loss or global shutdown proof.
 
 This check cannot prove absence of an unacknowledged SQL-only commit subsequently
 rolled back outside the supported protocol, nor detect an arbitrarily restored fully

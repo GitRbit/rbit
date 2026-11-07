@@ -1,6 +1,7 @@
 use super::*;
 use crate::identity_upgrade::tests::fixture::{Fixture, limits};
 use sqlx::Connection;
+mod sessions;
 
 async fn prepared(fixture: &Fixture) -> StoppedIdentityUpgrade {
     let mut owner = fixture.owner().await;

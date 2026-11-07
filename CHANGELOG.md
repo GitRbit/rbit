@@ -12,6 +12,11 @@ This section remains unreleased until the complete rewrite and release gates pas
 
 ### Security
 
+- Prepare sealed, test-gated active session modes that refuse legacy mutations and
+  commit a persistent runtime witness with bound session changes and revocation.
+  Production startup, credential finalizers, all issuers and restore selection remain
+  pending; this does not activate durable session fencing.
+
 - Prepare migration0068's empty ACTIVE-publication layout and internal paired-store
   acceptance fixtures. Production upgrade/startup and all issuers remain unactivated;
   the mandatory runtime witness writers and supported restore protocol are still open.

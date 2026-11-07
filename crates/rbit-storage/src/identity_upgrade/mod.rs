@@ -7,7 +7,7 @@ mod sql;
 // Actual publication/factory code stays unreachable to production until the closed
 // issuer/resolver/restore composition selects this same implementation explicitly.
 #[cfg(test)]
-mod active;
+pub(crate) mod active;
 pub use model::{IdentityUpgradeError, IdentityUpgradeLimits, IdentityUpgradeSummary};
 pub use owned::IdentityUpgradeFailure;
 pub use owner::{PreparedIdentityPair, StoppedIdentityUpgrade};

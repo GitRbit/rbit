@@ -34,22 +34,37 @@ pub use rbit_identity_models::sessions::{SessionRecord, StoredSession};
 #[derive(Debug, Clone)]
 pub struct SessionStore {
     db: Arc<redb::Database>,
+    #[cfg(test)]
+    mode: epoch::runtime::SessionMode,
 }
 
 impl SessionStore {
     pub(crate) fn new(db: Arc<redb::Database>) -> Self {
-        Self { db }
+        Self {
+            db,
+            #[cfg(test)]
+            mode: epoch::runtime::SessionMode::legacy(),
+        }
     }
 
     /// Inactive alternate persistence seam; no tables or production behavior change
     /// until explicitly used. Mixing it with legacy mutations is not activation-safe.
     pub fn epoch_sidecar(&self) -> EpochSessionStore {
-        EpochSessionStore::new(Arc::clone(&self.db))
+        #[cfg(test)]
+        {
+            EpochSessionStore::new_mode(Arc::clone(&self.db), self.mode)
+        }
+        #[cfg(not(test))]
+        {
+            EpochSessionStore::new(Arc::clone(&self.db))
+        }
     }
 
     /// Creates the tables so read transactions never fail on a fresh database, and drops
     /// the pre-index table.
     pub(crate) fn ensure_table(&self) -> Result<(), StorageError> {
+        #[cfg(test)]
+        self.mode.require_legacy()?;
         let tx = self.db.begin_write().map_err(kv_error)?;
         tx.open_table(SESSIONS).map_err(kv_error)?;
         tx.open_table(ACCOUNT_SESSIONS).map_err(kv_error)?;
@@ -61,6 +76,8 @@ impl SessionStore {
 
     /// Inserts or replaces a session (and indexes it under its account).
     pub async fn put(&self, digest: [u8; 32], record: SessionRecord) -> Result<(), StorageError> {
+        #[cfg(test)]
+        self.mode.require_legacy()?;
         let encoded = encode_session(&record)?;
         let db = Arc::clone(&self.db);
         tokio::task::spawn_blocking(move || {
@@ -76,6 +93,8 @@ impl SessionStore {
     /// Renews a live session atomically, without recreating a revoked or expired one.
     /// Concurrent requests can only move its timestamps forward.
     pub async fn renew(&self, digest: [u8; 32], expires_at: Timestamp, last_seen_at: Timestamp) -> Result<bool, StorageError> {
+        #[cfg(test)]
+        self.mode.require_legacy()?;
         let db = Arc::clone(&self.db);
         tokio::task::spawn_blocking(move || {
             let tx = db.begin_write().map_err(kv_error)?;
@@ -97,6 +116,8 @@ impl SessionStore {
 
     /// Returns the session if it exists and has not expired. Expired sessions are removed lazily.
     pub async fn get(&self, digest: [u8; 32]) -> Result<Option<SessionRecord>, StorageError> {
+        #[cfg(test)]
+        self.mode.require_legacy()?;
         let db = Arc::clone(&self.db);
         let record = tokio::task::spawn_blocking(move || -> Result<_, StorageError> {
             let tx = db.begin_read().map_err(kv_error)?;
@@ -130,6 +151,8 @@ impl SessionStore {
     }
 
     pub async fn delete(&self, digest: [u8; 32]) -> Result<(), StorageError> {
+        #[cfg(test)]
+        self.mode.require_legacy()?;
         let db = Arc::clone(&self.db);
         tokio::task::spawn_blocking(move || {
             let tx = db.begin_write().map_err(kv_error)?;
@@ -141,6 +164,8 @@ impl SessionStore {
 
     /// The account's unexpired sessions, most recently active first.
     pub async fn list_for_account(&self, account: AccountId) -> Result<Vec<StoredSession>, StorageError> {
+        #[cfg(test)]
+        self.mode.require_legacy()?;
         let db = Arc::clone(&self.db);
         let mut sessions = tokio::task::spawn_blocking(move || -> Result<_, StorageError> {
             let tx = db.begin_read().map_err(kv_error)?;
@@ -164,6 +189,8 @@ impl SessionStore {
 
     /// Deletes every session of `account` except `keep`; returns how many were removed.
     pub async fn delete_for_account(&self, account: AccountId, keep: Option<[u8; 32]>) -> Result<usize, StorageError> {
+        #[cfg(test)]
+        self.mode.require_legacy()?;
         let db = Arc::clone(&self.db);
         tokio::task::spawn_blocking(move || {
             let tx = db.begin_write().map_err(kv_error)?;
@@ -190,6 +217,8 @@ impl SessionStore {
     /// a short write transaction. Active sessions never hold up other database writers
     /// while they are scanned; renewal or replacement after the snapshot remains safe.
     pub async fn purge_expired(&self) -> Result<usize, StorageError> {
+        #[cfg(test)]
+        self.mode.require_legacy()?;
         let db = Arc::clone(&self.db);
         tokio::task::spawn_blocking(move || {
             let now = Timestamp::now();
