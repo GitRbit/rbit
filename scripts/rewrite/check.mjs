@@ -22,6 +22,7 @@ const FEATURE_EDGES = {
   "rbit-identity": ["rbit-identity-models", "rbit-contracts", "rbit-kernel"],
   "rbit-access": [],
   "rbit-repositories": ["rbit-contracts", "rbit-identity-models"],
+  "rbit-wikis": ["rbit-contracts", "rbit-access"],
   "rbit-collaboration": ["rbit-identity-models", "rbit-contracts", "rbit-access", "rbit-repositories", "rbit-kernel"],
   "rbit-actions": ["rbit-contracts", "rbit-access", "rbit-workflow", "rbit-kernel"],
   "rbit-presentation": ["rbit-contracts", "rbit-localization"],

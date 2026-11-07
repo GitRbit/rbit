@@ -1,8 +1,10 @@
 # Repository wiki platform
 
 Added to the comprehensive rewrite scope on 2026-11-06 at the user's request.
-Status: planned new feature; no wiki crate, routes, persistence or UI are implemented
-by this document. Pinned main has no supported wiki feature: the older milestone-3
+Status: new feature in W0 source preparation. Pure contracts/policy are prepared in
+`rbit-wikis`; workspace registration and Rust/AST acceptance are pending. No runtime
+wiki backend, routes, persistence or UI are implemented. See [the W0 contract
+record](wiki-domain-contracts.md) for exact limits and remaining production gaps. Pinned main has no supported wiki feature: the older milestone-3
 plan excludes it and its import design shows wiki import as unsupported. This addition
 supersedes that scope exclusion for the rewrite, without rewriting historical evidence.
 

@@ -4645,6 +4645,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbit-wikis"
+version = "0.1.5"
+dependencies = [
+ "rbit-access",
+ "rbit-contracts",
+ "unicode-normalization",
+]
+
+[[package]]
 name = "rbit-workflow"
 version = "0.1.5"
 dependencies = [
