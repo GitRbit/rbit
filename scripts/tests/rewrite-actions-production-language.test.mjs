@@ -55,9 +55,9 @@ test("request interception reads only form body and two validation headers, reta
   assert.deepEqual(faults, ["unexpected-request"]);
 });
 
-function browserModel({ wrongSave = false, staleSwap = false, noJsFailure = false } = {}) {
+function browserModel({ wrongSave = false, staleSwap = false, noJsFailure = false, wrongFinalRoot = false } = {}) {
   let account = null;
-  const contexts = [], captures = [], stages = [];
+  const contexts = [], captures = [], stages = [], evidence = [];
   const browser = { newContext: async options => {
     const browserLanguage = options.extraHTTPHeaders["Accept-Language"];
     const context = { options, closed: false, setDefaultTimeout: () => {}, setDefaultNavigationTimeout: () => {},
@@ -89,7 +89,7 @@ function browserModel({ wrongSave = false, staleSwap = false, noJsFailure = fals
           return { first: () => locator(selector), locator: child => locator(selector + " " + child), waitFor: async () => {},
             inputValue: async () => selected, selectOption: async value => { selected = value; },
             getAttribute: async name => {
-              if (name === "lang") return locale;
+              if (name === "lang") return wrongFinalRoot && selector === "#explore-results" && locale === "en" ? "es" : locale;
               if (name === "dir") return "ltr";
               if (name === "data-catalog-key") return "1." + locale;
               if (name === "method") return "post";
@@ -119,8 +119,8 @@ function browserModel({ wrongSave = false, staleSwap = false, noJsFailure = fals
       } };
     contexts.push(context); return context;
   } };
-  return { contexts, captures, stages,
-    run: () => languageChecks(browser, { authenticate: async () => {}, healthy: () => {} }, async (_page, id) => captures.push(id), value => stages.push(value)) };
+  return { contexts, captures, stages, evidence,
+    run: () => languageChecks(browser, { authenticate: async () => {}, healthy: () => {} }, async (_page, id) => captures.push(id), value => stages.push(value), value => evidence.push(value)) };
 }
 
 test("native language saves, no-JS reset and stale-document navigation use the real acceptance assertions", async () => {
@@ -139,4 +139,13 @@ test("wrong saved catalog, broken no-JS save or stale cross-catalog swap fails t
     await assert.rejects(model.run(), assert.AssertionError);
     assert.ok(model.contexts.every(context => context.closed));
   }
+});
+
+
+test("late selected-root language failure identifies its exact member without weakening acceptance", async () => {
+  const model = browserModel({ wrongFinalRoot: true });
+  await assert.rejects(model.run(), assert.AssertionError);
+  assert.equal(model.stages.at(-1), "language-refreshed-explore-selected-language");
+  assert.deepEqual(model.evidence.at(-1), { phase: "refreshed", member: "selected-language", observed: "es", expected: "en" });
+  assert.ok(model.contexts.every(context => context.closed));
 });

@@ -1,5 +1,6 @@
 // Native synthetic account language saves plus actual HTMX/history boundaries.
 import assert from "node:assert/strict";
+import { languageProbe } from "./production-language-evidence.mjs";
 import { productionOrigin, productionLanguage, productionExplore } from "./production-policy.mjs";
 import { session, openPage, checkPage } from "./production-page.mjs";
 
@@ -36,19 +37,32 @@ function navigationResponse(page) {
       && await request.headerValue("hx-preloaded") === null;
   });
 }
-async function explore(page, expected) {
+async function explore(page, expected, phase, stage, record) {
+  const observe = languageProbe(phase, stage, record);
   const response = navigationResponse(page);
   await page.locator('.site-header a[href="/explore"]').first().click();
   const completed = await response;
-  assert.equal(completed.status(), 200);
-  assert.equal(await completed.headerValue("content-language"), expected);
+  const status = completed.status();
+  observe("status", status, 200);
+  assert.equal(status, 200);
+  const contentLanguage = await completed.headerValue("content-language");
+  observe("content-language", contentLanguage, expected);
+  assert.equal(contentLanguage, expected);
+  observe("url", false, true);
   await page.waitForURL(productionOrigin + productionExplore);
-  assert.equal(await page.locator("html").getAttribute("lang"), expected);
-  assert.equal(await page.locator("#explore-results").getAttribute("lang"), expected);
-  assert.equal(await page.evaluate(() => window.__visualLocaleDocument === true), true, "ordinary same-catalog navigation stays in-document");
+  observe("url", true, true);
+  const documentLanguage = await page.locator("html").getAttribute("lang");
+  observe("document-language", documentLanguage, expected);
+  assert.equal(documentLanguage, expected);
+  const selectedLanguage = await page.locator("#explore-results").getAttribute("lang");
+  observe("selected-language", selectedLanguage, expected);
+  assert.equal(selectedLanguage, expected);
+  const marker = await page.evaluate(() => window.__visualLocaleDocument === true);
+  observe("document-marker", marker, true);
+  assert.equal(marker, true, "ordinary same-catalog navigation stays in-document");
 }
 
-export async function languageChecks(browser, fixture, capture, stage) {
+export async function languageChecks(browser, fixture, capture, stage, record = () => {}) {
   stage("language-native-spanish-save");
   await session(browser, fixture, { width: 1440 }, async (page, faults) => {
     await openPage(page, productionLanguage);
@@ -58,7 +72,7 @@ export async function languageChecks(browser, fixture, capture, stage) {
     await capture(page, "production-language-desktop-spanish");
     await page.evaluate(() => { window.__visualLocaleDocument = true; });
     stage("language-spanish-htmx-navigation");
-    await explore(page, "es");
+    await explore(page, "es", "spanish", stage, record);
     await checkPage(page, faults);
     await capture(page, "production-explore-desktop-spanish");
     stage("language-spanish-history-back");
@@ -88,7 +102,7 @@ export async function languageChecks(browser, fixture, capture, stage) {
     assert.equal(await page.evaluate(() => window.__visualLocaleDocument === true), false, "cross-catalog navigation creates a new document");
     await page.evaluate(() => { window.__visualLocaleDocument = true; });
     stage("language-refreshed-navigation-no-loop");
-    await explore(page, "en");
+    await explore(page, "en", "refreshed", stage, record);
     await checkPage(page, faults); fixture.healthy();
   });
 }
