@@ -7,6 +7,7 @@ const platform = '[lints.rust]\nunsafe_code = "deny"\nunsafe_op_in_unsafe_fn = "
 const base = () => ({ workspace, platform, sources: [
   ["crates/rbit-platform/src/windows/native.rs", "#![allow(unsafe_code)]\n"],
   ["crates/rbit-platform/src/windows/mod.rs", "mod native;\n"],
+  ["crates/rbit-platform/src/lib.rs", "#![deny(unsafe_code)]\n"],
 ], manifests: [["crates/rbit-core/Cargo.toml", "[lints]\nworkspace = true\n"]] });
 
 test("named platform exception retains all other lints and global forbid", () => {
@@ -40,6 +41,18 @@ test("cfg_attr cannot hide a second unsafe lint exception", () => {
   const fixture = base();
   fixture.sources.push(["crates/rbit-platform/src/extra.rs", "#![cfg_attr(windows, allow(unsafe_code))]\nunsafe fn extra_boundary() {}\n"]);
   assert.match(inspectPlatformBoundary(fixture).join("\n"), /conditional unsafe lint policy/);
-  fixture.sources[2][1] = "#![cfg_attr(windows, cfg_attr(feature = \"extra\", allow(unsafe_code)))]\n";
+  fixture.sources[3][1] = "#![cfg_attr(windows, cfg_attr(feature = \"extra\", allow(unsafe_code)))]\n";
   assert.match(inspectPlatformBoundary(fixture).join("\n"), /conditional unsafe lint policy/);
+});
+test("inline, expect, commented and multi-lint spellings cannot lower the deny", () => {
+  for (const source of [
+    "fn ordinary() {} #[allow(unsafe_code)] unsafe fn extra_boundary() {}",
+    "#[expect(unsafe_code)] unsafe fn extra_boundary() {}",
+    "#[allow(dead_code, unsafe_code)] unsafe fn extra_boundary() {}",
+    "#[allow /* hidden */ (unsafe_code)] unsafe fn extra_boundary() {}",
+  ]) {
+    const fixture = base();
+    fixture.sources.push(["crates/rbit-platform/src/extra.rs", source]);
+    assert.match(inspectPlatformBoundary(fixture).join("\n"), /unreviewed unsafe lint exception/);
+  }
 });

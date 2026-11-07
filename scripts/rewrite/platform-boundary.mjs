@@ -47,12 +47,24 @@ export function inspectPlatformBoundary({ workspace, platform, sources, manifest
     if (/\bcfg_attr\b/.test(text) && /\bunsafe_code\b/.test(text)) {
       violations.push(`${path}: conditional unsafe lint policy is forbidden`);
     }
-    // Attribute-only, not a textual unsafe-block parser: compiler forbid/deny
-    // remains authoritative for tokens, macros and all nonexception modules.
-    for (const match of text.matchAll(/^[ \t]*#!?\[\s*(allow|expect|warn)\s*\(([^)]*\bunsafe_code\b[^)]*)\)\s*\]/gm)) {
-      if (path !== NATIVE || match[0].trim() !== ALLOW) violations.push(`${path}: unreviewed unsafe lint exception`);
-      else exceptions += 1;
+    // Closed unsafe-lint grammar, not an attribute-regex allowlist: remove only
+    // the exact reviewed complete line. ANY remaining unsafe_code token is
+    // refused, including inline items, comments in attributes, nested syntax,
+    // expect and multi-lint variants. Compiler lints remain authoritative for
+    // unsafe tokens/macros; no other authored unsafe policy spelling is supported.
+    const line = path === NATIVE ? ALLOW : path === `${PACKAGE}/src/lib.rs` ? "#![deny(unsafe_code)]" : null;
+    let remainder = text;
+    if (line) {
+      const lines = text.split(/\r?\n/);
+      const position = lines.indexOf(line);
+      if (position === -1) violations.push(`${path}: reviewed unsafe policy line missing`);
+      else {
+        lines.splice(position, 1);
+        remainder = lines.join("\n");
+        if (path === NATIVE) exceptions += 1;
+      }
     }
+    if (/\bunsafe_code\b/.test(remainder)) violations.push(`${path}: unreviewed unsafe lint exception`);
     if (!path.startsWith(`${PACKAGE}/`)) continue;
     if (/\bunsafe\s+impl\b/.test(text)) violations.push(`${path}: unsafe trait implementations are forbidden`);
     if (/^\s*pub(?:\([^)]*\))?\s+unsafe\b/m.test(text)) violations.push(`${path}: unsafe exports are forbidden`);
