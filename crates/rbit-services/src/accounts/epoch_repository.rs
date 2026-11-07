@@ -49,8 +49,8 @@ impl EpochSessionRepository for OwnedEpochSessions<'_> {
             store.put_bound(digest, record, account, original).await
         })
     }
-    fn get_snapshot(&self, digest: TokenDigest) -> impl Future<Output = Result<Option<EpochSnapshot>, Self::Error>> + Send {
-        async move { self.store.get_snapshot(digest).await.map_err(ServiceError::from) }
+    async fn get_snapshot(&self, digest: TokenDigest) -> Result<Option<EpochSnapshot>, Self::Error> {
+        self.store.get_snapshot(digest).await.map_err(ServiceError::from)
     }
     fn renew(
         &self,
@@ -69,8 +69,8 @@ impl EpochSessionRepository for OwnedEpochSessions<'_> {
         let expected = expected.clone();
         self.run(move |store| async move { store.logout_captured(expected).await })
     }
-    fn list_bound(&self, account: AccountId) -> impl Future<Output = Result<Vec<EpochSnapshot>, Self::Error>> + Send {
-        async move { self.store.list_bound(account).await.map_err(ServiceError::from) }
+    async fn list_bound(&self, account: AccountId) -> Result<Vec<EpochSnapshot>, Self::Error> {
+        self.store.list_bound(account).await.map_err(ServiceError::from)
     }
     fn revoke_others(&self, current: &EpochSnapshot) -> impl Future<Output = Result<Option<usize>, Self::Error>> + Send {
         let current = current.clone();
