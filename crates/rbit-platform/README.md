@@ -1,8 +1,9 @@
 # Owned Windows filesystem primitives
 
-Source-prepared Windows-first boundary. No compiler/native execution or unsafe
-audit is claimed yet. The workspace member/path alias and local lock entry are
-registered by the integrating build owner. Existing locked windows-sys 0.61.2 and
+Windows-first boundary, registered as a workspace member with a path alias and a
+single new lock entry. It builds, passes strict all-target Clippy and runs its
+tests on Windows; see [Qualification run](#qualification-run) for exactly what ran.
+No independent unsafe audit is claimed yet. Existing locked windows-sys 0.61.2 and
 workspace getrandom are the only Windows production dependencies; no SQL, HTTP,
 business-domain, runtime or task registry is introduced.
 
@@ -93,9 +94,29 @@ actual remote-mode refusal. Unknown native completion in the remote fixture stay
 within a child process. Neither fixture may use ordinary user data or silently pass
 without its required environment input. Separate mapped and UNC runs are required.
 
-After registration, the shared build helper must run package unit tests and strict
-all-target Clippy, the pure source/exception tests, formal AST bounds, Windows native
-fixtures, and supported cross-target compilation. Independent per-block unsafe audit
-is mandatory before integration. Linux currently compiles the pure name/error surface;
-the release's Unix durability adapter remains a separate required implementation.
-No positive Wiki cap/route or platform-wide durability claim is enabled by this crate.
+## Qualification run
+
+Run through the shared build helper on Windows 11 x64 (rustc 1.99.1), local NTFS:
+
+- Strict all-target Clippy (`-D warnings`) for x86_64-pc-windows-msvc and, as a
+  cross-target check, x86_64-unknown-linux-gnu. The first Windows run found four
+  pedantic findings (two `borrow_as_ptr` in native.rs, one each elsewhere); they are
+  fixed without changing the reviewed unsafe policy line or any native call.
+- Package tests: 6 passed, 2 ignored. These are the name test and the five Windows
+  native fixtures above, including the pending/unknown/malformed subprocess models.
+- Both ignored fixtures, with explicit disposable scratch roots: cross-volume no-copy
+  (C: temp to a D: NTFS scratch directory) and UNC remote refusal through the
+  loopback admin share `\\localhost\C$`. Both passed. No mapped-drive run was made,
+  and the UNC run does not record whether refusal was Unsupported or Quarantined.
+- The source/exception policy (scripts/tests/platform-boundary.test.mjs) is
+  unchanged and passes.
+
+Hosted CI runs the package tests on windows-latest and ubuntu-latest through the
+workspace nextest job. The rewrite-contracts matrix also runs strict platform Clippy
+and the policy tests on both. Linux tests cover only the name surface. No hosted run
+of these steps has been observed yet.
+
+Independent per-block unsafe audit is mandatory before integration and has NOT been
+done. Linux compiles only the pure name/error surface; the release's Unix durability
+adapter remains a separate required implementation. No positive Wiki cap/route or
+platform-wide durability claim is enabled by this crate.

@@ -105,6 +105,14 @@ passed every required job, including Windows/Ubuntu tests, and its
 [production visual run](https://github.com/GitRbit/rbit/actions/runs/42398520449)
 passed.
 
+`rbit-platform` is now a workspace member, adding a 9-line lock entry and no
+re-resolution. Locally on Windows it passes strict all-target Clippy, and the same
+for the Linux target. Its package tests pass (6 passed, 2 ignored), as do both
+ignored native fixtures when given explicit scratch roots: cross-volume no-copy and
+loopback-UNC refusal. The reviewed unsafe-line policy is unchanged. CI now lints the
+crate and runs its policy tests on both platforms; no hosted result is recorded yet.
+A mapped-drive run and the independent unsafe audit remain open.
+
 The identity/session regression group now has barrier and forced-interleaving
 tests against the stores production selects: 13 storage races and 7 service
 scenarios, described in the [security contracts](security-contracts.md#identitysession-group-status).

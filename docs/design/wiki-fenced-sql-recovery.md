@@ -1,6 +1,7 @@
 # Stopped Wiki fence and exact SQL replay
 
-Status: SQL/storage Rust suites run; rbit-platform native UNRUN. 0069 MUST follow
+Status: SQL/storage Rust suites run; rbit-platform native fixtures run locally,
+unsafe audit open. 0069 MUST follow
 identity0068 and Wiki0066; do not apply it independently or rewrite previous
 migration versions.
 This adds real storage/recovery operations but no central/network activation,
@@ -126,8 +127,11 @@ Run on the shared build lane once identity 0067/0068 were published beneath 0069
 rustfmt, strict workspace Clippy, the source/AST checks, and the rbit-storage
 Wiki/protocol/FULL suites, rbit-services `--test integration` (including
 `wiki_reads::fenced_recovery`), rbit-git, rbit-wikis and rbit-identity suites.
-Still UNRUN: rbit-platform is not a workspace member, so its Rust build, Clippy,
-Windows native fixtures, platform CI and independent unsafe audit remain open.
+rbit-platform is now a workspace member. Locally on Windows it builds, passes
+strict all-target Clippy (also cross-checked for Linux) and passes its 6 package tests,
+plus both explicit-scratch fixtures (cross-volume no-copy and loopback-UNC refusal).
+See its [README](../../crates/rbit-platform/README.md#qualification-run). Still
+open: a hosted CI result, a mapped-drive refusal run and an independent unsafe audit.
 These suites are SQL/native-Git evidence, not power-loss proof. Next actual work remains
 bounded startup catalog/native closure scanning and its resource budgets, incremental
 epoch-scoped prior-head state, complete namespace bootstrap/ref durability, SQL
