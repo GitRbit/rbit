@@ -9,6 +9,7 @@ import { checkCollaborationFeatures, checkCollaborationGraphs } from "./collabor
 import { checkUnifiedModelBoundary } from "./identity-model-boundary.mjs";
 import { checkInventoryCompileIsolation } from "./inventory-isolation.mjs";
 import { checkPlannedAdditions } from "./planned-features.mjs";
+import { checkPlatformBoundary } from "./platform-boundary.mjs";
 
 export const LIMIT = 400;
 // These complete former legacy crates now obey strict physical and cumulative bounds.
@@ -33,6 +34,7 @@ const FEATURE_EDGES = {
   "rbit-repositories": ["rbit-contracts", "rbit-identity-models"],
   "rbit-wikis": ["rbit-contracts", "rbit-access"],
   "rbit-notifications": ["rbit-contracts", "rbit-collaboration"],
+  "rbit-platform": [],
   "rbit-collaboration": ["rbit-identity-models", "rbit-contracts", "rbit-access", "rbit-repositories", "rbit-kernel"],
   "rbit-actions": ["rbit-contracts", "rbit-access", "rbit-workflow", "rbit-kernel"],
   "rbit-presentation": ["rbit-contracts", "rbit-localization"],
@@ -175,7 +177,7 @@ export function check(root) {
     ...checkIdentityFeatures(metadata), ...checkIdentityModelGraphs(root), ...checkIdentityTokenGraph(root), ...checkIdentitySessionGraph(root), ...checkInventoryGraph(root),
     ...checkCollaborationFeatures(metadata), ...checkCollaborationGraphs(root),
     ...checkUnifiedModelBoundary(root, metadata), ...checkInventoryCompileIsolation(root),
-    ...checkMigrations(root, baseline), ...checkLedger(root, ledger)] };
+    ...checkPlatformBoundary(root, files), ...checkMigrations(root, baseline), ...checkLedger(root, ledger)] };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
