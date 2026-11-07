@@ -50,7 +50,11 @@
         "lib::external_auth::callback_mode::Legacy",
         "lib::external_auth::callback_mode::Original",
         "lib::wikis::WikiStorageOwner",
-        "lib::wikis::WikiStorageOpenError"
+        "lib::wikis::WikiStorageOpenError",
+        "lib::wikis::startup::WikiStartupCatalog",
+        "lib::wikis::startup::WikiStartupScopeScan",
+        "lib::wikis::startup::WikiStartupProgress",
+        "lib::wikis::startup::WikiStartupScanError"
       ]
     },
     {
@@ -144,6 +148,12 @@
         "lib::sqlite::wiki_mutations::full::startup::WikiStartupBatch",
         "lib::sqlite::wiki_mutations::full::startup::CatalogRow",
         "lib::sqlite::wiki_mutations::full::startup::PendingRow",
+        "lib::sqlite::wiki_mutations::full::scratch::ScratchOwner",
+        "lib::sqlite::wiki_mutations::full::scratch::WikiScratchLedger",
+        "lib::sqlite::wiki_mutations::full::scratch::WikiScratchScope",
+        "lib::sqlite::wiki_mutations::full::scratch::edges::WikiScratchEdgeCursor",
+        "lib::sqlite::wiki_mutations::full::scratch::edges::WikiScratchEdgeBatch",
+        "lib::sqlite::wiki_mutations::full::scratch::edges::EdgeRow",
         "lib::sqlite::wiki_mutations::full::fencing_tests::FileObjects"
       ]
     },

@@ -5,6 +5,7 @@ mod fencing_tests;
 mod jobs;
 mod opening;
 mod retention;
+pub mod scratch;
 mod shutdown;
 pub mod startup;
 #[cfg(test)]
@@ -85,6 +86,12 @@ pub enum WikiWriteError {
     ReplaySyncIncomplete,
     #[error("wiki protocol epoch exhausted")]
     EpochExhausted,
+    #[error("wiki startup scratch must be cleaned before a fresh scan")]
+    ScratchCleanupRequired,
+    #[error("wiki startup scratch capacity is exhausted")]
+    ScratchCapacity,
+    #[error("wiki startup scratch work is incomplete")]
+    ScratchIncomplete,
 }
 
 /// Constructed only after the FULL-connection acceptance transaction committed.

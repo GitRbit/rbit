@@ -1,4 +1,5 @@
 //! Explicit wiki storage composition; no routes, readiness or visible publisher.
+pub mod startup;
 use rbit_git::wikis::{CatalogBoundWikiObjects, CatalogPreparedWikiObjects, WikiObjectError, WikiObjectWriter, WikiObjects};
 use rbit_kernel::BlockingBudget;
 use rbit_storage::{

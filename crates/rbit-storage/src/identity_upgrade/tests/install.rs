@@ -14,7 +14,7 @@ async fn pinned_main_layout_installs_under_owner_without_key_or_session_cleanup_
         .install_layout()
         .await
         .unwrap_or_else(|failure| panic!("layout installation failed: {:?}", failure.error()));
-    assert_eq!(f.migration_rows().await.last().unwrap().0, 69);
+    assert_eq!(f.migration_rows().await.last().unwrap().0, 70);
     assert!(!f.sql.with_file_name(crate::sealing::KEY_FILE_NAME).exists());
     assert_eq!(f.state().await, "legacy");
     assert!(KvStore::open(&f.kv).is_err(), "installed owner still retains the actual existing KV file");
@@ -87,7 +87,7 @@ async fn cancellation_of_install_waiter_does_not_drop_queued_operation_native_ow
     })
     .await
     .unwrap();
-    assert_eq!(f.migration_rows().await.last().unwrap().0, 69);
+    assert_eq!(f.migration_rows().await.last().unwrap().0, 70);
     assert_eq!(f.state().await, "legacy");
     drop(owner);
 }

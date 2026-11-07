@@ -17,7 +17,7 @@ use std::fmt;
 /// Private continuation retains the actual root/wiki gate and catalog owner.
 /// It cannot be reconstructed from persistent IDs, serialized or cloned.
 pub struct WikiLooseScan<K> {
-    walk: walk::Walk,
+    walk: Option<walk::Walk>,
     pending: Option<pending::Pending>,
     keepalive: K,
     scope: WikiScope,
@@ -68,11 +68,20 @@ impl WikiObjectWriter {
             .spawn(move || {
                 keepalive.check_objects_bound().map_err(|_| WikiObjectError::Binding)?;
                 let objects = &scope.owner.objects;
-                let repo = layout::repository(&objects.root, objects.identity, repository, wiki, false)?;
-                if repo.object_hash() != gix::hash::Kind::Sha1 {
-                    return Err(WikiObjectError::Format);
+                if repository.0 <= 0 {
+                    return Err(WikiObjectError::Binding);
                 }
-                let walk = walk::Walk::open(&repo.path().join("objects"))?;
+                let path = objects.root.join(repository.0.to_string()).join(format!("{}.git", wiki.get()));
+                layout::no_links(&path)?;
+                let walk = if path.try_exists().map_err(crate::GitError::from)? {
+                    let repo = layout::repository(&objects.root, objects.identity, repository, wiki, false)?;
+                    if repo.object_hash() != gix::hash::Kind::Sha1 {
+                        return Err(WikiObjectError::Format);
+                    }
+                    Some(walk::Walk::open(&repo.path().join("objects"))?)
+                } else {
+                    None
+                };
                 keepalive.check_objects_bound().map_err(|_| WikiObjectError::Binding)?;
                 Ok(WikiLooseScan { walk, pending: None, keepalive, scope })
             })
@@ -107,7 +116,11 @@ impl<K: WikiObjectOwnership> WikiLooseScan<K> {
             if budget.bytes() - bytes_hashed < MAX_SCAN_OBJECT_BYTES {
                 break;
             }
-            match self.walk.next()? {
+            let step = match &mut self.walk {
+                Some(walk) => walk.next()?,
+                None => walk::Step::End,
+            };
+            match step {
                 walk::Step::Progress => {}
                 walk::Step::End => {
                     end = true;

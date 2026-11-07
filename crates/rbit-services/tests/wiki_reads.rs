@@ -5,6 +5,7 @@ mod fenced_recovery;
 mod fixture;
 mod incarnation;
 mod ownership;
+mod startup;
 
 use fixture::Fixture;
 use rbit_core::{Permission, Timestamp};
