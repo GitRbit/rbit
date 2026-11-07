@@ -102,14 +102,16 @@ impl Fixture {
         git(&source, &["commit", "-qam", "Branch documentation"]);
         let branch_commit = git(&source, &["rev-parse", "HEAD"]);
         let mut bare = PathBuf::new();
-        for (name, visibility) in [("public", Visibility::Public), ("private", Visibility::Private)] {
+        for (name, visibility) in [("public", Visibility::Public), ("private", Visibility::Private), ("empty", Visibility::Public)] {
             let repo = services
                 .repositories
                 .create(&owner, CreateRepository { name: name.into(), description: String::new(), visibility })
                 .await
                 .unwrap();
             let target = rbit_git::RepositoryStorage::new(config.storage.repositories_dir()).path_for(repo.owner.id, repo.repo.id);
-            git(&target, &["fetch", "-q", source.to_str().unwrap(), "main:main", "docs-next:docs-next"]);
+            if name != "empty" {
+                git(&target, &["fetch", "-q", source.to_str().unwrap(), "main:main", "docs-next:docs-next"]);
+            }
             if name == "public" {
                 bare = target;
             }
@@ -301,3 +303,5 @@ async fn document_fragments_keep_whitelist_and_private_access_checks() {
         assert!(content.contains("MIT license body marker"));
     }
 }
+
+mod commit_navigation;
