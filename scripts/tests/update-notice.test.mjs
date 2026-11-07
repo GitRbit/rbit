@@ -7,7 +7,7 @@ function fixture(initial = '1000000000000000001;pending') {
   const listeners = new Map();
   const placeholder = raw => ({
     raw, children: [],
-    getAttribute() { return this.raw; }, setAttribute(name, value) { this.raw = value; },
+    getAttribute(name) { return name === 'data-update-notice' ? this.raw : null; }, setAttribute(name, value) { this.raw = value; },
     querySelector() { return this.children[0] ?? null; },
     replaceChildren(...children) { this.children = children; },
   });

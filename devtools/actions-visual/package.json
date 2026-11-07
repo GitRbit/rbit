@@ -1,0 +1,13 @@
+{
+  "name": "rbit-actions-visual-review",
+  "private": true,
+  "type": "module",
+  "license": "MIT OR Apache-2.0",
+  "description": "Isolated CI-only visual acceptance for synthetic Actions prototypes.",
+  "scripts": {
+    "test": "node run.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0"
+  }
+}

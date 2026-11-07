@@ -35,12 +35,13 @@ use std::{
     },
 };
 
+use rbit_actions::claims::RunnerClaims;
 use rbit_auth::TaskTokenSecret;
 use rbit_core::{
     Timestamp,
     actions::{Job, Run, RunnerId, Status, Task, aggregate},
 };
-use rbit_storage::sqlite::actions_runs::ClaimRequest;
+
 use rbit_workflow::{
     protocol::{PollRequest, valid_idempotency_key},
     secret::Secret,
@@ -55,26 +56,13 @@ use super::{
 };
 use crate::ServiceError;
 
+mod claim_bridge;
+
 /// Longest stored step name, in characters (the column's CHECK).
 const MAX_STEP_NAME_CHARS: usize = 1024;
 
-/// What a retried poll's key found.
-enum Resumed {
-    /// Its task, still running, with a new token.
-    Task(Box<JobSpec>),
-    /// A task that has stopped since (or a token already cleared by a cancel).
-    Spent,
-    /// Nothing: the key is new.
-    Unknown,
-}
-
-/// What one run of the claim query gave a runner.
-enum Claim {
-    Task(Box<JobSpec>),
-    Nothing,
-    /// A job was claimed with the poll's idempotency key but could not run.
-    Spent,
-}
+type Resumed = rbit_actions::claims::Resumed<JobSpec>;
+type Claim = rbit_actions::claims::Claim<JobSpec>;
 
 /// The polls held open, one per runner, and how many there are.
 #[derive(Debug, Default)]
@@ -182,76 +170,14 @@ impl ActionsService {
     /// The task a retried poll with `key` already claimed, with a fresh token, if it still
     /// runs on this runner.
     async fn resume(&self, runner: &CachedRunner, key: &str) -> Result<Resumed, RunnerError> {
-        let store = self.ctx().database.actions_runs();
-        let task = match runner.remembered(key) {
-            Some(task) => store.task(task).await?,
-            None if !runner.keys_loaded.swap(true, Ordering::SeqCst) => store.task_by_idempotency_key(runner.id, key).await?,
-            None => None,
-        };
-        let Some(task) = task.filter(|task| task.runner_id == Some(runner.id)) else { return Ok(Resumed::Unknown) };
-        if task.status != Status::Running {
-            return Ok(Resumed::Spent);
-        }
-        let token = TaskTokenSecret::generate();
-        if !store.replace_task_token(task.id, &token.digest()).await? {
-            return Ok(Resumed::Spent);
-        }
-        let Some(job) = store.job(task.job_id).await? else { return Ok(Resumed::Spent) };
-        tracing::info!(task = task.id.0, runner = runner.id.0, "poll retried: the same task with a new token");
-        match self.job_spec(&job, &task, &token).await? {
-            Ok(spec) => {
-                self.remember_masks(&spec);
-                Ok(Resumed::Task(Box::new(spec)))
-            }
-            Err(reason) => {
-                self.fail_unrunnable(&task, &reason).await?;
-                Ok(Resumed::Spent)
-            }
-        }
+        RunnerClaims::resume(&claim_bridge::ClaimSession::new(self, runner), key).await
     }
 
     /// Runs the claim query once for `runner`; on a claim, the task's specification. A
     /// claimed job that cannot be run fails, and without an idempotency key the query runs
     /// again.
     async fn claim_for(&self, runner: &CachedRunner, key: Option<&str>) -> Result<Claim, RunnerError> {
-        if runner.labels.is_empty() {
-            return Ok(Claim::Nothing);
-        }
-        let store = self.ctx().database.actions_runs();
-        loop {
-            let token = TaskTokenSecret::generate();
-            let request = ClaimRequest {
-                runner: runner.id,
-                scope: runner.scope,
-                labels: &runner.labels,
-                host_labels: &runner.host_labels,
-                ephemeral: runner.ephemeral,
-                instance_runners_for_all: self.config().instance_runners_for_all,
-                token_digest: &token.digest(),
-                idempotency_key: key,
-                now: Timestamp::now(),
-            };
-            let Some(claimed) = store.claim(&request).await? else { return Ok(Claim::Nothing) };
-            if let Some(key) = key {
-                runner.remember(key, claimed.task.id);
-            }
-            tracing::info!(task = claimed.task.id.0, job = claimed.job.id.0, runner = runner.id.0, "job claimed");
-            match self.job_spec(&claimed.job, &claimed.task, &token).await? {
-                Ok(spec) => {
-                    self.remember_masks(&spec);
-                    let names: Vec<String> = spec.template.steps.iter().enumerate().map(|(index, step)| step_name(index, step)).collect();
-                    store.create_steps(claimed.task.id, &names).await?;
-                    self.report_statuses(claimed.job.run_id).await?;
-                    return Ok(Claim::Task(Box::new(spec)));
-                }
-                Err(reason) => {
-                    self.fail_unrunnable(&claimed.task, &reason).await?;
-                    if key.is_some() {
-                        return Ok(Claim::Spent);
-                    }
-                }
-            }
-        }
+        RunnerClaims::claim(!runner.labels.is_empty(), || claim_bridge::ClaimSession::new(self, runner), key).await
     }
 
     /// Fails a claimed task that cannot run, saying why in its log, and settles its job.

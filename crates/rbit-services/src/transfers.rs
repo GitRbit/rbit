@@ -11,12 +11,14 @@
 //!   new owner is a validation error and leaves everything as it was.
 //! * The bare repository is moved first (one same-filesystem rename), then the owner is
 //!   changed in a transaction that also drops the old organisation's team grants. If the
-//!   database step fails the directory is moved back, so disk and database never disagree.
+//!   database step fails a compensating move is attempted. Cancellation or a failed
+//!   compensation can leave disk and metadata requiring reconciliation.
 //! * Collaborators, stars and everything else keyed by the repository id stay.
 //!   [`DomainEvent::RepositoryTransferred`] is published and the transfer is audited.
 
-use rbit_core::{Account, Repository, User, repository::OwnedRepository};
+use rbit_core::{Account, AccountId, RepoId, Repository, User, repository::OwnedRepository};
 use rbit_git::relocate::relocate;
+use rbit_repositories::transfer::{RepositoryTransfer, TransferError, TransferPort, TransferWriteError};
 use rbit_storage::StorageError;
 
 use crate::{
@@ -54,71 +56,93 @@ impl TransferService {
         new_owner: &str,
         confirmation: &str,
     ) -> Result<OwnedRepository, ServiceError> {
-        require_admin(repo)?;
-        let full_name = repo.repo.full_name();
-        let new_owner = new_owner.trim();
-        if new_owner.is_empty() {
-            return Err(ServiceError::Invalid("choose the new owner".to_owned()));
-        }
-        if confirmation.trim() != full_name {
-            return Err(ServiceError::Invalid(format!("type \"{full_name}\" to confirm")));
-        }
-
-        let target = self.target(actor, new_owner).await?;
-        let current = &repo.repo.repo;
-        if target.id == current.owner_id {
-            return Err(ServiceError::Invalid(format!("{full_name} already belongs to {}", target.name)));
-        }
-
-        let storage = &self.ctx.repositories;
-        // A page that loaded the repository through a pinned reader holds its lease; the
-        // move would wait for this very request.
-        repo.reader.close();
-        relocate(storage, current.id, current.owner_id, target.id).await?;
-        if let Err(error) = self.ctx.database.repositories().transfer(current.id, target.id).await {
-            if let Err(restore) = relocate(storage, current.id, target.id, current.owner_id).await {
-                tracing::error!(%restore, repo = %full_name, "failed to move the repository back after a failed transfer");
-            }
-            return Err(match error {
-                StorageError::Conflict(_) => {
-                    ServiceError::Invalid(format!("{}/{} already exists; rename one of them first", target.name, current.name))
-                }
-                other => other.into(),
-            });
-        }
-
-        let moved = OwnedRepository { repo: Repository { owner_id: target.id, ..current.clone() }, owner: target };
-        tracing::info!(repo = %full_name, to = %moved.full_name(), by = %actor.name(), "repository transferred");
-        self.ctx.events.publish(DomainEvent::RepositoryTransferred {
-            repo: current.id,
-            from: current.owner_id,
-            to: moved.owner.id,
-            actor: actor.id(),
-        });
-        self.audit
-            .record(AuditEntry::new(AuditAction::RepositoryTransferred).by(actor).on(full_name).detail(format!("to {}", moved.full_name())))
-            .await;
-        Ok(moved)
-    }
-
-    /// The account `actor` may move a repository to.
-    async fn target(&self, actor: &User, name: &str) -> Result<Account, ServiceError> {
-        let store = self.ctx.database.repositories();
-        let target = if actor.is_admin {
-            store.find_owner(name).await?.ok_or_else(|| ServiceError::Invalid(format!("there is no user or organization called {name}")))?
-        } else {
-            authorised_owner(&store, actor, name).await.map_err(|error| match error {
-                ServiceError::Invalid(_) => ServiceError::Invalid(format!("you cannot transfer repositories to {name}")),
-                other => other,
-            })?
-        };
-        if !target.is_organization() && self.ctx.database.accounts().is_suspended(target.id).await? {
-            return Err(ServiceError::Invalid(format!("{} is suspended", target.name)));
-        }
-        Ok(target)
+        RepositoryTransfer::execute(
+            &TransferBridge { service: self, repo },
+            actor,
+            &repo.repo,
+            repo.access.can_admin(),
+            new_owner,
+            confirmation,
+        )
+        .await
+        .map_err(service_error)
     }
 }
 
 fn require_admin(repo: &RepoContext) -> Result<(), ServiceError> {
     if repo.access.can_admin() { Ok(()) } else { Err(ServiceError::Forbidden) }
+}
+
+// Borrowed request projection; no new store handle exists before target lookup.
+#[derive(Debug)]
+struct TransferBridge<'a> {
+    service: &'a TransferService,
+    repo: &'a RepoContext,
+}
+
+impl TransferPort for TransferBridge<'_> {
+    type Error = ServiceError;
+    type MoveError = rbit_git::GitError;
+
+    async fn find_owner(&self, name: &str) -> Result<Option<Account>, Self::Error> {
+        Ok(self.service.ctx.database.repositories().find_owner(name).await?)
+    }
+
+    async fn authorized_owner(&self, actor: &User, name: &str) -> Result<Account, TransferError<Self::Error>> {
+        let store = self.service.ctx.database.repositories();
+        authorised_owner(&store, actor, name).await.map_err(|error| match error {
+            ServiceError::Invalid(message) => TransferError::Invalid(message),
+            other => TransferError::Failure(other),
+        })
+    }
+
+    async fn is_suspended(&self, account: AccountId) -> Result<bool, Self::Error> {
+        Ok(self.service.ctx.database.accounts().is_suspended(account).await?)
+    }
+
+    fn close_reader(&self) {
+        self.repo.reader.close();
+    }
+
+    async fn relocate(&self, repo: RepoId, from: AccountId, to: AccountId) -> Result<(), Self::MoveError> {
+        relocate(&self.service.ctx.repositories, repo, from, to).await?;
+        Ok(())
+    }
+
+    fn move_error(&self, error: Self::MoveError) -> Self::Error {
+        error.into()
+    }
+
+    async fn transfer(&self, repo: RepoId, owner: AccountId) -> Result<(), TransferWriteError<Self::Error>> {
+        self.service.ctx.database.repositories().transfer(repo, owner).await.map_err(|error| match error {
+            StorageError::Conflict(_) => TransferWriteError::Conflict,
+            other => TransferWriteError::Failure(other.into()),
+        })
+    }
+
+    fn restore_failed(&self, error: &Self::MoveError, old_name: &str) {
+        tracing::error!(restore = %error, repo = %old_name, "failed to move the repository back after a failed transfer");
+    }
+
+    async fn transferred(&self, actor: &User, previous: &Repository, moved: &OwnedRepository, old_name: String) {
+        tracing::info!(repo = %old_name, to = %moved.full_name(), by = %actor.name(), "repository transferred");
+        self.service.ctx.events.publish(DomainEvent::RepositoryTransferred {
+            repo: previous.id,
+            from: previous.owner_id,
+            to: moved.owner.id,
+            actor: actor.id(),
+        });
+        self.service
+            .audit
+            .record(AuditEntry::new(AuditAction::RepositoryTransferred).by(actor).on(old_name).detail(format!("to {}", moved.full_name())))
+            .await;
+    }
+}
+
+fn service_error(error: TransferError<ServiceError>) -> ServiceError {
+    match error {
+        TransferError::Forbidden => ServiceError::Forbidden,
+        TransferError::Invalid(message) => ServiceError::Invalid(message),
+        TransferError::Failure(error) => error,
+    }
 }

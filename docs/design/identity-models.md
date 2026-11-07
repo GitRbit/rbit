@@ -1,0 +1,96 @@
+# Identity model and credential feature boundary
+
+Identity owns `AccountName`, `Email`, `AccountKind`, `Account` and `User`. Their
+public constructors, fields, methods and existing Serde representations stay the
+same. Legacy `rbit-core` root and account/names module paths reexport those exact
+types, including tuple-constructed shared AccountId and Timestamp fields. No data
+conversion, account lookup or new persisted representation accompanies this move.
+RepositoryName stays core-owned and uses the shared contract grammar independently.
+
+The existing permissive email plausibility checks are preserved, including trimming,
+case, Unicode and other accepted edge cases. Account names keep their original route
+reservation list, byte bounds and allocation-preserving owned constructor. This
+extraction does not tighten validation or claim to verify mailbox ownership.
+
+## Explicit feature graph
+
+The identity crate provides explicit layers:
+
+| Selection | Available API | Normal dependencies |
+| --- | --- | --- |
+| No default features | Account/session models, validated names and pure account port | contracts, Serde |
+| `credentials` | Models plus existing Passwords/PasswordError API | above plus Argon2, thiserror, Tokio, zeroize |
+| `password-work` | Credential layer plus injected work and account applications | credential layer plus kernel, subtle, getrandom |
+| `session-tokens` | Models plus fixed-width session token/codec API | contracts, Serde, base64, sha2, getrandom |
+| `sessions` | Session applications and tracked finalization | session-tokens plus Tokio/tokio-util |
+| Default | Complete existing password API | same as password-work |
+
+The asynchronous legacy Passwords facade inherently needs Tokio. Model-only
+consumers do not activate it. The workspace dependency must disable defaults;
+core uses that model-only dependency, auth explicitly enables credentials and session-tokens, and
+services enables password-work + sessions, while web development fixtures enable
+password-work. The production web form adapters use zeroize directly. Cargo
+unifies requested capabilities when building the server; feature selection is
+compile-time dependency organization, not a runtime security sandbox.
+
+No new crate, global budget, crypto algorithm, configuration value or execution
+owner is introduced. There is one shared password owner per composed service
+instance as before. Workflow has no core/identity dependency, and runner depends
+on workflow plus its own existing runtime; neither receives a new identity edge.
+
+Password/application integration binaries require password-work explicitly.
+Cargo skips them when that feature is absent. A successful model-only run therefore
+proves only model behavior and dependency isolation, never crypto/cancellation
+acceptance. Credentials-only builds must still exercise their applicable unit tests;
+default/password-work validation must run all existing password integration cases.
+
+## Integration and validation
+
+Root composition must change its workspace declaration to
+`rbit-identity = { path = "crates/rbit-identity", default-features = false }`.
+The leaf manifests request their explicit capabilities. Architecture policy permits
+core -> identity for compatibility; identity itself permits only contracts/kernel
+feature edges and never imports core, auth, storage, HTTP or services. Root updates
+the lockfile to add identity's contracts/Serde and model-test dependency edges.
+
+Use separate helper runs after the shared build lane is available:
+
+```sh
+node scripts/workspace.mjs test --package rbit-identity --no-default-features --locked
+node scripts/workspace.mjs test --package rbit-identity --no-default-features --features credentials --locked
+node scripts/workspace.mjs test --package rbit-identity --locked
+node scripts/workspace.mjs test --package rbit-core --package rbit-auth --locked
+```
+
+Inspect `cargo tree --edges normal` separately for identity without defaults and
+core, then credentials/password-work. The model closure must contain no Argon2,
+Tokio, zeroize or kernel edge introduced by identity. Workspace-wide builds unify
+features and cannot establish this isolated graph. Verify normal/all-target checks,
+strict Clippy, source/type ceilings and existing service/HTTP tests afterward.
+The integrated feature matrix passes six model-only tests, eight credentials-only
+tests and all thirty default tests, including every existing password integration
+binary. Core/auth compatibility passes another 151/42 tests. Strict all-target Clippy
+passes for model-only, credentials-only and the combined default consumer graph.
+Isolated normal core metadata contains 24 packages and no Argon2, Tokio, kernel or
+zeroize edge. CI checks both explicit consumer features and resolved model-only
+normal graphs; workspace feature unification is not substituted for that evidence.
+
+The model extraction alone did not transfer application workflows or persistence
+ports. Account registration/authentication now have their own subsequent production
+port; the session follow-up below advances another subset. Neither establishes full
+identity/access, MFA, recovery, external sign-in, personal-token or phase2 completion.
+
+
+The session application follow-up adds an explicit `sessions` capability layering
+Tokio/tokio-util over `session-tokens`, independently of Argon2. Services opts into
+password-work + sessions; model-only storage/core remain unchanged. Its new
+application/ownership tests are compiler-pending; the earlier matrix above proves
+only its original recorded scope. See [session application ownership](identity-session-application.md).
+
+
+Credential input follow-up: the credentials layer now includes the existing optional
+zeroize dependency so even the legacy facade protects owned inputs synchronously.
+The session-tokens-only layer does not request it. Model-only graph restrictions and
+all explicit consumer feature names remain unchanged. Outer services and form handlers
+retain `.await` usage through eagerly protected futures; this source follow-up still
+requires compiler validation, independently of earlier acceptance counts.

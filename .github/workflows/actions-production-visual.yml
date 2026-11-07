@@ -1,0 +1,139 @@
+name: Production Actions visual review
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/actions-production-visual.yml'
+      - '.github/workflows/ci.yml'
+      - '.github/actions/prepare-build/**'
+      - '.cargo/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'crates/**'
+      - 'devtools/actions-visual/**'
+      - 'scripts/tests/rewrite-actions-*.test.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/actions-production-visual.yml'
+      - '.github/workflows/ci.yml'
+      - '.github/actions/prepare-build/**'
+      - '.cargo/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'crates/**'
+      - 'devtools/actions-visual/**'
+      - 'scripts/tests/rewrite-actions-*.test.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# No workflow-wide concurrency: an irrelevant synchronize event must not cancel
+# a previously admitted production capture while the regular CI run is superseded.
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: '0'
+  CARGO_BUILD_JOBS: '1'
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+  NODE_VERSION: '24'
+
+jobs:
+  relevance:
+    name: Check exact production-source event delta
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    outputs:
+      run: ${{ steps.delta.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: node --test scripts/tests/rewrite-actions-visual-relevance.test.mjs scripts/tests/rewrite-actions-production-workflow.test.mjs
+      - name: Compare validated synchronize endpoints (unknown means run)
+        id: delta
+        run: node devtools/actions-visual/production-relevance.mjs
+
+  production:
+    name: Sandboxed production Actions candidates (optional)
+    needs: relevance
+    if: ${{ always() && !cancelled() && (needs.relevance.result != 'success' || needs.relevance.outputs.run != 'false') }}
+    concurrency:
+      group: actions-production-capture-${{ github.ref }}
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/prepare-build
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: ". -> .cargo-build"
+          cache-workspace-crates: false
+          cache-all-crates: false
+          cache-bin: false
+          cache-on-failure: false
+          save-if: >-
+            ${{ (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge')) ||
+                (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Verify source contracts and build fresh same-revision public assets
+        run: |
+          node --test scripts/tests/rewrite-actions-production*.test.mjs
+          npm ci
+          npm run build
+          git diff --exit-code -- crates/rbit-web/assets
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2
+        with:
+          tool: cargo-nextest
+      - name: Build and export only the exact Linux web integration fixture
+        run: node devtools/actions-visual/export-production.mjs
+      - name: Install exact isolated browser tooling and audit its lockfile
+        run: |
+          npm ci --ignore-scripts --prefix devtools/actions-visual
+          npm audit --prefix devtools/actions-visual --audit-level=high
+      - name: Capture real production pages with positive sandbox proof
+        run: node devtools/actions-visual/container.mjs --production
+      - name: Remove only the positively owned production container
+        if: ${{ always() }}
+        run: node devtools/actions-visual/cleanup.mjs --production
+      - name: Verify bounded public image evidence
+        id: artifacts
+        if: ${{ always() && !cancelled() }}
+        run: node devtools/actions-visual/artifacts.mjs actions-production-artifacts
+      - name: Retain production candidates and sanitized evidence
+        if: ${{ always() && !cancelled() && steps.artifacts.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: actions-production-linux-${{ github.run_id }}-${{ github.run_attempt }}
+          path: actions-production-artifacts/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+      - name: Explain production acceptance scope
+        if: ${{ always() && !cancelled() }}
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
+          ## Production Actions candidates
+          Debug-functional pages use the exact focused Linux integration binary and fresh same-revision public assets.
+          This optional workflow is independent of the seven required CI checks and the Windows test matrix.
+          Human image review and successful real HTMX checks remain required; this is not release timing.
+          Running captures are not superseded by later pushes; the default pending queue can replace an older pending relevant run.
+          No seeded data, cookies, profiles, fixture binaries or private process output are uploaded.
+          SUMMARY

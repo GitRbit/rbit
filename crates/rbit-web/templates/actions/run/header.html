@@ -1,0 +1,73 @@
+<div class="box overflow-hidden">
+  <div class="flex flex-wrap items-start gap-3 px-4 py-4 sm:px-5">
+    {% let look = run.look %}
+    <span class="mt-1 shrink-0">{% include "actions/state.html" %}</span>
+    <div class="min-w-0 flex-1">
+      <h1 class="break-words text-xl font-semibold tracking-tight">
+        {{ run.title }} <span class="font-normal text-ink-muted">#{{ run.number }}</span>
+      </h1>
+      <p class="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-ink-muted">
+        <span lang="en">{{ run.look.label }}</span>
+        <span aria-hidden="true">·</span><span lang="en">{{ run.event }}</span>
+        {% if let Some(actor) = run.actor %}
+        <span aria-hidden="true">·</span><span>{{ text.triggered_by }} <bdi>{{ actor }}</bdi></span>
+        {% endif %}
+        <span aria-hidden="true">·</span><time lang="en" dir="ltr" datetime="{{ run.when_iso }}">{{ run.when }}</time>
+      </p>
+    </div>
+    {% if can_write %}
+    <div class="flex w-full flex-wrap gap-2 sm:w-auto">
+      {% if let Some(cancel_url) = cancel_url %}
+      <form method="post" action="{{ cancel_url }}">
+        <button class="btn h-10 sm:h-8" type="submit">
+          {% call ui::icon("stop", "size-3.5") %}{% endcall %}{{ text.cancel }}
+        </button>
+      </form>
+      {% endif %}
+      {% if let Some(rerun_failed_url) = rerun_failed_url %}
+      <form method="post" action="{{ rerun_failed_url }}">
+        <button class="btn h-10 sm:h-8" type="submit">
+          {% call ui::icon("refresh", "size-3.5") %}{% endcall %}{{ text.rerun_failed }}
+        </button>
+      </form>
+      {% endif %}
+      {% if let Some(rerun_url) = rerun_url %}
+      <form method="post" action="{{ rerun_url }}">
+        <button class="btn h-10 sm:h-8" type="submit">
+          {% call ui::icon("refresh", "size-3.5") %}{% endcall %}{{ text.rerun_all }}
+        </button>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+  <dl class="grid grid-cols-2 gap-x-5 gap-y-4 border-t border-line bg-subtle px-4 py-4 text-[13px] sm:grid-cols-4 sm:px-5">
+    <div class="min-w-0">
+      <dt class="text-xs text-ink-muted">{{ text.workflow }}</dt>
+      <dd class="mt-1 break-words font-medium">
+        <a class="hover:underline hover:underline-offset-4" href="{{ run.workflow_url }}"><bdi>{{ run.workflow }}</bdi></a>
+      </dd>
+    </div>
+    {#- The sha and ref share one wrapping line that follows the cell's direction; a block
+        `bdi` would take its own LTR direction and sit alone at the left edge. -#}
+    <div class="min-w-0">
+      <dt class="text-xs text-ink-muted">{{ text.commit }}</dt>
+      <dd class="mt-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 font-mono text-xs">
+        <a class="hover:underline hover:underline-offset-4"
+           href="{{ run.commit_url }}" title="{{ run.sha }}"><bdi dir="ltr">{{ run.short_sha }}</bdi></a>
+        {% if !run.reference.is_empty() %}<bdi class="min-w-0 break-all text-ink-muted">{{ run.reference }}</bdi>{% endif %}
+      </dd>
+    </div>
+    {% if let Some(duration) = run.duration %}
+    <div class="min-w-0">
+      <dt class="text-xs text-ink-muted">{{ text.duration }}</dt>
+      <dd class="mt-1 tabular-nums">{{ duration }}</dd>
+    </div>
+    {% endif %}
+    <div class="min-w-0">
+      <dt class="text-xs text-ink-muted">{{ text.attempt }}</dt>
+      <dd class="mt-1 tabular-nums">{{ run.attempt }}</dd>
+    </div>
+  </dl>
+</div>
+

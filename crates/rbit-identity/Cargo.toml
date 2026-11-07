@@ -1,0 +1,76 @@
+[package]
+name = "rbit-identity"
+description = "Identity domain contracts and optional credential work independent of HTTP and persistence."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[features]
+sessions = ["session-tokens", "dep:tokio", "dep:tokio-util"]
+session-tokens = ["dep:base64", "dep:sha2", "dep:getrandom"]
+default = ["password-work"]
+credentials = ["dep:argon2", "dep:thiserror", "dep:tokio", "dep:zeroize"]
+password-work = ["credentials", "dep:rbit-kernel", "dep:subtle", "dep:getrandom"]
+
+[dependencies]
+rbit-contracts.workspace = true
+rbit-identity-models = { workspace = true, default-features = false }
+serde.workspace = true
+base64 = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+rbit-kernel = { workspace = true, optional = true }
+argon2 = { workspace = true, optional = true }
+thiserror = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+tokio-util = { workspace = true, features = ["rt"], optional = true }
+zeroize = { workspace = true, optional = true }
+subtle = { workspace = true, optional = true }
+getrandom = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json.workspace = true
+postcard.workspace = true
+
+[lints]
+workspace = true
+
+[[test]]
+name = "password_cancellation"
+required-features = ["password-work"]
+
+[[test]]
+name = "password_compatibility"
+required-features = ["password-work"]
+
+[[test]]
+name = "password_login"
+required-features = ["password-work"]
+
+[[test]]
+name = "password_reuse"
+required-features = ["password-work"]
+
+[[test]]
+name = "password_work"
+required-features = ["password-work"]
+
+[[test]]
+name = "account_workflows"
+required-features = ["password-work"]
+
+[[test]]
+name = "session_tokens"
+required-features = ["session-tokens"]
+
+[[test]]
+name = "session_effects"
+required-features = ["sessions"]
+
+[[test]]
+name = "session_application"
+required-features = ["sessions"]
+
+[[test]]
+name = "credential_inventory"
+required-features = ["credentials"]

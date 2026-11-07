@@ -3,38 +3,29 @@
 // watcher. Debug builds read `assets/` from disk, so CSS and JS changes need no
 // restart; refresh the browser to see any change.
 //
-//   npm run dev            # http://localhost:3000, data in ./data-live
-//
-// Builds go to target/live so other cargo commands never fight over a locked
-// executable. RBIT_STORAGE__DATA_DIR overrides the data directory; the first run
-// copies ./data into ./data-live when it exists, so experiments never touch ./data.
+//   npm run dev            # isolated runtime, shared compiler output
+// Builds enter the workspace lease; only generation-specific copies are executed.
 
 import { spawn } from "node:child_process";
-import { copyFileSync, cpSync, existsSync, statSync, watch } from "node:fs";
+import { statSync, watch } from "node:fs";
 import { join, resolve } from "node:path";
+import { context } from "./workspace/paths.mjs";
+import { cargo } from "./workspace/build.mjs";
+import { pruneGenerations, runBinary } from "./workspace/runtime.mjs";
+import { runtimeEnvironment } from "./workspace/ports.mjs";
+import { stopTree } from "./workspace/process-tree.mjs";
 
 const root = resolve(import.meta.dirname, "..");
-const targetDir = join(root, "target", "live");
-const exe = join(targetDir, "debug", process.platform === "win32" ? "rbit.exe" : "rbit");
-const runExe = join(targetDir, process.platform === "win32" ? "rbit-dev.exe" : "rbit-dev");
-const dataDir = process.env.RBIT_STORAGE__DATA_DIR ?? join(root, "data-live");
-
-if (!process.env.RBIT_STORAGE__DATA_DIR && !existsSync(dataDir) && existsSync(join(root, "data"))) {
-  cpSync(join(root, "data"), dataDir, { recursive: true });
-  log(`copied ./data to ${dataDir}`);
-}
-
-const env = {
-  ...process.env,
-  CARGO_TARGET_DIR: targetDir,
-  RBIT_STORAGE__DATA_DIR: dataDir,
-  RBIT_MAIL__TRANSPORT: process.env.RBIT_MAIL__TRANSPORT ?? "log",
-};
+const workspace = await context(root);
+const env = await runtimeEnvironment(workspace);
+const dataDir = env.RBIT_STORAGE__DATA_DIR;
 
 let server = null;
 let building = false;
 let pending = false;
 let timer = null;
+let stopping = false;
+let activeBuild = null;
 /** Last seen modification time per watched path. */
 const stamps = new Map();
 
@@ -42,21 +33,11 @@ function log(message) {
   console.log(`[dev ${new Date().toLocaleTimeString()}] ${message}`);
 }
 
-function run(command, args) {
-  return new Promise((done) => {
-    const child = spawn(command, args, { cwd: root, env, stdio: "inherit", shell: process.platform === "win32" });
-    child.on("exit", (code) => done(code === 0));
-  });
-}
-
-function stopServer() {
-  if (!server) return Promise.resolve();
+async function stopServer() {
+  if (!server) return;
   const old = server;
+  await stopTree(old);
   server = null;
-  return new Promise((done) => {
-    old.once("exit", done);
-    old.kill();
-  });
 }
 
 async function rebuild() {
@@ -66,22 +47,28 @@ async function rebuild() {
   }
   building = true;
   log("building…");
-  const ok = await run("cargo", ["build", "--package", "rbit-server"]);
-  if (ok) {
-    // Run a copy: Windows cannot relink an executable while it is running.
+  try {
+    activeBuild = cargo(workspace, "build", ["--package", "rbit-server"], { env });
+    const build = await activeBuild;
+    if (stopping) return;
+    const executable = build.executables.find((item) => item.name === "rbit");
+    if (!executable) throw new Error("Cargo did not produce rbit");
     await stopServer();
-    copyFileSync(exe, runExe);
-    server = spawn(runExe, ["serve"], { cwd: root, env, stdio: "inherit" });
+    server = await runBinary(workspace, executable.path, ["serve"], env);
+    server.runtimeCompletion.catch((error) => log(error.message));
     server.on("exit", (code, signal) => {
       if (signal || code === null) return;
       log(`server exited with code ${code}`);
     });
-    log("server started on http://localhost:3000");
-  } else {
-    log("build failed; keeping the previous server running");
+    await pruneGenerations(workspace);
+    log(`server started (${env.RBIT_SERVER__BIND ?? "127.0.0.1:3000"}); data: ${dataDir}`);
+  } catch (error) {
+    log(`build/start failed: ${error.message}`);
+  } finally {
+    activeBuild = null;
+    building = false;
   }
-  building = false;
-  if (pending) {
+  if (pending && !stopping) {
     pending = false;
     rebuild();
   }
@@ -117,10 +104,17 @@ watch(join(root, "Cargo.toml"), () => schedule("Cargo.toml"));
 const css = spawn("npm", ["run", "watch:css"], { cwd: root, stdio: "inherit", shell: process.platform === "win32" });
 const js = spawn("npm", ["run", "watch:js"], { cwd: root, stdio: "inherit", shell: process.platform === "win32" });
 
-function shutdown() {
+async function shutdown() {
+  if (stopping) return;
+  stopping = true;
+  clearTimeout(timer);
   css.kill();
   js.kill();
-  stopServer().then(() => process.exit(0));
+  try {
+    if (activeBuild) { log("waiting for the current build before shutdown"); await activeBuild.catch(() => {}); }
+    await stopServer();
+    process.exit(0);
+  } catch (error) { log(error.message); process.exit(1); }
 }
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);

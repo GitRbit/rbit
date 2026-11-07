@@ -1,5 +1,6 @@
 {% import "macros.html" as ui %}
 {% import "repo/diff_rows.html" as diff %}
+{% import "repo/diff_counts.html" as stats %}
 {#- Changed-file summary, file tree and per-file diffs; expects `files: Vec<FileDiffView>`,
     `additions`, `deletions` and `truncated` fields (and `DiffBodyView` in scope).
     diff.js adds the filter, folder collapsing, the current-file marker and the toolbar
@@ -14,10 +15,7 @@
     </button>
     {% endif %}
     <p class="text-[13px] text-ink-muted"><span class="font-medium text-ink tabular-nums">{{ files.len() }}</span> {% if files.len() == 1 %}file{% else %}files{% endif %} changed</p>
-    <p class="flex items-center gap-2 font-mono text-xs tabular-nums">
-      <span class="text-success">+{{ additions }}</span>
-      <span class="text-danger">−{{ deletions }}</span>
-    </p>
+    {% call stats::counts(additions, deletions, "") %}{% endcall %}
     {% if files.len() > 1 %}
     <button type="button" class="btn btn-ghost ml-auto h-8 px-2 text-xs sm:h-8" data-diff-collapse-all hidden>
       <span class="contents" data-when="expanded">{% call ui::icon("chevrons-down-up", "size-3.5") %}{% endcall %}Collapse all</span>
@@ -56,11 +54,7 @@
             {% call ui::icon("check", "copy-done size-3.5 text-success") %}{% endcall %}
           </button>
           {% if file.stats_known %}
-          <span class="hidden shrink-0 items-center gap-2 font-mono text-xs tabular-nums sm:flex">
-            <span class="text-success">+{{ file.additions }}</span>
-            <span class="text-danger">−{{ file.deletions }}</span>
-          </span>
-          <span class="diffstat" aria-hidden="true">{% for cell in file.diffstat() %}<span class="diffstat-{{ cell }}"></span>{% endfor %}</span>
+          {% call stats::counts(file.additions, file.deletions, "diff-file-counts") %}{% endcall %}
           {% endif %}
           {% if let Some(url) = file.view_url %}
           <a href="{{ url }}" class="diff-file-action px-2 font-sans" title="View the file at this commit">View<span class="sr-only"> {{ file.path }}</span></a>

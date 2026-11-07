@@ -1,0 +1,25 @@
+[package]
+name = "rbit-render-probe"
+description = "Development-only Askama compilation and rendering experiment."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+default = ["inheritance", "count-8"]
+inheritance = []
+segments = []
+blocks = []
+count-1 = []
+count-8 = []
+count-32 = []
+count-96 = []
+
+[dependencies]
+askama = { version = "=0.16.1", default-features = false, features = ["derive", "std"] }
+serde_json.workspace = true
+
+[lints]
+workspace = true

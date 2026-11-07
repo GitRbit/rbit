@@ -5,8 +5,9 @@ use askama_web::WebTemplate;
 
 use crate::views::{components::FormError, external_auth::ProviderButton, layout::Page};
 
-#[derive(Debug, Template, WebTemplate)]
-#[template(path = "auth/login.html")]
+#[derive(Debug, WebTemplate)]
+#[cfg_attr(not(feature = "shared-shell-experiment"), derive(Template))]
+#[cfg_attr(not(feature = "shared-shell-experiment"), template(path = "auth/login.html"))]
 pub struct LoginPage {
     pub page: Page,
     pub error: FormError,
@@ -55,6 +56,8 @@ mod tests {
 
     fn page() -> Page {
         Page {
+            locale: rbit_localization::Locale::default(),
+            content_locale: rbit_localization::Locale::English,
             updates: rbit_services::updates::UpdateStatus::default(),
             site_name: "rbit".to_owned(),
             branding: rbit_core::config::BrandingConfig::default(),

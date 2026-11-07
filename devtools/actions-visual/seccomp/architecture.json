@@ -1,0 +1,49 @@
+[
+  {
+    "architecture": "SCMP_ARCH_X86_64",
+    "subArchitectures": [
+      "SCMP_ARCH_X86",
+      "SCMP_ARCH_X32"
+    ]
+  },
+  {
+    "architecture": "SCMP_ARCH_AARCH64",
+    "subArchitectures": [
+      "SCMP_ARCH_ARM"
+    ]
+  },
+  {
+    "architecture": "SCMP_ARCH_MIPS64",
+    "subArchitectures": [
+      "SCMP_ARCH_MIPS",
+      "SCMP_ARCH_MIPS64N32"
+    ]
+  },
+  {
+    "architecture": "SCMP_ARCH_MIPS64N32",
+    "subArchitectures": [
+      "SCMP_ARCH_MIPS",
+      "SCMP_ARCH_MIPS64"
+    ]
+  },
+  {
+    "architecture": "SCMP_ARCH_MIPSEL64",
+    "subArchitectures": [
+      "SCMP_ARCH_MIPSEL",
+      "SCMP_ARCH_MIPSEL64N32"
+    ]
+  },
+  {
+    "architecture": "SCMP_ARCH_MIPSEL64N32",
+    "subArchitectures": [
+      "SCMP_ARCH_MIPSEL",
+      "SCMP_ARCH_MIPSEL64"
+    ]
+  },
+  {
+    "architecture": "SCMP_ARCH_S390X",
+    "subArchitectures": [
+      "SCMP_ARCH_S390"
+    ]
+  }
+]

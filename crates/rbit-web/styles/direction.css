@@ -1,0 +1,25 @@
+/* ---------------------------------------------------------------- Writing direction */
+
+/* Layout follows `dir` through logical properties (margin-inline, inset-inline,
+   text-align: start/end) and flex/grid order, so a right-to-left document mirrors its
+   header, tabs and footer without per-direction rules. The few things that cannot be
+   logical read these two tokens instead: the sign of a movement or flip along the
+   inline axis, and the physical side where a line ends (gradients only take sides).
+   Each element with a `dir` sets them again, so an explicit left-to-right island
+   (code, logs, identifiers) keeps left-to-right values inside a mirrored page. */
+:root,
+[dir="ltr"] {
+  --inline-sign: 1;
+  --inline-end: right;
+}
+
+[dir="rtl"] {
+  --inline-sign: -1;
+  --inline-end: left;
+}
+
+/* Glyphs that point along the reading direction (chevrons, the sign-out arrow) turn
+   with it; the `icon` macro marks them. Media and status glyphs keep their shape. */
+.dir-icon {
+  scale: var(--inline-sign) 1;
+}

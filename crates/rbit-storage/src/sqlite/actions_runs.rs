@@ -443,6 +443,8 @@ pub enum Rerun {
     Job(JobId),
 }
 
+mod log_queries;
+
 #[derive(Debug, Clone)]
 pub struct ActionsRunStore {
     pool: SqlitePool,
@@ -513,13 +515,6 @@ impl ActionsRunStore {
         Run::try_from(row)
     }
 
-    /// Run `id`, only if it belongs to `repo`.
-    pub async fn find_run(&self, repo: RepoId, id: RunId) -> Result<Option<Run>, StorageError> {
-        let row: Option<RunRow> =
-            sqlx::query_as(select_run!("WHERE id = ? AND repo_id = ?")).bind(id.0).bind(repo.0).fetch_optional(&self.pool).await?;
-        row.map(Run::try_from).transpose()
-    }
-
     /// Run `#number` of `repo`.
     pub async fn find_run_by_number(&self, repo: RepoId, number: i64) -> Result<Option<Run>, StorageError> {
         let row: Option<RunRow> = sqlx::query_as(select_run!("WHERE repo_id = ? AND run_number = ?"))
@@ -588,22 +583,6 @@ impl ActionsRunStore {
         Ok(rows.into_iter().map(|(task, number, summary)| (TaskId(task), number, summary)).collect())
     }
 
-    /// The steps of `tasks`, by task and number.
-    pub async fn steps_of_tasks(&self, tasks: &[TaskId]) -> Result<Vec<Step>, StorageError> {
-        if tasks.is_empty() {
-            return Ok(Vec::new());
-        }
-        let ids = format!("[{}]", tasks.iter().map(|task| task.0.to_string()).collect::<Vec<_>>().join(","));
-        let rows: Vec<StepRow> = sqlx::query_as(
-            "SELECT task_id, number, name, status, started_at, stopped_at, log_index, log_length FROM actions_steps \
-             WHERE task_id IN (SELECT value FROM json_each(?)) ORDER BY task_id, number",
-        )
-        .bind(ids)
-        .fetch_all(&self.pool)
-        .await?;
-        rows.into_iter().map(Step::try_from).collect()
-    }
-
     /// The run's event payload (JSON) and dispatch inputs.
     pub async fn event(&self, run: RunId) -> Result<Option<(String, Option<String>)>, StorageError> {
         Ok(sqlx::query_as("SELECT event_payload, dispatch_inputs FROM actions_runs WHERE id = ?")
@@ -637,13 +616,6 @@ impl ActionsRunStore {
     pub async fn jobs(&self, run: RunId) -> Result<Vec<Job>, StorageError> {
         let rows: Vec<JobRow> = sqlx::query_as(select_job!("WHERE j.run_id = ? ORDER BY j.id")).bind(run.0).fetch_all(&self.pool).await?;
         rows.into_iter().map(Job::try_from).collect()
-    }
-
-    /// Job `id`, only if it belongs to `repo`.
-    pub async fn find_job(&self, repo: RepoId, id: JobId) -> Result<Option<Job>, StorageError> {
-        let row: Option<JobRow> =
-            sqlx::query_as(select_job!("WHERE j.id = ? AND j.repo_id = ?")).bind(id.0).bind(repo.0).fetch_optional(&self.pool).await?;
-        row.map(Job::try_from).transpose()
     }
 
     /// Job `id` wherever it is (for runner calls).
@@ -771,11 +743,6 @@ impl ActionsRunStore {
         let task: TaskRow = sqlx::query_as(select_task!("WHERE id = ?")).bind(task_id).fetch_one(&mut *tx).await?;
         tx.commit().await?;
         Ok(Some(Claimed { job: Job::try_from(job)?, task: Task::try_from(task)? }))
-    }
-
-    pub async fn task(&self, id: TaskId) -> Result<Option<Task>, StorageError> {
-        let row: Option<TaskRow> = sqlx::query_as(select_task!("WHERE id = ?")).bind(id.0).fetch_optional(&self.pool).await?;
-        row.map(Task::try_from).transpose()
     }
 
     /// The task a runner was given for idempotency key `key` (a retried poll).
@@ -1028,18 +995,6 @@ impl ActionsRunStore {
         }
         tx.commit().await?;
         Ok(())
-    }
-
-    /// The steps of a task, by number.
-    pub async fn steps(&self, task: TaskId) -> Result<Vec<Step>, StorageError> {
-        let rows: Vec<StepRow> = sqlx::query_as(
-            "SELECT task_id, number, name, status, started_at, stopped_at, log_index, log_length FROM actions_steps \
-             WHERE task_id = ? ORDER BY number",
-        )
-        .bind(task.0)
-        .fetch_all(&self.pool)
-        .await?;
-        rows.into_iter().map(Step::try_from).collect()
     }
 
     /// Records how much of the task's log is written.

@@ -13,6 +13,9 @@ use crate::{
     actions_runner_tasks::{logs, payload, poll, seed, spec, state, template},
 };
 
+#[path = "actions_job_pages/presentation.rs"]
+mod presentation;
+
 /// GET `path` as alice, the owner; returns the status, the headers and the body (gzipped
 /// bodies decoded).
 async fn get(fixture: &Fixture, path: &str, accept_gzip: bool) -> (StatusCode, axum::http::HeaderMap, String) {

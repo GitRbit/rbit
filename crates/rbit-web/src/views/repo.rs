@@ -407,16 +407,7 @@ mod tests {
             parent_ids: Vec::new(),
         };
         BlobPage {
-            page: Page {
-                updates: rbit_services::updates::UpdateStatus::default(),
-                site_name: "rbit".to_owned(),
-                branding: rbit_core::config::BrandingConfig::default(),
-                title: None,
-                viewer: None,
-                path: "/o/r/blob/main/a.rs".to_owned(),
-                theme: crate::themes::Theme::System,
-                has_unread_notifications: false,
-            },
+            page: crate::views::test_support::page("/o/r/blob/main/a.rs"),
             header: RepoHeader::default(),
             switcher: RefSwitcher::deferred(
                 &[],

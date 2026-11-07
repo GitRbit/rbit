@@ -1,0 +1,21 @@
+[package]
+name = "rbit-rewrite-check"
+description = "Development-only structural checks for rewritten Rust crates."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+syn = { version = "2.0.119", features = ["full", "visit"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -77,79 +77,11 @@ const MENTION_CANDIDATES: &str = "SELECT id, kind, name, display_name, bio, crea
 
 // ------------------------------------------------------------------ types
 
-/// A repository's label.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Label {
-    pub id: LabelId,
-    pub repo_id: RepoId,
-    pub name: String,
-    /// `#rrggbb`, lower case.
-    pub color: String,
-    pub description: String,
-    pub created_at: Timestamp,
-    pub updated_at: Timestamp,
-}
+pub use rbit_collaboration::labels::{Label, LabelFields, LabelUsage};
 
-impl Label {
-    /// The label as timeline events and payloads record it.
-    pub fn snapshot(&self) -> LabelSnapshot {
-        LabelSnapshot { id: self.id, name: self.name.clone(), color: self.color.clone() }
-    }
-}
+pub use rbit_collaboration::milestones::{Milestone, MilestoneFields, MilestoneProgress};
 
-/// A label's fields, already validated.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LabelFields {
-    pub name: String,
-    pub color: String,
-    pub description: String,
-}
-
-/// A label with the number of open threads carrying it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LabelUsage {
-    pub label: Label,
-    pub open_issues: u64,
-}
-
-/// A repository's milestone.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Milestone {
-    pub id: MilestoneId,
-    pub repo_id: RepoId,
-    pub title: String,
-    pub description: String,
-    /// `YYYY-MM-DD`.
-    pub due_on: Option<String>,
-    pub state: IssueState,
-    pub closed_at: Option<Timestamp>,
-    pub created_at: Timestamp,
-    pub updated_at: Timestamp,
-}
-
-/// A milestone's fields, already validated.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MilestoneFields {
-    pub title: String,
-    pub description: String,
-    pub due_on: Option<String>,
-}
-
-/// A milestone with how many of its threads are open and closed.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MilestoneProgress {
-    pub milestone: Milestone,
-    pub open_issues: u64,
-    pub closed_issues: u64,
-}
-
-/// The milestone of one thread.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IssueMilestone {
-    pub issue: IssueId,
-    pub id: MilestoneId,
-    pub title: String,
-}
+pub use rbit_collaboration::milestones::IssueMilestone;
 
 // ------------------------------------------------------------------ rows
 
@@ -285,15 +217,7 @@ const ONE_ISSUE_METADATA: &str = "SELECT \
      (SELECT json_array(m.id, m.title) FROM milestones m \
       WHERE m.id = (SELECT milestone_id FROM issue_milestones WHERE issue_id = ?1)) AS milestone";
 
-/// What [`IssueMetaStore::metadata_of`] reads about one thread.
-#[derive(Debug, Clone, Default)]
-pub struct OneIssueMetadata {
-    /// By name, as [`IssueMetaStore::labels_of`] orders them.
-    pub labels: Vec<LabelSnapshot>,
-    /// By name, as [`IssueMetaStore::assignees_of`] orders them.
-    pub assignees: Vec<Account>,
-    pub milestone: Option<IssueMilestone>,
-}
+pub use rbit_collaboration::issues::OneIssueMetadata;
 
 /// An account as [`ONE_ISSUE_METADATA`] encodes it.
 type AccountColumns = (i64, String, String, Option<String>, Option<String>, i64);

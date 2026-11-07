@@ -1,6 +1,8 @@
 // A small response cache for the repository's primary links. htmx still owns the
 // request, swap and history: only an individual, already-open XHR's transport is
 // replaced when its exact response is available (or already being prefetched).
+import { catalogKey } from './locale-key.js';
+
 const TABS = new Set(['code', 'issues', 'pulls', 'commits', 'branches', 'tags', 'releases']);
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const MAX_TOTAL_BYTES = 4 * MAX_RESPONSE_BYTES;
@@ -13,7 +15,7 @@ const cachedTransports = new WeakSet();
 let generation = 0;
 let totalBytes = 0;
 
-const RESPONSE_HEADERS = ['Content-Type', 'Cache-Control', 'Rbit-Partial', 'Server-Timing', 'Rbit-Update-Available', 'ETag', 'Last-Modified', 'Vary'];
+const RESPONSE_HEADERS = ['Content-Type', 'Content-Language', 'Rbit-Catalog-Key', 'Cache-Control', 'Rbit-Partial', 'Server-Timing', 'Rbit-Update-Available', 'ETag', 'Last-Modified', 'Vary'];
 const EFFECT_HEADERS = ['Set-Cookie', 'HX-Location', 'HX-Redirect', 'HX-Refresh', 'HX-Retarget', 'HX-Reswap', 'HX-Reselect', 'HX-Push-Url', 'HX-Replace-Url', 'HX-Trigger', 'HX-Trigger-After-Swap', 'HX-Trigger-After-Settle'];
 
 /** Synthetic deliveries must not refresh the original response's freshness time. */
@@ -30,13 +32,16 @@ function requestKey(url, headers) {
     const target = new URL(url, location.href);
     const scope = readHeader(headers, 'Rbit-Partial');
     const epoch = readHeader(headers, 'Rbit-Nav-Epoch');
+    const rawCatalog = readHeader(headers, 'Rbit-Document-Locale');
+    const catalog = catalogKey(rawCatalog);
+    if (rawCatalog != null && !catalog) return null;
     if (target.origin !== location.origin || !/^https?:$/.test(target.protocol) || !scope || !epoch) return null;
     // Restrict caching to list pages. Discussion details mark notifications read;
     // settings and other routes may contain secrets or stateful GETs.
     const suffix = target.pathname.slice(scope.length);
     if (!target.pathname.startsWith(scope) || !/^(?:\/?|\/(?:issues|pulls|branches|tags|releases)|\/commits(?:\/[^?]*)?)$/.test(suffix)) return null;
     target.hash = '';
-    return { key: JSON.stringify([target.href, scope, epoch]), url: target.href, scope };
+    return { key: JSON.stringify([target.href, scope, epoch, catalog]), url: target.href, scope, catalog };
   } catch { return null; }
 }
 
@@ -66,6 +71,7 @@ function validate(request, response) {
     if (target.href !== request.url) return false;
   } catch { return false; }
   const get = response.getHeader;
+  if (request.catalog && catalogKey(get('Rbit-Catalog-Key')) !== request.catalog) return false;
   if (!/^text\/html(?:\s*;|$)/i.test(get('Content-Type') ?? '')) return false;
   if (/(?:^|,)\s*no-store\b/i.test(get('Cache-Control') ?? '')) return false;
   if (EFFECT_HEADERS.some((name) => get(name) !== null && get(name) !== undefined)) return false;

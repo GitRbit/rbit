@@ -3,7 +3,8 @@
 {#- Rendered without the visitor's theme cookie: apply the stored theme before the first paint. -#}
 {% block theme_script %}<script src="{{ page.asset("theme.js") }}"></script>{% endblock %}
 {% block content %}
-<section class="auth-shell sm:py-20">
+{# Error substitution may replace a secret-bearing page; never snapshot its URL or DOM. #}
+<section class="auth-shell sm:py-20" hx-history="false">
   <div class="card flex flex-col items-center text-center">
     <span class="tile font-mono text-[13px] font-medium">{{ info.status.as_u16() }}</span>
     <h1 class="mt-5 text-lg font-semibold tracking-tight">{{ info.title }}</h1>

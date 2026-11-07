@@ -682,16 +682,7 @@ mod tests {
     }
 
     fn page() -> Page {
-        Page {
-            updates: rbit_services::updates::UpdateStatus::default(),
-            site_name: "rbit".to_owned(),
-            branding: rbit_core::config::BrandingConfig::default(),
-            title: None,
-            viewer: None,
-            path: "/alice/demo/issues".to_owned(),
-            has_unread_notifications: false,
-            theme: crate::themes::Theme::System,
-        }
+        crate::views::test_support::page("/alice/demo/issues")
     }
 
     fn assert_no_inline_styles(html: &str) {

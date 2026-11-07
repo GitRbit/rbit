@@ -1,0 +1,28 @@
+  {% if steps.is_empty() %}
+  <div class="box mt-5">
+    {% call ui::empty_state("clock", text.not_started, text.not_started_description) %}{% endcall %}
+  </div>
+  {% else %}
+  <div class="mb-3 mt-6 flex flex-wrap items-baseline justify-between gap-2">
+    <h2 class="text-sm font-semibold tracking-tight">{{ text.steps }}</h2>
+    <span class="text-xs tabular-nums text-ink-faint">{{ text.count }}</span>
+  </div>
+  <p class="mb-3 text-xs leading-relaxed text-ink-muted">{{ text.retained_window }}</p>
+  <ol class="box divide-y divide-line overflow-hidden">
+    {% for step in steps %}
+    <li>
+      <details {% if step.open %}open {% endif %}data-step="{{ step.number }}" data-state="{{ step.look.key }}">
+        <summary class="flex min-h-12 cursor-pointer items-center gap-3 px-3 py-2 hover:bg-subtle sm:px-4">
+          {% let look = text.look(step.look) %}
+          {% include "actions/state.html" %}
+          <span class="min-w-0 flex-1 break-words text-[13px] font-medium">{{ step.name }}</span>
+          {% if let Some(duration) = step.duration %}<span class="shrink-0 whitespace-nowrap text-xs tabular-nums text-ink-faint">{{ duration }}</span>{% endif %}
+        </summary>
+        <div class="border-t border-line">
+          {% include "actions/step_body.html" %}
+        </div>
+      </details>
+    </li>
+    {% endfor %}
+  </ol>
+  {% endif %}

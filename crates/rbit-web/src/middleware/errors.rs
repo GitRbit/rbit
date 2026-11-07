@@ -27,6 +27,10 @@ pub async fn error_pages(State(state): State<AppState>, request: Request, next: 
     let path = request.uri().path().to_owned();
     let query = request.uri().query().map(str::to_owned);
     let theme = Theme::from_headers(request.headers());
+    let locale = request
+        .extensions()
+        .get::<crate::localization::RequestLocale>()
+        .map_or(rbit_localization::Locale::English, |locale| locale.document_locale());
     let response = next.run(request).await;
 
     let Some(info) = response.extensions().get::<ErrorInfo>().cloned() else {
@@ -37,7 +41,7 @@ pub async fn error_pages(State(state): State<AppState>, request: Request, next: 
     {
         return moved_permanently(&method, &location);
     }
-    let page = Page::new(&state, viewer.user(), &path).with_theme(theme).titled(info.title);
+    let page = Page::new(&state, viewer.user(), &path).with_theme(theme).with_document_locale(locale).titled(info.title);
     render_error_response(response, ErrorPage { page, info })
 }
 

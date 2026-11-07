@@ -67,7 +67,7 @@ async fn show(
 
     Ok(BlamePage {
         page: page.titled(format!("Blame {path} · {}", loaded.ctx.repo.full_name())),
-        header: loaded.header(&state, "code"),
+        header: loaded.header_at(&state, "code", &revision),
         switcher: loaded.switcher(&revision, RefTarget::Blame, &path),
         breadcrumbs: breadcrumbs(loaded.ctx.repo.repo.name.as_str(), urls, &revision, &path),
         latest: CommitView::new(&latest, urls),

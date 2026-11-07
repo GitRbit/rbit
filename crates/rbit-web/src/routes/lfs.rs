@@ -22,6 +22,8 @@
 //! for credentials). Everything answers `404` when `[lfs] enabled` is off. Errors are
 //! JSON (`{"message": …}`) with the LFS media type.
 
+mod error;
+pub(crate) use error::LfsError;
 mod files;
 mod locks;
 
@@ -49,7 +51,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio_util::io::{ReaderStream, StreamReader};
 
-use super::git_http::{self, Denied, GitCaller};
+use super::git_http::{self, GitCaller};
 use crate::{AppState, client_ip::Client};
 
 /// The media type of every LFS request and response body.
@@ -65,85 +67,6 @@ pub fn routes() -> Router<AppState> {
         .merge(locks::routes())
         // Only buffered (JSON) bodies are bounded; uploads stream past this.
         .layer(DefaultBodyLimit::max(MAX_JSON_BYTES))
-}
-
-// ------------------------------------------------------------------ errors
-
-/// A refused LFS request, answered as `{"message": …}` with the LFS media type.
-#[derive(Debug)]
-pub(crate) enum LfsError {
-    /// `401`: ask for credentials.
-    Challenge,
-    Status(StatusCode, String),
-    RateLimited {
-        retry_after_seconds: u64,
-    },
-}
-
-impl LfsError {
-    fn new(status: StatusCode, message: impl Into<String>) -> Self {
-        Self::Status(status, message.into())
-    }
-
-    fn not_found() -> Self {
-        Self::new(StatusCode::NOT_FOUND, "Not found")
-    }
-}
-
-impl IntoResponse for LfsError {
-    fn into_response(self) -> Response {
-        match self {
-            Self::Challenge => {
-                let mut response = json_response(StatusCode::UNAUTHORIZED, &json!({ "message": "Credentials needed" }));
-                let challenge = HeaderValue::from_static("Basic realm=\"rbit\", charset=\"UTF-8\"");
-                response.headers_mut().insert("lfs-authenticate", challenge.clone());
-                response.headers_mut().insert(header::WWW_AUTHENTICATE, challenge);
-                response
-            }
-            Self::Status(status, message) => json_response(status, &json!({ "message": message })),
-            Self::RateLimited { retry_after_seconds } => {
-                let message = format!("too many authentication attempts; try again in {retry_after_seconds} seconds");
-                let mut response = json_response(StatusCode::TOO_MANY_REQUESTS, &json!({ "message": message }));
-                response.headers_mut().insert(header::RETRY_AFTER, HeaderValue::from(retry_after_seconds));
-                response
-            }
-        }
-    }
-}
-
-impl From<Denied> for LfsError {
-    fn from(denied: Denied) -> Self {
-        match denied {
-            Denied::Challenge => Self::Challenge,
-            Denied::RateLimited { retry_after_seconds } => Self::RateLimited { retry_after_seconds },
-            Denied::NotFound => Self::not_found(),
-            Denied::Internal => Self::new(StatusCode::INTERNAL_SERVER_ERROR, "internal error"),
-            Denied::Suspended => Self::new(StatusCode::FORBIDDEN, "this account has been suspended"),
-            Denied::TokenRequired => Self::new(
-                StatusCode::FORBIDDEN,
-                "two-factor authentication is enabled for this account, so its password cannot be used with Git; \
-                 use a personal access token as the password",
-            ),
-            Denied::Forbidden => Self::new(StatusCode::FORBIDDEN, "you do not have permission to push to this repository"),
-            Denied::Mirror => Self::new(StatusCode::FORBIDDEN, mirrors::PUSH_REFUSED),
-        }
-    }
-}
-
-impl From<ServiceError> for LfsError {
-    fn from(error: ServiceError) -> Self {
-        match error {
-            ServiceError::NotFound => Self::not_found(),
-            ServiceError::Forbidden | ServiceError::Archived => Self::new(StatusCode::FORBIDDEN, error.to_string()),
-            ServiceError::Invalid(message) => Self::new(StatusCode::UNPROCESSABLE_ENTITY, message),
-            ServiceError::Conflict(_) => Self::new(StatusCode::CONFLICT, error.to_string()),
-            ServiceError::RateLimited { retry_after_seconds } => Self::RateLimited { retry_after_seconds },
-            other => {
-                tracing::error!(error = %other, "LFS request failed");
-                Self::new(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
-            }
-        }
-    }
 }
 
 pub(crate) fn json_response(status: StatusCode, body: &Value) -> Response {

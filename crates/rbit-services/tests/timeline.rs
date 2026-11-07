@@ -4,19 +4,15 @@
 use std::sync::Arc;
 
 use rbit_core::{
-    Config, IssueKind, IssueNumber, IssueState, IssueText, IssueTitle, RepoAccess, StateReason, TimelineEvent, Timestamp, User, Visibility,
-    issue::{CommentAction, IssueAction},
+    Config, IssueKind, IssueNumber, IssueText, IssueTitle, RepoAccess, TimelineEvent, Timestamp, User, Visibility, issue::IssueAction,
     membership::Permission,
 };
-use rbit_services::{
-    CreateRepository, DomainEvent, IssueContext, RepoContext, ServiceError, Services,
-    timeline::{StateChange, TimelineEntry},
-};
+use rbit_services::{CreateRepository, DomainEvent, IssueContext, RepoContext, ServiceError, Services, timeline::TimelineEntry};
 use rbit_storage::{Database, KvStore, NewUser, sqlite::issues::NewIssue};
 use tokio::sync::broadcast::{Receiver, error::TryRecvError};
 
 struct Fixture {
-    _dir: tempfile::TempDir,
+    directory: tempfile::TempDir,
     database: Database,
     services: Services,
     alice: User,
@@ -36,7 +32,7 @@ impl Fixture {
         let bob = user(&database, "bob").await;
         let input = CreateRepository { name: "demo".to_owned(), description: String::new(), visibility: Visibility::Public };
         services.repositories.create(&alice, input).await.unwrap();
-        Self { _dir: dir, database, services, alice, bob }
+        Self { directory: dir, database, services, alice, bob }
     }
 
     async fn repo(&self, viewer: Option<&User>) -> RepoContext {
@@ -119,149 +115,14 @@ async fn opening_a_thread_resolves_its_author_and_permissions() {
     assert_eq!((counts.issues, counts.pulls), (1, 0));
 }
 
-#[tokio::test]
-async fn comments_follow_the_permission_table_and_publish_events() {
-    let fixture = Fixture::new(|_| {}).await;
-    let timeline = &fixture.services.timeline;
-    let number = fixture.seed(&fixture.alice, IssueKind::Issue, "Crash").await;
-    let mut events = fixture.services.events.subscribe();
+mod human_comments_port;
+mod lifecycle_port;
+mod reader_port;
+mod task_comments_port;
 
-    let as_bob = fixture.open(&fixture.bob, number).await;
-    let as_alice = fixture.open(&fixture.alice, number).await;
-    assert!(matches!(timeline.comment(&fixture.bob, &as_bob, " \n ").await, Err(ServiceError::Invalid(_))));
-    let comment = timeline.comment(&fixture.bob, &as_bob, "Same here\r\n").await.unwrap();
-    assert_eq!(comment.body.as_str(), "Same here\n");
+mod text_edit_port;
 
-    assert!(matches!(timeline.edit_comment(&fixture.alice, &as_alice, comment.id, "Hacked").await, Err(ServiceError::Forbidden)));
-    let edited = timeline.edit_comment(&fixture.bob, &as_bob, comment.id, "Same here, on Linux").await.unwrap();
-    assert!(edited.edited_at.is_some());
-    let unchanged = timeline.edit_comment(&fixture.bob, &as_bob, comment.id, "Same here, on Linux").await.unwrap();
-    assert_eq!(unchanged, edited, "the same text again is not an edit");
-
-    let mine = timeline.comment(&fixture.alice, &as_alice, "Thanks").await.unwrap();
-    assert!(matches!(timeline.delete_comment(&fixture.bob, &as_bob, mine.id).await, Err(ServiceError::Forbidden)));
-    timeline.delete_comment(&fixture.alice, &as_alice, comment.id).await.unwrap();
-
-    // A comment of another thread is not found through this one.
-    let other = fixture.open(&fixture.alice, fixture.seed(&fixture.alice, IssueKind::Issue, "Other").await).await;
-    assert!(matches!(timeline.delete_comment(&fixture.alice, &other, mine.id).await, Err(ServiceError::NotFound)));
-
-    let actions: Vec<_> = drain(&mut events)
-        .into_iter()
-        .filter_map(|event| match event {
-            DomainEvent::IssueComment { action, actor, number: n, kind, .. } => {
-                assert_eq!((n, kind), (number, IssueKind::Issue));
-                Some((actor, action))
-            }
-            _ => None,
-        })
-        .collect();
-    assert_eq!(actions.len(), 4);
-    assert_eq!(actions[0], (Some(fixture.bob.id()), CommentAction::Created));
-    assert_eq!(actions[1], (Some(fixture.bob.id()), CommentAction::Edited { previous_body: "Same here\n".to_owned() }));
-    assert_eq!(actions[2], (Some(fixture.alice.id()), CommentAction::Created));
-    assert!(
-        matches!(&actions[3], (actor, CommentAction::Deleted { snapshot }) if *actor == Some(fixture.alice.id()) && snapshot.id == comment.id)
-    );
-
-    assert_eq!(fixture.open(&fixture.alice, number).await.issue.comment_count, 1);
-}
-
-#[tokio::test]
-async fn editing_title_and_body_records_a_rename() {
-    let fixture = Fixture::new(|_| {}).await;
-    let timeline = &fixture.services.timeline;
-    let number = fixture.seed(&fixture.alice, IssueKind::Issue, "Crash").await;
-    let bobs = fixture.seed(&fixture.bob, IssueKind::Issue, "Bob's report").await;
-    let mut events = fixture.services.events.subscribe();
-
-    let as_bob = fixture.open(&fixture.bob, number).await;
-    assert!(matches!(timeline.edit(&fixture.bob, &as_bob, Some("Mine now"), None).await, Err(ServiceError::Forbidden)));
-    let own = fixture.open(&fixture.bob, bobs).await;
-    timeline.edit(&fixture.bob, &own, None, Some("More detail")).await.unwrap();
-
-    let as_alice = fixture.open(&fixture.alice, number).await;
-    assert!(matches!(timeline.edit(&fixture.alice, &as_alice, Some("  "), None).await, Err(ServiceError::Invalid(_))));
-    let updated = timeline.edit(&fixture.alice, &as_alice, Some("Crash on start"), Some("Steps to reproduce")).await.unwrap();
-    assert_eq!(updated.title.as_str(), "Crash on start");
-    let again = fixture.open(&fixture.alice, number).await;
-    timeline.edit(&fixture.alice, &again, Some("Crash on start"), None).await.unwrap();
-
-    assert_eq!(
-        issue_actions(&drain(&mut events)),
-        [
-            IssueAction::Edited { previous_title: None, previous_body: Some("Steps to reproduce".to_owned()), previous_base: None },
-            IssueAction::Edited { previous_title: Some("Crash".to_owned()), previous_body: None, previous_base: None },
-        ],
-        "only what changed is reported, and no change publishes nothing"
-    );
-
-    let entries = timeline.timeline(Some(&fixture.bob), &again, None, 50).await.unwrap().entries;
-    assert!(matches!(
-        &entries[..],
-        [TimelineEntry::Event { event: TimelineEvent::Renamed { from, to }, actor: Some(actor), .. }]
-            if from == "Crash" && to == "Crash on start" && actor.name.as_str() == "alice"
-    ));
-}
-
-#[tokio::test]
-async fn closing_and_reopening() {
-    let fixture = Fixture::new(|_| {}).await;
-    let timeline = &fixture.services.timeline;
-    let alices = fixture.seed(&fixture.alice, IssueKind::Issue, "Crash").await;
-    let bobs = fixture.seed(&fixture.bob, IssueKind::Issue, "Question").await;
-    let pull = fixture.seed(&fixture.alice, IssueKind::Pull, "Fix").await;
-    let mut events = fixture.services.events.subscribe();
-
-    let not_bobs = fixture.open(&fixture.bob, alices).await;
-    assert!(matches!(
-        timeline.set_state(&fixture.bob, &not_bobs, StateChange::Close(StateReason::Completed)).await,
-        Err(ServiceError::Forbidden)
-    ));
-
-    let own = fixture.open(&fixture.bob, bobs).await;
-    let closed = timeline.set_state(&fixture.bob, &own, StateChange::Close(StateReason::NotPlanned)).await.unwrap();
-    assert_eq!(
-        (closed.state, closed.state_reason, closed.closed_by),
-        (IssueState::Closed, Some(StateReason::NotPlanned), Some(fixture.bob.id()))
-    );
-    let again = timeline.set_state(&fixture.bob, &own, StateChange::Close(StateReason::Completed)).await.unwrap();
-    assert_eq!(again.state_reason, Some(StateReason::NotPlanned), "already closed: unchanged");
-    let reopened = timeline.set_state(&fixture.bob, &own, StateChange::Reopen).await.unwrap();
-    assert_eq!(reopened.state, IssueState::Open);
-
-    let as_alice = fixture.open(&fixture.alice, pull).await;
-    let merged = timeline.set_state(&fixture.alice, &as_alice, StateChange::Close(StateReason::Merged)).await;
-    assert!(matches!(merged, Err(ServiceError::Invalid(_))), "only a merge closes as merged");
-    timeline.set_state(&fixture.alice, &as_alice, StateChange::Close(StateReason::Completed)).await.unwrap();
-    let closed_pull = fixture.open(&fixture.alice, pull).await;
-    timeline.set_state(&fixture.alice, &closed_pull, StateChange::Reopen).await.unwrap();
-
-    let published = drain(&mut events);
-    assert_eq!(
-        issue_actions(&published),
-        [
-            IssueAction::Closed { reason: StateReason::NotPlanned },
-            IssueAction::Reopened,
-            IssueAction::Closed { reason: StateReason::Completed },
-            IssueAction::Reopened,
-        ]
-    );
-    assert!(matches!(published[2], DomainEvent::Issue { kind: IssueKind::Pull, .. }));
-
-    let kinds: Vec<_> = timeline
-        .timeline(None, &own, None, 50)
-        .await
-        .unwrap()
-        .entries
-        .iter()
-        .map(|entry| match entry {
-            TimelineEntry::Event { event, .. } => event.kind(),
-            TimelineEntry::Comment { .. } => "comment",
-        })
-        .collect();
-    assert_eq!(kinds, ["closed", "reopened"]);
-}
+mod state_change_port;
 
 #[tokio::test]
 async fn locked_threads_admit_only_writers() {

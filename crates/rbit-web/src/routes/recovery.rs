@@ -6,6 +6,11 @@
 //! `Referrer-Policy: no-referrer`, so the secret neither lingers in caches nor leaks to
 //! other sites through links on the page.
 
+mod credential_forms;
+mod password_commands;
+pub use credential_forms::ResetForm;
+pub use password_commands::reset;
+
 use axum::{
     Form, Router,
     extract::{Path, Query, State},
@@ -19,7 +24,7 @@ use serde::Deserialize;
 use crate::{
     AppState,
     client_ip::ClientIp,
-    error::WebResult,
+    error::{WebError, WebResult},
     views::{
         components::FormError,
         layout::Page,
@@ -83,19 +88,14 @@ pub(crate) fn form_error_response(error: &ServiceError, page: impl IntoResponse)
         ServiceError::RateLimited { retry_after_seconds } => {
             (StatusCode::TOO_MANY_REQUESTS, [(header::RETRY_AFTER, retry_after_seconds.to_string())], page).into_response()
         }
+        ServiceError::Unavailable { retry_after_seconds } => {
+            WebError::Unavailable { retry_after_seconds: *retry_after_seconds }.into_response()
+        }
         _ => (StatusCode::UNPROCESSABLE_ENTITY, page).into_response(),
     }
 }
 
 // ------------------------------------------------------------------ reset password
-
-#[derive(Debug, Deserialize)]
-pub struct ResetForm {
-    #[serde(default)]
-    new_password: String,
-    #[serde(default)]
-    confirm_password: String,
-}
 
 /// `GET /password/reset/{token}`: the new-password form, if the link is still good.
 pub async fn reset_form(State(state): State<AppState>, page: Page, Path(token): Path<String>) -> WebResult<Response> {
@@ -103,50 +103,20 @@ pub async fn reset_form(State(state): State<AppState>, page: Page, Path(token): 
         Ok(username) => {
             (StatusCode::OK, ResetPasswordPage::form(page, &token, username, state.config.security.min_password_length)).into_response()
         }
-        Err(error) => problem_page(&state, page, error)?,
+        Err(error) => problem_page(&state, page, error),
     };
     Ok((SECRET_URL_HEADERS, response).into_response())
 }
 
-/// `POST /password/reset/{token}`
-pub async fn reset(
-    State(state): State<AppState>,
-    page: Page,
-    Path(token): Path<String>,
-    Form(form): Form<ResetForm>,
-) -> WebResult<Response> {
-    let recovery = &state.services.recovery;
-    let result = if form.new_password == form.confirm_password {
-        recovery.reset_password(&token, form.new_password).await
-    } else {
-        Err(ServiceError::Invalid("the new passwords do not match".to_owned()))
-    };
-    let response = match result {
-        Ok(()) => Redirect::to(RESET_COMPLETE_URL).into_response(),
-        Err(ServiceError::Invalid(message)) => {
-            // Re-check the link: it may have been used or expired meanwhile.
-            match recovery.reset_target(&token).await {
-                Ok(username) => {
-                    let page = ResetPasswordPage::form(page, &token, username, state.config.security.min_password_length)
-                        .with_error(FormError::from_message(&message));
-                    (StatusCode::UNPROCESSABLE_ENTITY, page).into_response()
-                }
-                Err(error) => problem_page(&state, page, error)?,
-            }
-        }
-        Err(error) => problem_page(&state, page, error)?,
-    };
-    Ok((SECRET_URL_HEADERS, response).into_response())
-}
-
-/// Renders why a reset link can't be used, or passes unexpected errors on.
-fn problem_page(state: &AppState, page: Page, error: ServiceError) -> WebResult<Response> {
+/// Renders a reset-link problem or generic service error as a response, so the caller
+/// still attaches secret-URL privacy headers before error-page body substitution.
+fn problem_page(state: &AppState, page: Page, error: ServiceError) -> Response {
     let (status, problem) = match error {
         ServiceError::NotFound => (StatusCode::NOT_FOUND, LinkProblem::Invalid),
         ServiceError::Forbidden => (StatusCode::FORBIDDEN, LinkProblem::Suspended),
-        other => return Err(other.into()),
+        other => return WebError::from(other).into_response(),
     };
-    Ok((status, ResetPasswordPage::problem(page, problem, state.services.recovery.email_available())).into_response())
+    (status, ResetPasswordPage::problem(page, problem, state.services.recovery.email_available())).into_response()
 }
 
 /// `GET /password/reset/complete`
@@ -162,7 +132,27 @@ pub async fn verify(State(state): State<AppState>, page: Page, Path(token): Path
     let response = match state.services.recovery.verify_email(&token).await {
         Ok(verified) => (StatusCode::OK, VerifyEmailPage::verified(page, verified.address.to_string())).into_response(),
         Err(ServiceError::NotFound) => (StatusCode::NOT_FOUND, VerifyEmailPage::invalid(page)).into_response(),
-        Err(other) => return Err(other.into()),
+        Err(other) => WebError::from(other).into_response(),
     };
     Ok((SECRET_URL_HEADERS, response).into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn form_errors_keep_validation_throttle_and_capacity_statuses_separate() {
+        let invalid = form_error_response(&ServiceError::Invalid("invalid input".into()), "validation form");
+        assert_eq!(invalid.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert!(!invalid.headers().contains_key(header::RETRY_AFTER));
+        let throttled = form_error_response(&ServiceError::RateLimited { retry_after_seconds: 12 }, "throttled form");
+        assert_eq!(throttled.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(throttled.headers()[header::RETRY_AFTER], "12");
+        let unavailable = form_error_response(&ServiceError::Unavailable { retry_after_seconds: 1 }, "unused submitted form");
+        assert_eq!(unavailable.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(unavailable.headers()[header::RETRY_AFTER], "1");
+        assert_eq!(unavailable.headers()[header::CACHE_CONTROL], "no-store");
+        assert_eq!(unavailable.extensions().get::<crate::error::ErrorInfo>().unwrap().message, crate::error::UNAVAILABLE_MESSAGE);
+    }
 }

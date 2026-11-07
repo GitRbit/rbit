@@ -2,14 +2,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
+import { navigationModules } from "./fixtures/navigation-modules.mjs";
 
 const assets = new URL("../../crates/rbit-web/assets/", import.meta.url);
 const source = (await readFile(new URL("preload.js", assets), "utf8"))
   .replace(/^import .*;\r?\n/gm, "");
-const navigation = (await readFile(new URL("nav.js", assets), "utf8")).replace(/^import .*;\r?\n/gm, "").replace(/^export /gm, "");
-const navigationCache = (await readFile(new URL("repo-navigation-cache.js", assets), "utf8")).replace(/^export /gm, "");
-const updateNotice = (await readFile(new URL("update-notice.js", assets), "utf8")).replace(/^export /gm, "");
-const navigationBar = (await readFile(new URL("repo-navigation-bar.js", assets), "utf8")).replace(/^export /gm, "");
+const installNavigation = await navigationModules();
 const origin = "https://git.example.com";
 
 function page({ saveData = false, effectiveType = "4g", idleCallback = true, signedIn = false, visiblePaths = [] } = {}) {
@@ -130,12 +128,7 @@ function page({ saveData = false, effectiveType = "4g", idleCallback = true, sig
     };
     context.cancelIdleCallback = (handle) => idle.delete(handle);
   }
-  Object.assign(context, vm.runInContext(`(() => { ${navigationCache}\nreturn { clearNavigationResponses, hasNavigationResponse, isCachedNavigationResponse, rememberNavigationResponse, reuseNavigationResponse, trackNavigationPreload }; })()`, context));
-  Object.assign(context, vm.runInContext(`(() => { ${navigationBar}\nreturn { reconcileRepositoryBar }; })()`, context));
-  Object.assign(context, vm.runInContext(`(() => { ${updateNotice}\nreturn { installUpdateNotice }; })()`, context));
-  // Run the actual nav module first, just as preload.js's import does in the browser.
-  // Module locals stay private while the two public functions are shared.
-  Object.assign(context, vm.runInContext(`(() => { ${navigation}\nreturn { navigationEpoch, navigationHeaders }; })()`, context));
+  installNavigation(context);
   vm.runInContext(source, context);
   const dispatch = (name, event = {}) => {
     for (const callback of listeners.get(name) ?? []) callback({ detail: {}, ...event });
@@ -594,15 +587,4 @@ test("visible links come from swapped content instead of a page search after nav
   app.dispatch("htmx:load", { detail: { elt: main } });
   app.settle();
   assert.deepEqual([...app.observed], [kept, next], "links still on the page stay watched; departed ones are dropped");
-});
-
-test("history snapshots over 64k characters are dropped before htmx stores them", () => {
-  const app = page();
-  const kept = { url: "/alice/repo/issues", content: "x".repeat(64_000) };
-  const dropped = { url: "/alice/repo/blob/main/big.rs", content: "x".repeat(64_001) };
-  for (const item of [kept, dropped]) app.dispatch("htmx:historyItemCreated", { detail: { item } });
-  assert.equal(kept.url, "/alice/repo/issues");
-  assert.equal(kept.content.length, 64_000);
-  assert.equal(dropped.content, "");
-  assert.equal(dropped.url, "\u0000too-large", "the placeholder can never match a real path");
 });

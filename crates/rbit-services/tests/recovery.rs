@@ -7,6 +7,11 @@ use std::{
 };
 
 use rbit_auth::{Passwords, SessionToken};
+use rbit_identity::PasswordWork;
+use rbit_kernel::BlockingBudget;
+
+mod lifecycle;
+mod password_changes;
 use rbit_core::{
     AccountId, Config, Timestamp, User,
     config::{MailConfig, MailTransport},
@@ -56,12 +61,13 @@ impl RequestThrottle for RecordingThrottle {
 }
 
 struct Fixture {
-    _dir: tempfile::TempDir,
+    dir: tempfile::TempDir,
     database: Database,
     services: Services,
     recovery: RecoveryService,
     outbox: MemoryMailer,
     throttle: RecordingThrottle,
+    passwords: PasswordWork,
 }
 
 impl Fixture {
@@ -72,6 +78,7 @@ impl Fixture {
     async fn with_transport(transport: MailTransport) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let mut config = Config::default();
+        config.security.max_password_jobs = 1;
         config.storage.data_dir = dir.path().to_path_buf();
         config.server.public_url = format!("{BASE_URL}/");
         "Forge".clone_into(&mut config.server.site_name);
@@ -80,7 +87,8 @@ impl Fixture {
 
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
         let kv = KvStore::open(&config.storage.kv_path()).unwrap();
-        let services = Services::new(Arc::clone(&config), &database, &kv).await.unwrap();
+        let passwords = PasswordWork::new(BlockingBudget::new(std::num::NonZeroUsize::new(1).unwrap()));
+        let services = Services::with_password_work(Arc::clone(&config), &database, &kv, passwords.clone()).await.unwrap();
 
         let ctx = ServiceContext {
             config: Arc::clone(&config),
@@ -91,14 +99,14 @@ impl Fixture {
         };
         let outbox = MemoryMailer::new();
         let throttle = RecordingThrottle::default();
-        let mut builder = RecoveryService::builder(ctx)
+        let mut builder = RecoveryService::builder(ctx, passwords.clone())
             .throttle(throttle.clone())
             .instance(services.instance.clone())
             .accounts(services.accounts.clone());
         if transport != MailTransport::Disabled {
             builder = builder.mail(MailService::with_mailer(Arc::new(outbox.clone()), Duration::from_secs(5)));
         }
-        Self { _dir: dir, database, recovery: builder.build(), services, outbox, throttle }
+        Self { dir, database, recovery: builder.build(), services, outbox, throttle, passwords }
     }
 
     /// A user with a real password, created directly (publishes no event).
@@ -341,42 +349,6 @@ async fn resending_requires_an_unverified_address_and_is_throttled() {
     fixture.database.recovery().mark_verified(alice.id(), &alice.email, Timestamp::now()).await.unwrap();
     let verified = fixture.recovery.resend_verification(&alice).await;
     assert!(matches!(verified, Err(ServiceError::Invalid(message)) if message.contains("already verified")));
-}
-
-#[tokio::test]
-async fn administrators_send_resets_and_set_passwords() {
-    let fixture = Fixture::new().await;
-    let admin = fixture.user("root", true).await;
-    let alice = fixture.user("alice", false).await;
-    let session = fixture.services.accounts.start_session(&alice).await.unwrap();
-    let guard = fixture.services.accounts.guard_password_change(alice.id(), &session);
-    let mut events = fixture.services.events.subscribe();
-
-    assert!(matches!(fixture.recovery.admin_send_password_reset(&alice, admin.id()).await, Err(ServiceError::Forbidden)));
-    assert_eq!(fixture.recovery.admin_send_password_reset(&admin, alice.id()).await.unwrap(), alice.email);
-    assert_eq!(fixture.mail(1).await.to, alice.email);
-    let missing = fixture.recovery.admin_send_password_reset(&admin, AccountId(999)).await;
-    assert!(matches!(missing, Err(ServiceError::NotFound)));
-
-    let denied = fixture.recovery.admin_set_password(&alice, admin.id(), NEW_PASSWORD.to_owned()).await;
-    assert!(matches!(denied, Err(ServiceError::Forbidden)));
-    let own = fixture.recovery.admin_set_password(&admin, admin.id(), NEW_PASSWORD.to_owned()).await;
-    assert!(matches!(own, Err(ServiceError::Invalid(_))));
-    let short = fixture.recovery.admin_set_password(&admin, alice.id(), "short".to_owned()).await;
-    assert!(matches!(short, Err(ServiceError::Invalid(_))));
-
-    // The emailed link stops working once an administrator has set the password.
-    let token = token_in(&fixture.mail(1).await, "/password/reset/");
-    fixture.recovery.admin_set_password(&admin, alice.id(), NEW_PASSWORD.to_owned()).await.unwrap();
-    assert!(fixture.services.accounts.resume_session(&session).await.unwrap().is_none(), "revoked before the change returns");
-    guard.finish(false).await;
-    assert_eq!(events.recv().await.unwrap(), DomainEvent::PasswordChanged { user: alice.id() });
-    assert!(fixture.services.accounts.authenticate("alice", NEW_PASSWORD.to_owned()).await.is_ok());
-    assert!(matches!(fixture.recovery.reset_target(&token).await, Err(ServiceError::NotFound)));
-
-    let verified = fixture.recovery.verified_among(&admin, &[admin.id(), alice.id()]).await.unwrap();
-    assert!(verified.is_empty());
-    assert!(matches!(fixture.recovery.verified_among(&alice, &[alice.id()]).await, Err(ServiceError::Forbidden)));
 }
 
 #[tokio::test]

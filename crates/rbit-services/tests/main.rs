@@ -2,8 +2,10 @@
 //! costs far more than compiling the tests themselves.
 
 mod access;
+mod wiki_reads;
 // Actions: foundation (F).
 mod actions;
+mod actions_claims;
 // Actions: triggers (T).
 // Actions: workflow_run and repository_dispatch.
 mod actions_calls;
@@ -13,6 +15,7 @@ mod actions_dispatch;
 #[path = "support/actions_fixture.rs"]
 mod actions_fixture;
 mod actions_hooks;
+mod actions_log_reads;
 mod actions_needs_plans;
 mod actions_planning;
 mod actions_pulls;
@@ -33,9 +36,13 @@ mod edits;
 mod email_digests;
 mod external_auth;
 // The fake GitHub that imports and mirrors fetch from.
+mod epoch_sessions;
 #[path = "support/fake_forge.rs"]
 mod fake_forge;
+#[path = "support/fault_schema.rs"]
+mod fault_schema;
 mod forks;
+mod identity_races;
 mod imports;
 mod issues;
 mod lfs;
@@ -44,15 +51,19 @@ mod notification_email;
 mod notifications;
 mod orgs;
 mod passkeys;
+mod password_admission;
+mod password_policy;
 mod preferences;
 mod profiles;
 mod protection;
+mod provider_original;
 mod pulls;
 mod push_mirrors;
 mod recovery;
 mod references;
 mod releases;
 mod repo_settings;
+mod repository_discovery;
 mod sessions;
 mod statuses;
 mod teams;

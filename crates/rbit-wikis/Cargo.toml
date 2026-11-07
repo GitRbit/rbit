@@ -1,0 +1,15 @@
+[package]
+name = "rbit-wikis"
+description = "Pure repository wiki identities, validated names and scoped mutation policy."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+rbit-contracts = { workspace = true, default-features = false }
+rbit-access = { workspace = true, default-features = false }
+unicode-normalization = "=0.1.25"
+
+[lints]
+workspace = true

@@ -5,6 +5,7 @@
 //! cannot demote, suspend or delete themselves, and the last active administrator can
 //! never be demoted, suspended or deleted (enforced atomically by the store).
 
+mod accounts;
 pub mod configuration;
 
 use std::{
@@ -14,11 +15,12 @@ use std::{
 };
 
 use rbit_core::{AccountId, InstanceSettings, OwnedRepository, RepoId, User};
+use rbit_identity::PasswordWork;
 use rbit_storage::sqlite::admin::{AdminStore, ListFilter, Listing, Moderation};
 pub use rbit_storage::sqlite::admin::{InstanceCounts, OrgRecord, UserRecord};
 
 use crate::{
-    DomainEvent, InstanceService, ServiceContext, ServiceError, SignUp, accounts,
+    DomainEvent, InstanceService, ServiceContext, ServiceError,
     audit::{AuditAction, AuditEntry, AuditService},
 };
 
@@ -115,6 +117,7 @@ pub struct Dashboard {
 
 #[derive(Debug, Clone)]
 pub struct AdminService {
+    passwords: PasswordWork,
     ctx: ServiceContext,
     instance: InstanceService,
     store: AdminStore,
@@ -122,11 +125,11 @@ pub struct AdminService {
 }
 
 impl AdminService {
-    pub(crate) fn new(ctx: ServiceContext, instance: InstanceService) -> Self {
+    pub(crate) fn new(ctx: ServiceContext, instance: InstanceService, passwords: PasswordWork) -> Self {
         STARTED_AT.get_or_init(Instant::now);
         let store = ctx.database.admin();
         let audit = AuditService::from_store(ctx.database.audit());
-        Self { ctx, instance, store, audit }
+        Self { passwords, ctx, instance, store, audit }
     }
 
     // ------------------------------------------------------------------ dashboard
@@ -182,19 +185,6 @@ impl AdminService {
     pub async fn user(&self, actor: &User, id: AccountId) -> Result<UserRecord, ServiceError> {
         require_admin(actor)?;
         self.store.find_user(id).await?.ok_or(ServiceError::NotFound)
-    }
-
-    /// Creates an account. Works even while registration is closed.
-    pub async fn create_user(&self, actor: &User, input: SignUp, is_admin: bool) -> Result<User, ServiceError> {
-        require_admin(actor)?;
-        let new = accounts::prepare_user(&self.ctx.config, input, is_admin).await?;
-        let user = self.ctx.database.accounts().create_user_with_initial_password(new).await?;
-        tracing::info!(admin = %actor.name(), user = %user.name(), is_admin, "administrator created account");
-        // Subscribers (e.g. email verification) treat every new account the same way.
-        self.ctx.events.publish(DomainEvent::UserSignedUp { user: user.id() });
-        let detail = if is_admin { "as an administrator" } else { "" };
-        self.audit.record(AuditEntry::new(AuditAction::UserCreated).by(actor).on(user.name().as_str()).detail(detail)).await;
-        Ok(user)
     }
 
     /// Grants or revokes site administrator rights.

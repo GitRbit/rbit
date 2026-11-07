@@ -36,3 +36,14 @@ test("the file tree's current-file marker moves without a transition", () => {
   assert.match(base.replace(/\bhover:[\w-]+/g, ""), /\btransition-none\b/, "rows override the links' fade");
   assert.match(base, /\bhover:transition-colors\b/, "hovering still fades in");
 });
+
+test("reduced motion closes discretely transitioned dialogs at once", () => {
+  // `.tpk` transitions `display` and `overlay` with allow-discrete. Under reduced motion a
+  // 0.01ms transition still keeps the closed picker rendered until a later frame.
+  const app = sources.find(([name]) => name === "app.css")[1];
+  assert.match(app, /\.tpk\s*\{[^}]*display 120ms allow-discrete/, "the picker animates its open and close");
+  const reduced = [...app.matchAll(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\*, \*::before, \*::after\s*\{([^}]*)\}/g)];
+  assert.equal(reduced.length, 1);
+  assert.match(reduced[0][1], /transition-duration:\s*0\.01ms !important;/);
+  assert.match(reduced[0][1], /transition-behavior:\s*normal !important;/, "no discrete display/overlay transition");
+});

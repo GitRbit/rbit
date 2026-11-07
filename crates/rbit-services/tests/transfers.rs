@@ -202,3 +202,47 @@ async fn transfers_drop_the_old_organisations_team_grants() {
     assert!(fixture.services.teams.repositories(Some(&olga), &core).await.unwrap().is_empty());
     assert!(matches!(fixture.services.repositories.open(Some(&bob), "beta", "rocket").await, Err(ServiceError::NotFound)));
 }
+
+#[tokio::test]
+async fn transferred_private_alias_remains_private_and_reclaim_wins() {
+    let fixture = Fixture::new().await;
+    let alice = fixture.user("alice", false).await;
+    let outsider = fixture.user("outsider", false).await;
+    fixture.org(&alice, "acme").await;
+    let original = fixture.repo(&alice, "alice", "Rocket").await;
+    fixture.services.repo_settings.set_archived(&alice, &original, true).await.unwrap();
+    let archived = fixture.open(&alice, "alice", "Rocket").await;
+    fixture.services.transfers.transfer(&alice, &archived, "acme", "alice/Rocket").await.unwrap();
+    let repositories = &fixture.services.repositories;
+    assert!(repositories.moved_to(Some(&outsider), "alice", "Rocket").await.unwrap().is_none());
+    assert!(repositories.moved_to(None, "alice", "Rocket").await.unwrap().is_none());
+    let redirected = repositories.open_following_renames(Some(&alice), "alice", "Rocket.git").await.unwrap();
+    assert_eq!(redirected.repo.repo.id, original.repo.repo.id);
+    assert!(redirected.repo.repo.is_archived());
+    assert!(matches!(repositories.open_following_renames(Some(&outsider), "alice", "Rocket.git").await, Err(ServiceError::NotFound)));
+    let reclaimed = fixture.repo(&alice, "alice", "Rocket").await;
+    assert!(repositories.moved_to(Some(&alice), "alice", "Rocket").await.unwrap().is_none());
+    assert_eq!(
+        repositories.open_following_renames(Some(&alice), "alice", "Rocket.git").await.unwrap().repo.repo.id,
+        reclaimed.repo.repo.id
+    );
+}
+
+#[tokio::test]
+async fn validation_and_missing_aliases_preserve_zero_and_single_query_paths() {
+    use rbit_storage::count_work;
+    let fixture = Fixture::new().await;
+    let alice = fixture.user("alice", false).await;
+    let repo = fixture.repo(&alice, "alice", "Rocket").await;
+    for (owner, confirmation) in [("  ", ""), ("other", "wrong")] {
+        let (result, work) = count_work(fixture.services.transfers.transfer(&alice, &repo, owner, confirmation)).await;
+        assert!(matches!(result, Err(ServiceError::Invalid(_))));
+        assert_eq!((work.acquisitions, work.statements), (0, 0));
+    }
+    let (result, work) = count_work(fixture.services.repositories.moved_to(Some(&alice), "alice", "missing")).await;
+    assert!(result.unwrap().is_none());
+    assert_eq!((work.acquisitions, work.statements), (1, 1));
+    let (result, work) = count_work(fixture.services.repositories.open_following_renames(Some(&alice), "alice", "Rocket.git")).await;
+    assert_eq!(result.unwrap().repo.repo.id, repo.repo.repo.id);
+    assert_eq!((work.acquisitions, work.statements), (1, 1));
+}

@@ -3,6 +3,7 @@
 
 // Theme menu and gallery: instant switching, live previews, filtering.
 import "./theme-picker.js";
+import "./locale.js";
 
 // Preloading, partial swaps, progress and focus for boosted navigation.
 import "./nav.js";
@@ -24,6 +25,7 @@ import "./branch-graph.js";
 import "./mirror-progress.js";
 // Actions job pages: steps keep the viewer's open or closed choice across refreshes.
 import "./actions-log.js";
+import "./actions-run.js";
 import "./repo-create.js";
 import "./markdown.js";
 import "./discussion.js";

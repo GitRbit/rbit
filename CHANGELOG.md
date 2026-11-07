@@ -7,8 +7,69 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+The ground-up rewrite targets **0.2.0**, including both the server and runner.
+This section remains unreleased until the complete rewrite and release gates pass.
+
 ### Security
 
+- Bind sensitive-settings password reads to the signed-in account ID, preventing a
+  rename/reclaim race from selecting the reclaiming account's password. Preserve the
+  existing single-query lookup and proof/failure ordering.
+
+- Prepare explicit accepted-upgrade intent retirement without rewriting historical
+  cleanup metadata. Active recovery skips the proven old range and distinguishes
+  retirement from a new credential cleanup; production activation remains pending.
+
+- Prepare private accepted-pair SQL composition that refuses legacy credential and
+  one-use proof writes before SQL while retaining allowed profile and sealing paths.
+  Production runtime, all authentication producers and restore remain unselected;
+  real-store protocol fixtures await the compiler acceptance gates.
+
+- Prepare sealed, test-gated active session modes that refuse legacy mutations and
+  commit a persistent runtime witness with bound session changes and revocation.
+  Production startup, credential finalizers, all issuers and restore selection remain
+  pending; this does not activate durable session fencing.
+
+- Prepare migration0068's empty ACTIVE-publication layout and internal paired-store
+  acceptance fixtures. Production upgrade/startup and all issuers remain unactivated;
+  the mandatory runtime witness writers and supported restore protocol are still open.
+  See [closed active composition](docs/design/identity-active-composition.md).
+
+- Prepare explicit stopped identity layout installation and paired session invalidation
+  checkpoints. Migration 0067 changes writer compatibility; stop mixed versions and
+  retain a consistent SQLite/KV/key backup before installation. Defaults stay legacy;
+  no CLI or runtime fencing is activated. See [stopped preparation](docs/design/identity-stopped-upgrade.md).
+
+- Prepare inactive paired session reconciliation with durable fixed keep-current/end-all
+  decisions. Migration 0064 requires a stopped pre-upgrade backup for downgrade; no
+  production session or credential path selects the new protocol. See
+  [durable recovery](docs/design/identity-durable-session-recovery.md).
+
+- Require a connection-local writer protocol for identity and credential-table writes.
+  Migration 0061 refuses older SQLite writers, including cached statements on already-open
+  connections. Accounts, credentials and sessions are preserved; this does not activate
+  durable session fencing. Stop mixed versions and retain a consistent stopped backup
+  before upgrading; see [writer compatibility](docs/design/identity-writer-compatibility.md).
+
+- Add inactive credential epochs and revocation-intent storage for future crash-safe
+  session fencing. Password/session behavior remains unchanged. Migration 0060 requires
+  a stopped pre-upgrade snapshot for downgrade; see [upgrade and rollback](docs/design/identity-revocation-storage.md#upgrade-and-rollback).
+
+- HTTP Git advertisements retain admission until cancelled or timed-out child work
+  has been reaped. Controlled Git exchanges join their input/output tasks, and SSH
+  shutdown drains owned sessions and Git work before returning. Operating-system
+  descendant containment and exceptional wait failures remain separate obligations.
+- Password hashing and verification share an instance-wide, cancellation-safe work
+  limit. Exhausted or closed capacity returns a retryable 503 across HTML, API, Git
+  and LFS without spending one-use password-reset or passkey-confirmation proofs.
+  Password workers retain their slots until completion and zero their owned inputs.
+- Credential finalization and password-triggered session revocation retain their
+  per-instance ownership across request cancellation. Graceful shutdown closes
+  admission and drains admitted work before stores close.
+- Generic error pages disable HTMX history snapshots, preserving the history barrier
+  when an error replaces a page whose URL contains a live recovery token.
+- Update `pulldown-cmark` to 0.13.6 for RUSTSEC-2026-0433, retaining the existing
+  Markdown option whitelist.
 - Update `zstd` to 0.14.3, `zstd-safe` to 8.2.0 and `zstd-sys` to 2.1.2 for
   RUSTSEC-2026-0391, RUSTSEC-2026-0398, RUSTSEC-2026-0403 and RUSTSEC-2026-0410; they reach
   rbit through `async-compression`.
@@ -17,6 +78,26 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Actions job pages group status, execution details and bounded step logs with typed
+  localized labels, retaining log anchors, full downloads and native writer controls.
+
+- Actions overview pages use responsive workflow navigation and visible native
+  filter labels, with typed localized empty states and page counts. Existing
+  dispatch, workflow controls, filter queries and result-only polling remain intact.
+
+- Actions run pages group existing workflow, commit, timing and attempt details in a
+  responsive summary, with typed localized presentation labels. Review input and
+  keyboard focus survive live refreshes only while the server still grants access
+  to the same approval or deployment-review form.
+
+- A stable `CI required` result gate with revision, platform and validation summaries;
+  skipped or unsuccessful required jobs cannot produce a passing aggregate.
+
+- Typed localization foundations and shared Explore page/results rendering, including
+  opt-in expansion and right-to-left diagnostic locales and direct HTMX fragments.
+- Development worktrees under `worktrees/`, shared Cargo output with guarded artifact
+  handoff, isolated runtime data and ports, and configurable inactive-cache pruning.
+  See [development worktrees](docs/development-worktrees.md).
 - Live administration monitoring: theme-aware request-rate and response-time charts,
   HTTP response and Git activity tables, five-second updates, and pause/resume controls.
   Five minutes of process-local history stay in bounded memory without a chart library.
@@ -72,8 +153,54 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `rbit_actions_*` metrics: finished runs and jobs, queue and job durations, runner calls,
   log bytes, workflow errors, waiting jobs and online runners.
 
+### Changed
+
+- Repository creation and settings now use modular policy components, preserving
+  existing permissions, forms, redirects, archive behavior and audit/webhook effects.
+
+### Performance
+
+- Issue deletion moves its returned event snapshot without copying its title and
+  body, preserving administrator authorization and existing audit/event ordering.
+
+- Text-based reference suggestions avoid constructing an unused issue-store handle;
+  numeric suggestions retain the existing indexed lookup and SQL work.
+
+### Fixed
+
+- Fetch locked dependencies before guarded CI compilation so fresh runners can
+  resolve the offline source graph without approving compiler artifacts.
+
+- Windows shared builds own and drain their compiler processes by default, enabling
+  verified warm-cache reuse. Explicit unowned mode remains available.
+
+- Shared development builds validate local Cargo artifacts against their source and
+  checkout identity, preventing stale artifacts from another worktree from being reused.
+
+- Failed or unexpected Windows development-process waits fail the command instead
+  of interpreting an unproved target state as successful completion.
+
+- The Windows development launcher preserves a completed target's exit code 259,
+  so an unsuccessful command cannot be reported as successful.
+- Prevent startup cleanup from marking newly queued repository imports as
+  interrupted while their import jobs are still running.
+
+- Preserve edited Actions review controls after real HTMX outer-element polls, using
+  the newly authorized live element while retaining server permission decisions.
+
+- Refresh the render-time footer from navigation response timing, including HTML
+  reused after HTTP revalidation, while preserving HTMX updates and cache validators.
+- Recovery email intake starts once and drains its current operation on shutdown.
+  Session cleanup finishes active store work before returning. HTTP bind failures
+  start no background subscribers, and HTTP serving errors run shutdown cleanup.
+
 ### Upgrade notes
 
+- `[security] max_password_jobs` defaults to 2 and accepts 1 through 64. Changes take
+  effect after restart; disabling request rate limits leaves this resource bound in
+  place. Size it for the instance's CPU and memory, including historical Argon2 PHC
+  parameters. Retain the previous configuration snapshot before saving new settings:
+  older binaries reject the new field and require their earlier snapshot on rollback.
 - Migrations `0048` to `0057` add the Actions tables, a `source` column on commit statuses
   and comments (and releases), step summaries, the Actions permissions and owner policies, the
   `workflow_run` and `repository_dispatch` events, access to private reusable workflows and

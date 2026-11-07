@@ -90,7 +90,10 @@ impl FromRequestParts<AppState> for Page {
 
     async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
         let viewer = Viewer::from_request_parts(parts, state).await?;
-        let mut page = Page::new(state, viewer.user(), parts.uri.path()).with_theme(Theme::from_headers(&parts.headers));
+        let locale = crate::localization::RequestLocale::from_request_parts(parts, state).await?;
+        let mut page = Page::new(state, viewer.user(), parts.uri.path())
+            .with_theme(Theme::from_headers(&parts.headers))
+            .with_document_locale(locale.document_locale());
         if viewer.user().is_some() {
             page.has_unread_notifications = parts.extensions.get::<UnreadNotifications>().is_some_and(|unread| unread.0);
         }

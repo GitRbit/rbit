@@ -46,3 +46,6 @@ async fn resolves_existing_numbers_and_accounts_in_one_batch() {
     assert_eq!(set.account("nobody"), None);
     assert_eq!(services.references.resolve(&repo, &[]).await.unwrap(), rbit_services::references::ReferenceSet::default());
 }
+
+mod port;
+mod suggestions;

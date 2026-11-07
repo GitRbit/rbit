@@ -1,0 +1,160 @@
+{
+  "date": "2026-11-05",
+  "windows": "Windows-11-10.0.26200-SP0",
+  "rustsec_tree_sha": "26fd2d43f7280a1fb925a3743ec463017afe7119",
+  "rustsec_tree_truncated": false,
+  "new": [
+    {
+      "name": "mutants",
+      "version": "0.0.4",
+      "checksum": "add0ac067452ff1aca8c5002111bd6b1c895baee6e45fcbc44e0193aea17be56",
+      "license": "MIT",
+      "features_workspace": [],
+      "source_bytes": 2847,
+      "advisory_paths": []
+    },
+    {
+      "name": "processkit",
+      "version": "3.3.4",
+      "checksum": "1549b59abbe4fc78aa39860e36c81da89262c1278679b8f7299ef4ad7668c004",
+      "license": "MIT",
+      "features_workspace": [
+        "process-control"
+      ],
+      "source_bytes": 5692969,
+      "advisory_paths": []
+    },
+    {
+      "name": "thiserror",
+      "version": "1.0.69",
+      "checksum": "b6aaf5339b578ea85b50e080feb250a3e8ae8cfcdff9a461c9ec2904bc923f52",
+      "license": "MIT OR Apache-2.0",
+      "features_workspace": [],
+      "source_bytes": 91953,
+      "advisory_paths": []
+    },
+    {
+      "name": "thiserror-impl",
+      "version": "1.0.69",
+      "checksum": "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1",
+      "license": "MIT OR Apache-2.0",
+      "features_workspace": [],
+      "source_bytes": 81816,
+      "advisory_paths": []
+    },
+    {
+      "name": "win32job",
+      "version": "2.0.3",
+      "checksum": "8c6a6724ccfbf34154a8691bd868b0fcd2be2ca3f7b47b32614654f1a01b191c",
+      "license": "MIT OR Apache-2.0",
+      "features_workspace": [],
+      "source_bytes": 48441,
+      "advisory_paths": []
+    },
+    {
+      "name": "windows",
+      "version": "0.61.3",
+      "checksum": "9babd3a767a4c1aef6900409f85f5d53ce2544ccdfaa86dad48c91782c6d6893",
+      "license": "MIT OR Apache-2.0",
+      "features_workspace": [
+        "Win32",
+        "Win32_Foundation",
+        "Win32_Security",
+        "Win32_System",
+        "Win32_System_JobObjects",
+        "Win32_System_ProcessStatus",
+        "Win32_System_Threading",
+        "default",
+        "std"
+      ],
+      "source_bytes": 114341351,
+      "advisory_paths": [
+        "crates/windows/RUSTSEC-2022-0008.md"
+      ]
+    },
+    {
+      "name": "windows-collections",
+      "version": "0.2.0",
+      "checksum": "3beeceb5e5cfd9eb1d76b381630e82c4241ccd0d27f1a39ed41b2760b255c5e8",
+      "license": "MIT OR Apache-2.0",
+      "features_workspace": [],
+      "source_bytes": 101417,
+      "advisory_paths": []
+    },
+    {
+      "name": "windows-core",
+      "version": "0.61.2",
+      "checksum": "c0fdd3ddb90610c7638aa2b3a3ab2904fb9e5cdbecc643ddb3647212781c4ae3",
+      "license": "MIT OR Apache-2.0",
+      "features_workspace": [
+        "std"
+      ],
+      "source_bytes": 149094,
+      "advisory_paths": []
+    },
+    {
+      "name": "windows-future",
+      "version": "0.2.1",
+      "checksum": "fc6a41e98427b19fe4b73c550f060b59fa592d7d686537eebf9385621bfbad8e",
+      "license": "MIT OR Apache-2.0",
+      "features_workspace": [],
+      "source_bytes": 133906,
+      "advisory_paths": []
+    },
+    {
+      "name": "windows-link",
+      "version": "0.1.3",
+      "checksum": "5e6ad25900d524eaabdbbb96d20b4311e1e7ae1699af4fb28c17ae66c80d798a",
+      "license": "MIT OR Apache-2.0",
+      "features_workspace": [],
+      "source_bytes": 16262,
+      "advisory_paths": []
+    },
+    {
+      "name": "windows-numerics",
+      "version": "0.2.0",
+      "checksum": "9150af68066c4c5c07ddc0ce30421554771e528bde427614c61038bc2c92c2b1",
+      "license": "MIT OR Apache-2.0",
+      "features_workspace": [],
+      "source_bytes": 49081,
+      "advisory_paths": []
+    },
+    {
+      "name": "windows-result",
+      "version": "0.3.4",
+      "checksum": "56f42bd332cc6c8eac5af113fc0c1fd6a8fd2aa08a0119358686e5160d0586c6",
+      "license": "MIT OR Apache-2.0",
+      "features_workspace": [
+        "std"
+      ],
+      "source_bytes": 42667,
+      "advisory_paths": []
+    },
+    {
+      "name": "windows-strings",
+      "version": "0.4.2",
+      "checksum": "56e6c93f3a0c3b36176cb1327a4958a0353d5d166c2a35cb268ace15e91d3b57",
+      "license": "MIT OR Apache-2.0",
+      "features_workspace": [
+        "std"
+      ],
+      "source_bytes": 54202,
+      "advisory_paths": []
+    },
+    {
+      "name": "windows-threading",
+      "version": "0.1.0",
+      "checksum": "b66463ad2e0ea3bbf808b7f1d371311c80e115c0b71d60efc142cafbcfb057a6",
+      "license": "MIT OR Apache-2.0",
+      "features_workspace": [],
+      "source_bytes": 25348,
+      "advisory_paths": []
+    }
+  ],
+  "removed": [],
+  "existing_checksum_changes": [],
+  "advisory_assessment": {
+    "windows@0.61.3": "RUSTSEC-2022-0008 patched >=0.32.0; resolved version is patched",
+    "other_new_registry_packages": "No package advisory markdown at the recorded complete RustSec snapshot; not a safety guarantee"
+  }
+}

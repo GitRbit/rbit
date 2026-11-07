@@ -2,7 +2,7 @@
 //!
 //! Workstream D owns this file.
 
-use rbit_auth::Passwords;
+mod password_checks;
 use rbit_core::{AccountId, AccountName, Email, User};
 use rbit_storage::sqlite::profiles::{AccountProfile, ProfileStore};
 
@@ -43,6 +43,8 @@ pub struct ProfileService {
     throttle: ThrottleService,
 }
 
+mod password_changes;
+
 impl ProfileService {
     pub(crate) fn new(ctx: ServiceContext, accounts: AccountService, throttle: ThrottleService) -> Self {
         Self { ctx, accounts, throttle }
@@ -65,16 +67,24 @@ impl ProfileService {
 
     /// Renames the authenticated user's own account without changing its identity or
     /// credentials. Old names redirect until reclaimed; they never become login aliases.
-    pub async fn change_username(&self, user: &User, current_password: String, new_name: &str) -> Result<(), ServiceError> {
-        self.throttle.check(ThrottleScope::AccountRename, &user.id().0.to_string())?;
-        let name: AccountName = new_name.trim().parse()?;
-        let verified = self.verify_password(user, current_password).await?;
-        if !self.ctx.database.accounts().rename_if_password(user.id(), &name, &verified).await? {
-            return Err(ServiceError::InvalidCredentials);
+    pub fn change_username(
+        &self,
+        user: &User,
+        current_password: String,
+        new_name: &str,
+    ) -> impl std::future::Future<Output = Result<(), ServiceError>> {
+        let mut current_password = zeroize::Zeroizing::new(current_password);
+        async move {
+            self.throttle.check(ThrottleScope::AccountRename, &user.id().0.to_string())?;
+            let name: AccountName = new_name.trim().parse()?;
+            let verified = self.verify_password(user, std::mem::take(&mut *current_password)).await?;
+            if !self.ctx.database.accounts().rename_if_password(user.id(), &name, &verified).await? {
+                return Err(ServiceError::InvalidCredentials);
+            }
+            tracing::info!(account = user.id().0, new_name = %name, "account renamed");
+            AuditService::new(self.ctx.clone()).record(AuditEntry::new(AuditAction::UsernameChanged).by(user).on(name.to_string())).await;
+            Ok(())
         }
-        tracing::info!(account = user.id().0, new_name = %name, "account renamed");
-        AuditService::new(self.ctx.clone()).record(AuditEntry::new(AuditAction::UsernameChanged).by(user).on(name.to_string())).await;
-        Ok(())
     }
 
     /// Validates and replaces every profile field.
@@ -94,70 +104,35 @@ impl ProfileService {
     ///
     /// [`ServiceError::InvalidCredentials`] for a wrong password, [`ServiceError::Conflict`]
     /// if another account uses the address.
-    pub async fn change_email(&self, user: &User, current_password: String, new_email: &str) -> Result<Email, ServiceError> {
-        let email: Email = new_email.trim().parse()?;
-        let verified = self.verify_password(user, current_password).await?;
-        if !self.store().set_email_if_password(user.id(), &email, &verified).await? {
-            return Err(ServiceError::InvalidCredentials);
-        }
-        tracing::info!(user = %user.name(), "email changed");
-        self.ctx.events.publish(DomainEvent::EmailChanged { user: user.id(), previous: user.email.to_string() });
-        Ok(email)
-    }
-
-    /// Replaces the password after re-checking the current one.
-    pub async fn change_password(&self, user: &User, current_password: String, new_password: String) -> Result<(), ServiceError> {
-        self.validate_new_password(&new_password)?;
-        if current_password == new_password {
-            return Err(ServiceError::Invalid("choose a different password from your current password".to_owned()));
-        }
-        let verified = self.verify_password(user, current_password).await?;
-        let hash = Passwords::hash(new_password).await?;
-        let service = self.clone();
-        let user = user.clone();
-        crate::credentials::finish_update(async move {
-            if !service.store().set_password_hash_if_current(user.id(), &hash, &verified).await? {
+    pub fn change_email(
+        &self,
+        user: &User,
+        current_password: String,
+        new_email: &str,
+    ) -> impl std::future::Future<Output = Result<Email, ServiceError>> {
+        let mut current_password = zeroize::Zeroizing::new(current_password);
+        async move {
+            let email: Email = new_email.trim().parse()?;
+            let verified = self.verify_password(user, std::mem::take(&mut *current_password)).await?;
+            if !self.store().set_email_if_password(user.id(), &email, &verified).await? {
                 return Err(ServiceError::InvalidCredentials);
             }
-            service.accounts.password_changed_preserving_current(user.id()).await?;
-            tracing::info!(user = %user.name(), "password changed");
-            AuditService::new(service.ctx.clone()).record(AuditEntry::new(AuditAction::PasswordChanged).by(&user)).await;
-            service.ctx.events.publish(DomainEvent::PasswordChanged { user: user.id() });
-            Ok(())
-        })
-        .await
+            tracing::info!(user = %user.name(), "email changed");
+            self.ctx.events.publish(DomainEvent::EmailChanged { user: user.id(), previous: user.email.to_string() });
+            Ok(email)
+        }
     }
 
     fn validate_new_password(&self, password: &str) -> Result<(), ServiceError> {
         let min = self.ctx.config.security.min_password_length;
-        let length = password.chars().count();
-        if length < min {
+        let length = rbit_identity::classify_password_length(password, min, MAX_PASSWORD_LEN);
+        if length == rbit_identity::PasswordLength::TooShort {
             return Err(ServiceError::Invalid(format!("new password must be at least {min} characters")));
         }
-        if length > MAX_PASSWORD_LEN {
+        if length == rbit_identity::PasswordLength::TooLong {
             return Err(ServiceError::Invalid(format!("new password must be at most {MAX_PASSWORD_LEN} characters")));
         }
         Ok(())
-    }
-
-    /// [`ServiceError::InvalidCredentials`] unless `password` is the user's current password.
-    /// Throttled per account ([`ThrottleScope::PasswordCheck`]), so a stolen session cannot
-    /// be used to guess the password.
-    async fn verify_password(&self, user: &User, password: String) -> Result<String, ServiceError> {
-        let key = user.id().0.to_string();
-        self.throttle.check(ThrottleScope::PasswordCheck, &key)?;
-        let verified = if password.len() > MAX_PASSWORD_LEN * 4 {
-            None
-        } else {
-            let hash = self.store().password_hash(user.id()).await?.ok_or(ServiceError::NotFound)?;
-            Passwords::verify(password, hash.clone()).await?.then_some(hash)
-        };
-        let Some(hash) = verified else {
-            self.throttle.record_failure(ThrottleScope::PasswordCheck, &key);
-            return Err(ServiceError::InvalidCredentials);
-        };
-        self.throttle.reset(ThrottleScope::PasswordCheck, &key);
-        Ok(hash)
     }
 }
 

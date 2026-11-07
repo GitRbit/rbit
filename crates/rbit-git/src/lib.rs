@@ -42,6 +42,7 @@ pub mod relocate;
 pub mod remote;
 pub mod revision;
 pub mod storage;
+pub mod wikis;
 
 pub use changes::DiffLimits;
 pub use error::GitError;

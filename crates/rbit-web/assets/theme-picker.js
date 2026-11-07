@@ -1,3 +1,6 @@
+import { pickerCount, pickerCredit, pickerApply } from "./theme-picker-labels.js";
+import { syncIndex, watchIndexScroll } from "./theme-picker-index.js";
+
 // Instant theme switching and the theme gallery. Every control here is a plain form or
 // link that works without JavaScript; this module only makes it instant.
 //
@@ -8,7 +11,7 @@
 //   click, staying within a tinted scheme's family (Gruvbox dark ↔ light) when it has a
 //   sibling. Its value is the theme it switches to; after every switch it is pointed back
 //   at the theme it came from, so toggling twice always returns to where you started.
-// * The header's palette button (`[data-theme-dialog-open]`, a link to the gallery) opens the
+// * The header's palette button (`[data-theme-dialog-open]`, a link to Appearance settings) opens the
 //   theme picker dialog instead, fetched from `/themes/picker` the first time. It searches and
 //   filters as you type; the highlighted row (arrow keys or the pointer) shows in the dialog's
 //   preview pane, and Enter, a click or the pane's Apply button applies it to the page.
@@ -26,7 +29,7 @@ const HOVER_DELAY_MS = 200;
 /** Matches the `data-theme-fade` transition in app.css, with a little slack. */
 const FADE_MS = 350;
 /** Themes whose tokens live in app.css, with their schemes; others link their own sheet. */
-const BUILT_IN = { system: null, light: "light", dark: "dark", "dna-dark": "dark", "dna-day": "light" };
+const BUILT_IN = { system: null, light: "light", dark: "dark", "dna-dark": "dark", "dna-day": "light", "colorblind-light": "light", "colorblind-dark": "dark" };
 
 const root = document.documentElement;
 let applied = { slug: root.dataset.theme ?? "system", scheme: root.dataset.scheme ?? null };
@@ -154,6 +157,7 @@ function aimAfterChoosing(button, slug, scheme) {
   if (slug === "system") aimToggle(defaultSlug(opposite(deviceScheme())), opposite(deviceScheme()));
   else if (button.dataset.counterpart) aimToggle(button.dataset.counterpart, opposite(scheme));
   else if (slug === "light" || slug === "dark") aimToggle(opposite(scheme), opposite(scheme));
+  else if (slug === "colorblind-light" || slug === "colorblind-dark") aimToggle(`colorblind-${opposite(scheme)}`, opposite(scheme));
   else if (slug in BUILT_IN) aimToggle(defaultSlug(opposite(scheme)), opposite(scheme));
 }
 
@@ -388,18 +392,17 @@ function syncSide() {
   if (!option) return;
   part("preview").dataset.theme = option.value;
   part("name").textContent = option.querySelector(".tpk-name").textContent;
-  part("meta").textContent = `${option.dataset.family} · ${option.querySelector(".tpk-variant").textContent}`;
+  part("meta").textContent = `${option.dataset.familyLabel} · ${option.querySelector(".tpk-variant").textContent}`;
   // Row titles read "Name by Author" or "Name · built in".
   const credit = option.title;
-  const by = credit.indexOf(" by ");
-  part("author").textContent = by >= 0 ? `By ${credit.slice(by + 4)}` : "Built into rbit";
+  part("author").textContent = pickerCredit(dialog, credit);
   const button = part("apply");
   const isCurrent = option.value === applied.slug;
   button.value = option.value;
   button.dataset.variant = option.dataset.variant;
   button.dataset.counterpart = option.dataset.counterpart;
   button.disabled = isCurrent;
-  button.textContent = isCurrent ? "Applied" : "Apply";
+  button.textContent = pickerApply(dialog, isCurrent);
 }
 
 function renderRecent() {
@@ -417,19 +420,25 @@ function renderRecent() {
   section.dataset.empty = String(!section.querySelector("[data-tpk-option]"));
 }
 
+/** The same filter applies to the catalog and recent themes, including System. */
+function matchesPickerFilter(option, variant) {
+  if (variant === "colorblind") return option.value.startsWith("colorblind-");
+  return !variant || !option.dataset.variant || option.dataset.variant === variant;
+}
+
 function filterDialog() {
   const words = part("search").value.toLowerCase().split(/\s+/).filter(Boolean);
   const variant = dialog.querySelector('[data-tpk-variant][aria-pressed="true"]')?.dataset.tpkVariant ?? "";
   let shown = 0;
-  for (const { option, variant: rowVariant, text } of rows) {
-    const visible = (!variant || !rowVariant || rowVariant === variant) && words.every((word) => text.includes(word));
+  for (const { option, text } of rows) {
+    const visible = matchesPickerFilter(option, variant) && words.every((word) => text.includes(word));
     option.hidden = !visible;
     if (visible) shown++;
   }
   const list = listOf();
   const recent = part("recent");
   for (const option of recent.querySelectorAll("[data-tpk-option]")) {
-    option.hidden = Boolean(variant) && Boolean(option.dataset.variant) && option.dataset.variant !== variant;
+    option.hidden = !matchesPickerFilter(option, variant);
   }
   recent.hidden = words.length > 0 || !recent.querySelector("[data-tpk-option]:not([hidden])");
   for (const group of list.querySelectorAll("[data-tpk-group]")) {
@@ -450,33 +459,13 @@ function filterDialog() {
   for (const link of dialog.querySelectorAll("[data-tpk-jump]")) {
     link.hidden = document.getElementById(link.dataset.tpkJump)?.hidden ?? true;
   }
-  part("count").textContent = `${shown} ${shown === 1 ? "theme" : "themes"}`;
+  part("count").textContent = pickerCount(dialog, shown);
   part("empty").hidden = shown > 0;
   list.scrollTop = 0;
   activate(reachable()[0] ?? null, { scroll: false });
-  syncIndex();
+  syncIndex(dialog);
 }
 
-/** Marks the family index entry of the group at the top of the list. */
-function syncIndex() {
-  const list = listOf();
-  const top = list.scrollTop + 1;
-  let current = null;
-  for (const group of list.querySelectorAll(".tpk-group:not([hidden])")) {
-    if (group.offsetTop - list.offsetTop > top) break;
-    current = group;
-  }
-  current ??= list.querySelector(".tpk-group:not([hidden])");
-  for (const link of dialog.querySelectorAll("[data-tpk-jump]")) {
-    const isCurrent = link.dataset.tpkJump === current?.id;
-    if (isCurrent && !link.hasAttribute("aria-current")) {
-      link.setAttribute("aria-current", "true");
-      link.scrollIntoView({ block: "nearest" });
-    } else if (!isCurrent) {
-      link.removeAttribute("aria-current");
-    }
-  }
-}
 
 function move(by) {
   const options = reachable();
@@ -513,7 +502,7 @@ function wireDialog(dialog) {
     if (option && option !== activeRow()) activate(option, { scroll: false });
   });
 
-  list.addEventListener("scroll", () => requestAnimationFrame(syncIndex), { passive: true });
+  watchIndexScroll(dialog);
 
   dialog.addEventListener("click", (event) => {
     const target = event.target instanceof Element ? event.target : null;

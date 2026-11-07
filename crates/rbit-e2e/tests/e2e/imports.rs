@@ -80,7 +80,7 @@ async fn import_from_github_then_push_to_a_mirror() {
     alice.post("/new/import", &form).await.expect_redirect("/alice/rocket/import");
     let progress = wait_for_page(&alice, "/alice/rocket/import", "Go to the repository").await;
     for needle in ["Finished", "3 issues, 4 pull requests, 4 comments", "3 labels", "2 releases, 1 file", "1 object"] {
-        assert!(progress.contains(needle), "{needle:?} in the progress page");
+        assert!(progress.contains(needle), "{needle:?} in the progress page:\n{}", progress.replace(TOKEN, "[REDACTED]"));
     }
     assert!(!progress.contains(TOKEN));
     bob.get("/alice/rocket/import").await.expect_status(StatusCode::NOT_FOUND);

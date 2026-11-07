@@ -9,10 +9,10 @@
 //! * **Password reset** — [`RecoveryService::request_password_reset`] answers the same way
 //!   whether or not an account uses the address, so it can't be used to discover who has an
 //!   account. The link is valid for an hour and works once; completing it publishes
-//!   [`DomainEvent::PasswordChanged`] after revoking sessions and, since it proves
+//!   [`crate::DomainEvent::PasswordChanged`] after revoking sessions and, since it proves
 //!   control of the mailbox, also verifies the address. Suspended users can't reset.
-//! * **Verification** — sent when an account is created ([`DomainEvent::UserSignedUp`]) and
-//!   when its address changes ([`DomainEvent::EmailChanged`], which also notifies the previous
+//! * **Verification** — sent when an account is created ([`crate::DomainEvent::UserSignedUp`]) and
+//!   when its address changes ([`crate::DomainEvent::EmailChanged`], which also notifies the previous
 //!   address), or on request from the account settings.
 //!
 //! Requests that make the server send mail are throttled with [`ThrottleScope::EmailRequest`],
@@ -20,17 +20,25 @@
 
 use std::{collections::HashSet, fmt, sync::Arc};
 
-use rbit_auth::{Passwords, SessionToken};
+use rbit_auth::SessionToken;
 use rbit_core::{AccountId, Email, Timestamp, User};
+use rbit_identity::PasswordWork;
+use rbit_kernel::TaskLifecycle;
 use rbit_mail::{
     Mail,
-    messages::{EmailChanged, PasswordReset, VerifyEmail, VerifyReason, mask_address},
+    messages::{PasswordReset, VerifyReason},
 };
 use rbit_storage::sqlite::recovery::{NewEmailToken, RecoveryAccount, RecoveryStore, TokenPurpose};
-use tokio::sync::broadcast::error::RecvError;
 
 use crate::audit::{AuditAction, AuditEntry, AuditService};
-use crate::{AccountService, DomainEvent, InstanceService, MailService, ServiceContext, ServiceError, ThrottleScope, ThrottleService};
+use crate::{AccountService, InstanceService, MailService, ServiceContext, ServiceError, ThrottleScope, ThrottleService};
+
+mod background;
+mod builder;
+mod email_events;
+mod password_changes;
+mod session_effects;
+pub use builder::RecoveryServiceBuilder;
 
 /// How long a password-reset link works.
 pub const RESET_LIFETIME_SECONDS: i64 = 60 * 60;
@@ -86,6 +94,9 @@ pub struct VerifiedEmail {
 
 #[derive(Debug, Clone)]
 pub struct RecoveryService {
+    background: TaskLifecycle,
+    fallback_session_effects: Option<rbit_identity::sessions::effects::SessionEffectScope>,
+    passwords: PasswordWork,
     ctx: ServiceContext,
     mail: MailService,
     throttle: Arc<dyn RequestThrottle>,
@@ -93,64 +104,7 @@ pub struct RecoveryService {
     accounts: Option<AccountService>,
 }
 
-/// Assembles a [`RecoveryService`] from shared services. Anything not supplied is built
-/// from the context (its own mail transport from `[mail]`, its own throttle, and the site
-/// name from `[server]`).
-#[derive(Debug)]
-pub struct RecoveryServiceBuilder {
-    ctx: ServiceContext,
-    mail: Option<MailService>,
-    throttle: Option<Arc<dyn RequestThrottle>>,
-    instance: Option<InstanceService>,
-    accounts: Option<AccountService>,
-}
-
-impl RecoveryServiceBuilder {
-    /// The mail service to send through (share `Services::mail`).
-    #[must_use]
-    pub fn mail(mut self, mail: MailService) -> Self {
-        self.mail = Some(mail);
-        self
-    }
-
-    /// The rate limiter to consult (share `Services::throttle`).
-    #[must_use]
-    pub fn throttle(mut self, throttle: impl RequestThrottle + 'static) -> Self {
-        self.throttle = Some(Arc::new(throttle));
-        self
-    }
-
-    /// Runtime instance settings, for the site name in messages.
-    #[must_use]
-    pub fn instance(mut self, instance: InstanceService) -> Self {
-        self.instance = Some(instance);
-        self
-    }
-
-    /// Shares password-change session enforcement with signed-in request guards.
-    #[must_use]
-    pub fn accounts(mut self, accounts: AccountService) -> Self {
-        self.accounts = Some(accounts);
-        self
-    }
-
-    pub fn build(self) -> RecoveryService {
-        let ctx = self.ctx;
-        RecoveryService {
-            mail: self.mail.unwrap_or_else(|| MailService::new(ctx.clone())),
-            throttle: self.throttle.unwrap_or_else(|| Arc::new(ThrottleService::new(ctx.clone()))),
-            instance: self.instance,
-            accounts: self.accounts,
-            ctx,
-        }
-    }
-}
-
 impl RecoveryService {
-    pub fn builder(ctx: ServiceContext) -> RecoveryServiceBuilder {
-        RecoveryServiceBuilder { ctx, mail: None, throttle: None, instance: None, accounts: None }
-    }
-
     fn audit(&self) -> AuditService {
         AuditService::new(self.ctx.clone())
     }
@@ -193,36 +147,6 @@ impl RecoveryService {
     pub async fn reset_target(&self, token: &str) -> Result<String, ServiceError> {
         let account = self.reset_account(token).await?;
         Ok(account.name.to_string())
-    }
-
-    /// Sets a new password through a reset link, which is used up. Validates the password
-    /// exactly like sign-up; an invalid password leaves the link usable.
-    pub async fn reset_password(&self, token: &str, new_password: String) -> Result<(), ServiceError> {
-        let account = self.reset_account(token).await?;
-        validate_password(self.ctx.config.security.min_password_length, &new_password)?;
-        if self.ctx.database.accounts().password_change_required(account.id).await? {
-            let current = self.ctx.database.profiles().password_hash(account.id).await?.ok_or(ServiceError::NotFound)?;
-            if Passwords::verify(new_password.clone(), current).await? {
-                return Err(ServiceError::Invalid("choose a different password from your initial password".to_owned()));
-            }
-        }
-        let hash = Passwords::hash(new_password).await?;
-
-        let digest = parse_token(token)?;
-        let service = self.clone();
-        crate::credentials::finish_update(async move {
-            service.store().reset_password(&digest, &hash, Timestamp::now()).await?.ok_or(ServiceError::NotFound)?;
-            service.password_changed(account.id).await?;
-
-            tracing::info!(user = %account.name, "password reset by email link");
-            service
-                .audit()
-                .record(AuditEntry::new(AuditAction::PasswordReset).by_login(account.name.as_str()).on(account.name.as_str()))
-                .await;
-            service.ctx.events.publish(DomainEvent::PasswordChanged { user: account.id });
-            Ok(())
-        })
-        .await
     }
 
     async fn reset_account(&self, token: &str) -> Result<RecoveryAccount, ServiceError> {
@@ -293,17 +217,7 @@ impl RecoveryService {
     }
 
     async fn send_verification(&self, account: &RecoveryAccount, reason: VerifyReason) -> Result<(), ServiceError> {
-        let token = self.issue(account, TokenPurpose::Verify, VERIFY_LIFETIME_SECONDS).await?;
-        let message = VerifyEmail {
-            site_name: self.site_name(),
-            base_url: self.base_url().to_owned(),
-            username: account.name.to_string(),
-            link: format!("{}/email/verify/{token}", self.base_url()),
-            valid_for: "2 days".to_owned(),
-            reason,
-        };
-        self.mail.queue(Mail::render(account.email.clone(), &message).map_err(ServiceError::internal)?).await;
-        Ok(())
+        self.email_events().send_verification(account, reason).await
     }
 
     // ------------------------------------------------------------------ administration
@@ -324,132 +238,11 @@ impl RecoveryService {
         Ok(account.email)
     }
 
-    /// Sets a user's password directly (for instances without email, or locked-out users).
-    /// Validated like sign-up; outstanding reset links stop working.
-    pub async fn admin_set_password(&self, actor: &User, target: AccountId, new_password: String) -> Result<(), ServiceError> {
-        require_admin(actor)?;
-        let account = self.store().find_account(target).await?.ok_or(ServiceError::NotFound)?;
-        if account.id == actor.id() {
-            return Err(ServiceError::Invalid("change your own password from your account settings".to_owned()));
-        }
-        validate_password(self.ctx.config.security.min_password_length, &new_password)?;
-        let hash = Passwords::hash(new_password).await?;
-        let service = self.clone();
-        let actor = actor.clone();
-        crate::credentials::finish_update(async move {
-            service.ctx.database.profiles().set_password_hash(account.id, &hash).await?;
-            service.password_changed(account.id).await?;
-
-            tracing::info!(admin = %actor.name(), user = %account.name, "administrator set a password");
-            service.audit().record(AuditEntry::new(AuditAction::PasswordSet).by(&actor).on(account.name.as_str())).await;
-            service.ctx.events.publish(DomainEvent::PasswordChanged { user: account.id });
-            Ok(())
-        })
-        .await
-    }
-
-    // ------------------------------------------------------------------ background
-
-    /// Starts this service's background subscribers. Called once at server start-up.
-    ///
-    /// Sends a verification link when an account is created, and when an address changes a
-    /// link to the new address plus a notice to the previous one.
-    pub fn spawn_background(&self) {
-        if !self.email_available() {
-            tracing::info!("email is disabled; addresses will not be verified");
-            return;
-        }
-        let mut events = self.ctx.events.subscribe();
-        let service = self.clone();
-        tokio::spawn(async move {
-            loop {
-                match events.recv().await {
-                    Ok(event) => {
-                        if let Err(error) = service.handle(&event).await {
-                            tracing::warn!(?event, %error, "could not send email for event");
-                        }
-                    }
-                    Err(RecvError::Lagged(skipped)) => tracing::warn!(skipped, "email subscriber fell behind; events skipped"),
-                    Err(RecvError::Closed) => break,
-                }
-            }
-        });
-    }
-
-    /// Reacts to one domain event. Public so tests can drive it without timing games.
-    pub async fn handle(&self, event: &DomainEvent) -> Result<(), ServiceError> {
-        match event {
-            DomainEvent::UserSignedUp { user } => {
-                let Some(account) = self.store().find_account(*user).await? else { return Ok(()) };
-                // Milestone 3 (O): accounts registered through a provider that verified
-                // the address start verified; there is nothing to confirm.
-                if account.email_verified_at.is_some() {
-                    return Ok(());
-                }
-                self.send_verification(&account, VerifyReason::SignUp).await
-            }
-            DomainEvent::EmailChanged { user, previous } => {
-                let Some(account) = self.store().find_account(*user).await? else { return Ok(()) };
-                if account.email.as_str().eq_ignore_ascii_case(previous) {
-                    return Ok(());
-                }
-                self.send_verification(&account, VerifyReason::Changed).await?;
-                self.notify_previous_address(&account, previous)
-            }
-            DomainEvent::RepositoryPushed { .. }
-            | DomainEvent::RepositoryCreated { .. }
-            | DomainEvent::RepositoryDeleted { .. }
-            | DomainEvent::RepositoryTransferred { .. }
-            | DomainEvent::RepositoryArchived { .. }
-            | DomainEvent::RepositoryForked { .. }
-            | DomainEvent::ReleasePublished { .. }
-            | DomainEvent::PasswordChanged { .. }
-            | DomainEvent::Issue { .. }
-            | DomainEvent::IssueComment { .. }
-            | DomainEvent::PullRequestReview { .. }
-            | DomainEvent::CollaboratorChanged { .. }
-            | DomainEvent::CommitStatus { .. }
-            // Actions: integration (I).
-            | DomainEvent::ActionsRun { .. }
-            | DomainEvent::ActionsJob { .. } => Ok(()),
-        }
-    }
-
-    fn notify_previous_address(&self, account: &RecoveryAccount, previous: &str) -> Result<(), ServiceError> {
-        let Ok(previous) = previous.parse::<Email>() else { return Ok(()) };
-        let message = EmailChanged {
-            site_name: self.site_name(),
-            base_url: self.base_url().to_owned(),
-            username: account.name.to_string(),
-            new_address: mask_address(account.email.as_str()),
-        };
-        self.mail.send(Mail::render(previous, &message).map_err(ServiceError::internal)?);
-        Ok(())
-    }
-
     // ------------------------------------------------------------------ helpers
 
-    async fn password_changed(&self, user: AccountId) -> Result<(), ServiceError> {
-        if let Some(accounts) = &self.accounts {
-            accounts.password_changed(user).await?;
-        } else {
-            self.ctx.kv.sessions().delete_for_account(user, None).await?;
-        }
-        Ok(())
-    }
-
-    /// Stores a new token for the account's current address and returns the secret for the link.
+    /// Stores a new token for the current address and returns its link secret.
     async fn issue(&self, account: &RecoveryAccount, purpose: TokenPurpose, lifetime: i64) -> Result<String, ServiceError> {
-        let secret = SessionToken::generate();
-        let token = NewEmailToken {
-            digest: secret.digest(),
-            account_id: account.id,
-            purpose,
-            email: account.email.clone(),
-            expires_at: Timestamp(Timestamp::now().seconds() + lifetime),
-        };
-        self.store().insert(&token).await?;
-        Ok(secret.encode())
+        issue_token(&self.store(), account, purpose, lifetime).await
     }
 
     fn site_name(&self) -> String {
@@ -478,14 +271,32 @@ fn require_admin(actor: &User) -> Result<(), ServiceError> {
 
 /// The sign-up password rules.
 fn validate_password(min: usize, password: &str) -> Result<(), ServiceError> {
-    let length = password.chars().count();
-    if length < min {
+    let length = rbit_identity::classify_password_length(password, min, MAX_PASSWORD_LEN);
+    if length == rbit_identity::PasswordLength::TooShort {
         return Err(ServiceError::Invalid(format!("password must be at least {min} characters")));
     }
-    if length > MAX_PASSWORD_LEN {
+    if length == rbit_identity::PasswordLength::TooLong {
         return Err(ServiceError::Invalid(format!("password must be at most {MAX_PASSWORD_LEN} characters")));
     }
     Ok(())
+}
+
+async fn issue_token(
+    store: &RecoveryStore,
+    account: &RecoveryAccount,
+    purpose: TokenPurpose,
+    lifetime: i64,
+) -> Result<String, ServiceError> {
+    let secret = SessionToken::generate();
+    let token = NewEmailToken {
+        digest: secret.digest(),
+        account_id: account.id,
+        purpose,
+        email: account.email.clone(),
+        expires_at: Timestamp(Timestamp::now().seconds() + lifetime),
+    };
+    store.insert(&token).await?;
+    Ok(secret.encode())
 }
 
 #[cfg(test)]

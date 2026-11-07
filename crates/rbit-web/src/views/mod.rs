@@ -22,6 +22,7 @@ pub mod contributions;
 pub mod dashboards;
 pub mod edits;
 pub mod errors;
+pub mod explore;
 // Milestone 3: external sign-in (O).
 pub mod external_auth;
 pub mod forks;
@@ -47,15 +48,21 @@ pub mod recovery;
 pub mod ref_picker;
 pub mod refs;
 pub mod releases;
+#[cfg(test)]
+mod render_probe;
 pub mod repo;
 pub mod repo_files;
 pub mod repo_settings;
 pub mod security;
 pub mod settings;
+#[cfg(feature = "shared-shell-experiment")]
+mod shared_shell;
 pub mod ssh_keys;
 // Milestone 3: commit statuses (S).
 pub mod statuses;
 pub mod teams;
+#[cfg(test)]
+pub(crate) mod test_support;
 pub mod themes;
 pub mod timeline;
 pub mod transfer;

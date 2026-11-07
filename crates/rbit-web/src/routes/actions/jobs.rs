@@ -16,7 +16,7 @@ use axum::{
 use rbit_core::actions::{JobId, Step, TaskId};
 use rbit_services::{
     ActionsService, RepoContext,
-    actions::logs::{LogRange, RawLog, STEP_VIEW_BYTES, STEP_VIEW_LINES},
+    actions::logs::{LogLimits, LogRange, RawLog, STEP_VIEW_BYTES, STEP_VIEW_LINES},
 };
 use serde::Deserialize;
 use tokio_util::io::ReaderStream;
@@ -25,6 +25,7 @@ use crate::{
     AppState,
     error::{WebError, WebResult},
     extract::Viewer,
+    localization::RequestLocale,
     routes::repo::RepoPage,
     views::{
         actions::{
@@ -65,30 +66,39 @@ pub async fn show(
     State(state): State<AppState>,
     viewer: Viewer,
     page: Page,
+    locale: RequestLocale,
     Path((owner, repo, run, job)): Path<(String, String, String, String)>,
-) -> WebResult<JobPage> {
+) -> WebResult<Response> {
     let actions = actions(&state)?;
     let (number, job) = ids(&run, &job)?;
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
-    let detail = actions.job_detail(&loaded.ctx, job).await?;
-    if detail.run.number != number {
-        return Err(WebError::NotFound);
-    }
+    let read =
+        actions.job_log_detail(&loaded.ctx, number, job, LogLimits { lines: JOB_PAGE_STEP_LINES, bytes: JOB_PAGE_STEP_BYTES }).await?;
+    let detail = read.detail;
     let urls = ActionsUrls::new(&loaded.urls.home());
     let job_url = urls.job(number, detail.job.id.0);
     let mut steps = Vec::with_capacity(detail.steps.len());
-    if let Some(task) = detail.job.task_id {
-        for step in &detail.steps {
-            let log = step_log(actions, &loaded.ctx, task, step, JOB_PAGE_STEP_LINES, JOB_PAGE_STEP_BYTES).await?;
-            steps.push(StepView::new(step, log, format!("{job_url}/logs?step={}", step.number)));
+    for (index, (step, window)) in detail.steps.iter().zip(read.logs).enumerate() {
+        let log = window.map(|window| StepLog::new(&window, u64::try_from(step.log_index).unwrap_or_default()));
+        steps.push(StepView::new(step, log, format!("{job_url}/logs?step={}", step.number)));
+        // Batch I/O removes the old per-step await. Retain cooperative scheduling
+        // while constructing large existing view models, without spawning more work.
+        if (index + 1).is_multiple_of(16) {
+            tokio::task::yield_now().await;
         }
     }
     open_one(&mut steps);
-    let people = actions.run_detail(&loaded.ctx, number).await?.people;
+    let people = read.people;
     let finished = detail.job.status.is_done();
     let can_rerun = loaded.ctx.can_write_content() && finished && detail.run.status.is_done();
-    Ok(JobPage {
-        page: page.titled(format!("{} · {} #{} · {}", detail.job.name, detail.run.workflow_name, number, loaded.ctx.repo.full_name())),
+    let view = JobPage {
+        page: page.with_locale(locale.0.locale).titled(format!(
+            "{} · {} #{} · {}",
+            detail.job.name,
+            detail.run.workflow_name,
+            number,
+            loaded.ctx.repo.full_name()
+        )),
         header: loaded.header(&state, "actions"),
         run: RunSummary::new(&detail.run, &people, &urls, loaded.urls.commit(&detail.run.sha)),
         run_url: urls.run(number),
@@ -101,7 +111,8 @@ pub async fn show(
         steps,
         raw_url: detail.job.task_id.map(|_| format!("{job_url}/logs/raw")),
         rerun_url: can_rerun.then(|| format!("{job_url}/rerun")),
-    })
+    };
+    Ok(locale.response(view.into_response()))
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -116,6 +127,7 @@ pub async fn logs(
     State(state): State<AppState>,
     viewer: Viewer,
     page: Page,
+    locale: RequestLocale,
     Path((owner, repo, run, job)): Path<(String, String, String, String)>,
     Query(query): Query<StepQuery>,
 ) -> WebResult<Response> {
@@ -135,8 +147,8 @@ pub async fn logs(
     };
     let log = step_log(actions, &loaded.ctx, task, step, STEP_VIEW_LINES, STEP_VIEW_BYTES).await?;
     let view = StepView::new(step, log, String::new());
-    Ok(StepLogPage {
-        page: page.titled(format!("{} · {} · {}", step.name, detail.job.name, loaded.ctx.repo.full_name())),
+    let view = StepLogPage {
+        page: page.with_locale(locale.0.locale).titled(format!("{} · {} · {}", step.name, detail.job.name, loaded.ctx.repo.full_name())),
         header: loaded.header(&state, "actions"),
         job_name: detail.job.name.clone(),
         active: !step.status.is_done(),
@@ -144,8 +156,8 @@ pub async fn logs(
         raw_url: format!("{job_url}/logs/raw"),
         job_url,
         step: view,
-    }
-    .into_response())
+    };
+    Ok(locale.response(view.into_response()))
 }
 
 /// `GET /{owner}/{repo}/actions/runs/{run}/jobs/{job}/logs/raw`

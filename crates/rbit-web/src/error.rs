@@ -10,6 +10,9 @@ use axum::{
 };
 use rbit_services::ServiceError;
 
+/// One public message for exhausted and closed password work, without account details.
+pub(crate) const UNAVAILABLE_MESSAGE: &str = "The service is temporarily unavailable. Try again shortly.";
+
 #[derive(Debug, thiserror::Error)]
 pub enum WebError {
     #[error("page not found")]
@@ -20,6 +23,8 @@ pub enum WebError {
     BadRequest(String),
     #[error("too many requests; try again in {retry_after_seconds} seconds")]
     TooManyRequests { retry_after_seconds: u64 },
+    #[error("service temporarily unavailable")]
+    Unavailable { retry_after_seconds: u64 },
     #[error("internal error")]
     Internal(#[source] Box<dyn std::error::Error + Send + Sync>),
 }
@@ -43,6 +48,7 @@ impl WebError {
             Self::Forbidden => StatusCode::FORBIDDEN,
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::TooManyRequests { .. } => StatusCode::TOO_MANY_REQUESTS,
+            Self::Unavailable { .. } => StatusCode::SERVICE_UNAVAILABLE,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -53,6 +59,7 @@ impl WebError {
             Self::Forbidden => "Access denied",
             Self::BadRequest(_) => "Bad request",
             Self::TooManyRequests { .. } => "Slow down",
+            Self::Unavailable { .. } => "Temporarily unavailable",
             Self::Internal(_) => "Something went wrong",
         }
     }
@@ -64,6 +71,7 @@ impl From<ServiceError> for WebError {
             ServiceError::NotFound => Self::NotFound,
             ServiceError::Forbidden => Self::Forbidden,
             ServiceError::RateLimited { retry_after_seconds } => Self::TooManyRequests { retry_after_seconds },
+            ServiceError::Unavailable { retry_after_seconds } => Self::Unavailable { retry_after_seconds },
             ServiceError::Internal(source) => Self::Internal(source),
             other => Self::BadRequest(other.to_string()),
         }
@@ -78,6 +86,7 @@ impl IntoResponse for WebError {
                 "An unexpected error occurred. It has been logged.".to_owned()
             }
             Self::NotFound => "The page you were looking for doesn't exist, or you don't have access to it.".to_owned(),
+            Self::Unavailable { .. } => UNAVAILABLE_MESSAGE.to_owned(),
             other => other.to_string(),
         };
         let retry_after = match &self {
@@ -86,6 +95,9 @@ impl IntoResponse for WebError {
         };
         let info = ErrorInfo { status: self.status(), title: self.title(), message };
         let mut response = (info.status, info.message.clone()).into_response();
+        if let Self::Unavailable { retry_after_seconds } = self {
+            response = unavailable_response(response, retry_after_seconds);
+        }
         if let Some(seconds) = retry_after {
             response.headers_mut().insert(axum::http::header::RETRY_AFTER, axum::http::HeaderValue::from(seconds));
         }
@@ -95,3 +107,16 @@ impl IntoResponse for WebError {
 }
 
 pub type WebResult<T> = Result<T, WebError>;
+
+/// Keeps protocol-specific bodies while applying the common overload contract.
+pub(crate) fn unavailable_response(body: impl IntoResponse, retry_after_seconds: u64) -> Response {
+    let mut response = (StatusCode::SERVICE_UNAVAILABLE, body).into_response();
+    response.headers_mut().insert(axum::http::header::RETRY_AFTER, axum::http::HeaderValue::from(retry_after_seconds));
+    response.headers_mut().insert(axum::http::header::CACHE_CONTROL, axum::http::HeaderValue::from_static("no-store"));
+    response.headers_mut().remove(axum::http::header::WWW_AUTHENTICATE);
+    response.headers_mut().remove("lfs-authenticate");
+    response
+}
+
+#[cfg(test)]
+mod tests;

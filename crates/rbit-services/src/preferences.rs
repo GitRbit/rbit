@@ -5,6 +5,7 @@
 //! catalog, which also falls back to the default for slugs it no longer knows.
 
 use rbit_core::User;
+use rbit_identity_models::AccountLocale;
 use rbit_storage::sqlite::preferences::PreferenceStore;
 
 use crate::{ServiceContext, ServiceError};
@@ -37,6 +38,15 @@ impl PreferenceService {
             return Err(ServiceError::Invalid("choose one of the listed themes".to_owned()));
         }
         Ok(self.store().set_theme(user.id(), theme).await?)
+    }
+
+    pub async fn locale(&self, user: &User) -> Result<Option<AccountLocale>, ServiceError> {
+        Ok(self.store().locale(user.id()).await?)
+    }
+
+    /// `None` restores browser/default negotiation. The model admits no unknown tag.
+    pub async fn set_locale(&self, user: &User, locale: Option<AccountLocale>) -> Result<(), ServiceError> {
+        if self.store().set_locale(user.id(), locale).await? { Ok(()) } else { Err(ServiceError::NotFound) }
     }
 }
 

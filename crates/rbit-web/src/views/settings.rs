@@ -15,88 +15,10 @@ const DEFAULT_EXPIRY: Option<u32> = Some(30);
 /// Form value of the "No expiration" choice.
 const NEVER_EXPIRES: &str = "never";
 
-// ------------------------------------------------------------------ settings shell
-
-/// A settings area, listed in the left-hand navigation of `settings/layout.html`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SettingsSection {
-    Profile,
-    Account,
-    Appearance,
-    Security,
-    SshKeys,
-    AccessTokens,
-    // Milestone 3: email notifications (N).
-    Notifications,
-    // Actions: interface and secrets (U).
-    /// Only on an instance with Actions: see [`SettingsLink::needs_actions`].
-    Actions,
-}
-
-impl SettingsSection {
-    /// Navigation order. New sections slot in here.
-    const ALL: [Self; 8] = [
-        Self::Profile,
-        Self::Account,
-        Self::Appearance,
-        Self::Security,
-        Self::SshKeys,
-        Self::AccessTokens,
-        Self::Notifications,
-        Self::Actions,
-    ];
-
-    const fn label(self) -> &'static str {
-        match self {
-            Self::Profile => "Profile",
-            Self::Account => "Account",
-            Self::Appearance => "Appearance",
-            Self::Security => "Security",
-            Self::SshKeys => "SSH keys",
-            Self::AccessTokens => "Access tokens",
-            Self::Notifications => "Notifications",
-            Self::Actions => "Actions",
-        }
-    }
-
-    /// Where the section lives; also the redirect target after a successful form post.
-    pub const fn url(self) -> &'static str {
-        match self {
-            Self::Profile => "/settings/profile",
-            Self::Account => "/settings/account",
-            Self::Appearance => "/settings/appearance",
-            Self::Security => "/settings/security",
-            Self::SshKeys => "/settings/keys",
-            Self::AccessTokens => "/settings/tokens",
-            Self::Notifications => rbit_services::notification_email::SETTINGS_PATH,
-            Self::Actions => "/settings/actions",
-        }
-    }
-
-    /// The navigation with `self` marked as the current page.
-    pub fn nav(self) -> Vec<SettingsLink> {
-        Self::ALL
-            .iter()
-            .map(|&section| SettingsLink {
-                label: section.label(),
-                url: section.url(),
-                is_active: section == self,
-                needs_actions: section == Self::Actions,
-            })
-            .collect()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct SettingsLink {
-    pub label: &'static str,
-    pub url: &'static str,
-    pub is_active: bool,
-    // Actions: interface and secrets (U).
-    /// Shown only on an instance with Actions ([`Page::has_actions`]): the navigation is
-    /// built without the request, and `settings/layout.html` leaves the link out otherwise.
-    pub needs_actions: bool,
-}
+mod navigation;
+pub use navigation::{SettingsLink, SettingsSection};
+mod language;
+pub use language::LanguagePage;
 
 // ------------------------------------------------------------------ profile
 
@@ -580,13 +502,19 @@ mod tests {
     fn settings_nav_marks_active_section() {
         let nav = SettingsSection::AccessTokens.nav();
         let labels: Vec<_> = nav.iter().map(|link| link.label).collect();
-        assert_eq!(labels, ["Profile", "Account", "Appearance", "Security", "SSH keys", "Access tokens", "Notifications", "Actions"]);
+        assert_eq!(
+            labels,
+            ["Profile", "Account", "Appearance", "Language", "Security", "SSH keys", "Access tokens", "Notifications", "Actions"]
+        );
         let only_with_actions: Vec<_> = nav.iter().filter(|link| link.needs_actions).map(|link| link.url).collect();
         assert_eq!(only_with_actions, ["/settings/actions"]);
         assert_eq!(nav.iter().filter(|link| link.is_active).count(), 1);
         let active = nav.iter().find(|link| link.is_active).unwrap();
         assert_eq!(active.url, "/settings/tokens");
         assert!(SettingsSection::Profile.nav()[0].is_active);
+        let language = SettingsSection::Language.nav();
+        let active = language.iter().find(|link| link.is_active).unwrap();
+        assert_eq!((active.label, active.url, active.needs_actions), ("Language", "/settings/language", false));
     }
 
     fn user() -> User {
@@ -605,16 +533,7 @@ mod tests {
     }
 
     fn page() -> Page {
-        Page {
-            updates: rbit_services::updates::UpdateStatus::default(),
-            site_name: "rbit".to_owned(),
-            branding: rbit_core::config::BrandingConfig::default(),
-            title: None,
-            viewer: None,
-            path: "/settings/account".to_owned(),
-            theme: crate::themes::Theme::System,
-            has_unread_notifications: false,
-        }
+        crate::views::test_support::page("/settings/account")
     }
 
     #[test]

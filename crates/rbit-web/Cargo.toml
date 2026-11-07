@@ -8,8 +8,15 @@ license.workspace = true
 # One integration-test binary (tests/main.rs) instead of one per file.
 autotests = false
 
+[features]
+# Measurement candidate only; inherited rendering remains the production default.
+shared-shell-experiment = []
+
 [dependencies]
+rbit-identity-models.workspace = true
+zeroize.workspace = true
 rbit-core.workspace = true
+rbit-localization.workspace = true
 rbit-auth.workspace = true
 rbit-git.workspace = true
 rbit-services.workspace = true
@@ -20,7 +27,7 @@ axum-extra.workspace = true
 tower.workspace = true
 tower-http.workspace = true
 tokio.workspace = true
-tokio-util.workspace = true
+tokio-util = { workspace = true, features = ["rt"] }
 futures-util.workspace = true
 async-compression.workspace = true
 brotli.workspace = true
@@ -49,6 +56,8 @@ rbit-workflow.workspace = true
 flate2.workspace = true
 
 [dev-dependencies]
+rbit-identity = { workspace = true, features = ["password-work"] }
+rbit-kernel.workspace = true
 proptest.workspace = true
 # Actions (F): the query counter shared with rbit-storage's tests.
 tracing-subscriber.workspace = true

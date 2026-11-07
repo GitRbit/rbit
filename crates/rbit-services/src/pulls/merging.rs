@@ -25,10 +25,10 @@ use rbit_core::{
     issue::MergeStrategy,
     protection::MergeRules,
     pull::{
-        CommitIdentity, MergeEvaluation, MergeFacts, Mergeability, Review, ReviewTally, commit_message, default_merge_title,
-        default_squash_body, default_squash_title, evaluate, noreply_domain, tally,
+        CommitIdentity, MergeFacts, Mergeability, Review, commit_message, default_merge_title, default_squash_body, default_squash_title,
+        evaluate, noreply_domain, tally,
     },
-    status::{CommitStatus, checks_status, required_checks},
+    status::{checks_status, required_checks},
 };
 use rbit_git::merge::{MergeError, MergeSpec, merge};
 use rbit_storage::sqlite::{audit::AuditAction, pulls::MergeRecord};
@@ -36,65 +36,8 @@ use rbit_storage::sqlite::{audit::AuditAction, pulls::MergeRecord};
 use super::{PullContext, PullService, ReviewData, merge_lock};
 use crate::{RepoContext, ServiceError, audit::AuditEntry, audit::AuditService};
 
-/// The merge box as one viewer sees it.
-#[derive(Debug, Clone)]
-pub struct MergeBox {
-    pub evaluation: MergeEvaluation,
-    pub rules: MergeRules,
-    pub tally: ReviewTally,
-    /// The mergeability shown: the stored one, or `Unknown` when it ran on another base.
-    pub mergeable: Mergeability,
-    pub conflict_paths: Vec<String>,
-    /// The latest status of each context on the head commit, by context (milestone 3, S).
-    pub statuses: Vec<CommitStatus>,
-    pub head_branch_exists: bool,
-    /// The viewer may press the button (write access to the base repository).
-    pub can_merge: bool,
-    /// The viewer may delete the head branch after merging.
-    pub can_delete_head: bool,
-    pub default_title: String,
-    pub default_message: String,
-    pub default_squash_title: String,
-    pub default_squash_message: String,
-}
-
-/// A merge as requested.
-#[derive(Debug, Clone)]
-pub struct MergeInput {
-    pub strategy: MergeStrategy,
-    /// Empty: the default for the strategy.
-    pub title: String,
-    pub message: String,
-    /// The head the merger saw; a different current head refuses the merge.
-    pub expected_head: Option<String>,
-    /// The base branch the merger saw; a different current base refuses the merge.
-    pub expected_base: Option<String>,
-    pub delete_head_branch: bool,
-    /// Merge despite unmet protection rules (only for mergers allowed to bypass).
-    pub bypass: bool,
-}
-
-/// Why a merge did not happen.
-#[derive(Debug, thiserror::Error)]
-pub enum MergeFailure {
-    /// The head is not the one the merger reviewed (`409`).
-    #[error("the head branch was modified; review the new changes and try again")]
-    HeadChanged,
-    /// The base branch is not the one the merger saw (`409`).
-    #[error("the base branch was changed; review the pull request and try again")]
-    BaseChanged,
-    /// A requirement is unmet (`405`); the message says which.
-    #[error("{0}")]
-    Blocked(String),
-    #[error("{0}")]
-    Service(#[from] ServiceError),
-}
-
-impl From<rbit_storage::StorageError> for MergeFailure {
-    fn from(error: rbit_storage::StorageError) -> Self {
-        Self::Service(error.into())
-    }
-}
+mod contracts;
+pub use contracts::{MergeBox, MergeFailure, MergeInput};
 
 impl PullService {
     /// The merge box of `ctx` for `viewer`.
@@ -238,7 +181,8 @@ impl PullService {
         let _slot = self.inner.merge_slots.acquire().await.map_err(ServiceError::internal)?;
 
         // Re-read under the lock: another merge may just have finished.
-        let thread = self.inner.timeline.open(Some(actor), ctx.repo().clone(), ctx.issue().number).await?;
+        let threads = self.inner.timeline.reader();
+        let thread = threads.open(Some(actor), ctx.repo().clone(), ctx.issue().number).await?;
         let ctx = self.context(thread).await?;
         if let Some(expected) = input.expected_head.as_deref().filter(|expected| !expected.is_empty())
             && expected != ctx.pull.head_sha
@@ -259,7 +203,7 @@ impl PullService {
             let base_tip = self.base_tip(&ctx).await?.ok_or_else(|| MergeFailure::Blocked("the base branch does not exist".to_owned()))?;
             let (state, paths) = self.trial_merge(ctx.repo(), &base_tip, &ctx.pull.head_sha).await?;
             self.ctx().database.pulls().set_mergeability(ctx.issue().id, state, &base_tip, &ctx.pull.head_sha, &paths).await?;
-            let refreshed = self.context(self.inner.timeline.open(Some(actor), ctx.repo().clone(), ctx.issue().number).await?).await?;
+            let refreshed = self.context(threads.open(Some(actor), ctx.repo().clone(), ctx.issue().number).await?).await?;
             merge_box = self.merge_box(Some(actor), &refreshed).await?;
         }
         let evaluation = &merge_box.evaluation;
@@ -353,7 +297,7 @@ impl PullService {
         };
         if self.ctx().database.pulls().record_merge(ctx.issue().id, &record).await? {
             let event = TimelineEvent::Merged { commit: commit.clone(), strategy: Some(strategy) };
-            self.inner.timeline.close_as_system(ctx.issue().id, Some(actor.id()), StateReason::Merged, event).await?;
+            self.inner.timeline.writer().close_as_system(ctx.issue().id, Some(actor.id()), StateReason::Merged, event).await?;
         }
         self.inner.pushes.complete(pending).await;
         tracing::info!(actor = %actor.name(), repo = %repo.repo.full_name(), number = ctx.issue().number.get(), %strategy, "pull request merged");

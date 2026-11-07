@@ -1,0 +1,23 @@
+[package]
+name = "rbit-credential-inventory"
+description = "Explicit offline SQLite snapshot credential parameter inventory."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+rbit-identity = { workspace = true, features = ["credentials"] }
+sqlx.workspace = true
+tokio.workspace = true
+futures-util.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

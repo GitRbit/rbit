@@ -306,117 +306,12 @@ fn json_array(values: impl IntoIterator<Item = i64>) -> String {
 
 // ------------------------------------------------------------------ public types
 
-/// An issue or pull request to insert. Its number is assigned on insertion.
-#[derive(Debug, Clone)]
-pub struct NewIssue {
-    pub repo: RepoId,
-    pub kind: IssueKind,
-    pub title: IssueTitle,
-    pub body: IssueText,
-    pub author: AccountId,
-    pub at: Timestamp,
-}
+pub use rbit_collaboration::threads::NewIssue;
 
 /// What a reference (`#12`) needs to render: enough to link and describe the thread.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IssueRef {
-    pub id: IssueId,
-    pub number: IssueNumber,
-    pub kind: IssueKind,
-    pub state: IssueState,
-    pub title: String,
-}
-
-/// A thread that mentions another one ([`TimelineEvent::CrossReferenced`]), with the
-/// repository it lives in.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IssueSource {
-    pub issue: IssueRef,
-    /// `owner/name` of the source's repository.
-    pub full_name: String,
-}
-
-/// Which row a timeline item is: comments and events have separate id spaces.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum TimelineItemId {
-    Comment(CommentId),
-    Event(EventId),
-}
-
-/// A position in a timeline: items are ordered by `(created_at, comments before events,
-/// id)`, and a page starts after its cursor. Written into URLs as `{at}-c{id}` or
-/// `{at}-e{id}` ([`Self::to_param`], [`Self::parse`]).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct TimelineCursor {
-    pub at: Timestamp,
-    pub item: TimelineItemId,
-}
-
-impl TimelineCursor {
-    /// `(created_at, rank, id)` as bound to the query.
-    fn key(self) -> (i64, i64, i64) {
-        match self.item {
-            TimelineItemId::Comment(id) => (self.at.0, 0, id.0),
-            TimelineItemId::Event(id) => (self.at.0, 1, id.0),
-        }
-    }
-
-    /// The URL form, e.g. `1760000000-c42`.
-    pub fn to_param(self) -> String {
-        match self.item {
-            TimelineItemId::Comment(id) => format!("{}-c{}", self.at.0, id.0),
-            TimelineItemId::Event(id) => format!("{}-e{}", self.at.0, id.0),
-        }
-    }
-
-    /// Reads [`Self::to_param`]'s form; `None` for anything else.
-    pub fn parse(value: &str) -> Option<Self> {
-        let (at, item) = value.split_once('-')?;
-        let at = at.parse::<i64>().ok().filter(|at| *at >= 0)?;
-        let parse_id = |id: &str| id.parse::<i64>().ok().filter(|id| *id > 0);
-        let item = if let Some(id) = item.strip_prefix('c') {
-            TimelineItemId::Comment(CommentId(parse_id(id)?))
-        } else {
-            TimelineItemId::Event(EventId(parse_id(item.strip_prefix('e')?)?))
-        };
-        Some(Self { at: Timestamp(at), item })
-    }
-}
-
-/// A comment or event as stored, with its author or actor account (`None`: deleted).
-#[derive(Debug, Clone)]
-pub enum StoredTimelineItem {
-    Comment {
-        comment: Comment,
-        author: Option<Account>,
-    },
-    Event {
-        id: EventId,
-        actor: Option<Account>,
-        /// The actor's id even when the account row is gone (it is `NULL` then too, by
-        /// `ON DELETE SET NULL`, so this is `None` exactly when `actor` is).
-        actor_id: Option<AccountId>,
-        event: TimelineEvent,
-        at: Timestamp,
-    },
-}
-
-impl StoredTimelineItem {
-    pub fn cursor(&self) -> TimelineCursor {
-        match self {
-            Self::Comment { comment, .. } => TimelineCursor { at: comment.created_at, item: TimelineItemId::Comment(comment.id) },
-            Self::Event { id, at, .. } => TimelineCursor { at: *at, item: TimelineItemId::Event(*id) },
-        }
-    }
-}
-
-/// One page of a timeline. `next` is set when more items follow; events of unknown kinds
-/// are left out of `items` but still count towards the page.
-#[derive(Debug, Clone, Default)]
-pub struct TimelinePage {
-    pub items: Vec<StoredTimelineItem>,
-    pub next: Option<TimelineCursor>,
-}
+pub use rbit_collaboration::timeline::{IssueRef, IssueSource, TimelineCursor, TimelineItemId};
+pub type StoredTimelineItem = rbit_collaboration::timeline::StoredTimelineItem<TimelineEvent>;
+pub type TimelinePage = rbit_collaboration::timeline::TimelinePage<TimelineEvent>;
 
 // ------------------------------------------------------------------ the store
 

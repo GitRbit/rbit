@@ -325,10 +325,8 @@ impl PullService {
             .dismiss(ctx.issue().id, id, actor.id(), message.as_str(), Timestamp::now())
             .await?
             .ok_or_else(|| ServiceError::Invalid("only approvals and change requests can be dismissed".to_owned()))?;
-        self.inner
-            .timeline
-            .record(ctx.issue().id, Some(actor.id()), TimelineEvent::ReviewDismissed { review: id, reviewer: review.reviewer })
-            .await?;
+        let timeline = self.inner.timeline.writer();
+        timeline.record(ctx.issue().id, Some(actor.id()), TimelineEvent::ReviewDismissed { review: id, reviewer: review.reviewer }).await?;
         self.publish_review(ctx, id, actor.id(), ReviewAction::Dismissed);
         Ok(dismissed)
     }
@@ -361,12 +359,10 @@ impl PullService {
             return Err(ServiceError::Invalid(format!("at most {MAX_REQUESTED_REVIEWERS} reviewers can be requested")));
         }
         let now = Timestamp::now();
+        let timeline = self.inner.timeline.writer();
         for account in new {
             if store.request(ctx.issue().id, account.id, actor.id(), now).await? {
-                self.inner
-                    .timeline
-                    .record(ctx.issue().id, Some(actor.id()), TimelineEvent::ReviewRequested { reviewer: account.id })
-                    .await?;
+                timeline.record(ctx.issue().id, Some(actor.id()), TimelineEvent::ReviewRequested { reviewer: account.id }).await?;
                 self.publish(ctx.issue(), Some(actor.id()), IssueAction::ReviewRequested { reviewer: account.id });
             }
         }
@@ -377,13 +373,11 @@ impl PullService {
     pub async fn remove_reviewers(&self, actor: &User, ctx: &PullContext, names: &[String]) -> Result<(), ServiceError> {
         Self::require_triage(actor, ctx)?;
         let store = self.ctx().database.reviews();
+        let timeline = self.inner.timeline.writer();
         for name in names.iter().map(|name| name.trim()).filter(|name| !name.is_empty()) {
             let Some(account) = self.ctx().database.accounts().find_account_by_name(name).await? else { continue };
             if store.remove_request(ctx.issue().id, account.id).await? {
-                self.inner
-                    .timeline
-                    .record(ctx.issue().id, Some(actor.id()), TimelineEvent::ReviewRequestRemoved { reviewer: account.id })
-                    .await?;
+                timeline.record(ctx.issue().id, Some(actor.id()), TimelineEvent::ReviewRequestRemoved { reviewer: account.id }).await?;
                 self.publish(ctx.issue(), Some(actor.id()), IssueAction::ReviewRequestRemoved { reviewer: account.id });
             }
         }

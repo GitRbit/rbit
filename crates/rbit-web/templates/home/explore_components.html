@@ -1,0 +1,40 @@
+{% import "macros.html" as ui %}
+{# Feature-owned labels with the established repository-row/pager markup. #}
+{% macro repo_row(repo) %}
+<li class="border-b border-line last:border-b-0">
+  <a href="{{ repo.url }}" class="group flex items-start gap-3 px-4 py-3 hover:bg-subtle">
+    {% call ui::icon("repo", "mt-0.5 size-4 shrink-0 text-ink-faint") %}{% endcall %}
+    <div class="min-w-0 flex-1">
+      <div class="flex items-center gap-2">
+        <span class="truncate font-medium"><span class="text-ink-muted">{{ repo.owner }}/</span>{{ repo.name }}</span>
+        {% if repo.is_archived %}<span class="badge">{{ results.labels.archived }}</span>{% endif %}
+      </div>
+      {% if let Some(description) = repo.description %}
+      <p class="mt-0.5 line-clamp-2 text-[13px] text-ink-muted">{{ description }}</p>
+      {% endif %}
+    </div>
+    <div class="flex shrink-0 items-center gap-3 text-xs text-ink-faint">
+      {% if repo.star_count > 0 %}<span class="flex items-center gap-1" title="{{ results.star_label(repo.star_count) }}">{% call ui::icon("star", "size-3") %}{% endcall %}{{ repo.star_count }}</span>{% endif %}
+      <time datetime="{{ repo.updated_iso }}">{{ repo.updated }}</time>
+    </div>
+  </a>
+</li>
+{% endmacro %}
+
+{% macro pagination(pager) %}
+{% if pager.is_needed() %}
+<nav class="mt-4 flex items-center justify-between gap-2" aria-label="{{ results.labels.pagination }}">
+  {% if let Some(url) = pager.previous_url %}
+  <a href="{{ url }}" class="btn" rel="prev">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}{{ results.labels.previous }}</a>
+  {% else %}
+  <span class="btn pointer-events-none opacity-50" aria-hidden="true">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}{{ results.labels.previous }}</span>
+  {% endif %}
+  <span class="text-xs text-ink-muted">{{ results.page_of() }}</span>
+  {% if let Some(url) = pager.next_url %}
+  <a href="{{ url }}" class="btn" rel="next" data-preload="visible">{{ results.labels.next }}{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</a>
+  {% else %}
+  <span class="btn pointer-events-none opacity-50" aria-hidden="true">{{ results.labels.next }}{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</span>
+  {% endif %}
+</nav>
+{% endif %}
+{% endmacro %}

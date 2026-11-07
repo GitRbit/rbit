@@ -1,0 +1,20 @@
+{% import "macros.html" as ui %}
+<header class="mb-6">
+  <h1 class="text-2xl font-semibold tracking-tight">{{ results.labels.title }}</h1>
+  <p class="mt-1.5 text-ink-muted">{{ results.subtitle(page.site_name) }}</p>
+</header>
+
+{# Live search and normal GET use the same public service and results component. #}
+<form method="get" action="/explore" role="search" class="mb-4 flex gap-2">
+  <div class="relative min-w-0 flex-1">
+    {% call ui::icon("search", "pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint") %}{% endcall %}
+    <input class="input pl-9" type="search" name="q" value="{{ query }}" maxlength="100" placeholder="{{ results.labels.search_placeholder }}" aria-label="{{ results.labels.search_label }}" aria-controls="explore-results" autocapitalize="none" spellcheck="false" autocomplete="off"
+      hx-get="/explore" hx-include="closest form" hx-trigger="input changed delay:200ms, search" hx-target="#explore-results" hx-select="#explore-results" hx-swap="outerHTML" hx-push-url="true" hx-sync="closest form:replace" hx-indicator="#page-progress">
+  </div>
+  {% if sort != "updated" %}<input type="hidden" name="sort" value="{{ sort }}">{% endif %}
+  {% if let Some(value) = archived %}<input type="hidden" name="archived" value="{{ value }}">{% endif %}
+  <button class="btn h-10 sm:h-9" type="submit">{{ results.labels.search_button }}</button>
+</form>
+
+{% include "home/explore_results.html" %}
+{# probe-boundary: preserve source whitespace #}

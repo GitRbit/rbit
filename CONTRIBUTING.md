@@ -19,44 +19,54 @@ an issue — see [SECURITY.md](SECURITY.md).
 
 ## Setting up
 
-You need Rust 1.94 or newer, Git, and Node.js 24 (only to
-build the stylesheet; nothing from Node ships in the binary). The SSH tests also use the
+You need Rust 1.94 or newer, Git, and Node.js 24 for asset builds and developer tooling;
+nothing from Node ships in the binary. The SSH tests also use the
 OpenSSH client and skip when it is missing.
 
 ```bash
 npm ci
-npm run build          # vendors htmx and builds the Tailwind stylesheet
-cargo run              # http://localhost:3000, data in ./data (gitignored)
+npm run build          # vendors dependencies and builds the frontend assets
+node scripts/workspace.mjs fetch --locked  # cold dependency bootstrap under the shared lease
+node scripts/workspace.mjs run -- serve
 ```
+
+The source guard uses offline metadata before compilation. Run the locked fetch again
+when a changed lockfile requires registry sources that are not cached; it does not
+approve compiler outputs or bypass source validation.
 
 The first account you create becomes the site administrator. For day-to-day work the live
 development server rebuilds and restarts on every change to Rust sources, templates or
 manifests, and keeps the stylesheet compiled:
 
 ```bash
-npm run dev            # http://localhost:3000, data in ./data-live
+npm run dev            # prints this checkout's URL and isolated data directory
 ```
 
-It builds into `target/live`, so it never fights other `cargo` commands over a locked
-executable. It reads no configuration file (one is loaded only through `--config` or
-`RBIT_CONFIG`), so settings come from environment variables. Useful switches:
+Developer builds share one guarded compiler-output lane across Git worktrees. Each
+server runs an exact executable copy with its own data under `.worktree-state/` and a
+stable HTTP port from 3100–3999. Existing data is not copied. Mail defaults to log mode
+and SSH defaults to disabled; production defaults are unchanged.
+
+Use [the worktree guide](docs/development-worktrees.md) to create checkouts under
+`worktrees/`, configure your IDE, inspect cache usage and stop managed process trees
+safely. Use the printed development URL rather than assuming port 3000. Set environment
+overrides with your shell; for example, in a POSIX shell:
 
 ```bash
-RBIT_MAIL__TRANSPORT=log                      # print emails (reset/verify links) to the log
-RBIT_SSH__ENABLED=true RBIT_SSH__PUBLIC_HOST=localhost RBIT_SSH__PUBLIC_PORT=2222
-RBIT_WEBHOOKS__ALLOW_PRIVATE_ADDRESSES=true   # deliver webhooks to a local listener
+RBIT_SSH__ENABLED=true RBIT_SSH__BIND=127.0.0.1:3222 RBIT_SSH__PUBLIC_PORT=3222 npm run dev
+RBIT_WEBHOOKS__ALLOW_PRIVATE_ADDRESSES=true npm run dev
 ```
 
 ## The quality gate
 
-Every commit must pass these, exactly as CI runs them. Run them one after another (they
-compete for CPU and the end-to-end suite boots real servers):
+Run these local checks before submitting. Run them one after another: the end-to-end
+suite boots real servers, and the helper serializes shared compiler-output access.
 
 ```bash
+npm ci && npm run build          # must not change tracked frontend assets
 cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-npm ci && npm run build          # must not change anything under crates/rbit-web/assets
+node scripts/workspace.mjs clippy --workspace --all-targets --locked -- -D warnings
+node scripts/workspace.mjs test --workspace --locked
 npm test                        # browser behavior regressions
 ```
 
@@ -67,16 +77,18 @@ Clippy runs with the **pedantic** group enabled workspace-wide, and warnings fai
 The tests are unit tests next to the code, integration tests under each crate's `tests/`,
 property tests, and an end-to-end suite (`crates/rbit-e2e`) that boots servers on ephemeral
 ports and drives them with an HTTP client and the real `git` CLI. Run one crate's tests with
-`cargo test -p rbit-services`, one test with `cargo test -p rbit-e2e -- pulls::`.
+`node scripts/workspace.mjs test -p rbit-services --locked`, or one test with
+`node scripts/workspace.mjs test -p rbit-e2e --locked -- pulls::`.
 
-CI runs the tests with [cargo-nextest](https://nexte.st), which runs every test binary in
-parallel and takes about half as long as `cargo test --workspace` on a many-core machine:
-`cargo install cargo-nextest --locked`, then `cargo nextest run --workspace`. Each crate's
+CI runs the tests with [cargo-nextest](https://nexte.st), which can run test binaries in
+parallel. Install it with `cargo install cargo-nextest --locked`, then run
+`node scripts/workspace.mjs nextest run --workspace --locked`. Each crate's
 integration tests are modules of one binary (`tests/main.rs`), so a new test file needs a
 `mod` line there.
 
 To exercise full upstream repositories against the development server, run
-`npm run test:realworld -- http://localhost:3000`. It loads the real rbit repository and
+`npm run test:realworld -- http://localhost:3100`, replacing the example origin with the
+development server's printed URL. It loads the real rbit repository and
 Git's full history, verifies HTTP push/clone integrity and checks repository browsing.
 See [the performance harness](scripts/perf/README.md#real-repositories) for setup,
 generated credentials, reports and the separate synthetic scrolling workload.

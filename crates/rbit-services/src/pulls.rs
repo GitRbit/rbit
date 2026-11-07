@@ -450,7 +450,7 @@ impl PullService {
     /// Pull request `number` of `repo` (already opened for `viewer`). `NotFound` when it
     /// does not exist or is an issue (callers redirect issue numbers themselves).
     pub async fn open(&self, viewer: Option<&User>, repo: RepoContext, number: IssueNumber) -> Result<PullContext, ServiceError> {
-        let thread = self.inner.timeline.open(viewer, repo, number).await?;
+        let thread = self.inner.timeline.reader().open(viewer, repo, number).await?;
         if !thread.issue.is_pull() {
             return Err(ServiceError::NotFound);
         }
@@ -632,7 +632,7 @@ impl PullService {
             } else {
                 (rbit_core::TimelineEvent::ReadyForReview, IssueAction::ReadyForReview)
             };
-            self.inner.timeline.record(ctx.issue().id, Some(actor.id()), event).await?;
+            self.inner.timeline.writer().record(ctx.issue().id, Some(actor.id()), event).await?;
             self.publish(ctx.issue(), Some(actor.id()), action);
             self.inner.wake.notify_one();
         }
@@ -667,10 +667,10 @@ impl PullService {
         let changed = self.ctx().database.pulls().set_base(ctx.issue().id, branch, actor.id(), &message, Timestamp::now()).await?;
         if let Some(dismissed) = changed {
             let event = rbit_core::TimelineEvent::BaseChanged { from: previous.clone(), to: branch.to_owned() };
-            self.inner.timeline.record(ctx.issue().id, Some(actor.id()), event).await?;
+            self.inner.timeline.writer().record(ctx.issue().id, Some(actor.id()), event).await?;
             for (review, reviewer) in dismissed {
                 let event = rbit_core::TimelineEvent::ReviewDismissed { review, reviewer };
-                self.inner.timeline.record(ctx.issue().id, Some(actor.id()), event).await?;
+                self.inner.timeline.writer().record(ctx.issue().id, Some(actor.id()), event).await?;
                 self.publish_review(ctx, review, actor.id(), rbit_core::issue::ReviewAction::Dismissed);
             }
             self.publish(

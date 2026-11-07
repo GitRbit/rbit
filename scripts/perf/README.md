@@ -5,8 +5,11 @@
 With the development server running (`npm run dev`), run:
 
 ```bash
-npm run test:realworld -- http://localhost:3000
+npm run test:realworld -- http://localhost:3100
 ```
+
+Replace the example origin with the URL printed by `npm run dev`; managed worktrees
+receive distinct ports from 3100–3999.
 
 This creates public `realworld/rbit` and `realworld/git` repositories on the local
 server using a generated test account. rbit comes from the workspace's configured
@@ -42,7 +45,7 @@ credentials.
 | File | What it does |
 |---|---|
 | `fixture.mjs` | Builds the deterministic fixture repository (seeded PRNG, fixed commit dates, so commit ids never change). |
-| `serve.mjs` | Runs an already-built release binary by default, with configurable port/data/build directories, binary hash and raw server log. |
+| `serve.mjs` | Runs an exact already-built executable or helper build record, with configurable port/data directories, binary hash and raw server log. Never compiles. |
 | `measure.mjs` | Alternating paired HTTP samples with warmups, raw JSON/JSONL evidence and distribution summaries. No browser automation. |
 | `harness.test.mjs` | Tests configuration, ordering, HTTP validation, output capture and browser validity guards. |
 | `seed.mjs` | Signs up the test account `perf`, creates `perf/perf-fixture`, pushes both branches over HTTP and opens pull request #1. Rerunnable. |
@@ -57,11 +60,18 @@ credentials.
 
 ```bash
 npm run build                               # release embeds the generated assets
-CARGO_TARGET_DIR=target/perf-build cargo build --release -p rbit-server
 node scripts/perf/fixture.mjs                 # target/perf/fixture
-node scripts/perf/serve.mjs                   # second terminal; Ctrl+C stops it
+node scripts/workspace.mjs build --release -p rbit-server --locked > target/perf/build.json
+node scripts/perf/serve.mjs --build-record target/perf/build.json # second terminal; Ctrl+C stops it
 node scripts/perf/seed.mjs http://127.0.0.1:3005 # prints the four pages to probe
 ```
+
+On Windows PowerShell, replace the build command's redirection with
+`| Set-Content -Encoding utf8 target/perf/build.json`. The record contains exact
+generation-specific executable paths; it never selects a mutable shared Cargo binary.
+You can also pass `--executable PATH` from the helper's JSON result. The helper shares
+both compiler output directories across worktrees and retains separate runnable copies;
+see [Worktrees and shared developer builds](../../docs/development-worktrees.md).
 
 The launcher prints its base URL (default http://127.0.0.1:3005); pass that same origin
 to `seed.mjs`, for example `node scripts/perf/seed.mjs http://127.0.0.1:3005`.
@@ -171,17 +181,22 @@ names (`blur=URL plain=URL --no-backdrop plain`) measures what the blur costs.
 
 Build each revision with identical toolchain, release flags and assets, **before** timing.
 Keep build command/logs: launch-time Git metadata is not proof of which source produced
-an executable. On PowerShell use `$env:CARGO_TARGET_DIR = 'target/perf-build'` followed
-by `cargo build --release -p rbit-server`. Use a distinct target directory for each
-revision, then launch each from its own worktree, with isolated copies of the same seeded
+an executable. Build each revision with `node scripts/workspace.mjs build --release
+-p rbit-server --locked` and save its JSON result separately. The helper serializes
+compiler output and copies each exact executable before releasing its lease; distinct
+compiler target directories per revision are unnecessary. Launch each generation from
+its own worktree, with isolated copies of the same seeded
 data and separate ports. Never open the same live SQLite/redb directory in two servers.
 
 ```text
-node scripts/perf/serve.mjs --port 3005 --metadata target/perf/before-server.json
-node scripts/perf/serve.mjs --port 3006 --metadata target/perf/after-server.json
+node scripts/perf/serve.mjs --build-record target/perf/before-build.json --port 3005 --metadata target/perf/before-server.json
+node scripts/perf/serve.mjs --build-record target/perf/after-build.json --port 3006 --metadata target/perf/after-server.json
 ```
 
-The launcher accepts `--profile release|debug`, `--target-dir PATH` and `--data-dir PATH`.
+The launcher requires `--executable PATH` or `--build-record FILE` and accepts
+`--profile release|debug` and `--data-dir PATH`. An explicit legacy `--target-dir PATH`
+remains available for older archived builds; there is no default compiler output path.
+The profile remains a declaration, not proof derived from a binary's directory name.
 For archived source exports use `--source-revision 327354d` (or the actual source revision).
 Use `--source-dir PATH` to run a binary from its archived source directory without
 copying the harness there; this controls the child's working directory and fingerprint.
@@ -257,7 +272,7 @@ the script runs, so every write also queues deliveries.
 ```bash
 # release build, seeded fixture (see "Reproduce"); then, with the server's environment:
 RBIT_OPERATIONS__METRICS=true RBIT_SECURITY__RATE_LIMIT=false \
-RBIT_WEBHOOKS__ALLOW_PRIVATE_ADDRESSES=true node scripts/perf/serve.mjs --port 3031 --data-dir target/perf/contention/data
+RBIT_WEBHOOKS__ALLOW_PRIVATE_ADDRESSES=true node scripts/perf/serve.mjs --build-record target/perf/build.json --port 3031 --data-dir target/perf/contention/data
 node scripts/perf/seed.mjs http://127.0.0.1:3031
 node scripts/perf/contention.mjs setup http://127.0.0.1:3031
 node scripts/perf/contention.mjs run http://127.0.0.1:3031 --levels 4,16,64 --seconds 20 --output target/perf/contention/run-01.json
@@ -288,3 +303,18 @@ blame (`BlameLimits::max_file_bytes`); above it the blob page is plain text and 
 refuses. The big change (~25,000 changed lines) exceeds `DiffLimits::max_total_lines`
 (20,000), so the compare and pull request pages show the first files in full and the
 rest truncated, as a real oversized change would.
+
+
+## Paired footer and response timing
+
+See [the release footer comparison protocol](FOOTER-COMPARISON.md) and
+[example configuration](footer-comparison.example.json). The existing HTTP sampler
+records raw SSR footer, view and total Server-Timing independently (never substituting
+missing view from total), can require candidate-only view with requireViewTiming, and records conditional304
+cases separately, and authenticate each variant using a private credentialsFile.
+Credentials/cookies are never serialized; do not embed them in JSON or argv.
+`serve.mjs --isolated true` strips inherited application settings, refuses private
+source configuration and requires RBIT_PERF_SETUP_TOKEN_FILE for private bootstrap.
+`seed.mjs` accepts RBIT_PERF_FIXTURE, RBIT_PERF_CREDENTIALS_FILE and the same private
+setup-token file, so no per-worktree target fixture path is necessary. These are
+optional existing-harness extensions, not completed application performance results.

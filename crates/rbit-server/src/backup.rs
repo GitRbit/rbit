@@ -162,7 +162,7 @@ pub async fn create(config: &Config, output: &Path) -> anyhow::Result<Manifest> 
 /// running migrations, so backing up never changes the source.
 async fn snapshot_database(source: &Path, snapshot: &Path) -> anyhow::Result<()> {
     let target = snapshot.to_str().context("the backup path must be valid UTF-8")?;
-    let mut connection = SqliteConnectOptions::from_str("sqlite:")?
+    let mut connection = rbit_storage::sqlite::writer_compatibility::register(SqliteConnectOptions::from_str("sqlite:")?)
         .filename(source)
         .create_if_missing(false)
         .busy_timeout(std::time::Duration::from_secs(30))

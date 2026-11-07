@@ -2,12 +2,12 @@
 
 use askama::Template;
 use askama_web::WebTemplate;
-use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+#[cfg(test)]
 use rbit_core::{RepoSort, repository::ArchivedFilter};
 use rbit_services::instance::PublicCounts;
 
 use crate::views::{
-    components::{Avatar, FormError, OrgLink, Pagination, RepoCard},
+    components::{Avatar, FormError, OrgLink, RepoCard},
     layout::Page,
 };
 
@@ -101,68 +101,7 @@ impl DashboardPage {
     }
 }
 
-// ------------------------------------------------------------------ explore
-
-/// One sort order in the explore list header.
-#[derive(Debug, Clone)]
-pub struct SortLink {
-    pub label: &'static str,
-    pub url: String,
-    pub is_active: bool,
-}
-
-#[derive(Debug, Template, WebTemplate)]
-#[template(path = "home/explore.html")]
-pub struct ExplorePage {
-    pub page: Page,
-    pub repos: Vec<RepoCard>,
-    /// The search text as typed (re-filled into the search box).
-    pub query: String,
-    /// The active sort's query-string value, kept when searching again.
-    pub sort: &'static str,
-    pub sorts: Vec<SortLink>,
-    /// The archive filter's query-string value, kept when searching again (`None`: all).
-    pub archived: Option<&'static str>,
-    /// All, active or archived repositories only.
-    pub archived_filters: Vec<SortLink>,
-    pub total: u64,
-    pub pagination: Pagination,
-}
-
-impl ExplorePage {
-    /// "3 repositories", "1 repository".
-    pub fn total_label(&self) -> String {
-        let noun = if self.total == 1 { "repository" } else { "repositories" };
-        format!("{} {noun}", self.total)
-    }
-}
-
-/// `/explore?q=…&sort=…&archived=…&page=…`, omitting defaults so canonical URLs stay short.
-pub fn explore_url(query: &str, sort: RepoSort, archived: ArchivedFilter, page: u32) -> String {
-    let mut params = Vec::new();
-    if !query.is_empty() {
-        params.push(format!("q={}", utf8_percent_encode(query, NON_ALPHANUMERIC)));
-    }
-    if sort != RepoSort::default() {
-        params.push(format!("sort={}", sort.as_str()));
-    }
-    if let Some(value) = archived.query_value() {
-        params.push(format!("archived={value}"));
-    }
-    if page > 1 {
-        params.push(format!("page={page}"));
-    }
-    if params.is_empty() { "/explore".to_owned() } else { format!("/explore?{}", params.join("&")) }
-}
-
-/// Short labels for the list header (fits a phone screen).
-pub const fn sort_label(sort: RepoSort) -> &'static str {
-    match sort {
-        RepoSort::RecentlyUpdated => "Updated",
-        RepoSort::Name => "Name",
-        RepoSort::Newest => "Newest",
-    }
-}
+pub use super::explore::explore_url;
 
 // ------------------------------------------------------------------ new repository
 
@@ -200,6 +139,8 @@ mod tests {
 
     fn page() -> Page {
         Page {
+            locale: rbit_localization::Locale::default(),
+            content_locale: rbit_localization::Locale::English,
             updates: rbit_services::updates::UpdateStatus::default(),
             site_name: "rbit".to_owned(),
             branding: rbit_core::config::BrandingConfig::default(),

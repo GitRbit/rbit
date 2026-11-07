@@ -1,9 +1,17 @@
 # Rust
 /target
 /.cargo-build
+/worktrees/
+/.build-cache/
+/.worktree-state/
 
 # Front-end tooling (build-time only)
 /node_modules
+/.actions-visual-control/
+/actions-visual-artifacts/
+/.actions-production-control/
+/actions-production-artifacts/
+/actions-production-fixture/
 
 # Generated stylesheet: run `npm run build:css`
 /crates/rbit-web/assets/app.css

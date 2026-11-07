@@ -1,0 +1,182 @@
+//! Serialized append/ack, crash recovery and durable progress commits.
+use super::{
+    MAX_LINES_PER_CALL, Masker,
+    types::{LogFiles, Progress},
+};
+use crate::{
+    ActionsService, ServiceError,
+    actions::runners::{CachedRunner, RunnerError},
+};
+use rbit_core::actions::{Job, LogState, Task, TaskId};
+use rbit_workflow::protocol::{LogsResponse, MAX_LOG_LINE_BYTES};
+use std::{
+    fs::OpenOptions,
+    io::{Read, Write},
+    path::PathBuf,
+    sync::{Arc, PoisonError},
+};
+
+impl ActionsService {
+    /// `<data_dir>/actions/logs`.
+    pub(in crate::actions) fn logs_dir(&self) -> PathBuf {
+        self.ctx().config.storage.actions_dir().join("logs")
+    }
+
+    /// The lock serialising appends to `task`'s log, and whether this process already
+    /// checked its files against the database.
+    pub(super) fn log_lock(&self, task: TaskId) -> Arc<tokio::sync::Mutex<bool>> {
+        let mut locks = self.inner.log_locks.lock().unwrap_or_else(PoisonError::into_inner);
+        Arc::clone(locks.entry(task).or_default())
+    }
+
+    /// `POST tasks/{id}/logs?from=<line>`: `body`'s lines are task-log lines `from…`. Lines
+    /// the server already has are dropped, so a resend is harmless; a gap is a conflict
+    /// that names the line to resend from. Answers the line count after the append.
+    pub async fn append_log(&self, runner: &CachedRunner, id: TaskId, from: u64, body: &[u8]) -> Result<LogsResponse, RunnerError> {
+        let text = String::from_utf8_lossy(body);
+        let mut lines: Vec<&str> = if text.is_empty() { Vec::new() } else { text.split('\n').collect() };
+        if text.ends_with('\n') {
+            lines.pop();
+        }
+        if lines.len() > MAX_LINES_PER_CALL {
+            return Err(RunnerError::too_large(format!("send at most {MAX_LINES_PER_CALL} lines per call")));
+        }
+        let lock = self.log_lock(id);
+        let mut checked = lock.lock().await;
+        let store = self.ctx().database.actions_runs();
+        let task = store.task(id).await?.ok_or_else(|| RunnerError::not_found("there is no such task"))?;
+        if task.runner_id != Some(runner.id) {
+            return Err(RunnerError::forbidden("this task belongs to another runner"));
+        }
+        if task.status.is_done() || task.log_state != LogState::Live {
+            return Err(RunnerError::conflict("the task has ended; its log is closed"));
+        }
+        let current = u64::try_from(task.log_lines).unwrap_or_default();
+        if from > current {
+            return Err(RunnerError::log_gap(current));
+        }
+        let skip = usize::try_from(current - from).unwrap_or(usize::MAX);
+        if skip >= lines.len() {
+            return Ok(LogsResponse { next_line: current });
+        }
+        let job = store.job(task.job_id).await?.ok_or_else(|| RunnerError::not_found("there is no such task"))?;
+        let masker = self.masker(&task, &job).await?;
+        let fresh: Vec<String> = lines[skip..].iter().map(|line| clean_line(&masker, line)).collect();
+        let progress = self.write_lines(&task, &job, fresh, &mut checked).await?;
+        Ok(LogsResponse { next_line: progress.lines })
+    }
+
+    /// Appends `lines` to `task`'s log with its lock held (`checked` is the lock's flag),
+    /// and records the progress.
+    async fn write_lines(&self, task: &Task, job: &Job, lines: Vec<String>, checked: &mut bool) -> Result<Progress, ServiceError> {
+        let files = LogFiles::new(&self.logs_dir(), job.repo_id, task.id);
+        let stored = Progress {
+            lines: u64::try_from(task.log_lines).unwrap_or_default(),
+            bytes: u64::try_from(task.log_bytes).unwrap_or_default(),
+            truncated: task.log_truncated,
+        };
+        let (recover, max_bytes) = (!*checked, self.config().max_log_bytes);
+        let progress = tokio::task::spawn_blocking(move || append_lines(&files, stored, &lines, max_bytes, recover))
+            .await
+            .map_err(ServiceError::internal)?
+            .map_err(ServiceError::internal)?;
+        *checked = true;
+        // Actions: metrics.
+        metrics::counter!("rbit_actions_log_bytes_total").increment(progress.bytes.saturating_sub(stored.bytes));
+        let lines = i64::try_from(progress.lines).unwrap_or(i64::MAX);
+        let bytes = i64::try_from(progress.bytes).unwrap_or(i64::MAX);
+        self.ctx().database.actions_runs().set_log_progress(task.id, lines, bytes, progress.truncated).await?;
+        Ok(progress)
+    }
+
+    /// Writes one line from rbit itself (why a task failed before it ran) into `task`'s log.
+    pub(in crate::actions) async fn write_system_line(&self, task: TaskId, line: &str) -> Result<(), ServiceError> {
+        let lock = self.log_lock(task);
+        let mut checked = lock.lock().await;
+        let store = self.ctx().database.actions_runs();
+        let Some(task) = store.task(task).await? else { return Ok(()) };
+        let Some(job) = store.job(task.job_id).await? else { return Ok(()) };
+        if task.log_state != LogState::Live {
+            return Ok(());
+        }
+        self.write_lines(&task, &job, vec![clean_line(&Masker::none(), &format!("rbit: {line}"))], &mut checked).await?;
+        Ok(())
+    }
+}
+
+/// A line as stored: masked, without a trailing `\r`, at most `MAX_LOG_LINE_BYTES`.
+pub(super) fn clean_line(masker: &Masker, line: &str) -> String {
+    const MARKER: &str = " [line truncated]";
+    let mut line = masker.mask(line.strip_suffix('\r').unwrap_or(line));
+    if line.len() > MAX_LOG_LINE_BYTES {
+        let mut end = MAX_LOG_LINE_BYTES - MARKER.len();
+        while !line.is_char_boundary(end) {
+            end -= 1;
+        }
+        line.truncate(end);
+        line.push_str(MARKER);
+    }
+    line
+}
+
+/// Appends `lines` after `stored`, within `max_bytes`; with `recover`, first cuts the files
+/// back to what the database recorded (a crash between writing them and the row).
+pub(super) fn append_lines(
+    files: &LogFiles,
+    mut progress: Progress,
+    lines: &[String],
+    max_bytes: u64,
+    recover: bool,
+) -> std::io::Result<Progress> {
+    if let Some(dir) = files.log.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    if recover {
+        // Cut with writable handles: an append-only handle may not change the length.
+        let log = OpenOptions::new().create(true).truncate(false).write(true).open(&files.log)?;
+        let length = log.metadata()?.len();
+        if length > progress.bytes {
+            log.set_len(progress.bytes)?;
+        }
+        progress.bytes = progress.bytes.min(length);
+        let mut index = OpenOptions::new().create(true).truncate(false).read(true).write(true).open(&files.index)?;
+        let entries = index.metadata()?.len() / 8;
+        let mut keep = 0;
+        let mut entry = [0u8; 8];
+        while keep < entries {
+            index.read_exact(&mut entry)?;
+            if u64::from_le_bytes(entry) > progress.bytes {
+                break;
+            }
+            keep += 1;
+        }
+        index.set_len(keep * 8)?;
+    }
+    let mut log = OpenOptions::new().create(true).append(true).open(&files.log)?;
+    let mut index = OpenOptions::new().create(true).append(true).open(&files.index)?;
+    let mut text = Vec::new();
+    let mut ends = Vec::new();
+    for line in lines {
+        progress.lines += 1;
+        if progress.truncated {
+            continue;
+        }
+        let size = u64::try_from(line.len()).unwrap_or(u64::MAX).saturating_add(1);
+        if progress.bytes.saturating_add(size) > max_bytes {
+            let marker = format!("rbit: the log was cut here: a task may write at most {max_bytes} bytes\n");
+            progress.bytes += u64::try_from(marker.len()).unwrap_or_default();
+            text.extend_from_slice(marker.as_bytes());
+            progress.truncated = true;
+            continue;
+        }
+        text.extend_from_slice(line.as_bytes());
+        text.push(b'\n');
+        progress.bytes += size;
+        ends.extend_from_slice(&progress.bytes.to_le_bytes());
+    }
+    log.write_all(&text)?;
+    index.write_all(&ends)?;
+    log.sync_data()?;
+    index.sync_data()?;
+    Ok(progress)
+}

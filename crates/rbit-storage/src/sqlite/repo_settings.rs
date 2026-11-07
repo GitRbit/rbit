@@ -4,17 +4,11 @@
 //! Workstream D owns this file. Keep row types here rather than in `rows.rs`.
 
 use super::pool::Pool;
-use rbit_core::{AccountId, RepoId, RepoName, Timestamp, Visibility};
+use rbit_core::{AccountId, RepoId, RepoName, Timestamp};
 
 use crate::StorageError;
 
-/// The general settings of a repository, written together.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RepoGeneralSettings {
-    pub description: Option<String>,
-    pub visibility: Visibility,
-    pub default_branch: String,
-}
+pub use rbit_repositories::settings::RepoGeneralSettings;
 
 #[derive(Debug, Clone)]
 pub struct RepoSettingsStore {
@@ -77,5 +71,29 @@ impl RepoSettingsStore {
     pub async fn delete(&self, id: RepoId) -> Result<(), StorageError> {
         sqlx::query("DELETE FROM repositories WHERE id = ?").bind(id.0).execute(&self.pool).await?;
         Ok(())
+    }
+}
+
+// Forward the original operations without adding another async state machine or statement.
+impl rbit_repositories::settings::RepositorySettingsRepository for RepoSettingsStore {
+    type Error = StorageError;
+    fn update_general(
+        &self,
+        id: RepoId,
+        settings: &RepoGeneralSettings,
+    ) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send {
+        Self::update_general(self, id, settings)
+    }
+    fn rename(&self, id: RepoId, name: &RepoName) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send {
+        Self::rename(self, id, name)
+    }
+    fn archive(&self, id: RepoId, actor: AccountId, at: Timestamp) -> impl std::future::Future<Output = Result<bool, Self::Error>> + Send {
+        Self::archive(self, id, actor, at)
+    }
+    fn unarchive(&self, id: RepoId) -> impl std::future::Future<Output = Result<bool, Self::Error>> + Send {
+        Self::unarchive(self, id)
+    }
+    fn delete(&self, id: RepoId) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send {
+        Self::delete(self, id)
     }
 }

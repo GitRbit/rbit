@@ -68,6 +68,7 @@ const widths = new WeakMap();
 const observed = new WeakSet();
 const columns = new ResizeObserver((entries) => {
   for (const { target, contentRect } of entries) {
+    if (!observed.has(target)) continue;
     if (widths.get(target) === contentRect.width) continue;
     const resized = widths.has(target);
     widths.set(target, contentRect.width);
@@ -102,4 +103,14 @@ document.addEventListener("htmx:load", (event) => {
   started = true;
   if (initial && root === document.body) return;
   sizeAll(root);
+});
+
+// HTMX announces cleanup for every removed element, including history/body swaps.
+// Release ResizeObserver's strong target reference; a restored column is observed anew.
+document.addEventListener("htmx:beforeCleanupElement", (event) => {
+  const column = event.detail.elt;
+  if (!observed.has(column)) return;
+  columns.unobserve(column);
+  observed.delete(column);
+  widths.delete(column);
 });

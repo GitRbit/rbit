@@ -1,0 +1,77 @@
+{% if let Some(error) = run.error %}
+<div role="alert" class="mt-6 flex items-start gap-2 rounded-(--radius-ui) border border-danger/40 bg-danger-subtle px-3 py-2.5 text-[13px] text-danger">
+  {% call ui::icon("alert", "mt-px size-4 shrink-0") %}{% endcall %}
+  <span class="whitespace-pre-wrap break-words">{{ error }}</span>
+</div>
+{% else %}
+<div class="mb-2 mt-6 flex flex-wrap items-center gap-2">
+  <h2 class="text-[13px] font-medium">{{ text.jobs }}</h2>
+  <span class="badge tabular-nums">{{ jobs.len() }}</span>
+</div>
+<ul class="box">
+  {% for job in jobs %}
+  <li class="row flex-wrap gap-3 py-3 sm:flex-nowrap">
+    {% if !job.indent.is_empty() %}
+    <span class="{{ job.indent }} shrink-0" aria-hidden="true"></span>
+    {% endif %}
+    {% let look = job.look %}
+    {% include "actions/state.html" %}
+    <div class="min-w-0 flex-1">
+      <a class="block break-words text-[13px] font-medium hover:underline hover:underline-offset-4" href="{{ job.url }}">{{ job.name }}</a>
+      {% if !job.needs.is_empty() %}
+      <p class="mt-1 break-words text-xs text-ink-faint"><span lang="en">{{ job.needs }}</span></p>
+      {% endif %}
+      {% if let Some(environment) = job.environment %}
+      <p class="mt-1 break-words text-xs text-ink-muted">
+        {% call ui::icon("server", "inline size-3 align-[-1px]") %}{% endcall %}
+        <bdi>{{ environment }}</bdi>
+        {% if let Some(url) = job.environment_url %}
+        · <a class="hover:underline" href="{{ url }}" rel="noopener noreferrer nofollow" target="_blank">{{ url }}</a>
+        {% endif %}
+      </p>
+      {% endif %}
+    </div>
+    {% if let Some(duration) = job.duration %}
+    <span class="shrink-0 whitespace-nowrap text-xs tabular-nums text-ink-faint">{{ duration }}</span>
+    {% endif %}
+    {% if job.can_rerun %}
+    {% let rerun_label = self.rerun_label(job.name.as_str()) %}
+    <form method="post" action="{{ job.rerun_url }}">
+      <button class="btn btn-icon size-10 sm:size-8" type="submit"
+              title="{{ rerun_label }}" aria-label="{{ rerun_label }}">
+        {% call ui::icon("refresh", "size-3.5") %}{% endcall %}
+      </button>
+    </form>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% if !artifacts.is_empty() %}
+<h2 class="mb-2 mt-6 text-[13px] font-medium text-ink-muted">{{ text.artifacts }}</h2>
+<ul class="box">
+  {% for artifact in artifacts %}
+  <li class="row flex-wrap gap-3 py-3 sm:flex-nowrap">
+    {% call ui::icon("package", "size-4 shrink-0 text-ink-muted") %}{% endcall %}
+    <a class="min-w-0 flex-1 truncate text-[13px] font-medium hover:underline hover:underline-offset-4"
+       href="{{ artifact.url }}/zip" hx-boost="false" download>{{ artifact.name }}</a>
+    <a class="shrink-0 text-xs text-ink-faint hover:text-ink hover:underline hover:underline-offset-4"
+       href="{{ artifact.url }}/tar.gz" hx-boost="false" download title="{{ text.download_tar }}">tar.gz</a>
+    <span class="shrink-0 whitespace-nowrap text-xs tabular-nums text-ink-faint">
+      {{ artifact.size }} · {{ text.expires }} <time lang="en" dir="ltr" datetime="{{ artifact.expires_iso }}">{{ artifact.expires }}</time>
+    </span>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+{% for summary in summaries %}
+{% let summary_label = self.summary_label(summary.job.as_str()) %}
+<section class="box mt-6 overflow-hidden" aria-label="{{ summary_label }}">
+  <h2 class="flex min-h-10 items-center gap-2 border-b border-line bg-subtle px-3 text-[13px] font-medium">
+    {% call ui::icon("file", "size-4 shrink-0 text-ink-muted") %}{% endcall %}
+    <span class="truncate">{{ summary_label }}</span>
+  </h2>
+  <article class="prose-rbit overflow-x-auto px-4 py-4 sm:px-6">{{ summary.html|safe }}</article>
+</section>
+{% endfor %}
+{% endif %}

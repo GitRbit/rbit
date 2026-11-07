@@ -1,0 +1,4 @@
+{#- Line counts carry their meaning in visible text; color and borders are secondary cues. -#}
+{% macro counts(additions, deletions, classes) -%}
+<span class="change-counts {{ classes }}"><span class="change-count change-count-added"><b>+{{ additions }}</b> Added</span><span class="change-count change-count-deleted"><b>−{{ deletions }}</b> Deleted</span></span>
+{%- endmacro %}

@@ -143,7 +143,11 @@ impl PullService {
     async fn head_moved(&self, issue: &Issue, pull: &PullRequest, update: &RefUpdate, source: PushSource) -> Result<(), ServiceError> {
         let pusher = source.pusher();
         let Some(after) = &update.after else {
-            self.inner.timeline.record(issue.id, pusher, TimelineEvent::HeadRefDeleted { branch: pull.head_branch.clone() }).await?;
+            self.inner
+                .timeline
+                .writer()
+                .record(issue.id, pusher, TimelineEvent::HeadRefDeleted { branch: pull.head_branch.clone() })
+                .await?;
             return Ok(());
         };
         let Some(base) = RepoContext::load_for_system(self.ctx(), pull.repo_id).await? else { return Ok(()) };
@@ -171,6 +175,7 @@ impl PullService {
         self.ctx().database.pulls().set_head(issue.id, &stored, Timestamp::now()).await?;
         self.inner
             .timeline
+            .writer()
             .record(issue.id, pusher, TimelineEvent::HeadPushed { before: before.clone(), after: stored.clone(), count, forced })
             .await?;
         self.publish(issue, pusher, IssueAction::Synchronized { before, after: stored.clone(), source });
@@ -225,7 +230,7 @@ impl PullService {
             MergeRecord { merged_by: pusher, strategy: None, commit: after, base: after, head: &pull.head_sha, at: Timestamp::now() };
         if store.record_merge(issue.id, &record).await? {
             let event = TimelineEvent::Merged { commit: after.clone(), strategy: None };
-            self.inner.timeline.close_as_system(issue.id, pusher, StateReason::Merged, event).await?;
+            self.inner.timeline.writer().close_as_system(issue.id, pusher, StateReason::Merged, event).await?;
             tracing::info!(pull = issue.id.0, "pull request merged outside rbit");
         }
         Ok(())

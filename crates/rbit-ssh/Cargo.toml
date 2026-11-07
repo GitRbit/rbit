@@ -16,6 +16,7 @@ getrandom.workspace = true
 russh.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tokio-util.workspace = true
 tracing.workspace = true
 # L: Git LFS (`git-lfs-authenticate` answers JSON).
 serde_json.workspace = true

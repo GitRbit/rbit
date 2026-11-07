@@ -214,9 +214,6 @@ pub struct FileDiffView {
     pub body: DiffBodyView,
 }
 
-/// Blocks in a file's change bar.
-const DIFFSTAT_BLOCKS: usize = 5;
-
 impl FileDiffView {
     /// Build the shared changed-file navigator without copying or rendering diff bodies.
     pub fn tree(files: &[Self]) -> Vec<FileTreeRow> {
@@ -234,28 +231,6 @@ impl FileDiffView {
                 DiffBodyView::Text(text) => text.rows,
                 _ => PLACEHOLDER_ROWS,
             }
-    }
-
-    /// The change bar: `DIFFSTAT_BLOCKS` cells, each `add`, `del` or `none`. A change of
-    /// fewer lines than blocks fills only that many; either side keeps at least one block.
-    pub fn diffstat(&self) -> [&'static str; DIFFSTAT_BLOCKS] {
-        let mut cells = ["none"; DIFFSTAT_BLOCKS];
-        let total = self.additions + self.deletions;
-        if !self.stats_known || total == 0 {
-            return cells;
-        }
-        let filled = total.min(DIFFSTAT_BLOCKS);
-        let mut added = (self.additions * filled + total / 2) / total;
-        if self.additions > 0 && added == 0 {
-            added = 1;
-        }
-        if self.deletions > 0 && added == filled {
-            added = filled - 1;
-        }
-        for (i, cell) in cells.iter_mut().enumerate().take(filled) {
-            *cell = if i < added { "add" } else { "del" };
-        }
-        cells
     }
 }
 
@@ -658,11 +633,20 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn diffstat_splits_the_bar_and_keeps_both_sides_visible() {
-        assert_eq!(file(0, "a", 0, 0).diffstat(), ["none"; 5]);
-        assert_eq!(file(0, "a", 1, 0).diffstat(), ["add", "none", "none", "none", "none"]);
-        assert_eq!(file(0, "a", 100, 100).diffstat(), ["add", "add", "add", "del", "del"]);
-        assert_eq!(file(0, "a", 500, 1).diffstat(), ["add", "add", "add", "add", "del"]);
-        assert_eq!(file(0, "a", 1, 500).diffstat(), ["add", "del", "del", "del", "del"]);
+    fn diff_counts_have_visible_labels_and_hide_unknown_file_stats() {
+        for (added, deleted) in [(24, 8), (0, 0), (500, 1)] {
+            let mut unknown = file(1, "binary.dat", 0, 0);
+            unknown.stats_known = false;
+            let html =
+                Diffs { files: vec![file(0, "main.rs", added, deleted), unknown], additions: added, deletions: deleted, truncated: false }
+                    .render()
+                    .unwrap();
+            assert!(!html.contains("diffstat"), "no unlabeled proportional squares");
+            // Both the total and per-file summaries spell out what each count means.
+            assert_eq!(html.matches(&format!("<b>+{added}</b> Added")).count(), 2);
+            assert_eq!(html.matches(&format!("<b>−{deleted}</b> Deleted")).count(), 2);
+            let unknown = html.split("id=\"diff-1\"").nth(1).unwrap().split("</summary>").next().unwrap();
+            assert!(!unknown.contains("change-counts"), "undiffed files do not claim zero changes");
+        }
     }
 }

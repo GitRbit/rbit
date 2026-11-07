@@ -2,7 +2,7 @@
 //!
 //! Milestone 1 workstream S (security) owns this file.
 
-use std::{fmt, net::IpAddr, str::FromStr};
+use std::{fmt, net::IpAddr, num::NonZeroUsize, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
@@ -16,6 +16,8 @@ pub struct SecurityConfig {
     pub session_max_age_days: u32,
     /// Minimum password length accepted at sign-up.
     pub min_password_length: usize,
+    /// Shared password hash/verification capacity (1..=64). Restart required.
+    pub max_password_jobs: usize,
     /// Reverse proxies (CIDR networks, e.g. `127.0.0.1/32`, `10.0.0.0/8`, `::1/128`) whose
     /// `X-Forwarded-For`, `Forwarded` and `X-Forwarded-Proto` headers are believed.
     /// Empty (the default) means the TCP peer is always the client.
@@ -47,6 +49,7 @@ impl Default for SecurityConfig {
             session_lifetime_days: 30,
             session_max_age_days: 90,
             min_password_length: 10,
+            max_password_jobs: 2,
             trusted_proxies: Vec::new(),
             rate_limit: true,
             hsts: true,
@@ -58,11 +61,25 @@ impl Default for SecurityConfig {
 }
 
 impl SecurityConfig {
+    /// Validates configured password-work admission and returns nonzero capacity.
+    ///
+    /// # Errors
+    ///
+    /// Rejects zero or values above 64; invalid deployment policy must not be clamped.
+    pub fn password_job_capacity(&self) -> Result<NonZeroUsize, String> {
+        NonZeroUsize::new(self.max_password_jobs)
+            .filter(|capacity| capacity.get() <= 64)
+            .ok_or_else(|| "security.max_password_jobs must be between 1 and 64".to_owned())
+    }
+
     /// Whether `peer` is one of the configured reverse proxies.
     pub fn is_trusted_proxy(&self, peer: IpAddr) -> bool {
         self.trusted_proxies.iter().any(|network| network.contains(peer))
     }
 }
+
+#[cfg(test)]
+mod password_policy_tests;
 
 /// An IP network in CIDR notation. A bare address means a single host (`/32` or `/128`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

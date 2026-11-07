@@ -25,12 +25,14 @@ pub mod instance;
 pub mod issues;
 pub mod jobs;
 pub mod lfs;
+mod lifecycle;
 pub mod limits;
 pub mod mail;
 pub mod mirrors;
 pub mod notification_email;
 pub mod notifications;
 pub mod orgs;
+mod password_work;
 pub mod preferences;
 pub mod profiles;
 pub mod protection;
@@ -43,6 +45,7 @@ pub mod repo_settings;
 pub mod repositories;
 pub mod ssh_keys;
 pub mod stars;
+pub mod wikis;
 // Milestone 3: commit statuses (S).
 pub mod statuses;
 pub mod teams;
@@ -64,6 +67,7 @@ use std::sync::Arc;
 
 use rbit_core::Config;
 use rbit_git::RepositoryStorage;
+use rbit_identity::PasswordWork;
 use rbit_storage::{Database, KvStore};
 
 pub use accounts::{AccountService, SignUp};
@@ -104,7 +108,7 @@ pub use stars::{StarService, StarSummary};
 pub use statuses::StatusService;
 pub use teams::TeamService;
 pub use throttle::{ThrottleScope, ThrottleService};
-pub use timeline::{IssueContext, TimelineService};
+pub use timeline::{IssueContext, ThreadServices, TimelineService};
 pub use tokens::{AccessTokenService, CreateAccessToken};
 pub use transfers::TransferService;
 pub use two_factor::TwoFactorService;
@@ -128,6 +132,7 @@ pub struct ServiceContext {
 /// All services, constructed once at start-up and shared by reference.
 #[derive(Debug, Clone)]
 pub struct Services {
+    passwords: PasswordWork,
     pub updates: updates::UpdateService,
     pub contributions: contributions::ContributionService,
     pub accounts: AccountService,
@@ -167,7 +172,7 @@ pub struct Services {
     // Frontend wave: themes (T).
     pub preferences: PreferenceService,
     // Milestone 2 wave B: the shared issue timeline (T0).
-    pub timeline: TimelineService,
+    pub timeline: ThreadServices,
     // Issues (I).
     pub issues: IssueService,
     pub references: ReferenceService,
@@ -196,6 +201,30 @@ pub struct Services {
 
 impl Services {
     pub async fn new(config: Arc<Config>, database: &Database, kv: &KvStore) -> Result<Self, ServiceError> {
+        let passwords = password_work::configured(&config)?;
+        // Composition runs once; keep its large initializer out of callers' future frames.
+        Box::pin(Self::with_password_work(config, database, kv, passwords)).await
+    }
+
+    /// Composes an instance around an explicitly owned password budget.
+    ///
+    /// Embedders may share one owner across instances; tests can hold its reservations
+    /// deterministically. Startup policy remains validated, and clones are injected
+    /// into every password consumer rather than placed in broad service context.
+    ///
+    /// # Errors
+    ///
+    /// Returns invalid configuration or infrastructure/service initialization errors.
+    pub async fn with_password_work(
+        config: Arc<Config>,
+        database: &Database,
+        kv: &KvStore,
+        passwords: PasswordWork,
+    ) -> Result<Self, ServiceError> {
+        let capacity = config.security.password_job_capacity().map_err(ServiceError::Invalid)?;
+        if passwords.capacity() != capacity {
+            return Err(ServiceError::Invalid("password work capacity must match security.max_password_jobs".into()));
+        }
         let ctx = ServiceContext {
             config: Arc::clone(&config),
             database: database.clone(),
@@ -211,8 +240,8 @@ impl Services {
         let throttle = ThrottleService::new(ctx.clone());
         // Shared so the issue and pull request services spend the same content budget and
         // record through the same timeline.
-        let timeline = TimelineService::new(ctx.clone(), throttle.clone());
-        let references = ReferenceService::new(ctx.clone(), timeline.clone());
+        let timeline = ThreadServices::new(ctx.database.clone(), ctx.repositories.clone(), ctx.events.clone(), throttle.clone());
+        let references = ReferenceService::new(ctx.database.clone(), timeline.clone());
         let repositories =
             RepositoryService::new(Arc::clone(&config), database.repositories(), ctx.repositories.clone(), ctx.events.clone());
         // Milestone 3 (N): notification emails share the mail queue and the rate limits.
@@ -224,13 +253,21 @@ impl Services {
         let releases = ReleaseService::new(ctx.clone());
         let lfs = LfsService::new(ctx.clone());
         let setup_token = accounts::bootstrap_setup_token(&config, &database.accounts()).await?;
-        let accounts =
-            AccountService::new(Arc::clone(&config), database.accounts(), kv.sessions(), instance.clone(), ctx.events.clone(), setup_token);
+        let accounts = AccountService::new(
+            Arc::clone(&config),
+            database.accounts(),
+            accounts::session_persistence(database, kv),
+            instance.clone(),
+            ctx.events.clone(),
+            setup_token,
+            passwords.clone(),
+        );
 
         let issues = IssueService::new(ctx.clone(), timeline.clone(), references.clone(), throttle.clone());
         issues.index_existing_mentions().await?;
 
         Ok(Self {
+            passwords: passwords.clone(),
             updates: updates::UpdateService::new(&config.updates),
             accounts: accounts.clone(),
             contributions: contributions::ContributionService::new(ctx.clone()),
@@ -238,7 +275,7 @@ impl Services {
             blame: BlameService::new(),
             jobs: JobService::new(ctx.clone()),
             mail: mail.clone(),
-            recovery: RecoveryService::builder(ctx.clone())
+            recovery: RecoveryService::builder(ctx.clone(), passwords.clone())
                 .mail(mail)
                 .throttle(throttle.clone())
                 .instance(instance.clone())
@@ -246,13 +283,13 @@ impl Services {
                 .build(),
             ssh_keys: SshKeyService::new(ctx.clone()),
             throttle: throttle.clone(),
-            two_factor: TwoFactorService::new(ctx.clone(), instance.clone()),
-            admin: AdminService::new(ctx.clone(), instance.clone()),
+            two_factor: TwoFactorService::new(ctx.clone(), instance.clone(), passwords.clone()),
+            admin: AdminService::new(ctx.clone(), instance.clone(), passwords),
             insights: InsightsService::new(ctx.clone()),
             orgs: OrgService::new(ctx.clone(), instance.clone()),
             profiles: ProfileService::new(ctx.clone(), accounts, throttle.clone()),
             pushes: PushService::new(ctx.clone()),
-            repo_settings: RepoSettingsService::new(ctx.clone()),
+            repo_settings: RepoSettingsService::new(database.clone(), ctx.repositories.clone(), ctx.events.clone()),
             collaborators: CollaboratorService::new(ctx.clone()),
             teams: TeamService::new(ctx.clone()),
             transfers: TransferService::new(ctx.clone()),
@@ -288,57 +325,5 @@ impl Services {
             events: ctx.events.clone(),
             instance,
         })
-    }
-
-    /// Starts background subscribers and periodic work. Call once, after start-up.
-    pub fn spawn_background(&self) {
-        self.updates.spawn_background();
-        self.jobs.spawn_background();
-        self.recovery.spawn_background();
-        self.webhooks.spawn_background();
-        self.releases.spawn_background();
-        self.mirrors.spawn_background();
-        self.issues.spawn_background();
-        self.notifications.spawn_background();
-        self.pulls.spawn_background();
-        self.lfs.spawn_background();
-        // Milestone 3: importing and push mirrors (M).
-        self.imports.spawn_background();
-        self.push_mirrors.spawn_background();
-        // Actions: foundation (F).
-        if let Some(actions) = &self.actions {
-            actions.spawn_background();
-        }
-    }
-
-    /// Actions background tasks running now: always 0 with Actions disabled.
-    pub fn actions_background_tasks(&self) -> usize {
-        self.actions.as_ref().map_or(0, ActionsService::background_tasks)
-    }
-
-    /// Stops background work (jobs, webhook deliveries, mirror fetches, release clean-up,
-    /// commit references, notifications, merges) and waits, bounded, for it to finish.
-    /// Call during graceful shutdown, before closing the stores.
-    pub async fn shutdown(&self) {
-        tokio::join!(
-            self.updates.shutdown(),
-            self.jobs.shutdown(),
-            self.webhooks.shutdown(),
-            self.releases.shutdown(),
-            self.mirrors.shutdown(),
-            self.issues.shutdown(),
-            self.notifications.shutdown(),
-            self.pulls.shutdown(),
-            self.lfs.shutdown(),
-            // Milestone 3: importing and push mirrors (M).
-            self.imports.shutdown(),
-            self.push_mirrors.shutdown(),
-            // Actions: foundation (F).
-            async {
-                if let Some(actions) = &self.actions {
-                    actions.shutdown().await;
-                }
-            },
-        );
     }
 }

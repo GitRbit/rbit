@@ -3,7 +3,8 @@
 //! Status codes: 401 unauthenticated (with `WWW-Authenticate: Bearer`), 403 for callers
 //! who may see the resource but not do this, 404 for anything the caller may not know
 //! exists (and unknown paths), 409 conflicts, 413 oversized bodies, 422 validation and
-//! 429 with `Retry-After`. Old names of renamed or transferred repositories answer like
+//! 429 with `Retry-After`, or generic retryable 503 without a credential challenge.
+//! Old names of renamed or transferred repositories answer like
 //! GitHub: `301 Moved Permanently` for reads and `307 Temporary Redirect` for everything
 //! else, with `Location` and a `url` field naming the same endpoint under the new name.
 
@@ -15,6 +16,8 @@ use axum::{
 };
 use rbit_services::ServiceError;
 use serde::Serialize;
+
+use crate::error::{UNAVAILABLE_MESSAGE, unavailable_response};
 
 /// One invalid field of a 422.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -97,6 +100,9 @@ impl ApiError {
             ServiceError::RegistrationClosed => Self::forbidden(error.to_string()),
             ServiceError::InvalidCredentials => Self::unauthorized("Bad credentials"),
             ServiceError::RateLimited { retry_after_seconds } => Self::rate_limited(retry_after_seconds),
+            ServiceError::Unavailable { retry_after_seconds } => {
+                Self { retry_after: Some(retry_after_seconds), ..Self::new(StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE_MESSAGE) }
+            }
             ServiceError::Internal(source) => {
                 tracing::error!(error = %source, "API request failed");
                 Self::new(StatusCode::INTERNAL_SERVER_ERROR, "An unexpected error occurred. It has been logged.")
@@ -147,6 +153,9 @@ impl IntoResponse for ApiError {
             headers.insert(header::WWW_AUTHENTICATE, HeaderValue::from_static("Bearer realm=\"rbit\""));
         }
         if let Some(seconds) = self.retry_after {
+            if self.status == StatusCode::SERVICE_UNAVAILABLE {
+                return unavailable_response(response, seconds);
+            }
             headers.insert(header::RETRY_AFTER, HeaderValue::from(seconds));
         }
         response
@@ -163,6 +172,17 @@ mod tests {
         let headers = response.headers().clone();
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
         (status, serde_json::from_slice(&bytes).unwrap(), headers)
+    }
+
+    #[tokio::test]
+    async fn unavailable_keeps_json_without_validation_details_or_bearer_challenge() {
+        let (status, json, headers) = body(ServiceError::Unavailable { retry_after_seconds: 5 }.into()).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(headers[header::RETRY_AFTER], "5");
+        assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+        assert!(!headers.contains_key(header::WWW_AUTHENTICATE));
+        assert_eq!(headers[header::CONTENT_TYPE], "application/json");
+        assert_eq!(json, serde_json::json!({ "message": UNAVAILABLE_MESSAGE }));
     }
 
     #[tokio::test]

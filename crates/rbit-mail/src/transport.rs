@@ -48,7 +48,7 @@ pub fn from_config(config: &MailConfig, site_name: &str) -> Result<Arc<dyn Maile
 }
 
 /// The `From:` mailbox of every message.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Sender(Mailbox);
 
 impl Sender {
@@ -107,7 +107,6 @@ fn build_message(from: &Sender, mail: Mail) -> Result<Message, MailError> {
 pub struct SmtpMailer {
     transport: AsyncSmtpTransport<Tokio1Executor>,
     from: Sender,
-    relay: String,
 }
 
 impl SmtpMailer {
@@ -128,13 +127,13 @@ impl SmtpMailer {
         if let Some((username, password)) = config.smtp_credentials() {
             builder = builder.credentials(Credentials::new(username.to_owned(), password.to_owned()));
         }
-        Ok(Self { transport: builder.build(), from, relay: format!("{host}:{}", config.smtp_port()) })
+        Ok(Self { transport: builder.build(), from })
     }
 }
 
 impl fmt::Debug for SmtpMailer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SmtpMailer").field("relay", &self.relay).field("from", &self.from.to_string()).finish_non_exhaustive()
+        f.debug_struct("SmtpMailer").finish_non_exhaustive()
     }
 }
 
@@ -204,7 +203,7 @@ impl Mailer for DisabledMailer {
 // ------------------------------------------------------------------ memory
 
 /// Keeps every message in memory. For tests: clones share one outbox.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct MemoryMailer {
     outbox: Arc<watch::Sender<Vec<Mail>>>,
     failing: Arc<Mutex<bool>>,
@@ -251,6 +250,21 @@ impl Mailer for MemoryMailer {
         })
     }
 }
+
+impl fmt::Debug for Sender {
+    fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
+        out.debug_struct("Sender").finish_non_exhaustive()
+    }
+}
+
+impl fmt::Debug for MemoryMailer {
+    fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
+        out.debug_struct("MemoryMailer").finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod privacy;
 
 #[cfg(test)]
 mod tests {
@@ -332,7 +346,7 @@ mod tests {
         let smtp = MailConfig { smtp_host: "smtp.example.com".to_owned(), ..config(MailTransport::Smtp) };
         let mailer = from_config(&smtp, "Forge").unwrap();
         assert!(mailer.is_enabled());
-        assert!(format!("{mailer:?}").contains("smtp.example.com:587"));
+        assert!(!format!("{mailer:?}").contains("smtp.example.com"));
     }
 
     #[tokio::test]

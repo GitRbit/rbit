@@ -816,7 +816,7 @@ Pushes that get past these checks then pass the push gate (§4.4).
 | Code | `/{owner}/{repo}/blame/{rev}/{path}`, `/{owner}/{repo}/compare` and `/compare/{base}...{head}`, `/{owner}/{repo}/archive/{rev}.zip` / `.tar.gz` |
 | Forks | `/{owner}/{repo}/fork` (form, create), `/{owner}/{repo}/forks` |
 | Mirrors | `/new/mirror`, `/{owner}/{repo}/settings/mirror` (interval), `…/sync`, `…/remove` |
-| Appearance | `/themes` (gallery, choose), `/settings/appearance` |
+| Appearance | `/themes/picker` (picker), `POST /themes` (choose), `/settings/appearance` |
 
 Repository settings sub-pages answer 404 to everyone but repository administrators.
 New second-level paths under `/{owner}/` are reserved repository names.
@@ -1330,14 +1330,15 @@ Theme selectors are scoped (`[data-theme="…"]`), so gallery preview cards rend
 own theme. The choice lives in the `rbit-theme` cookie, which the server reads to render
 the attribute and the single ~600-byte theme stylesheet into the first byte of HTML — no
 flash, no blocking script. Signed-in users' choices are also stored (`user_preferences`)
-and restored into the cookie on sign-in. `/themes` (and Settings → Appearance) is the
+and restored into the cookie on sign-in. Settings → Appearance is the
 gallery: by family and variant, searchable, live preview on hover, plain-form fallback. The header's
 sun/moon flips light/dark in one click: the generator pairs each scheme with its sibling of
 the other variant in the same family (Gruvbox dark, hard ↔ light, hard; Catppuccin Latte ↔
 Mocha), falling back to rbit Light/Dark. The palette button beside it opens a modal theme
 picker (fetched from `/themes/picker` on first use: families, recent themes, search, a
-Dark/Light filter and a live preview on a miniature repository page); without scripts it
-links to the gallery.
+Dark/Light/Colorblind filter and a live preview on a miniature repository page); without scripts it
+links to Appearance settings. The standalone `/themes` gallery is retired; `POST /themes`
+continues to save choices from the picker and settings gallery.
 
 **Components** (`styles/app.css`): `.box`, `.box-header`, `.row`, `.btn` (`-primary`,
 `-ghost`, `-danger`, `-icon`), `.input`, `.label`, `.hint`, `.badge`, `.tab`, `.menu`,

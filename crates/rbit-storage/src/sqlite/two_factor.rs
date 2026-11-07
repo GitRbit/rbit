@@ -13,7 +13,9 @@
 //! last factor.
 
 use super::pool::Pool;
+mod claims;
 use rbit_core::{AccountId, Timestamp};
+pub use rbit_identity_models::credential::CredentialProofWrite;
 
 use crate::{StorageError, sealing::SealingKey};
 
@@ -239,35 +241,6 @@ impl TwoFactorStore {
         Ok(Some(first_factor))
     }
 
-    /// Accepts time step `step` for an enabled account, unless it (or a later one) was
-    /// already accepted. `true` means the code may be honoured.
-    pub async fn claim_step(&self, account: AccountId, secret: &[u8], step: u64) -> Result<bool, StorageError> {
-        let Some(stored) = self.stored_secret(&self.pool, account, secret, true).await? else {
-            return Ok(false);
-        };
-        let result = sqlx::query(
-            "UPDATE two_factor SET last_used_step = ?1 WHERE account_id = ?2 AND secret = ?3 AND confirmed_at IS NOT NULL \
-             AND (last_used_step IS NULL OR last_used_step < ?1)",
-        )
-        .bind(step_value(step))
-        .bind(account.0)
-        .bind(stored)
-        .execute(&self.pool)
-        .await?;
-        Ok(result.rows_affected() == 1)
-    }
-
-    /// Marks an unused recovery code as used. `true` if it existed and was unused.
-    pub async fn spend_recovery_code(&self, account: AccountId, digest: &[u8; 32]) -> Result<bool, StorageError> {
-        let result = sqlx::query("UPDATE recovery_codes SET used_at = ? WHERE account_id = ? AND code_digest = ? AND used_at IS NULL")
-            .bind(Timestamp::now().seconds())
-            .bind(account.0)
-            .bind(digest.as_slice())
-            .execute(&self.pool)
-            .await?;
-        Ok(result.rows_affected() == 1)
-    }
-
     pub async fn remaining_recovery_codes(&self, account: AccountId) -> Result<i64, StorageError> {
         Ok(sqlx::query_scalar("SELECT COUNT(*) FROM recovery_codes WHERE account_id = ? AND used_at IS NULL")
             .bind(account.0)
@@ -360,21 +333,6 @@ impl TwoFactorStore {
         }
         tx.commit().await?;
         Ok(if first_factor { PasskeyAdded::FirstFactor } else { PasskeyAdded::Added })
-    }
-
-    /// Records a sign-in with passkey `id`: its counter moves from `seen_count` (the value
-    /// the signature was checked against) to `new_count`. `false` if another sign-in got
-    /// there first, so one response can't be honoured twice.
-    pub async fn use_passkey(&self, account: AccountId, id: i64, seen_count: u32, new_count: u32) -> Result<bool, StorageError> {
-        let result = sqlx::query("UPDATE passkeys SET sign_count = ?, last_used_at = ? WHERE id = ? AND account_id = ? AND sign_count = ?")
-            .bind(i64::from(new_count))
-            .bind(Timestamp::now().seconds())
-            .bind(id)
-            .bind(account.0)
-            .bind(i64::from(seen_count))
-            .execute(&self.pool)
-            .await?;
-        Ok(result.rows_affected() == 1)
     }
 
     /// Removes passkey `id`, and the recovery codes too if that leaves no factor. `true` if

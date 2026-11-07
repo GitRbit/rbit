@@ -17,6 +17,15 @@ use rbit_storage::{
 use rbit_web::AppState;
 use tower::ServiceExt;
 
+#[path = "actions_pages/control_parity.rs"]
+mod control_parity;
+#[path = "actions_pages/overview_presentation.rs"]
+mod overview_presentation;
+#[path = "actions_pages/production_fixture.rs"]
+mod production_fixture;
+#[path = "actions_pages/run_presentation.rs"]
+mod run_presentation;
+
 struct Fixture {
     _directory: tempfile::TempDir,
     database: Database,
@@ -31,11 +40,18 @@ struct Fixture {
 
 impl Fixture {
     async fn new() -> Self {
+        Self::new_with_public_url("http://localhost:3000").await
+    }
+
+    async fn new_with_public_url(public_url: &str) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let mut config = Config::default();
+        config.server.public_url = public_url.to_owned();
         config.storage.data_dir = directory.path().join("data");
         config.security.rate_limit = false;
         config.actions.enabled = true;
+        // These synthetic UI fixtures never contact the upstream update service.
+        config.updates.check_for_updates = false;
         std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
         let kv = KvStore::open(&config.storage.kv_path()).unwrap();
@@ -224,51 +240,6 @@ async fn runs_are_listed_newest_first_and_filtered() {
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
-#[tokio::test]
-async fn writers_cancel_and_run_again_and_readers_only_look() {
-    let fixture = Fixture::new().await;
-    fixture.database.actions_settings().set_enabled(fixture.repo_id().await, true, Timestamp::now()).await.unwrap();
-    let run = fixture.run(".rbit/workflows/ci.yml", "Change", RunEvent::Push).await;
-    let url = format!("/alice/rocket/actions/runs/{}", run.number);
-
-    let page = fixture.page(&url, &fixture.owner).await;
-    assert!(page.contains("needs build"));
-    assert!(page.find(">build<").unwrap() < page.find(">test<").unwrap(), "jobs follow their needs");
-    assert!(page.contains(&format!("{url}/cancel")));
-    assert!(page.contains(r#"hx-trigger="every 3s""#), "a running run refreshes itself");
-    let list = fixture.page("/alice/rocket/actions?event=push", &fixture.reader).await;
-    assert!(
-        list.contains(r#"id="runs" hx-get="/alice/rocket/actions?event=push" hx-trigger="every 3s""#),
-        "the list follows its runs, filtered"
-    );
-    let seen = fixture.page(&url, &fixture.reader).await;
-    assert!(!seen.contains(&format!("{url}/cancel")), "readers get no buttons");
-
-    let (status, ..) = fixture.send(Method::POST, &format!("{url}/cancel"), &fixture.reader, "").await;
-    assert_eq!(status, StatusCode::FORBIDDEN);
-    let (status, _, location) = fixture.send(Method::POST, &format!("{url}/cancel"), &fixture.owner, "").await;
-    assert!(status.is_redirection());
-    assert_eq!(location.as_deref(), Some(url.as_str()));
-    let page = fixture.page(&url, &fixture.owner).await;
-    assert!(!page.contains(r#"hx-trigger="every 3s""#), "a finished run stays still");
-    assert!(page.contains(&format!("{url}/rerun")) && page.contains(&format!("{url}/rerun-failed")));
-    let list = fixture.page("/alice/rocket/actions", &fixture.reader).await;
-    assert!(list.contains(r#"id="runs" hx-get="/alice/rocket/actions" hx-trigger="every 10s""#), "the newest runs look for new ones");
-    let older = fixture.page(&format!("/alice/rocket/actions?before={}", run.id.0 + 1), &fixture.reader).await;
-    assert!(older.contains("Change") && !older.contains(r#"id="runs" hx-get"#), "an older page of finished runs stays still");
-
-    let (status, ..) = fixture.send(Method::POST, &format!("{url}/rerun-failed"), &fixture.owner, "").await;
-    assert!(status.is_redirection());
-    let again = fixture.services.actions.as_ref().unwrap();
-    let repo = fixture.services.repositories.open(Some(&fixture.alice), "alice", "rocket").await.unwrap();
-    assert_eq!(again.run_detail(&repo, run.number).await.unwrap().run.attempt, 2);
-
-    let (status, ..) = fixture.send(Method::GET, "/alice/rocket/actions/runs/999", &fixture.reader, "").await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
-    let (status, ..) = fixture.send(Method::GET, "/alice/rocket/actions/runs/nope", &fixture.reader, "").await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
-}
-
 // Actions: dispatch form.
 /// Commits `files` to `alice/rocket`'s `main`.
 fn push(repo: &rbit_services::RepoContext, files: &[(&str, &str)]) {
@@ -328,7 +299,8 @@ async fn writers_run_dispatch_workflows_from_their_page() {
     assert!(page.contains(r#"<option value="stable" selected>stable</option>"#), "the default is chosen");
     assert!(page.contains(r#"type="checkbox" id="dispatch-input-2" name="inputs[dry-run]" value="true""#));
     assert!(page.contains(r#"id="dispatch-ref" name="ref" value="main""#), "the default branch");
-    assert!(page.contains(">Release</h1>") && page.contains("<title>Release · Actions"), "the workflow's own name, not its file's");
+    let heading = page.split("<h1 ").nth(1).unwrap().split("</h1>").next().unwrap();
+    assert!(heading.contains("<bdi>Release</bdi>") && page.contains("<title>Release · Actions"), "the workflow's own name, not its file's");
     assert!(page.contains("use Run workflow above"), "no runs yet, and no \"add a workflow file\"");
     assert!(!fixture.page(url, &fixture.reader).await.contains("Run workflow"), "readers cannot run it");
     assert!(!fixture.page("/alice/rocket/actions/workflows/ci.yml", &fixture.owner).await.contains("Run workflow"));

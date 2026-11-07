@@ -14,6 +14,10 @@ use rbit_core::{AccountId, Timestamp, User};
 
 use super::accounts::{NewUser, insert_user};
 use crate::StorageError;
+mod insertion;
+mod original;
+pub use insertion::GuardedIdentityLink;
+use insertion::insert;
 
 /// A linked identity.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -203,6 +207,8 @@ impl ExternalIdentityStore {
         identity: NewExternalIdentity<'_>,
         registration_open: bool,
     ) -> Result<Result<User, LinkConflict>, StorageError> {
+        #[cfg(test)]
+        self.pool.require_legacy()?;
         let now = Timestamp::now();
         let mut tx = self.pool.begin().await?;
         let user = insert_user(&mut tx, new, Some(registration_open), email_verified).await?;
@@ -212,39 +218,22 @@ impl ExternalIdentityStore {
         tx.commit().await?;
         Ok(Ok(user))
     }
-}
-
-/// Inserts an identity inside `tx`, reporting which uniqueness rule refused it.
-async fn insert(
-    tx: &mut super::pool::WriteTransaction,
-    account: AccountId,
-    identity: NewExternalIdentity<'_>,
-    at: Timestamp,
-) -> Result<Result<ExternalIdentity, LinkConflict>, StorageError> {
-    let inserted: Result<IdentityRow, sqlx::Error> = sqlx::query_as(concat!(
-        "INSERT INTO external_identities (account_id, provider_id, subject, email, username, created_at, last_used_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?) ",
-        "RETURNING id, account_id, provider_id, subject, email, username, created_at, last_used_at"
-    ))
-    .bind(account.0)
-    .bind(identity.provider_id)
-    .bind(identity.subject)
-    .bind(identity.email)
-    .bind(identity.username)
-    .bind(at.0)
-    .bind(at.0)
-    .fetch_one(&mut **tx)
-    .await;
-    match inserted {
-        Ok(row) => Ok(Ok(row.into())),
-        Err(sqlx::Error::Database(error)) if error.is_unique_violation() => {
-            let taken: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM external_identities WHERE provider_id = ? AND subject = ?)")
-                .bind(identity.provider_id)
-                .bind(identity.subject)
-                .fetch_one(&mut **tx)
-                .await?;
-            Ok(Err(if taken { LinkConflict::IdentityTaken } else { LinkConflict::ProviderTaken }))
+    /// Inactive original-creation counterpart; linking and epoch-bearing insertion
+    /// share exactly one transaction, and conflicts cannot publish a creation snapshot.
+    pub async fn register_original(
+        &self,
+        new: NewUser,
+        email_verified: bool,
+        identity: NewExternalIdentity<'_>,
+        registration_open: bool,
+    ) -> Result<Result<rbit_identity_models::accounts::CreatedAccountSnapshot, LinkConflict>, StorageError> {
+        let now = Timestamp::now();
+        let mut tx = self.pool.begin().await?;
+        let created = super::accounts::insert_user_original(&mut tx, new, Some(registration_open), email_verified).await?;
+        if let Err(conflict) = insert(&mut tx, created.user.id(), identity, now).await? {
+            return Ok(Err(conflict));
         }
-        Err(error) => Err(error.into()),
+        tx.commit().await?;
+        Ok(Ok(created))
     }
 }

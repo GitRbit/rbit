@@ -16,8 +16,11 @@ import { dirname, join, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..", "..");
 const base = (process.argv[2] ?? "http://localhost:3005").replace(/\/$/, "");
-const fixture = join(root, "target", "perf", "fixture");
-const credentialsFile = join(root, "target", "perf", "credentials.txt");
+const origin = new URL(base);
+if (origin.protocol !== "http:" || !["127.0.0.1", "localhost", "[::1]"].includes(origin.hostname) || origin.username || origin.password || origin.pathname !== "/" || origin.search || origin.hash) throw new Error("seed origin must be an HTTP loopback origin without credentials");
+const fixture = resolve(root, process.env.RBIT_PERF_FIXTURE ?? join("target", "perf", "fixture"));
+const credentialsFile = resolve(root, process.env.RBIT_PERF_CREDENTIALS_FILE ?? join("target", "perf", "credentials.txt"));
+const setupToken = process.env.RBIT_PERF_SETUP_TOKEN_FILE ? readFileSync(process.env.RBIT_PERF_SETUP_TOKEN_FILE, "utf8").trim() : "";
 const USER = "perf";
 const REPO = "perf-fixture";
 
@@ -35,7 +38,7 @@ function credentials() {
   }
   const password = randomBytes(18).toString("hex");
   mkdirSync(dirname(credentialsFile), { recursive: true });
-  writeFileSync(credentialsFile, `${USER}:${password}\n`);
+  writeFileSync(credentialsFile, `${USER}:${password}\n`, { mode: 0o600, flag: "wx" });
   return { login: USER, password };
 }
 const { login, password } = credentials();
@@ -79,7 +82,7 @@ async function waitForServer() {
 // --- Seed ---------------------------------------------------------------------------------
 await waitForServer();
 
-let session = await post("/signup", { username: login, email: `${login}@example.test`, password });
+let session = await post("/signup", { username: login, email: `${login}@example.test`, password, setup_token: setupToken });
 if (redirected(session)) {
   console.log(`signed up ${login} (the first account on a fresh data directory is the admin)`);
 } else {

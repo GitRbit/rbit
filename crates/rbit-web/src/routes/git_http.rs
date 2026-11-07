@@ -8,6 +8,7 @@
 //! answers `401` with a `WWW-Authenticate` challenge so Git prompts for credentials.
 //!
 //! Credentials are throttled per client address and per login (`429` + `Retry-After`).
+//! Password-work saturation/shutdown is `503` + `Retry-After`, without a new challenge.
 //! Accounts with two-factor authentication must use a personal access token: their
 //! password is refused with an explanation Git prints (`fatal: remote error: …`).
 //! A repository's old `owner/name` from before a rename or transfer is served as the
@@ -29,10 +30,19 @@
 //! delete existing tags or bring commits that change workflow files. With Actions disabled
 //! a task token is refused before anything is looked up.
 
+mod advertisement;
+pub use advertisement::info_refs;
+mod denied;
+pub(super) use denied::Denied;
+use denied::TOKEN_REQUIRED;
+
+#[cfg(test)]
+use rbit_services::mirrors;
+
 use async_compression::tokio::bufread::GzipDecoder;
 use axum::{
     body::Body,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
 };
@@ -44,7 +54,6 @@ use rbit_services::{
     ConcurrencySlot, RepoContext, ServiceError, ThrottleScope,
     actions::tokens::TaskGrant,
     limits::{RETRY_AFTER_SECONDS, Refused},
-    mirrors,
     protection::PushActor,
     two_factor::GitPasswordOutcome,
 };
@@ -52,7 +61,7 @@ use rbit_transport::{
     ReceiveOptions, Service,
     receive::{self, CommandLimits, Intercept, Remaining},
 };
-use serde::Deserialize;
+use std::sync::Arc;
 use tokio::io::{AsyncRead, BufReader};
 use tokio_util::io::StreamReader;
 
@@ -61,51 +70,6 @@ use crate::{
     client_ip::Client,
     supervise::{Activity, StreamLimits, Watched, supervised_body},
 };
-
-#[derive(Debug, Deserialize)]
-pub struct InfoRefsQuery {
-    service: Option<String>,
-}
-
-/// `GET /{owner}/{repo}.git/info/refs?service=git-upload-pack|git-receive-pack`
-pub async fn info_refs(
-    State(state): State<AppState>,
-    Path((owner, repo)): Path<(String, String)>,
-    Query(query): Query<InfoRefsQuery>,
-    client: Client,
-    headers: HeaderMap,
-) -> Response {
-    let Some(service) = query.service.as_deref().and_then(Service::from_wire_name) else {
-        return (StatusCode::FORBIDDEN, "the dumb HTTP protocol is not supported; please upgrade git").into_response();
-    };
-    let ctx = match authorize(&state, &client, &headers, &owner, &repo, service).await {
-        Ok((ctx, _)) => ctx,
-        // The advertisement is the first request of every operation, so the message reaches the user.
-        Err(Denied::TokenRequired) => return remote_error(service, TOKEN_REQUIRED),
-        Err(denied) => return denied.into_response(),
-    };
-    let _slot = match admit(&state, &client) {
-        Ok(slot) => slot,
-        Err(refused) => return busy(refused),
-    };
-
-    // The advertisement is buffered, so nothing moves until git is done: bound it whole.
-    let advertisement = state.transport.advertise_refs(service, &ctx.disk_path, git_protocol(&headers));
-    match tokio::time::timeout(state.config.repository.git_idle_timeout(), advertisement).await {
-        Ok(Ok(body)) => {
-            ([(header::CONTENT_TYPE, service.advertisement_content_type()), (header::CACHE_CONTROL, "no-cache".to_owned())], body)
-                .into_response()
-        }
-        Ok(Err(error)) => {
-            tracing::error!(%error, %owner, %repo, "ref advertisement failed");
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
-        }
-        Err(_) => {
-            tracing::warn!(%owner, %repo, %service, "ref advertisement exceeded the time limit");
-            StatusCode::SERVICE_UNAVAILABLE.into_response()
-        }
-    }
-}
 
 /// A slot of the Git process limits for this client (refusals answer with [`busy`]).
 fn admit(state: &AppState, client: &Client) -> Result<ConcurrencySlot, Refused> {
@@ -182,13 +146,15 @@ async fn run_service(
         Some(caller) if service.is_write() => Some(state.services.pushes.begin(&ctx, caller.push_source()).await),
         _ => None,
     };
-    let session = match state.transport.serve(service, &ctx.disk_path, git_protocol(&headers), options, request) {
-        Ok(session) => session,
-        Err(error) => {
-            tracing::error!(%error, %owner, %repo, %service, "failed to start git");
-            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-        }
-    };
+    let slot = Arc::new(slot);
+    let session =
+        match state.transport.serve_with_guard(service, &ctx.disk_path, git_protocol(&headers), options, request, Arc::clone(&slot)) {
+            Ok(session) => session,
+            Err(error) => {
+                tracing::error!(%error, %owner, %repo, %service, "failed to start git");
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            }
+        };
 
     if let Some(pending) = pending {
         let recorder = state.services.pushes.clone();
@@ -313,56 +279,6 @@ fn request_reader(headers: &HeaderMap, body: Body) -> Request {
 
 fn git_protocol(headers: &HeaderMap) -> Option<&str> {
     headers.get("git-protocol").and_then(|v| v.to_str().ok())
-}
-
-/// Why a Git request was refused.
-#[derive(Debug)]
-pub(super) enum Denied {
-    /// Ask the client for (better) credentials.
-    Challenge,
-    Forbidden,
-    /// Correct credentials of a suspended user.
-    Suspended,
-    /// The account password of a user with two-factor authentication.
-    TokenRequired,
-    /// Too many attempts from this client or against this login.
-    RateLimited {
-        retry_after_seconds: u64,
-    },
-    /// A push to a pull mirror.
-    Mirror,
-    NotFound,
-    Internal,
-}
-
-/// Shown by Git when an account with two-factor authentication offers its password.
-const TOKEN_REQUIRED: &str = "two-factor authentication is enabled for this account, so its password cannot be used \
-                              with Git. Create a personal access token under Settings > Access tokens and use it as the \
-                              password.";
-
-impl IntoResponse for Denied {
-    fn into_response(self) -> Response {
-        match self {
-            Self::Challenge => (
-                StatusCode::UNAUTHORIZED,
-                [(header::WWW_AUTHENTICATE, "Basic realm=\"rbit\", charset=\"UTF-8\"")],
-                "authentication required",
-            )
-                .into_response(),
-            Self::Forbidden => (StatusCode::FORBIDDEN, "you do not have permission to push to this repository").into_response(),
-            Self::Suspended => (StatusCode::FORBIDDEN, "this account has been suspended").into_response(),
-            Self::TokenRequired => (StatusCode::FORBIDDEN, TOKEN_REQUIRED).into_response(),
-            Self::RateLimited { retry_after_seconds } => (
-                StatusCode::TOO_MANY_REQUESTS,
-                [(header::RETRY_AFTER, retry_after_seconds.to_string())],
-                format!("too many authentication attempts; try again in {retry_after_seconds} seconds"),
-            )
-                .into_response(),
-            Self::Mirror => (StatusCode::FORBIDDEN, mirrors::PUSH_REFUSED).into_response(),
-            Self::NotFound => (StatusCode::NOT_FOUND, "repository not found").into_response(),
-            Self::Internal => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-        }
-    }
 }
 
 /// A ref advertisement consisting of a single `ERR` packet: Git aborts and prints
@@ -513,6 +429,7 @@ pub(super) async fn authenticate(state: &AppState, client: &Client, headers: &He
         Err(ServiceError::InvalidCredentials) => Err(Denied::Challenge),
         Err(ServiceError::Forbidden) => Err(Denied::Suspended),
         Err(ServiceError::RateLimited { retry_after_seconds }) => Err(Denied::RateLimited { retry_after_seconds }),
+        Err(ServiceError::Unavailable { retry_after_seconds }) => Err(Denied::Unavailable { retry_after_seconds }),
         Err(error) => {
             tracing::error!(%error, "git authentication failed");
             Err(Denied::Internal)

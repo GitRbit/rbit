@@ -1,6 +1,6 @@
 //! Why a message could not be rendered or delivered.
 
-#[derive(Debug, thiserror::Error)]
+#[derive(thiserror::Error)]
 pub enum MailError {
     /// The instance has no mail transport configured (`[mail] transport = "disabled"`).
     #[error("email is disabled on this instance")]
@@ -26,4 +26,21 @@ pub enum MailError {
     /// The transport did not accept the message in time.
     #[error("delivery timed out after {seconds} seconds")]
     Timeout { seconds: u64 },
+}
+
+// Display and Error::source retain the existing caller-facing diagnostic contract.
+// Debug does not forward private addresses or upstream error details.
+impl std::fmt::Debug for MailError {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            Self::Disabled => "Disabled",
+            Self::Address { .. } => "Address",
+            Self::Config(_) => "Config",
+            Self::Render(_) => "Render",
+            Self::Build(_) => "Build",
+            Self::Smtp(_) => "Smtp",
+            Self::Timeout { .. } => "Timeout",
+        };
+        out.debug_struct(name).finish_non_exhaustive()
+    }
 }

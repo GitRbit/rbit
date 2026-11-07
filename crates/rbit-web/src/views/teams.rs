@@ -309,16 +309,7 @@ mod tests {
     }
 
     fn page() -> Page {
-        Page {
-            updates: rbit_services::updates::UpdateStatus::default(),
-            site_name: "rbit".to_owned(),
-            branding: rbit_core::config::BrandingConfig::default(),
-            title: None,
-            viewer: None,
-            path: "/acme/teams/core".to_owned(),
-            theme: crate::themes::Theme::System,
-            has_unread_notifications: false,
-        }
+        crate::views::test_support::page("/acme/teams/core")
     }
 
     fn rocket() -> OwnedRepository {

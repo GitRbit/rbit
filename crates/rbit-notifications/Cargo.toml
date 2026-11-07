@@ -1,0 +1,17 @@
+[package]
+name = "rbit-notifications"
+description = "Notification inbox models and borrowed read application policy."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+rbit-contracts = { workspace = true, default-features = false }
+rbit-collaboration = { workspace = true, default-features = false }
+
+[dev-dependencies]
+tokio.workspace = true
+
+[lints]
+workspace = true

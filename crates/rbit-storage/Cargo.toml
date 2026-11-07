@@ -9,6 +9,12 @@ license.workspace = true
 autotests = false
 
 [dependencies]
+rbit-notifications.workspace = true
+rbit-access = { workspace = true, default-features = false }
+rbit-wikis = { workspace = true, default-features = false }
+rbit-collaboration = { workspace = true, default-features = false, features = ["applications"] }
+rbit-identity-models.workspace = true
+rbit-repositories.workspace = true
 rbit-core.workspace = true
 sqlx.workspace = true
 redb.workspace = true
@@ -18,6 +24,7 @@ serde_json.workspace = true
 postcard.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tokio-util = { workspace = true, features = ["rt"] }
 tracing.workspace = true
 # Pool contention metrics (`sqlite::pool`); the web crate installs the recorder.
 metrics.workspace = true
@@ -31,6 +38,14 @@ getrandom.workspace = true
 metrics-exporter-prometheus.workspace = true
 tempfile.workspace = true
 tracing-subscriber.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+# Safe handle metadata; already present at this exact version in the workspace lock.
+winapi-util = "=0.1.11"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Stable mount IDs reject file-only bind aliases that bypass an adjacent lock.
+rustix = { version = "=1.1.5", default-features = false, features = ["std", "fs"] }
 
 [lints]
 workspace = true

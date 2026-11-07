@@ -1,0 +1,18 @@
+[package]
+name = "rbit-repositories"
+description = "Repository models, ownership, lifecycle and discovery policy independent of persistence and protocols."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+rbit-contracts = { workspace = true, default-features = false }
+rbit-identity-models = { workspace = true, default-features = false }
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

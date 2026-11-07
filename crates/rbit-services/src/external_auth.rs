@@ -39,7 +39,11 @@
 //! access token. An identity can't be unlinked while it is the account's only way to
 //! sign in (no password, no other identity at a configured provider).
 
+mod callback_mode;
 pub mod client;
+mod links;
+pub use callback_mode::OriginalProviderCallback;
+pub use links::OriginalLinkCallback;
 
 use std::{
     collections::HashMap,
@@ -206,6 +210,7 @@ struct Inner {
     throttle: ThrottleService,
     key: OnceCell<FlowKey>,
     pending: Mutex<HashMap<TokenDigest, PendingRegistration>>,
+    original_links: links::OriginalLinks,
 }
 
 #[derive(Debug, Clone)]
@@ -252,6 +257,7 @@ impl ExternalAuthService {
                 throttle,
                 key: OnceCell::new(),
                 pending: Mutex::default(),
+                original_links: links::OriginalLinks::new(ctx.kv.sessions().epoch_sidecar()),
             }),
         })
     }
@@ -305,13 +311,23 @@ impl ExternalAuthService {
         let provider = self.provider(provider_id).ok_or(ServiceError::NotFound)?;
         let key = self.key().await?;
         let flow = Flow::new(provider_id, next, link_account.map(|account| account.0), Timestamp::now().seconds());
-        let pkce = key.pkce(&flow);
+        self.authorization_flow(provider, key, &flow).await
+    }
+
+    async fn begin_flow(&self, flow: &Flow) -> Result<(String, String), ServiceError> {
+        let provider = self.provider(&flow.provider).ok_or(ServiceError::NotFound)?;
+        self.authorization_flow(provider, self.key().await?, flow).await
+    }
+
+    async fn authorization_flow(&self, provider: &Provider, key: &FlowKey, flow: &Flow) -> Result<(String, String), ServiceError> {
+        let provider_id = &flow.provider;
+        let pkce = key.pkce(flow);
         let config = &provider.config;
         let redirect_uri = self.redirect_uri(provider_id);
         let scopes = config.effective_scopes().join(" ");
         let challenge = pkce.challenge();
         let (endpoint, nonce) = match config.kind {
-            ProviderKind::Oidc => (self.discovery(provider).await?.authorization_endpoint.clone(), Some(key.nonce(&flow))),
+            ProviderKind::Oidc => (self.discovery(provider).await?.authorization_endpoint.clone(), Some(key.nonce(flow))),
             ProviderKind::Github => (format!("{}/login/oauth/authorize", config.github_base_url()), None),
         };
         let mut url = self.client()?.endpoint(&endpoint).map_err(|error| unreachable_provider(config, &error))?;
@@ -329,7 +345,7 @@ impl ExternalAuthService {
                 query.append_pair("nonce", nonce);
             }
         }
-        Ok((url.into(), key.seal(&flow)))
+        Ok((url.into(), key.seal(flow)))
     }
 
     /// Checks a callback against the flow cookie and asks the provider who signed in.
@@ -342,12 +358,35 @@ impl ExternalAuthService {
         params: CallbackParams<'_>,
         client: &ClientInfo,
     ) -> Result<Callback, ServiceError> {
+        self.callback_with::<callback_mode::Legacy>(provider_id, cookie, params, client).await
+    }
+
+    /// One verified original callback: login retains its trusted Callback DTO, while
+    /// manual linking requires the opaque context captured before provider redirect.
+    pub async fn callback_original(
+        &self,
+        provider_id: &str,
+        cookie: Option<&str>,
+        params: CallbackParams<'_>,
+        client: &ClientInfo,
+    ) -> Result<OriginalProviderCallback, ServiceError> {
+        self.callback_with::<callback_mode::Original>(provider_id, cookie, params, client).await
+    }
+
+    async fn callback_with<M: callback_mode::Mode>(
+        &self,
+        provider_id: &str,
+        cookie: Option<&str>,
+        params: CallbackParams<'_>,
+        client: &ClientInfo,
+    ) -> Result<M::Output, ServiceError> {
         let provider = self.provider(provider_id).ok_or(ServiceError::NotFound)?;
         let ip = ip_key(client);
         self.inner.throttle.check_client(ThrottleScope::ExternalSignIn, &ip)?;
-        match self.verify_callback(provider, cookie, params).await {
+        match self.verify_callback::<M>(provider, cookie, params).await {
             Ok(callback) => Ok(callback),
-            Err(Refusal { log, user }) => {
+            Err(callback_mode::CheckError::Unavailable) => Err(ServiceError::Unavailable { retry_after_seconds: 1 }),
+            Err(callback_mode::CheckError::Remote(Refusal { log, user })) => {
                 tracing::info!(provider = provider_id, reason = %log, "external sign-in refused");
                 self.inner.throttle.record_client_failure(ThrottleScope::ExternalSignIn, &ip);
                 let entry =
@@ -358,7 +397,12 @@ impl ExternalAuthService {
         }
     }
 
-    async fn verify_callback(&self, provider: &Provider, cookie: Option<&str>, params: CallbackParams<'_>) -> Result<Callback, Refusal> {
+    async fn verify_callback<M: callback_mode::Mode>(
+        &self,
+        provider: &Provider,
+        cookie: Option<&str>,
+        params: CallbackParams<'_>,
+    ) -> Result<M::Output, callback_mode::CheckError> {
         let config = &provider.config;
         let key = self.key().await.map_err(|error| Refusal::new(error.to_string(), "something went wrong; try again"))?;
         let expired = "the sign-in took too long or was started in another browser; try again";
@@ -366,10 +410,10 @@ impl ExternalAuthService {
             .and_then(|value| key.open(value, Timestamp::now().seconds(), FLOW_TTL_SECONDS))
             .ok_or_else(|| Refusal::new("missing, forged or expired flow cookie", expired))?;
         if flow.provider != config.id {
-            return Err(Refusal::new("flow cookie for another provider", expired));
+            return Err(Refusal::new("flow cookie for another provider", expired).into());
         }
         if !params.state.is_some_and(|state| flow.state_matches(state)) {
-            return Err(Refusal::new("state mismatch", expired));
+            return Err(Refusal::new("state mismatch", expired).into());
         }
         if let Some(error) = params.error {
             let detail = params.error_description.map_or_else(|| error.to_owned(), |description| format!("{error}: {description}"));
@@ -378,15 +422,16 @@ impl ExternalAuthService {
             } else {
                 format!("{} reported an error: {}", config.name, truncate(&detail, 120))
             };
-            return Err(Refusal::new(format!("provider error {detail}"), message));
+            return Err(Refusal::new(format!("provider error {detail}"), message).into());
         }
         let code = params.code.filter(|code| !code.is_empty() && code.len() <= 2048).ok_or_else(|| Refusal::new("no code", expired))?;
+        M::before_exchange(self, &flow)?;
         let identity = match config.kind {
             ProviderKind::Oidc => self.oidc_identity(provider, key, &flow, code).await,
             ProviderKind::Github => self.github_identity(provider, key, &flow, code).await,
         }
         .map_err(|log| Refusal::new(log, format!("{} couldn't confirm who you are; try again", config.name)))?;
-        Ok(Callback { identity, next: flow.next, link_account: flow.link_account.map(AccountId) })
+        M::finish(self, flow, identity)
     }
 
     /// The provider's discovery document (cached for an hour, refetched on failure).
@@ -700,178 +745,9 @@ fn suggest_username(candidates: &[Option<&str>]) -> String {
 
 // ---------------------------------------------------------------------- flows across services
 
-impl Services {
-    /// Decides what a verified callback means — sign in, second step, link, register or
-    /// refuse — following the rules in the module documentation.
-    pub async fn complete_external_sign_in(&self, callback: Callback, client: &ClientInfo) -> Result<ExternalSignIn, ServiceError> {
-        let external = &self.external_auth;
-        let Callback { identity, next, link_account } = callback;
-        let config = external.provider(&identity.provider_id).ok_or(ServiceError::NotFound)?.config.clone();
-        let store = external.inner.database.external_identities();
-        let now = Timestamp::now();
-        let new = NewExternalIdentity {
-            provider_id: &identity.provider_id,
-            subject: &identity.subject,
-            email: identity.email.as_deref(),
-            username: identity.username.as_deref(),
-        };
-        let taken = || ServiceError::Invalid(format!("this {} account is already linked to another account here", config.name));
-
-        if let Some(linked) = store.find(&identity.provider_id, &identity.subject).await? {
-            if let Some(account) = link_account {
-                return if linked.account_id == account { Ok(ExternalSignIn::Linked) } else { Err(taken()) };
-            }
-            store.touch(linked.id, new.email, new.username, now).await?;
-            return self.finish_external_sign_in(&linked, &identity, &config, client).await;
-        }
-
-        if let Some(account) = link_account {
-            let user = external.inner.database.accounts().find_active_user(account).await?.ok_or(ServiceError::Forbidden)?;
-            return match store.link(account, new, now).await? {
-                Ok(_) => {
-                    external.record(linked_entry(&user, &config, &identity, client, "")).await;
-                    Ok(ExternalSignIn::Linked)
-                }
-                Err(LinkConflict::IdentityTaken) => Err(taken()),
-                Err(LinkConflict::ProviderTaken) => Err(ServiceError::Invalid(format!(
-                    "your account is already linked to another {} account; unlink it first",
-                    config.name
-                ))),
-            };
-        }
-
-        if config.trust_email
-            && identity.email_verified
-            && let Some(email) = identity.email.as_deref()
-            && let Some(account) = store.account_with_verified_email(email).await?
-        {
-            match store.link(account, new, now).await? {
-                Ok(linked) => {
-                    if let Some(user) = external.inner.database.accounts().find_active_user(account).await? {
-                        external.record(linked_entry(&user, &config, &identity, client, ", by verified email")).await;
-                    }
-                    return self.finish_external_sign_in(&linked, &identity, &config, client).await;
-                }
-                Err(LinkConflict::ProviderTaken) => {
-                    return Err(ServiceError::Invalid(format!(
-                        "the account with this email address is linked to a different {} account",
-                        config.name
-                    )));
-                }
-                Err(LinkConflict::IdentityTaken) => return Err(taken()),
-            }
-        }
-
-        if self.external_registration_allowed(&config).await? {
-            return Ok(ExternalSignIn::Register(external.start_registration(identity, next)));
-        }
-        let entry = AuditEntry::new(AuditAction::SignInFailed).from_ip(client.ip).detail(format!("{}: no linked account", config.name));
-        external.record(entry).await;
-        Err(ServiceError::Invalid(format!(
-            "no account here is linked to this {name} account, and new accounts can't be created with it. If you have an account, \
-             sign in with your password and link {name} under Settings → Security",
-            name = config.name
-        )))
-    }
-
-    /// Whether a first sign-in with the provider may create an account now. Never on an
-    /// instance without users: its first account becomes the administrator, which takes
-    /// the setup token (see [`crate::AccountService::sign_up`]).
-    async fn external_registration_allowed(&self, config: &ProviderConfig) -> Result<bool, ServiceError> {
-        if self.accounts.setup_required().await? {
-            return Ok(false);
-        }
-        Ok(ExternalAuthService::may_register(config, self.accounts.registration_open().await?))
-    }
-
-    /// Signs in as the account `linked` belongs to: refused while suspended, continued at
-    /// the second step when the account has 2FA (unless the provider's MFA is trusted).
-    async fn finish_external_sign_in(
-        &self,
-        linked: &ExternalIdentity,
-        identity: &VerifiedIdentity,
-        config: &ProviderConfig,
-        client: &ClientInfo,
-    ) -> Result<ExternalSignIn, ServiceError> {
-        let external = &self.external_auth;
-        if self.accounts.is_suspended(linked.account_id).await? {
-            let mut entry =
-                AuditEntry::new(AuditAction::SignInFailed).from_ip(client.ip).detail(format!("{}: account suspended", config.name));
-            if let Some(user) = external.inner.database.accounts().find_user(linked.account_id).await? {
-                entry = entry.by(&user);
-            }
-            external.record(entry).await;
-            return Err(ServiceError::Forbidden);
-        }
-        let user = external.inner.database.accounts().find_active_user(linked.account_id).await?.ok_or(ServiceError::NotFound)?;
-        let trusted_mfa = config.trust_mfa && identity.mfa;
-        if !trusted_mfa && self.two_factor.is_enabled(user.id()).await? {
-            return Ok(ExternalSignIn::SecondFactorRequired(self.two_factor.start_pending(user.id(), &config.name)));
-        }
-        let detail = if trusted_mfa { format!("{} (provider MFA)", config.name) } else { config.name.clone() };
-        external.record(AuditEntry::new(AuditAction::SignIn).by(&user).from_ip(client.ip).detail(detail)).await;
-        Ok(ExternalSignIn::SignedIn(user))
-    }
-
-    /// Finishes the "choose a username" step: creates the account (without a password)
-    /// linked to the identity and signs it in. `email` must be an address; it is marked
-    /// verified only if it is the provider's verified one. Throttled like sign-up.
-    pub async fn register_external(
-        &self,
-        provider_id: &str,
-        token: &SessionToken,
-        username: &str,
-        email: &str,
-        client: &ClientInfo,
-    ) -> Result<(User, String), ServiceError> {
-        let external = &self.external_auth;
-        self.throttle.check(ThrottleScope::SignUp, &ip_key(client))?;
-        let pending = external
-            .pending_registration(token)
-            .filter(|pending| pending.identity.provider_id == provider_id)
-            .ok_or(ServiceError::NotFound)?;
-        let config = external.provider(provider_id).ok_or(ServiceError::NotFound)?.config.clone();
-        if !self.external_registration_allowed(&config).await? {
-            return Err(ServiceError::RegistrationClosed);
-        }
-        let name: AccountName = username.trim().parse()?;
-        let email: Email = email.trim().parse()?;
-        let identity = &pending.identity;
-        let verified = identity.email_verified && identity.email.as_deref().is_some_and(|given| given.eq_ignore_ascii_case(email.as_str()));
-        let registration_open =
-            ExternalAuthService::may_register(&config, self.instance.current().registration == rbit_core::RegistrationMode::Open);
-        let new_user = NewUser { name, email, display_name: None, password_hash: String::new(), is_admin: false };
-        let new = NewExternalIdentity {
-            provider_id: &identity.provider_id,
-            subject: &identity.subject,
-            email: identity.email.as_deref(),
-            username: identity.username.as_deref(),
-        };
-        let user = match external.inner.database.external_identities().register(new_user, verified, new, registration_open).await {
-            Ok(Ok(user)) => user,
-            Ok(Err(_)) => {
-                external.end_registration(token);
-                return Err(ServiceError::Invalid(format!(
-                    "this {} account is already linked to an account here; sign in instead",
-                    config.name
-                )));
-            }
-            Err(StorageError::Conflict("email")) => {
-                return Err(ServiceError::Invalid(format!(
-                    "an account already uses this email address; sign in to it and link {} under Settings → Security",
-                    config.name
-                )));
-            }
-            Err(error) => return Err(error.into()),
-        };
-        external.end_registration(token);
-        tracing::info!(user = %user.name(), provider = provider_id, is_admin = user.is_admin, "account created through a sign-in provider");
-        self.events.publish(DomainEvent::UserSignedUp { user: user.id() });
-        external.record(linked_entry(&user, &config, identity, client, ", new account")).await;
-        external.record(AuditEntry::new(AuditAction::SignIn).by(&user).from_ip(client.ip).detail(config.name.clone())).await;
-        Ok((user, pending.next))
-    }
-}
+mod flows;
+mod original;
+pub use original::OriginalExternalSignIn;
 
 /// "Corp SSO (alice)" plus `suffix`, for the link audit entry.
 fn linked_entry(user: &User, config: &ProviderConfig, identity: &VerifiedIdentity, client: &ClientInfo, suffix: &str) -> AuditEntry {

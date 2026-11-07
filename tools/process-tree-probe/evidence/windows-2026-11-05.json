@@ -1,0 +1,119 @@
+{
+  "cases": [
+    {
+      "admission_closed": false,
+      "before_nested_inherited": true,
+      "child_reaped": true,
+      "disposition": "abrupt-parent-os-cleanup-observed",
+      "members_empty": true,
+      "nested_host_compatible": true,
+      "pumps_destroyed": false,
+      "root_handle_noninheritance_behavior": true,
+      "root_wait_alone_insufficient": false,
+      "scenario": "gap",
+      "unrelated_survived": true
+    },
+    {
+      "admission_closed": false,
+      "before_nested_inherited": false,
+      "child_reaped": true,
+      "disposition": "abrupt-parent-os-cleanup-observed",
+      "members_empty": true,
+      "nested_host_compatible": true,
+      "pumps_destroyed": false,
+      "root_handle_noninheritance_behavior": false,
+      "root_wait_alone_insufficient": false,
+      "scenario": "live",
+      "unrelated_survived": true
+    },
+    {
+      "admission_closed": false,
+      "before_nested_inherited": false,
+      "child_reaped": true,
+      "disposition": "verified",
+      "members_empty": true,
+      "nested_host_compatible": true,
+      "pumps_destroyed": true,
+      "root_handle_noninheritance_behavior": false,
+      "root_wait_alone_insufficient": true,
+      "scenario": "root-exits",
+      "unrelated_survived": true
+    },
+    {
+      "admission_closed": false,
+      "before_nested_inherited": false,
+      "child_reaped": true,
+      "disposition": "verified",
+      "members_empty": true,
+      "nested_host_compatible": true,
+      "pumps_destroyed": true,
+      "root_handle_noninheritance_behavior": false,
+      "root_wait_alone_insufficient": false,
+      "scenario": "cancel",
+      "unrelated_survived": true
+    },
+    {
+      "admission_closed": true,
+      "before_nested_inherited": true,
+      "child_reaped": false,
+      "disposition": "quarantined-native-assignment-fault",
+      "members_empty": false,
+      "nested_host_compatible": true,
+      "pumps_destroyed": false,
+      "root_handle_noninheritance_behavior": false,
+      "root_wait_alone_insufficient": false,
+      "scenario": "fault-assign",
+      "unrelated_survived": true
+    },
+    {
+      "admission_closed": true,
+      "before_nested_inherited": false,
+      "child_reaped": true,
+      "disposition": "quarantined-simulated-fault",
+      "members_empty": true,
+      "nested_host_compatible": true,
+      "pumps_destroyed": true,
+      "root_handle_noninheritance_behavior": false,
+      "root_wait_alone_insufficient": false,
+      "scenario": "fault-wait",
+      "unrelated_survived": true
+    },
+    {
+      "admission_closed": true,
+      "before_nested_inherited": false,
+      "child_reaped": true,
+      "disposition": "quarantined-simulated-fault",
+      "members_empty": true,
+      "nested_host_compatible": true,
+      "pumps_destroyed": true,
+      "root_handle_noninheritance_behavior": false,
+      "root_wait_alone_insufficient": false,
+      "scenario": "fault-query",
+      "unrelated_survived": true
+    },
+    {
+      "admission_closed": true,
+      "before_nested_inherited": false,
+      "child_reaped": true,
+      "disposition": "quarantined-simulated-fault",
+      "members_empty": true,
+      "nested_host_compatible": true,
+      "pumps_destroyed": true,
+      "root_handle_noninheritance_behavior": false,
+      "root_wait_alone_insufficient": false,
+      "scenario": "fault-resume",
+      "unrelated_survived": true
+    }
+  ],
+  "development_only": true,
+  "limits": [
+    "wait/query failure is unproved, not stopped",
+    "fault wait/query/resume are simulated contract faults",
+    "noninherited root handle is behaviorally proved by abrupt-parent kill, not GetHandleInformation"
+  ],
+  "platform": "windows",
+  "processkit": "3.3.4",
+  "scope": "safe root Job plus per-operation Job; not production adoption",
+  "sibling_scope": "outside scenario Jobs, inside controller safety root",
+  "win32job": "2.0.3"
+}

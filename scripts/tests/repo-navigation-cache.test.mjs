@@ -49,6 +49,23 @@ async function app() {
   return { ...cache, XHR, response, remember, request };
 }
 
+test('catalog identities isolate HTML responses and retain language on synthetic delivery', async () => {
+  const cache = await app();
+  const english = { ...headers, 'Rbit-Document-Locale': '1.en' };
+  const spanish = { ...headers, 'Rbit-Document-Locale': '1.es' };
+  assert.equal(cache.remember(html(), { headers: { 'Rbit-Catalog-Key': '1.es', 'Content-Language': 'es' } }, url, english), false);
+  assert.equal(cache.remember(html(), {}, url, english), false, 'unproven language cannot seed a catalog-scoped request');
+  assert.equal(cache.remember(html(), { headers: { 'Rbit-Catalog-Key': '1.es', 'Content-Language': 'es' } }, url, spanish), true);
+  assert.equal(cache.request({ requestHeaders: english }).reused, false);
+  const request = cache.request({ requestHeaders: spanish });
+  assert.equal(request.reused, true);
+  request.xhr.send(null);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(request.xhr.getResponseHeader('Rbit-Catalog-Key'), '1.es');
+  assert.equal(request.xhr.getResponseHeader('Content-Language'), 'es');
+  assert.equal(cache.request({ requestHeaders: { ...headers, 'Rbit-Document-Locale': '../private' } }).reused, false);
+});
+
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 const deferred = () => { let resolve; const promise = new Promise((yes) => { resolve = yes; }); return { promise, resolve }; };
 const fetched = (text = html(), overrides = {}) => new Response(text, { status: 200, headers: { 'Content-Type': 'text/html', 'Rbit-Partial': 'true', ...overrides } });

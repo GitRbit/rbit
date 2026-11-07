@@ -24,11 +24,48 @@ env:
   NODE_VERSION: "24"
 
 jobs:
+  rewrite-contracts:
+    name: Rewrite contracts (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      # Bootstrap registry sources before guarded compilation's offline metadata scan.
+      - run: node scripts/workspace.mjs fetch --locked
+      - run: node --test scripts/tests/rewrite-*.test.mjs scripts/tests/identity-features.test.mjs scripts/tests/workspace*.test.mjs
+      - run: node scripts/rewrite/check.mjs
+      # Separate invocations prevent workspace feature unification from hiding a
+      # missing model-only or credentials-only dependency/compile contract.
+      - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --locked
+      - run: node scripts/workspace.mjs test --package rbit-identity-models --no-default-features --locked
+      - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --features credentials --locked
+      # The workspace test union enables identity password-work; compile this tool
+      # separately so an accidental application-only import cannot be hidden by it.
+      - run: node scripts/workspace.mjs test --package rbit-credential-inventory --no-default-features --locked
+      - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --features session-tokens --locked
+      - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --features sessions --locked
+      - run: node scripts/workspace.mjs test --package rbit-collaboration --no-default-features --locked
+      - run: node scripts/workspace.mjs test --package rbit-collaboration --no-default-features --features applications --locked
+      - run: node scripts/workspace.mjs test --package rbit-contracts --package rbit-core --package rbit-repositories --package rbit-kernel --package rbit-localization --package rbit-identity-models --package rbit-identity --package rbit-collaboration --package rbit-auth --package rbit-rewrite-check --features rbit-identity/password-work,rbit-identity/sessions,rbit-collaboration/applications --locked
+      - run: node scripts/workspace.mjs test --package rbit-render-probe --no-default-features --features inheritance,segments,blocks,count-8 --locked
+      - run: node scripts/rewrite/check-types.mjs
+
   lint:
     name: Format and clippy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/prepare-build
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
@@ -36,9 +73,15 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: ". -> .cargo-build"
-          # Only main saves caches; pull requests restore them. Saving per pull request fills
-          # the repository cache limit and evicts the main caches every run depends on.
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          # PR saves stay in their merge-ref scope; main cannot restore them.
+          # Save dependency outputs only; keep local workspace units and tools out.
+          cache-workspace-crates: false
+          cache-all-crates: false
+          cache-bin: false
+          cache-on-failure: false
+          save-if: >-
+            ${{ (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge')) ||
+                (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) }}
       - run: cargo fmt --all --check
       # Pedantic lints are enabled workspace-wide in Cargo.toml; warnings fail the build.
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
@@ -48,6 +91,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       # A prebuilt cargo-deny binary: compiling it would take longer than the check.
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2
         with:
@@ -67,12 +112,20 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/prepare-build
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: ". -> .cargo-build"
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-workspace-crates: false
+          cache-all-crates: false
+          cache-bin: false
+          cache-on-failure: false
+          save-if: >-
+            ${{ (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge')) ||
+                (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) }}
       # Integration tests drive the real git CLI (pushes, gc, backups); the hosted runners
       # ship git, so only print its version for the log.
       - run: git --version
@@ -82,18 +135,21 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci && npm run build
-      # nextest runs every test binary in parallel, each test in its own process. The
-      # workspace has no doctests, which nextest does not run.
+      # nextest runs test binaries in parallel; Rust documentation examples need
+      # their own command because nextest does not execute doctests.
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2
         with:
           tool: cargo-nextest
       - run: cargo nextest run --workspace --locked --profile ci
+      - run: cargo test --workspace --doc --locked
 
   assets:
     name: Front-end build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -115,6 +171,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/prepare-build
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
@@ -125,7 +183,13 @@ jobs:
         with:
           workspaces: ". -> .cargo-build"
           key: release
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-workspace-crates: false
+          cache-all-crates: false
+          cache-bin: false
+          cache-on-failure: false
+          save-if: >-
+            ${{ (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge')) ||
+                (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) }}
       # rbit-runner is not a default member: name both, as the release does.
       - run: cargo build --release --locked --package rbit-server --package rbit-runner
       - run: ./target/release/rbit --version
@@ -143,9 +207,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       # The image the release publishes, compiled from source: its packages must install
       # and the runner must start inside it.
       - run: docker build --file Dockerfile.runner --tag rbit-runner:ci .
       - run: docker run --rm rbit-runner:ci --version
       - run: docker run --rm --entrypoint git rbit-runner:ci --version
       - run: docker run --rm --entrypoint docker rbit-runner:ci --version
+
+  required:
+    # Keep this display name stable for branch protection. Every required validation
+    # is listed directly, including ancestors, so no skip hides failure. Candidate
+    # image review remains a separate optional check until its acceptance gate passes.
+    name: CI required
+    if: ${{ always() }}
+    needs: [rewrite-contracts, lint, deny, test, assets, release, runner-image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Summarize and require every validation
+        run: node scripts/ci/required-check.mjs
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}

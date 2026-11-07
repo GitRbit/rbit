@@ -3,8 +3,17 @@
 //! Suspension is enforced here: [`AccountStore::find_login`] reports it so sign-in can be
 //! refused, and [`AccountStore::find_active_user`] never resolves a suspended user.
 
+mod fenced;
+mod insertion;
+#[cfg(test)]
+mod locale_tests;
+#[cfg(test)]
+mod login_tests;
+mod original_creation;
+pub(super) use insertion::{insert_user, insert_user_original};
+
 use super::pool::Pool;
-use rbit_core::{Account, AccountId, AccountKind, AccountName, Email, Timestamp, User};
+use rbit_core::{Account, AccountId, AccountName, Timestamp, User};
 
 use super::rows::{AccountRow, UserRow};
 use crate::StorageError;
@@ -23,25 +32,26 @@ macro_rules! select_user {
         )
     };
 }
+macro_rules! select_login {
+    ($clause:literal) => {
+        concat!(
+            "SELECT a.id, a.kind, a.name, a.display_name, a.bio, a.created_at, l.email, l.is_admin, l.password_hash, \
+             l.suspended_at FROM accounts a JOIN user_logins l ON l.account_id = a.id ",
+            $clause
+        )
+    };
+}
+const LOGIN_BY_ID: &str = select_login!("WHERE a.id = ?1");
 
 /// `?1` account, `?2` whether notifications are on. The stored password hash is not read;
 /// the unread check is a `CASE` so it is not even evaluated with notifications off.
 const SESSION_USER: &str = "SELECT a.id, a.kind, a.name, a.display_name, a.bio, a.created_at, l.email, l.is_admin, \
      '' AS password_hash, l.password_change_required, \
      CASE WHEN ?2 THEN EXISTS (SELECT 1 FROM notifications n WHERE n.user_id = a.id AND n.unread = 1) ELSE 0 END \
-     AS has_unread_notifications \
+     AS has_unread_notifications, CASE l.locale WHEN 'en' THEN 1 WHEN 'es' THEN 2 ELSE 0 END AS locale_choice \
      FROM accounts a JOIN user_logins l ON l.account_id = a.id WHERE a.id = ?1 AND l.suspended_at IS NULL";
 
-/// An active (not suspended) user as a signed-in request sees them, from
-/// [`AccountStore::find_session_user`].
-#[derive(Debug, Clone)]
-pub struct SessionUser {
-    pub user: User,
-    /// An administrator provided the password; everything but replacing it is refused.
-    pub password_change_required: bool,
-    /// Something in the inbox is unread (always `false` when notifications are off).
-    pub has_unread_notifications: bool,
-}
+pub use rbit_identity_models::sessions::SessionUser;
 
 #[derive(Debug, sqlx::FromRow)]
 struct SessionUserRow {
@@ -49,15 +59,10 @@ struct SessionUserRow {
     user: UserRow,
     password_change_required: bool,
     has_unread_notifications: bool,
+    locale_choice: i64,
 }
 
-/// A login candidate: the user, their stored password hash and whether they are suspended.
-#[derive(Debug)]
-pub struct LoginRecord {
-    pub user: User,
-    pub password_hash: String,
-    pub suspended: bool,
-}
+pub use rbit_identity_models::accounts::{LoginRecord, NewUser};
 
 #[derive(Debug, sqlx::FromRow)]
 struct LoginRow {
@@ -65,15 +70,11 @@ struct LoginRow {
     user: UserRow,
     suspended_at: Option<i64>,
 }
-
-/// Everything needed to register a user. The password must already be hashed.
-#[derive(Debug)]
-pub struct NewUser {
-    pub name: AccountName,
-    pub email: Email,
-    pub display_name: Option<String>,
-    pub password_hash: String,
-    pub is_admin: bool,
+impl LoginRow {
+    fn into_record(self) -> Result<LoginRecord, StorageError> {
+        let suspended = self.suspended_at.is_some();
+        self.user.into_user_and_hash().map(|(user, password_hash)| LoginRecord { user, password_hash, suspended })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -94,6 +95,8 @@ impl AccountStore {
 
     /// Creates the account and its login atomically.
     pub async fn create_user(&self, new: NewUser) -> Result<User, StorageError> {
+        #[cfg(test)]
+        self.pool.require_legacy()?;
         let mut tx = self.pool.begin().await?;
         let user = insert_user(&mut tx, new, None, false).await?;
         tx.commit().await?;
@@ -102,6 +105,8 @@ impl AccountStore {
 
     /// Creates an administrator-provisioned account with a temporary password.
     pub async fn create_user_with_initial_password(&self, new: NewUser) -> Result<User, StorageError> {
+        #[cfg(test)]
+        self.pool.require_legacy()?;
         let mut tx = self.pool.begin().await?;
         let user = insert_user(&mut tx, new, None, false).await?;
         sqlx::query("UPDATE user_logins SET password_change_required = 1 WHERE account_id = ?").bind(user.id().0).execute(&mut *tx).await?;
@@ -120,6 +125,8 @@ impl AccountStore {
     /// Registers a user, deciding the first administrator inside the write transaction.
     /// Closed registration admits only the first user; `new.is_admin` is ignored.
     pub async fn register_user(&self, new: NewUser, registration_open: bool) -> Result<User, StorageError> {
+        #[cfg(test)]
+        self.pool.require_legacy()?;
         let mut tx = self.pool.begin().await?;
         let user = insert_user(&mut tx, new, Some(registration_open), false).await?;
         tx.commit().await?;
@@ -129,19 +136,15 @@ impl AccountStore {
     /// Looks a user up by username *or* email, returning the stored password hash for
     /// verification and whether the account is suspended.
     pub async fn find_login(&self, username_or_email: &str) -> Result<Option<LoginRecord>, StorageError> {
-        let row: Option<LoginRow> = sqlx::query_as(
-            "SELECT a.id, a.kind, a.name, a.display_name, a.bio, a.created_at, l.email, l.is_admin, l.password_hash, \
-             l.suspended_at FROM accounts a JOIN user_logins l ON l.account_id = a.id \
-             WHERE a.name = ?1 OR l.email = ?1",
-        )
-        .bind(username_or_email)
-        .fetch_optional(&self.pool)
-        .await?;
-        row.map(|row| {
-            let suspended = row.suspended_at.is_some();
-            row.user.into_user_and_hash().map(|(user, password_hash)| LoginRecord { user, password_hash, suspended })
-        })
-        .transpose()
+        let row: Option<LoginRow> =
+            sqlx::query_as(select_login!("WHERE a.name = ?1 OR l.email = ?1")).bind(username_or_email).fetch_optional(&self.pool).await?;
+        row.map(LoginRow::into_record).transpose()
+    }
+    /// Sensitive settings already have a principal: never resolve its mutable name
+    /// again. Suspension remains a reported fact, preserving caller-owned policy.
+    pub async fn find_login_by_id(&self, id: AccountId) -> Result<Option<LoginRecord>, StorageError> {
+        let row: Option<LoginRow> = sqlx::query_as(LOGIN_BY_ID).bind(id.0).fetch_optional(&self.pool).await?;
+        row.map(LoginRow::into_record).transpose()
     }
 
     pub async fn find_user(&self, id: AccountId) -> Result<Option<User>, StorageError> {
@@ -169,6 +172,7 @@ impl AccountStore {
                 user,
                 password_change_required: row.password_change_required,
                 has_unread_notifications: row.has_unread_notifications,
+                locale: super::preferences::locale_from_code(row.locale_choice),
             })
         })
         .transpose()
@@ -286,56 +290,4 @@ impl AccountStore {
     pub async fn count_users(&self) -> Result<i64, StorageError> {
         Ok(sqlx::query_scalar("SELECT COUNT(*) FROM user_logins").fetch_one(&self.pool).await?)
     }
-}
-
-/// Shared by password and external registration so the bootstrap decision is serialized
-/// across both paths. The first INSERT acquires `SQLite`'s write lock before we inspect
-/// the logins. No password hashing or other slow work runs while holding the lock.
-pub(super) async fn insert_user(
-    tx: &mut super::pool::WriteTransaction,
-    mut new: NewUser,
-    registration_open: Option<bool>,
-    email_verified: bool,
-) -> Result<User, StorageError> {
-    let now = Timestamp::now();
-    let id: i64 =
-        sqlx::query_scalar("INSERT INTO accounts (kind, name, display_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?) RETURNING id")
-            .bind(AccountKind::User.as_str())
-            .bind(new.name.as_str())
-            .bind(new.display_name.as_deref())
-            .bind(now.0)
-            .bind(now.0)
-            .fetch_one(&mut **tx)
-            .await
-            .map_err(|e| StorageError::from_insert(e, "username"))?;
-
-    if let Some(open) = registration_open {
-        let first: bool = sqlx::query_scalar("SELECT NOT EXISTS (SELECT 1 FROM user_logins)").fetch_one(&mut **tx).await?;
-        if !open && !first {
-            return Err(StorageError::RegistrationClosed);
-        }
-        new.is_admin = first;
-    }
-    sqlx::query("INSERT INTO user_logins (account_id, email, password_hash, is_admin, email_verified_at) VALUES (?, ?, ?, ?, ?)")
-        .bind(id)
-        .bind(new.email.as_str())
-        .bind(&new.password_hash)
-        .bind(new.is_admin)
-        .bind(email_verified.then_some(now.0))
-        .execute(&mut **tx)
-        .await
-        .map_err(|e| StorageError::from_insert(e, "email"))?;
-
-    Ok(User {
-        account: Account {
-            id: AccountId(id),
-            kind: AccountKind::User,
-            name: new.name,
-            display_name: new.display_name,
-            bio: None,
-            created_at: now,
-        },
-        email: new.email,
-        is_admin: new.is_admin,
-    })
 }

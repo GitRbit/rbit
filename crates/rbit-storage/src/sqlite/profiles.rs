@@ -2,6 +2,8 @@
 //!
 //! Workstream D owns this file. Keep row types here rather than in `rows.rs`.
 
+mod fenced_password;
+
 use super::pool::Pool;
 use rbit_core::{AccountId, Email, Timestamp};
 
@@ -140,6 +142,8 @@ impl ProfileStore {
         password_hash: &str,
         expected: Option<&str>,
     ) -> Result<bool, StorageError> {
+        #[cfg(test)]
+        self.pool.require_legacy()?;
         let mut tx = self.pool.begin().await?;
         let changed = sqlx::query("UPDATE user_logins SET password_hash = ?1, password_change_required = 0 WHERE account_id = ?2 AND (?3 IS NULL OR password_hash = ?3)")
             .bind(password_hash)

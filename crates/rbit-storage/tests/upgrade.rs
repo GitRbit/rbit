@@ -4,7 +4,7 @@
 //! every later migration. The rows must survive unchanged, and the new tables, columns,
 //! defaults and triggers must behave on rows that predate them.
 
-use std::{path::Path, str::FromStr};
+use std::path::Path;
 
 use rbit_core::{
     AccessTokenId, AccountId, BasePermission, OrgRole, Permission, RepoId, Timestamp, TokenScope,
@@ -15,10 +15,9 @@ use rbit_storage::{
     Database, NewAccessToken,
     sqlite::{ssh_keys::KeyHolder, webhooks::NewDelivery},
 };
-use sqlx::{
-    Row, SqlitePool,
-    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
-};
+use sqlx::{Row, SqlitePool};
+
+use super::writer_connection::pool;
 
 /// The last migration milestone 1 shipped.
 const MILESTONE_1_SCHEMA: i64 = 8;
@@ -30,11 +29,6 @@ const BOB: AccountId = AccountId(2);
 const ACME: AccountId = AccountId(10);
 const BARE: AccountId = AccountId(11);
 const ROCKET: RepoId = RepoId(6);
-
-async fn pool(path: &Path) -> SqlitePool {
-    let options = SqliteConnectOptions::from_str("sqlite:").unwrap().filename(path).create_if_missing(true).foreign_keys(true);
-    SqlitePoolOptions::new().max_connections(1).connect_with(options).await.unwrap()
-}
 
 /// A database file as milestone 1 left it, with the fixture rows.
 async fn milestone_1_database(path: &Path) {

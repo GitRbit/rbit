@@ -17,8 +17,11 @@
 import { clearNavigationResponses, isCachedNavigationResponse, rememberNavigationResponse, reuseNavigationResponse } from "./repo-navigation-cache.js";
 import { reconcileRepositoryBar } from "./repo-navigation-bar.js";
 import { installUpdateNotice } from "./update-notice.js";
+import { installRenderTiming } from "./render-time.js";
+import { documentCatalogKey } from "./locale-key.js";
 
 installUpdateNotice(document);
+installRenderTiming(document);
 
 // Title-Case like any HTTP header name (the server lists them in `Vary` with that spelling).
 const EPOCH_HEADER = "Rbit-Nav-Epoch";
@@ -55,6 +58,8 @@ function partialScope(url) {
  */
 export function navigationHeaders(url) {
   const headers = { "HX-Request": "true", [EPOCH_HEADER]: epoch };
+  const catalog = documentCatalogKey(document);
+  if (catalog) headers["Rbit-Document-Locale"] = catalog;
   const scope = partialScope(url);
   if (scope) headers[PARTIAL_HEADER] = scope;
   return headers;
@@ -102,6 +107,11 @@ function seedCurrentTab() {
   const copy = bar.cloneNode(true);
   copy.setAttribute("hx-swap-oob", "true");
   const headers = { "content-type": "text/html", "rbit-partial": "true", "cache-control": "private, max-age=30" };
+  const catalog = documentCatalogKey(document);
+  if (catalog) {
+    headers["rbit-catalog-key"] = catalog;
+    headers["content-language"] = document.documentElement.lang;
+  }
   rememberNavigationResponse(current.href, navigationHeaders(current.href), {
     status: 200, url: current.href, text: `${title.outerHTML}\n${main.outerHTML}\n${copy.outerHTML}`,
     getHeader: name => headers[name.toLowerCase()] ?? null,
@@ -161,37 +171,6 @@ document.addEventListener("htmx:historyRestore", (event) => {
   if (event.detail.cacheMiss) settle();
 });
 document.addEventListener("htmx:historyCacheMissLoadError", settle);
-
-// ---------------------------------------------------------------- render time
-
-/** Mirrors `timing::format`: `412 µs`, `3.1 ms`, `1.20 s`. */
-function formatDuration(ms) {
-  if (ms < 1) return `${Math.round(ms * 1000)} µs`;
-  if (ms < 1000) return `${ms.toFixed(1)} ms`;
-  return `${(ms / 1000).toFixed(2)} s`;
-}
-
-let renderTime = null;
-/** Shows the last render time in `root` (by default the whole page). */
-const showRenderTime = (root = document) => {
-  if (renderTime === null) return;
-  for (const element of root.querySelectorAll("[data-render-time]")) element.textContent = renderTime;
-};
-
-document.addEventListener("htmx:afterRequest", (event) => {
-  if (!event.detail.successful) return;
-  const timing = event.detail.xhr?.getResponseHeader("Server-Timing");
-  const match = timing && /(?:^|,)\s*render;dur=([\d.]+)/.exec(timing);
-  if (!match) return;
-  renderTime = formatDuration(Number(match[1]));
-  showRenderTime();
-});
-// A full-page swap brings a new footer; it shows the same figure as the header. Only
-// the element swapped in can hold a new one.
-document.addEventListener("htmx:afterSettle", (event) => {
-  const root = event.detail.elt;
-  if (root?.querySelectorAll) showRenderTime(root);
-});
 
 // ---------------------------------------------------------------- partial swaps
 
@@ -306,12 +285,29 @@ document.addEventListener("htmx:historyRestore", removeMarker);
 // it, usually answered with a 304.
 const MAX_SNAPSHOT_CHARS = 64_000;
 
+// A snapshot serialises the live page, so any style set through CSSOM (by a script, a
+// browser extension or automation; caret hiding leaves `style=""` on every input) comes
+// back as a `style` attribute. Restoring parses the snapshot into this page, whose
+// `style-src` refuses every style attribute and reports each refusal as a console error;
+// a restored page could never apply them, so they are left out of the snapshot. A
+// DOMParser document carries no policy, so removing them there reports nothing.
+const STYLE_ATTRIBUTE = / style="/;
+
+function withoutStyleAttributes(content) {
+  if (!STYLE_ATTRIBUTE.test(content)) return content;
+  const body = new DOMParser().parseFromString(`<body>${content}`, "text/html").body;
+  for (const element of body.querySelectorAll("[style]")) element.removeAttribute("style");
+  return body.innerHTML;
+}
+
 document.addEventListener("htmx:historyItemCreated", (event) => {
   const item = event.detail.item;
   if (item.content.length > MAX_SNAPSHOT_CHARS) {
     item.content = "";
     item.url = "\u0000too-large";
+    return;
   }
+  item.content = withoutStyleAttributes(item.content);
 });
 
 // ---------------------------------------------------------------- line links
