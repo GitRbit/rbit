@@ -7,6 +7,7 @@
 
 pub mod aliases;
 pub mod discovery;
+pub mod forks;
 pub mod transfer;
 
 mod listing;

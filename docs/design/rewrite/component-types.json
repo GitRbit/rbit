@@ -28,7 +28,10 @@
         "lib::accounts::original_recovery::OriginalCredentialFinalizer",
         "lib::accounts::original_recovery::OriginalCredentialMutation",
         "lib::accounts::original_recovery::backend::RecoveryLease",
-        "lib::notifications::inbox::InboxView"
+        "lib::notifications::inbox::InboxView",
+        "lib::forks::ForkService",
+        "lib::forks::effects::ForkEffects",
+        "lib::forks::reading::ParentAccess"
       ]
     },
     {
@@ -56,7 +59,9 @@
         "lib::work::CapturedWork",
         "lib::kv::recovery::CredentialRecoveryGate",
         "lib::kv::recovery::CredentialRecoveryPermit",
-        "lib::notification_inbox::NotificationInboxStore"
+        "lib::notification_inbox::NotificationInboxStore",
+        "lib::repository_forks::ForkCreationStore",
+        "lib::repository_forks::ForkReadStore"
       ]
     },
     {

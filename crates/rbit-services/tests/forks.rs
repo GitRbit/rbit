@@ -166,3 +166,5 @@ async fn deleting_the_parent_keeps_the_fork() {
     assert!(fixture.services.forks.parent(Some(&bob), &fork).await.unwrap().is_none());
     assert!(!fork.reader.is_empty().await.unwrap(), "the fork's history survives");
 }
+
+mod ownership;

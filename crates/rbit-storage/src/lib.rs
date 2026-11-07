@@ -24,6 +24,8 @@ pub mod kv;
 mod notification_inbox;
 pub use notification_inbox::NotificationInboxStore;
 mod repository_creation;
+mod repository_forks;
+pub use repository_forks::{ForkCreationStore, ForkReadStore};
 mod repository_discovery;
 pub mod sealing;
 pub mod sqlite;
