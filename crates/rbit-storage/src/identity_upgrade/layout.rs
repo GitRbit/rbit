@@ -74,7 +74,7 @@ impl StoppedIdentityUpgrade {
         // Freeze SQLite-only official writers as well as retaining the native KV owner.
         // The migrator uses nested savepoints; the outer commit installs the whole suffix.
         let mut tx = self.connection.begin_with("BEGIN IMMEDIATE").await?;
-        history(&mut tx).await?;
+        let installed = history(&mut tx).await?;
         legacy_mode(&mut tx).await?;
         let db = Arc::clone(&self.db);
         let limits = self.limits;
@@ -83,7 +83,10 @@ impl StoppedIdentityUpgrade {
             return Err(Error::Mismatch);
         }
         let migrator = sqlx::migrate!("./migrations");
-        if migrator.migrations.iter().any(|migration| migration.no_tx) {
+        // Already-applied no-transaction migrations (including immutable 0055)
+        // are checksum-validated history; run_direct skips them. Only a pending
+        // no-transaction suffix would violate this operation's outer transaction.
+        if migrator.migrations.iter().any(|migration| migration.version > installed && migration.no_tx) {
             return Err(Error::Unsupported);
         }
         // SQLx's direct API preserves this exact connection/savepoint scope and
