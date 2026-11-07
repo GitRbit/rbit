@@ -86,7 +86,11 @@
         "lib::kv::sessions::SessionStore",
         "lib::kv::sessions::epoch::mutations::BoundSessionMutations",
         "lib::kv::sessions::epoch::listing::BoundSessionListing",
-        "lib::kv::sessions::epoch::runtime::SessionMode"
+        "lib::kv::sessions::epoch::runtime::SessionMode",
+        "lib::sqlite::Database",
+        "lib::sqlite::pool::Pool",
+        "lib::sqlite::pool::Conn",
+        "lib::sqlite::pool::WriteTransaction"
       ]
     },
     {
