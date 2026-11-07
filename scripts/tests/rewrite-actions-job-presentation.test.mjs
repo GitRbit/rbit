@@ -17,7 +17,11 @@ test("job presentation keeps the exact bounded line-rendering program and expose
   const html = await expand("actions/job.html");
   const body = await read("templates/actions/step_body.html");
   const lines = body.slice(body.indexOf('  <div class="overflow-x-auto">'), body.indexOf("  {% if log.truncated %}"));
-  assert.equal(createHash("sha256").update(lines).digest("hex"),
+  const grid = '<div class="code-lines {{ log.columns() }}">';
+  const isolated = '<div class="code-lines {{ log.columns() }}" dir="ltr">';
+  assert.equal(lines.split(isolated).length - 1, 1, "only the machine grid has the exact required LTR boundary");
+  const program = lines.replace(isolated, grid);
+  assert.equal(createHash("sha256").update(program).digest("hex"),
     "6e800d00ecaa15bd0413ca345305f8cca69b76175ebb928c714a9dbe4484106b");
   assert.match(html, /<header class="box overflow-hidden">/);
   assert.match(html, /<dl /);
