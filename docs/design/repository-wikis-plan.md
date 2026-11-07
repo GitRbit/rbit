@@ -182,6 +182,18 @@ do not promise rollback against incompatible writes.
 
 ## Phased delivery and acceptance
 
+The W0 design contracts are recorded separately. They are design decisions and
+proposed defaults, not implementation, test or measurement evidence:
+
+- [Data authority and commit protocol](wikis-authority-commit.md)
+- [Storage schema and on-disk format](wikis-storage-format.md)
+- [Threat model](wikis-threat-model.md)
+- [Routes, navigation and presentation contract](wikis-navigation-contract.md)
+- [Finite budgets and measurement protocol](wikis-budgets.md)
+
+The static domain and ports, dependency/feature-union and 400-line gates remain open
+W0 acceptance items.
+
 | Slice | Coherent production outcome | Required acceptance |
 | --- | --- | --- |
 | W0 Contracts and budgets | Static domain/ports, threat model, authority/commit ADR, schema/format and UI navigation contract | Dependency/feature-union and 400-line gates; defined finite page/media/search/cache/work budgets; no reverse feature cycle |
