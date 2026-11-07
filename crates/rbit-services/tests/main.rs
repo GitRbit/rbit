@@ -42,6 +42,7 @@ mod fake_forge;
 #[path = "support/fault_schema.rs"]
 mod fault_schema;
 mod forks;
+mod identity_races;
 mod imports;
 mod issues;
 mod lfs;
