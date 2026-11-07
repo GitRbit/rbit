@@ -34,7 +34,8 @@ async fn cancelled_waiter_cannot_escape_close_or_abandon_the_actual_store_write(
     assert!(first.is_pending());
     let report = services.accounts.session_effect_report();
     assert!(report.closed);
-    assert_eq!(report.active_owners, 1);
+    // One admitted context token and one tracked worker retain the same operation.
+    assert_eq!(report.active_owners, 2);
     release.send(()).unwrap();
     shutdown.await;
     let report = services.accounts.session_effect_report();
