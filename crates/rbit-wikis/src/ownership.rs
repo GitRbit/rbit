@@ -14,3 +14,9 @@ pub trait WikiCatalogOwnership: Send + Sync + 'static {
     fn store_id(&self) -> WikiStoreId;
     fn catalog_path(&self) -> &Path;
 }
+
+/// Actual managed object-root resource paired with that same catalog. This named
+/// I/O port checks binding only; it is not integrity/durability/readiness authority.
+pub trait WikiObjectOwnership: WikiCatalogOwnership {
+    fn check_objects_bound(&self) -> Result<(), Self::Error>;
+}

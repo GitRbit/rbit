@@ -16,7 +16,11 @@ pub(super) async fn open_after(lease: WikiCatalogLease, initialized: impl Future
     })
     .await
     .map_err(|_| WikiWriteError::Uncertain)??;
-    let options = lease.connection_options().create_if_missing(false).synchronous(SqliteSynchronous::Full).optimize_on_close(false, None);
+    let permission = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let options = super::super::protocol::owned_options(lease.connection_options(), Arc::clone(&permission))
+        .create_if_missing(false)
+        .synchronous(SqliteSynchronous::Full)
+        .optimize_on_close(false, None);
     let catalog = WikiCatalogHandle(Arc::new(lease));
     let retention = retention::NativeRetention::new(catalog.clone());
     let state = Arc::new(retention::NativeState::default());
@@ -41,7 +45,7 @@ pub(super) async fn open_after(lease: WikiCatalogLease, initialized: impl Future
         })
         .connect_lazy_with(options);
     // Install real pool-close ownership BEFORE any async physical connection setup.
-    let writer = shutdown::own_pool(pool, catalog, state, retention);
+    let writer = shutdown::own_pool(pool, catalog, state, retention, permission);
     match initialize(&writer, initialized).await {
         Ok(()) => Ok(writer),
         Err(error) => {

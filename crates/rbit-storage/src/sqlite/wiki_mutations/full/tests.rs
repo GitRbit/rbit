@@ -4,7 +4,7 @@ use rbit_core::{AccountId, RepoId};
 use rbit_wikis::{WikiId, commands::WikiCommandId, policy::WikiExpected};
 use std::time::Duration;
 
-async fn fixture() -> (tempfile::TempDir, crate::Database, FullWikiWriter, WikiWriteCommand) {
+pub(super) async fn fixture() -> (tempfile::TempDir, crate::Database, FullWikiWriter, WikiWriteCommand) {
     let (directory, database) = crate::sqlite::plans::database().await;
     sqlx::raw_sql(
         "INSERT INTO accounts(id,kind,name,created_at,updated_at) VALUES(1,'user','owner',0,0);
@@ -25,7 +25,7 @@ async fn fixture() -> (tempfile::TempDir, crate::Database, FullWikiWriter, WikiW
     (directory, database, writer, command)
 }
 
-fn capacity() -> NonZeroU32 {
+pub(super) fn capacity() -> NonZeroU32 {
     NonZeroU32::new(1).unwrap()
 }
 
@@ -160,7 +160,7 @@ async fn full_new_acceptance_keeps_the_original_statement_and_acquisition_budget
     a.unwrap();
     // Count inside the actual worker boundary: task-local counters intentionally do
     // not propagate through Tokio spawn. This calls the exact shared SQL worker.
-    let (b, full_work) = crate::count_work(accept_on(&full.0.commands, next, Timestamp(7), capacity())).await;
+    let (b, full_work) = crate::count_work(accept_on(&full.0.commands, next, Timestamp(7), capacity(), AcceptancePolicy::AllowNew)).await;
     assert!(b.unwrap().inserted);
     assert_eq!(full_work, normal_work);
     assert_eq!(full_work.acquisitions, 1);

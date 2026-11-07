@@ -17,6 +17,7 @@ pub(super) fn own_pool(
     catalog: WikiCatalogHandle,
     state: Arc<retention::NativeState>,
     mut retention: retention::NativeRetention,
+    permission: Arc<std::sync::atomic::AtomicBool>,
 ) -> FullWikiWriter {
     let (stop, mut stopping) = watch::channel(false);
     let (done, completion) = watch::channel(Completion::Waiting);
@@ -29,6 +30,8 @@ pub(super) fn own_pool(
         tasks: tasks.clone(),
         catalog: catalog.clone(),
         state: Arc::clone(&state),
+        protocol_claimed: std::sync::atomic::AtomicBool::new(false),
+        protocol_permission: permission,
         completion,
         shutdown: stop,
     }));

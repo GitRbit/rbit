@@ -95,6 +95,10 @@ impl WikiObjectWriter {
         self.owner.objects.identity
     }
 
+    pub(super) fn check_objects_bound(&self) -> Result<(), WikiObjectError> {
+        layout::verify_root(&self.owner.objects.root, self.owner.objects.identity)
+    }
+
     pub(super) async fn prepare_retaining<K, V>(
         &self,
         intent: WikiIntent,

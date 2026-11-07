@@ -1,4 +1,8 @@
 //! One owned FULL-synchronous writer; successful results acknowledge SQL only.
+pub mod fencing;
+#[cfg(test)]
+mod fencing_tests;
+mod jobs;
 mod opening;
 mod retention;
 mod shutdown;
@@ -10,7 +14,7 @@ mod tests_quarantine;
 mod tests_shutdown;
 
 use super::{
-    WikiMutationError, accept_on,
+    AcceptancePolicy, WikiMutationError, accept_on,
     ownership::{WikiCatalogLease, WikiCatalogLeaseError},
 };
 use crate::sqlite::pool::Pool;
@@ -72,6 +76,14 @@ pub enum WikiWriteError {
     /// is unknown. Preserve the same command; startup/replay recovery must fence it.
     #[error("pending wiki acceptance requires verified replay synchronization")]
     ReplayRequiresFence,
+    #[error("wiki writes require the closed recovery owner")]
+    FencedOwnerRequired,
+    #[error("wiki protocol or object ownership does not match")]
+    Binding,
+    #[error("wiki replay synchronization did not complete")]
+    ReplaySyncIncomplete,
+    #[error("wiki protocol epoch exhausted")]
+    EpochExhausted,
 }
 
 /// Constructed only after the FULL-connection acceptance transaction committed.
@@ -100,6 +112,8 @@ struct Writer {
     tasks: TaskTracker,
     catalog: WikiCatalogHandle,
     state: Arc<retention::NativeState>,
+    protocol_claimed: std::sync::atomic::AtomicBool,
+    protocol_permission: Arc<std::sync::atomic::AtomicBool>,
     completion: watch::Receiver<shutdown::Completion>,
     // Last: losing the last controller wakes the real pool-close supervisor.
     shutdown: watch::Sender<bool>,
@@ -133,44 +147,15 @@ impl FullWikiWriter {
         at: Timestamp,
         max_pending: NonZeroU32,
     ) -> impl Future<Output = Result<CommittedWikiAcceptance, WikiWriteError>> + Send + use<> {
-        let job = self.start(command, at, max_pending);
-        async move { job?.await.map_err(|_| WikiWriteError::Uncertain)? }
-    }
-
-    fn start(
-        &self,
-        command: WikiWriteCommand,
-        at: Timestamp,
-        max_pending: NonZeroU32,
-    ) -> Result<tokio::task::JoinHandle<Result<CommittedWikiAcceptance, WikiWriteError>>, WikiWriteError> {
-        let closed = self.0.gate.lock().map_err(|_| WikiWriteError::Closed)?;
-        if self.0.state.is_uncertain() {
-            return Err(WikiWriteError::Quarantined);
-        }
-        if *closed {
-            return Err(WikiWriteError::Closed);
-        }
-        let permit = Arc::clone(&self.0.admission).try_acquire_owned().map_err(|_| WikiWriteError::Busy)?;
-        let pool = self.0.commands.clone();
-        let catalog = self.0.catalog.clone();
-        let state = Arc::clone(&self.0.state);
-        // The worker owns only narrow resources, not this controller/tracker.
-        Ok(self.0.tasks.spawn(async move {
-            let _permit = permit;
-            let check = catalog.clone();
-            tokio::task::spawn_blocking(move || check.check_bound()).await.map_err(|_| WikiWriteError::Uncertain)??;
-            let accepted = tokio::select! {
-                accepted = accept_on(&pool, command, at, max_pending) => accepted.map_err(WikiWriteError::Acceptance)?,
-                () = state.unproved() => return Err(WikiWriteError::Quarantined),
-            };
-            if state.is_uncertain() {
-                return Err(WikiWriteError::Quarantined);
-            }
+        let job = self.start_operation(jobs::Admission::Legacy, move |pool, catalog| async move {
+            let accepted =
+                accept_on(&pool, command, at, max_pending, AcceptancePolicy::AllowNew).await.map_err(WikiWriteError::Acceptance)?;
             if !accepted.inserted {
                 return Err(WikiWriteError::ReplayRequiresFence);
             }
             Ok(CommittedWikiAcceptance { intent: accepted.intent, _catalog: catalog })
-        }))
+        });
+        async move { job?.await.map_err(|_| WikiWriteError::Uncertain)? }
     }
 
     /// Close admission and wait for actual worker-future destruction, then for the

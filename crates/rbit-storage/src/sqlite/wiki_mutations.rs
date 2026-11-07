@@ -2,11 +2,12 @@
 mod authorization;
 pub mod full;
 pub mod ownership;
+pub(crate) mod protocol;
 mod rows;
 
 use std::num::NonZeroU32;
 
-use super::pool::Pool;
+use super::pool::{Pool, WriteTransaction};
 use crate::StorageError;
 use rbit_core::Timestamp;
 use rbit_wikis::{
@@ -30,6 +31,10 @@ pub enum WikiMutationError {
     VisibleReplay,
     /// An exact command was terminally refused; it is never accepted again.
     Aborted,
+    /// Recovery never inserts a missing command in place of an original request.
+    MissingIntent,
+    /// A stopped recovery scope no longer matches the current protocol epoch.
+    StaleProtocol,
 }
 impl From<StorageError> for WikiMutationError {
     fn from(error: StorageError) -> Self {
@@ -60,7 +65,7 @@ impl WikiMutationStore {
     /// This legacy general pool uses NORMAL synchronization; successful acceptance
     /// here is not a power-loss durability acknowledgement.
     pub async fn accept(&self, command: WikiWriteCommand, at: Timestamp, max_pending: NonZeroU32) -> Result<WikiIntent, WikiMutationError> {
-        Ok(accept_on(&self.pool, command, at, max_pending).await?.intent)
+        Ok(accept_on(&self.pool, command, at, max_pending, AcceptancePolicy::AllowNew).await?.intent)
     }
 }
 
@@ -69,17 +74,38 @@ struct AcceptedCommand {
     inserted: bool,
 }
 
+#[derive(Clone, Copy)]
+enum AcceptancePolicy {
+    AllowNew,
+    ExistingAtEpoch(i64),
+}
+
+/// Recovery replay is admitted only under the exact still-preparing protocol epoch.
+async fn require_policy_epoch(tx: &mut WriteTransaction, policy: AcceptancePolicy) -> Result<(), WikiMutationError> {
+    let AcceptancePolicy::ExistingAtEpoch(expected) = policy else {
+        return Ok(());
+    };
+    let (mode, epoch): (String, i64) =
+        sqlx::query_as("SELECT mode,epoch FROM wiki_writer_protocol WHERE singleton=1").fetch_one(&mut **tx).await?;
+    if mode != "preparing" || epoch != expected {
+        return Err(WikiMutationError::StaleProtocol);
+    }
+    Ok(())
+}
+
 async fn accept_on(
     pool: &Pool,
     command: WikiWriteCommand,
     at: Timestamp,
     max_pending: NonZeroU32,
+    policy: AcceptancePolicy,
 ) -> Result<AcceptedCommand, WikiMutationError> {
     let (repository, wiki, expected_head, expected_page) = match command.expected {
         WikiExpected::Create { repository, wiki, head } => (repository, wiki, head, None),
         WikiExpected::Change { repository, wiki, head, page } => (repository, wiki, Some(head), Some(page)),
     };
     let mut tx = pool.begin_immediate().await?;
+    require_policy_epoch(&mut tx, policy).await?;
     let access = authorization::load(&mut tx, repository, command.actor).await?;
     let authorization::AuthorizedWiki { access: facts, wiki: current_wiki, store, head, actor_incarnation } =
         access.decode(repository, command.actor)?;
@@ -101,6 +127,9 @@ async fn accept_on(
         }
         tx.commit().await?;
         return Ok(AcceptedCommand { intent, inserted: false });
+    }
+    if matches!(policy, AcceptancePolicy::ExistingAtEpoch(_)) {
+        return Err(WikiMutationError::MissingIntent);
     }
     let pending: bool =
         sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM wiki_mutation_intents WHERE wiki_id=? AND state IN ('pending','quarantined'))")

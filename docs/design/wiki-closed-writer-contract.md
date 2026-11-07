@@ -8,15 +8,18 @@ wiki protocol/scan state after identity 0068; immutable 0065/0066 are not rewrit
 
 0069 introduces one singleton protocol state: legacy, preparing, managed. Default
 legacy preserves existing inactive read/preparation fixtures and NORMAL acceptance.
-Transition requires the actual catalog-adjacent lease, managed root lease and an
+Current official general connections register a legacy-only callback. An old
+unregistered connection refuses after 0069 schema installation already; it does not
+gain legacy compatibility merely from that mode. Transition requires the actual catalog-adjacent lease, managed root lease and an
 owned FULL connection. Preparing/managed reject default/legacy writes to every
 0065/0066 table, including protocol control, actor/page allocation and intents.
 Persistent BEFORE INSERT/UPDATE/DELETE triggers require a distinct wiki-writer
 collation registered ONLY on the private owned FULL connection. It is a software
 compatibility capability, not an authentication secret or a parsed durable proof.
 
-Cached legacy statements must refuse after transition through SQLite schema
-repreparation. Test a statement executed/cached before activation, not merely a new
+Cached registered-default statements must refuse after the mode-row transition;
+they evaluate the current mode even without another schema change. Unregistered
+old statements refuse on schema repreparation. Test a statement executed/cached before activation, not merely a new
 connection missing the collation. Read-only queries and unrelated request SQL retain
 their existing shape and GENERAL NORMAL pool synchronization.
 

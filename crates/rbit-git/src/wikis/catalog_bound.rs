@@ -3,7 +3,11 @@ use super::{
     WikiObjectError,
     managed_writer::{PreparedWikiObjects, WikiObjectWriter},
 };
-use rbit_wikis::{WikiRevisionId, commands::WikiIntent, ownership::WikiCatalogOwnership};
+use rbit_wikis::{
+    WikiRevisionId, WikiStoreId,
+    commands::WikiIntent,
+    ownership::{WikiCatalogOwnership, WikiObjectOwnership},
+};
 use std::{fmt, sync::Arc};
 
 struct BoundOwner<C> {
@@ -67,5 +71,24 @@ impl<C: WikiCatalogOwnership> CatalogBoundWikiObjects<C> {
             .prepare_retaining(intent, Arc::clone(&self.owner), |owner| owner.catalog.check_bound().map_err(|_| WikiObjectError::Binding))
             .await?;
         Ok(CatalogPreparedWikiObjects { prepared, _owner: owner })
+    }
+}
+
+impl<C: WikiCatalogOwnership> WikiCatalogOwnership for CatalogBoundWikiObjects<C> {
+    type Error = WikiObjectError;
+    fn check_bound(&self) -> Result<(), Self::Error> {
+        self.owner.catalog.check_bound().map_err(|_| WikiObjectError::Binding)
+    }
+    fn store_id(&self) -> WikiStoreId {
+        self.owner.catalog.store_id()
+    }
+    fn catalog_path(&self) -> &std::path::Path {
+        self.owner.catalog.catalog_path()
+    }
+}
+impl<C: WikiCatalogOwnership> WikiObjectOwnership for CatalogBoundWikiObjects<C> {
+    fn check_objects_bound(&self) -> Result<(), Self::Error> {
+        self.check_bound()?;
+        self.owner.writer.check_objects_bound()
     }
 }

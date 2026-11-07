@@ -19,9 +19,11 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous};
 /// Mode/version checks are compatibility controls, never DB-owner authentication.
 /// Read-only tools
 /// need not opt in. Do not use this to hide a mixed-version deployment.
+/// Wiki registration is LEGACY-only: managed Wiki authority belongs exclusively
+/// to the private owned-FULL/root-guard composition, not this general connection.
 #[must_use]
 pub fn register(options: SqliteConnectOptions) -> SqliteConnectOptions {
-    options
+    super::wiki_mutations::protocol::legacy_options(options)
         .collation("rbit_credential_writer_v1", str::cmp)
         .collation("rbit_credential_layout_v2", str::cmp)
         .collation("rbit_credential_fenced_v2", str::cmp)

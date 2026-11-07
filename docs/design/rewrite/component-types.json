@@ -125,6 +125,7 @@
         "lib::sqlite::wiki_mutations::ownership::WikiCatalogLeaseError",
         "lib::sqlite::wiki_mutations::ownership::files::Identity",
         "lib::sqlite::wiki_mutations::AcceptedCommand",
+        "lib::sqlite::wiki_mutations::AcceptancePolicy",
         "lib::sqlite::wiki_mutations::full::WikiCatalogHandle",
         "lib::sqlite::wiki_mutations::full::WikiWriteError",
         "lib::sqlite::wiki_mutations::full::CommittedWikiAcceptance",
@@ -133,7 +134,13 @@
         "lib::sqlite::wiki_mutations::full::retention::NativeState",
         "lib::sqlite::wiki_mutations::full::retention::InitializationAttempt",
         "lib::sqlite::wiki_mutations::full::retention::NativeRetention",
-        "lib::sqlite::wiki_mutations::full::shutdown::Completion"
+        "lib::sqlite::wiki_mutations::full::shutdown::Completion",
+        "lib::sqlite::wiki_mutations::full::jobs::Admission",
+        "lib::sqlite::wiki_mutations::full::fencing::GrantedObjects",
+        "lib::sqlite::wiki_mutations::full::fencing::WikiRecoveryObjects",
+        "lib::sqlite::wiki_mutations::full::fencing::FencedWikiRecovery",
+        "lib::sqlite::wiki_mutations::full::fencing::FencedWikiAcceptance",
+        "lib::sqlite::wiki_mutations::full::fencing_tests::FileObjects"
       ]
     },
     {
