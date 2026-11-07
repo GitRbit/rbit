@@ -90,7 +90,8 @@
         "lib::sqlite::Database",
         "lib::sqlite::pool::Pool",
         "lib::sqlite::pool::Conn",
-        "lib::sqlite::pool::WriteTransaction"
+        "lib::sqlite::pool::WriteTransaction",
+        "lib::sqlite::protocol::SqlProtocol"
       ]
     },
     {

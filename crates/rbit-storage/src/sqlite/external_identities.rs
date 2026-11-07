@@ -203,6 +203,8 @@ impl ExternalIdentityStore {
         identity: NewExternalIdentity<'_>,
         registration_open: bool,
     ) -> Result<Result<User, LinkConflict>, StorageError> {
+        #[cfg(test)]
+        self.pool.require_legacy()?;
         let now = Timestamp::now();
         let mut tx = self.pool.begin().await?;
         let user = insert_user(&mut tx, new, Some(registration_open), email_verified).await?;

@@ -44,6 +44,8 @@ use sqlx::{
 pub(crate) struct Pool {
     inner: SqlitePool,
     store: &'static str,
+    #[cfg(test)]
+    protocol: super::protocol::SqlProtocol,
 }
 
 impl fmt::Debug for Pool {
@@ -70,7 +72,21 @@ impl Mode {
 
 impl Pool {
     pub(crate) fn new(inner: SqlitePool, store: &'static str) -> Self {
-        Self { inner, store }
+        Self {
+            inner,
+            store,
+            #[cfg(test)]
+            protocol: super::protocol::SqlProtocol::legacy(),
+        }
+    }
+    #[cfg(test)]
+    pub(super) fn with_protocol(mut self, protocol: super::protocol::SqlProtocol) -> Self {
+        self.protocol = protocol;
+        self
+    }
+    #[cfg(test)]
+    pub(crate) fn require_legacy(&self) -> Result<(), crate::StorageError> {
+        self.protocol.require_legacy()
     }
 
     /// A connection for several statements outside a transaction.

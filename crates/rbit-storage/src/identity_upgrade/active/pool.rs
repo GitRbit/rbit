@@ -9,8 +9,15 @@ use sqlx::{
 };
 use std::sync::Arc;
 
-struct ActiveSqlPool {
+pub(crate) struct ActiveSqlPool {
     inner: SqlitePool,
+}
+impl ActiveSqlPool {
+    /// Crate-private ownership handoff to Database, never a public raw-pool escape.
+    pub(crate) fn into_storage_parts(self) -> (SqlitePool, crate::sqlite::protocol::SqlProtocol) {
+        let protocol = crate::sqlite::protocol::SqlProtocol::accepted(&self);
+        (self.inner, protocol)
+    }
 }
 impl std::fmt::Debug for ActiveSqlPool {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -46,7 +53,7 @@ pub(super) async fn accept_connection(
     bind_writer(connection, db).await
 }
 impl ActiveIdentityPair {
-    async fn sql_pool(&mut self) -> Result<ActiveSqlPool, Error> {
+    pub(super) async fn sql_pool(&mut self) -> Result<ActiveSqlPool, Error> {
         // Derive from the actual accepted connection; never accept another caller's
         // filename, options, pool or claimed pair as the authority for this factory.
         let paths: Vec<String> = sqlx::query_scalar("SELECT file FROM pragma_database_list WHERE name='main' LIMIT 2")
@@ -62,7 +69,7 @@ impl ActiveIdentityPair {
         let checkpoint = self.checkpoint;
         let limits = self.owner.limits;
         let inner = SqlitePoolOptions::new()
-            .max_connections(2)
+            .max_connections(crate::sqlite::connection_capacity())
             .after_connect(move |connection, _| {
                 let db = Arc::clone(&db);
                 Box::pin(async move { accept_connection(connection, db, checkpoint, limits).await.map_err(|error| protocol_error(&error)) })

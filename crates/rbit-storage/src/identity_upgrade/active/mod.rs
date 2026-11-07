@@ -2,6 +2,7 @@
 mod kv;
 mod pool;
 mod sql;
+pub(crate) use pool::ActiveSqlPool;
 #[cfg(test)]
 mod tests;
 use super::{model::Checkpoint, owner::StoppedIdentityUpgrade};
@@ -21,6 +22,10 @@ impl ActiveIdentityPair {
     }
     fn session_store(&self) -> crate::SessionStore {
         crate::kv::sessions::epoch::runtime::sessions(self)
+    }
+    async fn database(&mut self, key_file: &std::path::Path) -> Result<crate::Database, crate::StorageError> {
+        let pool = self.sql_pool().await.map_err(|error| crate::StorageError::Corrupt(error.to_string()))?;
+        crate::Database::from_accepted(pool, key_file).await
     }
 }
 impl std::fmt::Debug for ActiveIdentityPair {

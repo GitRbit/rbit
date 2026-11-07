@@ -12,6 +12,11 @@ This section remains unreleased until the complete rewrite and release gates pas
 
 ### Security
 
+- Prepare private accepted-pair SQL composition that refuses legacy credential and
+  one-use proof writes before SQL while retaining allowed profile and sealing paths.
+  Production runtime, all authentication producers and restore remain unselected;
+  real-store protocol fixtures await the compiler acceptance gates.
+
 - Prepare sealed, test-gated active session modes that refuse legacy mutations and
   commit a persistent runtime witness with bound session changes and revocation.
   Production startup, credential finalizers, all issuers and restore selection remain

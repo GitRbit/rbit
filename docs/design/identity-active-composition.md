@@ -123,6 +123,56 @@ than inheriting broad v3 authority. All public aliases remain compatible in lega
 mode. A private pool alone does not enforce this: inspect every method handed that
 pool and all standalone recovery/CLI compositions before exposing runtime stores.
 
+### Current private SQL composition
+
+The same test-gated accepted-pair pool factory now hands its actual pool to the
+private `Database::from_accepted` constructor. A sealed `SqlProtocol`, mintable only
+from that opaque accepted pool, follows `Database::store` into labelled Pool clones.
+No public pool/options/transaction getter or active marker registration is added.
+The worker callbacks continue retaining the actual KV Arc after that handoff. Both
+factories use the original shared connection-capacity expression and tuned options.
+
+The active pool-bearing legacy create/create-initial/register/provider-register,
+password replacement/CAS, reset, reset-token-only consume, MFA step/recovery/passkey
+claims, pair initialization and `Database::migrate` refuse BEFORE any SQL. Original
+epoch claim and global credential-intent methods still use their existing transaction
+bodies. Reset's shared implementation checks its sealed legacy mode only for the
+legacy static branch; verification-token consumption remains available. Password
+replacement's guard is in its legacy-only helper, not the separate email helper.
+Profile/email/rename, preferences, suspension and ordinary sealing remain allowed.
+No PHC format/acceptance, audit, throttle or password-admission policy is changed.
+
+Free compatibility functions `credential_revocations::{stage,complete}` retain their
+public raw-sqlx-Transaction signatures. They do not have an in-memory Pool capability
+to inspect. Caller-owned normal/stopped-v2 connections are denied protected active
+DML by the persisted v3 guard, while read-only already-completed metadata remains
+readable. No public Database API exports its accepted transaction for those calls.
+This is a software-composition boundary, not protection against arbitrary in-process
+or DB-owner code that registers its own collation or edits the schema.
+
+Key loading and plaintext resealing share the old implementation after the applicable
+acceptance boundary. Missing keys for existing sealed values still refuse; wrong keys
+refuse before resealing. A new key is created only under the previous permitted
+unsealed-store rules, after accepted-pair validation. Actual temporary fixtures cover
+those errors and permitted sealing without touching real credentials.
+
+Eight more real-store fixtures are prepared: pre-SQL legacy refusal with zero logical
+work; allowed email/rename work counts and locale projection; original proof claim;
+caller-owned legacy transaction refusal; a real four-statement global credential
+transaction followed by zero-session witnessed cleanup and exact SQL acknowledgment;
+acknowledged cleanup followed by actual older SQL snapshot restoration; and missing,
+wrong and permitted plaintext-key handling. They are not executed here. Per-connection
+setup, trigger execution and redb write transactions are not measured by logical SQL
+work counters and are not claimed free.
+
+Settings `check_password_and_proof` remains a REQUIRED service-call-site gate: it
+currently invokes legacy claim methods and must carry the active resolved session's
+fixed epoch through its existing password/proof worker to original write predicates.
+It must not mint a receipt from mutable User flags or refresh an epoch after proof.
+The private Database is still unavailable to normal server/CLI composition; selecting
+it alone would intentionally make those old credential methods fail rather than
+silently preserve unfenced behavior. All other production closure gates still apply.
+
 ## Delivery gates
 
 Internal publication and restart code is an implementation seam, not activation.

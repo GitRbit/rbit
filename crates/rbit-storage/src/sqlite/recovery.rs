@@ -179,6 +179,10 @@ impl RecoveryStore {
         purpose: TokenPurpose,
         now: Timestamp,
     ) -> Result<Option<EmailTokenRecord>, StorageError> {
+        #[cfg(test)]
+        if purpose == TokenPurpose::Reset {
+            self.pool.require_legacy()?;
+        }
         let row: Option<TokenRow> = sqlx::query_as(concat!(
             "UPDATE email_tokens AS t SET used_at = ?1 WHERE ",
             honoured!(),

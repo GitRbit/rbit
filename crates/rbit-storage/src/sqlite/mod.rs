@@ -35,11 +35,14 @@ pub mod lfs;
 pub mod mirrors;
 pub mod notification_email;
 pub mod notifications;
+mod opening;
 pub mod orgs;
 mod pool;
 pub mod preferences;
 pub mod profiles;
 pub mod protection;
+#[cfg(test)]
+pub(crate) mod protocol;
 pub mod pulls;
 // Milestone 3: importing and push mirrors (M).
 pub mod push_mirrors;
@@ -82,6 +85,8 @@ pub struct Database {
     pool: SqlitePool,
     /// Seals the credentials stores keep (see [`crate::sealing`]).
     key: SealingKey,
+    #[cfg(test)]
+    protocol: protocol::SqlProtocol,
 }
 
 impl Database {
@@ -98,31 +103,28 @@ impl Database {
     pub async fn open_with_key_file(path: &Path, key_file: &Path) -> Result<Self, StorageError> {
         let options = writer_compatibility::database_options(path)?;
 
-        let pool = SqlitePoolOptions::new()
-            .max_connections(std::thread::available_parallelism().map_or(4, |n| n.get().clamp(2, 16)).try_into().unwrap_or(4))
-            .connect_with(options)
-            .await?;
+        let pool = SqlitePoolOptions::new().max_connections(connection_capacity()).connect_with(options).await?;
         crate::identity_upgrade::require_legacy_sql(&pool).await?;
         sqlx::migrate!("./migrations").run(&pool).await?;
         crate::identity_upgrade::require_legacy_sql(&pool).await?;
 
-        let key = match SealingKey::load(key_file)? {
-            Some(key) => key,
-            None if reseal::sample(&pool).await?.is_some() => {
-                return Err(StorageError::MissingKey(key_file.display().to_string()));
-            }
-            None => SealingKey::create(key_file)?,
+        let key = opening::key(&pool, key_file).await?;
+        let database = Self {
+            pool,
+            key,
+            #[cfg(test)]
+            protocol: protocol::SqlProtocol::legacy(),
         };
-        reseal::check_key(&pool, &key, key_file).await?;
-        reseal::seal_plaintext(&pool, &key).await?;
-        let database = Self { pool, key };
         database.optimize().await?;
         Ok(database)
     }
 
     /// The shared pool, labelled with `store` for the contention metrics (`pool`).
     fn store(&self, store: &'static str) -> pool::Pool {
-        pool::Pool::new(self.pool.clone(), store)
+        let pool = pool::Pool::new(self.pool.clone(), store);
+        #[cfg(test)]
+        let pool = pool.with_protocol(self.protocol);
+        pool
     }
 
     /// The key that seals stored credentials, for values kept outside a dedicated store
@@ -338,6 +340,9 @@ impl Database {
     pub async fn close(&self) {
         self.pool.close().await;
     }
+}
+pub(crate) fn connection_capacity() -> u32 {
+    std::thread::available_parallelism().map_or(4, |n| n.get().clamp(2, 16)).try_into().unwrap_or(4)
 }
 
 /// Query plan assertions for the stores' unit tests: the plan is the evidence that a

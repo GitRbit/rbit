@@ -74,6 +74,8 @@ impl AccountStore {
 
     /// Creates the account and its login atomically.
     pub async fn create_user(&self, new: NewUser) -> Result<User, StorageError> {
+        #[cfg(test)]
+        self.pool.require_legacy()?;
         let mut tx = self.pool.begin().await?;
         let user = insert_user(&mut tx, new, None, false).await?;
         tx.commit().await?;
@@ -82,6 +84,8 @@ impl AccountStore {
 
     /// Creates an administrator-provisioned account with a temporary password.
     pub async fn create_user_with_initial_password(&self, new: NewUser) -> Result<User, StorageError> {
+        #[cfg(test)]
+        self.pool.require_legacy()?;
         let mut tx = self.pool.begin().await?;
         let user = insert_user(&mut tx, new, None, false).await?;
         sqlx::query("UPDATE user_logins SET password_change_required = 1 WHERE account_id = ?").bind(user.id().0).execute(&mut *tx).await?;
@@ -100,6 +104,8 @@ impl AccountStore {
     /// Registers a user, deciding the first administrator inside the write transaction.
     /// Closed registration admits only the first user; `new.is_admin` is ignored.
     pub async fn register_user(&self, new: NewUser, registration_open: bool) -> Result<User, StorageError> {
+        #[cfg(test)]
+        self.pool.require_legacy()?;
         let mut tx = self.pool.begin().await?;
         let user = insert_user(&mut tx, new, Some(registration_open), false).await?;
         tx.commit().await?;

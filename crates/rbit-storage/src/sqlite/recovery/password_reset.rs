@@ -54,6 +54,10 @@ impl RecoveryStore {
         password_hash: &str,
         now: Timestamp,
     ) -> Result<Option<ResetCompletion>, StorageError> {
+        #[cfg(test)]
+        if !ORIGINAL {
+            self.pool.require_legacy()?;
+        }
         let mut tx = self.pool.begin().await?;
         // SAME eligibility and one-use statement in both modes, before allocation.
         let row: Option<TokenRow> = sqlx::query_as(concat!(

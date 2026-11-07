@@ -9,6 +9,8 @@ impl CredentialRevocationStore {
     /// Explicit composition only, after a separately accepted empty-KV initialization.
     /// No replacement/reset/adoption. Never called by migration or `Services::new`.
     pub async fn initialize_pair(&self, sessions: &EpochSessionStore) -> Result<SessionPairIdentity, StorageError> {
+        #[cfg(test)]
+        self.pool.require_legacy()?;
         let identity = sessions.pair_identity().await?.ok_or_else(rows::invalid)?;
         let bytes = identity.storage_bytes();
         let mut tx = self.pool.begin().await?;
