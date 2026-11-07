@@ -201,3 +201,23 @@ bindings, then step5 recovery and step6 issuer/resolver through that repository.
 then bind the three credential services to their new store operations inside the
 existing owned finalization worker and switch step7 together. There is no safe
 route-only activation. Until those gates close this bundle remains unactivated.
+
+## Deployment/configuration entry seam
+
+`rbit-server::config::ConfigSources::parse` now locates deployment storage without
+opening/migrating SQLite, opening/creating KV, loading keys or resealing data. Its
+opaque saved-configuration data is obtained only through `read_saved` over a
+caller-supplied, already-owned Database; `finish` retains file → saved → legacy-env
+→ current-env precedence, provider environment handling and storage exclusion.
+The ordinary `config::load` is production-used and delegates to these same methods
+while preserving its existing legacy open/read/close behavior and one saved-settings
+query. This extraction alone does not make ordinary startup accept ACTIVE stores.
+
+The private ACTIVE host must consume storage-free sources, acquire the actual
+existing KV and verify checksummed SQL/current publication first, then construct
+its KV-owning SQL pool/key/sealing boundary and hydrate saved settings. Bind/network/
+background readiness follows complete recovery and configuration/storage agreement.
+Do not route ACTIVE through legacy load() or pass a parsed mode/boolean as acceptance.
+Closed temporary tests cover invalid SQLite/key paths untouched during parse and
+actual sealed-settings hydration/work count; compiler/runtime execution remains a
+separate root validation gate.

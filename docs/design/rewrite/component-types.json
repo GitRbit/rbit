@@ -134,6 +134,13 @@
         "lib::wikis::objects::PageInput",
         "lib::wikis::exact_object::Compare"
       ]
+    },
+    {
+      "crate": "crates/rbit-server",
+      "types": [
+        "main::config::sources::ConfigSources",
+        "main::config::sources::SavedConfig"
+      ]
     }
   ]
 }

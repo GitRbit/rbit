@@ -4,10 +4,6 @@
 use std::path::Path;
 
 use anyhow::Context;
-use figment::{
-    Figment,
-    providers::{Env, Format, Serialized, Toml},
-};
 use rbit_core::{Config, config::AuthConfig};
 
 /// Nested keys use a double underscore: `RBIT_SERVER__PUBLIC_URL`.
@@ -16,56 +12,23 @@ const ENV_PREFIX: &str = "RBIT_";
 const LEGACY_ENV_PREFIX: &str = "RUSTIT_";
 const ENV_SEPARATOR: &str = "__";
 
+mod sources;
+pub(crate) use sources::ConfigSources;
+
 pub async fn load(file: Option<&Path>) -> anyhow::Result<Config> {
-    let mut figment = Figment::from(Serialized::defaults(Config::default()));
-    if let Some(file) = file {
-        anyhow::ensure!(file.exists(), "configuration file {} does not exist", file.display());
-        figment = figment.merge(Toml::file(file));
-    }
-    // Locate the database using deployment sources only. Storage relocation is an offline operation.
-    let locator: Config = figment
-        .clone()
-        .merge(
-            Env::prefixed(LEGACY_ENV_PREFIX).split(ENV_SEPARATOR).filter(|key| key.as_str().to_ascii_lowercase().starts_with("storage.")),
-        )
-        .merge(Env::prefixed(ENV_PREFIX).split(ENV_SEPARATOR).filter(|key| key.as_str().to_ascii_lowercase().starts_with("storage.")))
-        .extract()
-        .context("invalid storage configuration")?;
-    if locator.storage.sqlite_path().exists() && std::env::var_os("RBIT_IGNORE_ADMIN_CONFIG").is_none() {
+    let sources = ConfigSources::parse(file)?;
+    let locator = sources.deployment();
+    let saved = if locator.storage.sqlite_path().exists() && sources.reads_saved_configuration() {
         let database = rbit_storage::Database::open_with_key_file(&locator.storage.sqlite_path(), &locator.storage.secret_key_path())
             .await
             .context("cannot read admin configuration")?;
-        let entries = database.instance_settings().load().await?;
-        let key = database.sealing_key().clone();
+        let saved = sources.read_saved(&database).await?;
         database.close().await;
-        if let Some((_, document)) = entries.into_iter().find(|(key, _)| key == rbit_services::admin::configuration::CONFIGURATION_KEY) {
-            let config = rbit_services::admin::configuration::open_stored(&document, &key)
-                .map_err(anyhow::Error::msg)
-                .context("invalid administrator configuration; set RBIT_IGNORE_ADMIN_CONFIG=1 to recover")?;
-            let mut value = serde_json::to_value(config)?;
-            value.as_object_mut().expect("config is an object").remove("storage");
-            figment = figment.merge(Serialized::defaults(value));
-        }
-    }
-    for prefix in [LEGACY_ENV_PREFIX, ENV_PREFIX] {
-        // Milestone 3 (O): `AUTH__PROVIDERS__<N>__…` would replace the whole providers
-        // array in figment; those are applied below instead.
-        let env = Env::prefixed(prefix)
-            .split(ENV_SEPARATOR)
-            .ignore(&["config", "ignore_admin_config"])
-            .filter(|key| !AuthConfig::is_provider_env_key(key.as_str()));
-        figment = figment.merge(env);
-    }
-    let mut config: Config = figment.extract().context("invalid configuration")?;
-    // Milestone 3: external sign-in (O): provider secrets from the environment, then
-    // every provider checked, so a typo fails at start-up rather than at the first sign-in.
-    config
-        .auth
-        .apply_provider_env(provider_env(std::env::vars()))
-        .map_err(|problem| anyhow::anyhow!("invalid configuration: {problem}"))?;
-    config.auth.validate().map_err(|problems| anyhow::anyhow!("invalid [auth] configuration: {problems}"))?;
-    rbit_services::admin::configuration::validate_configuration(&config).map_err(anyhow::Error::msg)?;
-    Ok(config)
+        saved
+    } else {
+        None
+    };
+    sources.finish(saved)
 }
 
 /// `RBIT_AUTH__PROVIDERS__…` (and the legacy `RUSTIT_` spelling) without the prefix,
