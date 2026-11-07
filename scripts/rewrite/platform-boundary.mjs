@@ -42,6 +42,11 @@ export function inspectPlatformBoundary({ workspace, platform, sources, manifest
   let exceptions = 0;
   for (const [path, text] of sources) {
     if (!path.endsWith(".rs")) continue;
+    // Conservative fail-closed rule: cfg_attr can nest arbitrary attribute syntax
+    // and lower Cargo's deny. No conditional unsafe policy is part of this review.
+    if (/\bcfg_attr\b/.test(text) && /\bunsafe_code\b/.test(text)) {
+      violations.push(`${path}: conditional unsafe lint policy is forbidden`);
+    }
     // Attribute-only, not a textual unsafe-block parser: compiler forbid/deny
     // remains authoritative for tokens, macros and all nonexception modules.
     for (const match of text.matchAll(/^[ \t]*#!?\[\s*(allow|expect|warn)\s*\(([^)]*\bunsafe_code\b[^)]*)\)\s*\]/gm)) {

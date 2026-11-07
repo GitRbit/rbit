@@ -36,3 +36,10 @@ test("removing or renaming the single exception fails closed", () => {
   fixture.sources[0][0] = "crates/rbit-platform/src/windows/renamed.rs";
   assert.match(inspectPlatformBoundary(fixture).join("\n"), /Exactly one/);
 });
+test("cfg_attr cannot hide a second unsafe lint exception", () => {
+  const fixture = base();
+  fixture.sources.push(["crates/rbit-platform/src/extra.rs", "#![cfg_attr(windows, allow(unsafe_code))]\nunsafe fn extra_boundary() {}\n"]);
+  assert.match(inspectPlatformBoundary(fixture).join("\n"), /conditional unsafe lint policy/);
+  fixture.sources[2][1] = "#![cfg_attr(windows, cfg_attr(feature = \"extra\", allow(unsafe_code)))]\n";
+  assert.match(inspectPlatformBoundary(fixture).join("\n"), /conditional unsafe lint policy/);
+});
