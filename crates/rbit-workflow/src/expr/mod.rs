@@ -73,7 +73,7 @@ mod parse;
 
 use std::{collections::BTreeMap, fmt};
 
-pub use parse::{Accessor, Comparison, Expr, Function};
+pub use self::parse::{Accessor, Comparison, Expr, Function};
 pub use serde_json::Value;
 
 use crate::spec::JobResult;
