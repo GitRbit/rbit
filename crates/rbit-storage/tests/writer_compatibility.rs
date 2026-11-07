@@ -119,7 +119,7 @@ async fn every_scoped_dml_requires_the_exact_protocol_not_a_different_version() 
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert_eq!(count, (PROTECTED.len() * 3) as i64);
+    assert_eq!(count, i64::try_from(PROTECTED.len() * 3).unwrap());
     // Unrelated data remains outside this compatibility contract.
     sqlx::query("INSERT INTO audit_events(category,action,created_at) VALUES('auth','fixture',1)").execute(&mut unknown).await.unwrap();
     unknown.close().await.unwrap();
