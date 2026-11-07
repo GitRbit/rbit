@@ -100,7 +100,19 @@
         "lib::plan::matrix::Combination",
         "lib::plan::matrix::Axes",
         "lib::plan::group_context::GroupContext",
-        "lib::plan::tests::support::Files"
+        "lib::plan::tests::support::Files",
+        "lib::expr::ExprError",
+        "lib::expr::contexts::Status",
+        "lib::expr::contexts::Contexts",
+        "lib::expr::contexts::ContextMap",
+        "lib::expr::templates::Template",
+        "lib::expr::templates::Part",
+        "lib::expr::templates::Condition",
+        "lib::expr::syntax::Expr",
+        "lib::expr::syntax::Accessor",
+        "lib::expr::syntax::Comparison",
+        "lib::expr::syntax::Function",
+        "lib::expr::parse::Parser"
       ]
     }
   ]
