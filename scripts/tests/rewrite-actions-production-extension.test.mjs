@@ -8,7 +8,7 @@ import { jobChecks } from "../../devtools/actions-visual/production-job.mjs";
 import { expectedLogText } from "../../devtools/actions-visual/production-log-evidence.mjs";
 import { productionOrigin, productionOverview, productionJob } from "../../devtools/actions-visual/production-policy.mjs";
 
-function model({ loseDraft = false, loseOpen = false, wrongRaw = false, wrongNative = false } = {}) {
+function model({ loseDraft = false, loseOpen = false, wrongRaw = false, wrongNative = false, mirroredLog = false, alteredLog = false } = {}) {
   const contexts = [], captures = [], stages = [], evidence = [];
   let finished = false;
   const fixture = { authenticate: async () => {}, healthy: () => {}, finishLogJob: async () => { finished = true; } };
@@ -52,7 +52,10 @@ function model({ loseDraft = false, loseOpen = false, wrongRaw = false, wrongNat
           focus: async () => { focus = selector; },
           fill: async value => { assert.equal(selector, "#runs-branch"); branch = value; },
           inputValue: async () => branch,
-          evaluate: async () => focus === selector,
+          evaluate: async () => selector.endsWith(".code-lines")
+            ? { direction: mirroredLog ? "rtl" : "ltr", gutterBefore: !mirroredLog,
+              lines: ["waiting for finish", alteredLog ? "*** task token" : "task token ***"] }
+            : focus === selector,
           click: async () => {
             if (selector.includes("summary")) open = !open;
             else { assert.match(selector, /button\[type="submit"\]/); url = new URL(productionOrigin + productionOverview + "?branch=main"); }
@@ -125,4 +128,14 @@ test("used driver reuses the same fixture and proves masked raw data before the 
   const job = await readFile(new URL("production-job.mjs", root), "utf8");
   assert.ok(job.indexOf("await rawLogEvidence(page, false)") < job.indexOf('capture(page, "production-job-live-desktop")'));
   assert.doesNotMatch(job, /page\.request|browser\.request|APIRequestContext|\.post\(|\.route\(/);
+});
+
+
+test("real RTL acceptance rejects mirrored log gutters and changed machine text", async () => {
+  for (const options of [{ mirroredLog: true }, { alteredLog: true }]) {
+    const fixture = model(options);
+    await assert.rejects(fixture.job(), assert.AssertionError);
+    assert.deepEqual(fixture.captures, ["production-job-live-desktop"]);
+    assert.ok(fixture.contexts.every(context => context.closed));
+  }
 });

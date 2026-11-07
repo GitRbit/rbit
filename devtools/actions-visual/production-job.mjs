@@ -43,7 +43,17 @@ export async function jobChecks(browser, fixture, capture, stage, record) {
     assert.equal(await page.locator("#job").getAttribute("lang"), "ar-XB");
     assert.equal(await page.locator("#job").getAttribute("dir"), "rtl");
     assert.equal(await page.locator("html").getAttribute("data-theme"), "dna-dark");
-    await boundedPreview(page); await checkPage(page, faults);
+    await boundedPreview(page);
+    const log = await page.locator('details[data-step="1"] .code-lines').evaluate(grid => {
+      const number = grid.querySelector(".line-number").getBoundingClientRect();
+      const content = grid.querySelector(".line-code").getBoundingClientRect();
+      return { direction: getComputedStyle(grid).direction, gutterBefore: number.right <= content.left,
+        lines: [...grid.querySelectorAll(".line-code")].map(line => line.textContent) };
+    });
+    assert.equal(log.direction, "ltr", "machine logs retain LTR inside the localized RTL page");
+    assert.equal(log.gutterBefore, true, "line-number gutters remain before their machine text");
+    assert.deepEqual(log.lines, ["waiting for finish", "task token ***"]);
+    await checkPage(page, faults);
     await capture(page, "production-job-live-mobile-rtl-dark");
   });
   stage("job-nojs-native-details");

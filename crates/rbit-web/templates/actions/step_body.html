@@ -7,7 +7,7 @@
   {% else %}
   {% if log.more_before %}<p class="border-b border-line px-4 py-2 text-xs text-ink-muted">{{ text.earlier_lines }}{% if !step.log_url.is_empty() %} <a class="link" href="{{ step.log_url }}">{{ text.show_more }}</a>{{ text.or }}{% endif %} {{ text.download_all }}</p>{% endif %}
   <div class="overflow-x-auto">
-    <div class="code-lines {{ log.columns() }}">
+    <div class="code-lines {{ log.columns() }}" dir="ltr">
       {%- for block in log.blocks() %}
       <div class="vblock" data-rows="{{ block.len() }}">
         {%- for line in block.rows() %}
