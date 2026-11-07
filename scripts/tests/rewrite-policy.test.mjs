@@ -180,3 +180,14 @@ test("complete mail crate has strict physical and cumulative target coverage", (
   assert.deepEqual(checkSizes([["crates/rbit-mail/src/messages/envelope.rs", "x\n".repeat(400)]], baseline), []);
   assert.deepEqual(strictCrateNames({ workspace_members: ["mail"], packages: [{ id: "mail", name: "rbit-mail" }] }, baseline), ["rbit-mail"]);
 });
+
+
+test("complete authentication crate retires both oversized legacy file exemptions", () => {
+  const baseline = { crates: [{ name: "rbit-auth" }], authoredSizeBaseline: [
+    { path: "crates/rbit-auth/src/oidc.rs", lines: 663 },
+    { path: "crates/rbit-auth/src/webauthn.rs", lines: 576 },
+  ] };
+  const files = baseline.authoredSizeBaseline.map(({ path }) => [path, "x\n".repeat(401)]);
+  assert.equal(checkSizes(files, baseline).length, 2);
+  assert.deepEqual(strictCrateNames({ workspace_members: ["auth"], packages: [{ id: "auth", name: "rbit-auth" }] }, baseline), ["rbit-auth"]);
+});

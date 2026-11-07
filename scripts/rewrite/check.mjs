@@ -12,7 +12,7 @@ import { checkPlannedAdditions } from "./planned-features.mjs";
 
 export const LIMIT = 400;
 // These complete former legacy crates now obey strict physical and cumulative bounds.
-export const PROMOTED_CRATES = Object.freeze(["rbit-workflow", "rbit-mail"]);
+export const PROMOTED_CRATES = Object.freeze(["rbit-workflow", "rbit-mail", "rbit-auth"]);
 
 /** The same whole-crate selection drives the real AST command and fixture checks. */
 export function strictCrateNames(metadata, baseline) {
