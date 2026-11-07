@@ -80,7 +80,9 @@
         "lib::identity_upgrade::owned::IdentityUpgradeFailure",
         "lib::identity_upgrade::owned::Operation",
         "lib::identity_upgrade::owned::Outcome",
-        "lib::identity_upgrade::layout::MigrationRow"
+        "lib::identity_upgrade::layout::MigrationRow",
+        "lib::identity_upgrade::active::ActiveIdentityPair",
+        "lib::identity_upgrade::active::pool::ActiveSqlPool"
       ]
     },
     {

@@ -12,6 +12,11 @@ This section remains unreleased until the complete rewrite and release gates pas
 
 ### Security
 
+- Prepare migration0068's empty ACTIVE-publication layout and internal paired-store
+  acceptance fixtures. Production upgrade/startup and all issuers remain unactivated;
+  the mandatory runtime witness writers and supported restore protocol are still open.
+  See [closed active composition](docs/design/identity-active-composition.md).
+
 - Prepare explicit stopped identity layout installation and paired session invalidation
   checkpoints. Migration 0067 changes writer compatibility; stop mixed versions and
   retain a consistent SQLite/KV/key backup before installation. Defaults stay legacy;

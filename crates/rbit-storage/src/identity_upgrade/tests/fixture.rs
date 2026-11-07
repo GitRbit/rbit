@@ -6,14 +6,16 @@ use std::{
     num::{NonZeroU32, NonZeroU64},
     path::PathBuf,
 };
-pub(super) const RECORDS: redb::TableDefinition<'_, &[u8; 32], &[u8]> = redb::TableDefinition::new("sessions_v2");
-pub(super) const INDEX: redb::TableDefinition<'_, (i64, &[u8; 32]), ()> = redb::TableDefinition::new("account_sessions");
-pub(super) const EPOCHS: redb::TableDefinition<'_, &[u8; 32], &[u8; 32]> = redb::TableDefinition::new("session_epochs_v1");
-pub(super) const LEGACY: redb::TableDefinition<'_, &[u8; 32], &[u8; 16]> = redb::TableDefinition::new("sessions");
-pub(super) fn limits() -> IdentityUpgradeLimits {
+pub(in crate::identity_upgrade) const RECORDS: redb::TableDefinition<'_, &[u8; 32], &[u8]> = redb::TableDefinition::new("sessions_v2");
+pub(in crate::identity_upgrade) const INDEX: redb::TableDefinition<'_, (i64, &[u8; 32]), ()> =
+    redb::TableDefinition::new("account_sessions");
+pub(in crate::identity_upgrade) const EPOCHS: redb::TableDefinition<'_, &[u8; 32], &[u8; 32]> =
+    redb::TableDefinition::new("session_epochs_v1");
+pub(in crate::identity_upgrade) const LEGACY: redb::TableDefinition<'_, &[u8; 32], &[u8; 16]> = redb::TableDefinition::new("sessions");
+pub(in crate::identity_upgrade) fn limits() -> IdentityUpgradeLimits {
     IdentityUpgradeLimits { max_record_bytes: NonZeroU32::new(65536).unwrap(), max_entries: NonZeroU64::new(4096).unwrap() }
 }
-pub(super) struct Fixture {
+pub(in crate::identity_upgrade) struct Fixture {
     pub directory: tempfile::TempDir,
     pub sql: PathBuf,
     pub kv: PathBuf,

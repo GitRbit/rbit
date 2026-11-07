@@ -4,6 +4,8 @@ mod binding;
 mod identity;
 mod lifecycle;
 mod revocation;
+#[cfg(test)]
+pub(crate) mod runtime;
 mod snapshot;
 pub(crate) mod stopped;
 pub use revocation::AppliedSessionRevocation;

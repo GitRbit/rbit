@@ -20,6 +20,13 @@ impl Scan {
     }
 }
 pub(super) fn inspect(db: &redb::Database, limits: IdentityUpgradeLimits) -> Result<Scan, Error> {
+    inspect_layout(db, limits, false)
+}
+#[cfg(test)]
+pub(super) fn inspect_active(db: &redb::Database, limits: IdentityUpgradeLimits) -> Result<Scan, Error> {
+    inspect_layout(db, limits, true)
+}
+fn inspect_layout(db: &redb::Database, limits: IdentityUpgradeLimits, active: bool) -> Result<Scan, Error> {
     let tx = db.begin_read().map_err(kv_error)?;
     let mut scan = Scan { checkpoint: super::mode(db)?, ..Scan::default() };
     for table in tx.list_tables().map_err(kv_error)? {
@@ -35,6 +42,7 @@ pub(super) fn inspect(db: &redb::Database, limits: IdentityUpgradeLimits) -> Res
                 super::super::identity::PAIR.name(),
             ]
             .contains(&name)
+            && !(active && ["credential_session_active_v3", "credential_session_floor_v3"].contains(&name))
         {
             return Err(Error::Invalid);
         }

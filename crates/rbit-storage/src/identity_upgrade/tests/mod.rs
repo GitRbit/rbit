@@ -1,4 +1,4 @@
-mod fixture;
+pub(super) mod fixture;
 mod install;
 mod phases;
 mod refusal;

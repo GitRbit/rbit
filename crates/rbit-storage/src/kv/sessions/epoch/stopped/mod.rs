@@ -9,6 +9,58 @@ use crate::{
 use redb::{MultimapTableHandle, ReadableDatabase, ReadableTable, ReadableTableMetadata, TableDefinition, TableHandle};
 pub(crate) use scan::Scan;
 const MODE: TableDefinition<'_, u8, &[u8; 64]> = TableDefinition::new("credential_session_protocol_v2");
+#[cfg(test)]
+pub(crate) fn matches_pair(db: &redb::Database, expected: [u8; 16]) -> Result<bool, Error> {
+    let tx = db.begin_read().map_err(kv_error)?;
+    let pair = tx.open_table(super::identity::PAIR).map_err(kv_error)?;
+    Ok(pair.len().map_err(kv_error)? == 1 && pair.get(0).map_err(kv_error)?.is_some_and(|value| value.value() == &expected))
+}
+/// Startup/connection-setup catalog validation, not a session-count scan or request
+/// read. Fixed typed opens reject replaced authority schemas without adopting data.
+#[cfg(test)]
+pub(crate) fn active_layout(db: &redb::Database, limits: IdentityUpgradeLimits) -> Result<(), Error> {
+    let tx = db.begin_read().map_err(kv_error)?;
+    let mut count = 0_u64;
+    for table in tx.list_tables().map_err(kv_error)? {
+        count = count.checked_add(1).ok_or(Error::IncompleteScan)?;
+        if count > limits.max_entries.get() {
+            return Err(Error::IncompleteScan);
+        }
+        let name = table.name();
+        if (name.starts_with("session") || name.starts_with("account_sessions") || name.starts_with("credential_session"))
+            && ![
+                SESSIONS.name(),
+                ACCOUNT_SESSIONS.name(),
+                EPOCHS.name(),
+                MODE.name(),
+                super::identity::PAIR.name(),
+                "credential_session_active_v3",
+                "credential_session_floor_v3",
+            ]
+            .contains(&name)
+        {
+            return Err(Error::Invalid);
+        }
+    }
+    for table in tx.list_multimap_tables().map_err(kv_error)? {
+        count = count.checked_add(1).ok_or(Error::IncompleteScan)?;
+        if count > limits.max_entries.get() {
+            return Err(Error::IncompleteScan);
+        }
+        let name = table.name();
+        if name.starts_with("session") || name.starts_with("account_sessions") || name.starts_with("credential_session") {
+            return Err(Error::Invalid);
+        }
+    }
+    tx.open_table(SESSIONS).map_err(kv_error)?;
+    tx.open_table(ACCOUNT_SESSIONS).map_err(kv_error)?;
+    tx.open_table(EPOCHS).map_err(kv_error)?;
+    Ok(())
+}
+#[cfg(test)]
+pub(crate) fn active_floor(db: &redb::Database, limits: IdentityUpgradeLimits) -> Result<i64, Error> {
+    Ok(scan::inspect_active(db, limits)?.floor.max(super::runtime::read(db)?.ok_or(Error::Invalid)?))
+}
 pub(crate) fn mode(db: &redb::Database) -> Result<Option<Checkpoint>, Error> {
     let tx = db.begin_read().map_err(kv_error)?;
     let table = match tx.open_table(MODE) {

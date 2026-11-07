@@ -14,6 +14,8 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous};
 /// a different protocol does not satisfy the persisted v1 triggers. Migration0067
 /// also requires the compatible v2 layout marker. This ordinary registration DENIES
 /// fenced writes; only the private stopped owner receives that separate capability.
+/// Migration0068's separate ACTIVE capability is also denied. Registering stopped
+/// v2 never grants v3; its accepted-pair factory is currently test-gated and private.
 /// Mode/version checks are compatibility controls, never DB-owner authentication.
 /// Read-only tools
 /// need not opt in. Do not use this to hide a mixed-version deployment.
@@ -23,9 +25,10 @@ pub fn register(options: SqliteConnectOptions) -> SqliteConnectOptions {
         .collation("rbit_credential_writer_v1", str::cmp)
         .collation("rbit_credential_layout_v2", str::cmp)
         .collation("rbit_credential_fenced_v2", |_, _| std::cmp::Ordering::Greater)
+        .collation("rbit_credential_active_v3", |_, _| std::cmp::Ordering::Greater)
 }
 
-pub(super) fn database_options(path: &Path) -> Result<SqliteConnectOptions, sqlx::Error> {
+pub(crate) fn database_options(path: &Path) -> Result<SqliteConnectOptions, sqlx::Error> {
     Ok(register(
         SqliteConnectOptions::from_str("sqlite:")?
             .filename(path)
