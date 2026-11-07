@@ -15,12 +15,17 @@ export function cargoMetadata(ctx, env) {
   return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
 }
 
+function observation(budget, path, signature, kind) {
+  const id = hash(path);
+  budget.stability.push([id, signature]);
+  budget.observations?.push({ id, signature, kind });
+}
 const identity = info => [String(info.dev), String(info.ino), String(info.size), String(info.mtimeNs), String(info.ctimeNs)];
-export async function absentInput(path, budget, { stat = lstat } = {}) {
-  budget.stability.push([hash(path), "absent"]);
+export async function absentInput(path, budget, { stat = lstat, kind = "absent-input" } = {}) {
+  observation(budget, path, "absent", kind);
   let parent = dirname(path);
   for (let depth = 0; depth < 128; depth++) {
-    try { budget.stability.push([hash(parent), identity(await stat(parent, { bigint: true }))]); return; }
+    try { observation(budget, parent, identity(await stat(parent, { bigint: true })), `${kind}-ancestor`); return; }
     catch (error) {
       if (error.code !== "ENOENT") throw error;
       const next = dirname(parent);
@@ -30,12 +35,12 @@ export async function absentInput(path, budget, { stat = lstat } = {}) {
   }
   throw new Error("SOURCE_PROOF_ABSENCE_UNOBSERVED");
 }
-async function sourceBytes(path, budget) {
+async function sourceBytes(path, budget, kind = "package-file") {
   const before = await lstat(path, { bigint: true });
   const bytes = await boundedInput(path, false, 32 * 1024 ** 2);
   const after = await lstat(path, { bigint: true });
   if (hash(identity(before)) !== hash(identity(after))) throw new Error("SOURCE_PROOF_INPUT_CHANGED");
-  budget.stability.push([hash(path), identity(after)]);
+  observation(budget, path, identity(after), kind);
   return bytes;
 }
 async function packageFiles(root, budget) {
@@ -45,7 +50,7 @@ async function packageFiles(root, budget) {
     await guarded(root, path);
     const info = await lstat(path);
     if (info.isDirectory()) {
-      budget.stability.push([hash(path), identity(await lstat(path, { bigint: true }))]);
+      observation(budget, path, identity(await lstat(path, { bigint: true })), "package-directory");
       for await (const entry of await opendir(path)) {
         if (entry.name === ".git") continue;
         await visit(join(path, entry.name), depth + 1);
@@ -56,7 +61,7 @@ async function packageFiles(root, budget) {
       entries.push([relative(root, path).replaceAll("\\", "/"), createHash("sha256").update(bytes).digest("hex")]);
     } else throw new Error("SOURCE_PROOF_INPUT_REFUSED");
   }
-  budget.stability.push([hash(root), identity(await lstat(root, { bigint: true }))]);
+  observation(budget, root, identity(await lstat(root, { bigint: true })), "package-directory");
   for await (const entry of await opendir(root)) {
     if (entry.name !== ".git") await visit(join(root, entry.name), 0);
   }
@@ -78,11 +83,11 @@ export async function inputSnapshot(ctx, namespace, command, args, env,
   // Verified completion seals that interval BEFORE metadata can flush Cargo's
   // global-cache database and change absent configuration's ancestor timestamps.
   let data = stage === "admission" ? await readMetadata() : undefined;
-  const budget = { entries: 0, bytes: 0, stability: [] };
+  const budget = { entries: 0, bytes: 0, stability: [], observations: [] };
   const policy = await policySnapshot(ctx, namespace, command, args, env, async (path, optional, limit) => {
     const bytes = await (readPolicy ?? boundedInput)(path, optional, limit);
-    if (bytes) budget.stability.push([hash(path), identity(await lstat(path, { bigint: true }))]);
-    else await absentPolicy(path, budget);
+    if (bytes) observation(budget, path, identity(await lstat(path, { bigint: true })), "policy-file");
+    else await absentPolicy(path, budget, { kind: "policy-absent" });
     return bytes;
   });
   if (!policy.inputId) throw new Error("SOURCE_PROOF_POLICY_UNOBSERVED");
@@ -122,11 +127,11 @@ export async function inputSnapshot(ctx, namespace, command, args, env,
     if ([...locals.values()].some(item => contains(item.root, path))) continue;
     if (++budget.entries > 40000) throw new Error("SOURCE_PROOF_INPUT_BOUND");
     let bytes;
-    try { bytes = await sourceBytes(path, budget); }
+    try { bytes = await sourceBytes(path, budget, "shared-file"); }
     catch (error) {
       if (error.code !== "ENOENT") throw error;
       shared.push([name, null]);
-      await absentInput(path, budget);
+      await absentInput(path, budget, { kind: "shared-absent" });
       continue;
     }
     if ((budget.bytes += bytes.length) > 512 * 1024 ** 2) throw new Error("SOURCE_PROOF_INPUT_BOUND");
@@ -149,5 +154,6 @@ export async function inputSnapshot(ctx, namespace, command, args, env,
   }
   return { locals, names, digest: hash([...locals.values()].map(item => [item.identity, item.content, item.provenance]).sort()),
     stability: hash(budget.stability.sort(([a], [b]) => a.localeCompare(b))),
+    observations: budget.observations,
     counts: { packages: locals.size, filesAndDirectories: budget.entries, bytes: budget.bytes } };
 }

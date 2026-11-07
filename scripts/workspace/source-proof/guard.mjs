@@ -5,7 +5,7 @@ import { cargoTreeMode, verifiedCargoCompletion } from "../cargo-tree.mjs";
 import { inputSnapshot, hash } from "./inputs.mjs";
 import { scanUnits, invalidateStamp } from "./units.mjs";
 import { prepareExportWitnesses, freshExportTransition } from "./exports.mjs";
-import { selectionFailure } from "./diagnostics.mjs";
+import { inputFailure, selectionFailure } from "./diagnostics.mjs";
 import { ledger, saveLedger } from "./ledger.mjs";
 import { guarded, managedDirectory } from "../paths.mjs";
 import { UncertainProcessTreeError } from "../lease.mjs";
@@ -79,7 +79,7 @@ export async function finishSourceProof(handle, completion, lease) {
   }
   const { ctx, request, inputs, state, trusted } = value;
   const after = await inputSnapshot(ctx, request.namespace, request.command, request.args, request.env, value.dependencies, "completion");
-  if (inputs.digest !== after.digest || inputs.stability !== after.stability) throw new Error("SOURCE_PROOF_INPUT_CHANGED_DURING_COMMAND");
+  if (inputs.digest !== after.digest || inputs.stability !== after.stability) throw inputFailure(inputs, after);
   const units = await scanUnits(request.lane, after);
   const approved = {};
   for (const [id, previous] of trusted) {

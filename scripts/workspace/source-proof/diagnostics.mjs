@@ -35,3 +35,54 @@ export function selectionFailure(message, units, selected, reconstructed, state,
   error.sourceProofSelection = detail;
   return error;
 }
+
+
+// Compare only observations already sealed by inputSnapshot; never reread disk here.
+export function inputFailure(before, after) {
+  const group = snapshot => {
+    const result = new Map();
+    for (const row of snapshot.observations ?? []) {
+      const key = `${row.id}:${row.kind}`;
+      const values = result.get(key) ?? [];
+      values.push(row.signature); result.set(key, values);
+    }
+    return result;
+  };
+  const old = group(before), current = group(after), changed = [];
+  const fields = ["device", "inode", "size", "mtime", "ctime"];
+  for (const key of [...new Set([...old.keys(), ...current.keys()])].sort()) {
+    const left = old.get(key), right = current.get(key);
+    if (hash(left ?? null) === hash(right ?? null)) continue;
+    const separator = key.indexOf(":");
+    const values = new Set();
+    if (!left || !right) values.add("presence");
+    else if (left.length !== right.length) values.add("observations");
+    else for (let index = 0; index < left.length; index++) {
+      if (!Array.isArray(left[index]) || !Array.isArray(right[index])) {
+        if (left[index] !== right[index]) values.add("presence");
+      } else for (let field = 0; field < fields.length; field++) {
+        if (left[index][field] !== right[index][field]) values.add(fields[field]);
+      }
+    }
+    const rawKind = key.slice(separator + 1);
+    const knownKinds = ["package-file", "package-directory", "shared-file", "policy-file", "absent-input", "absent-input-ancestor",
+      "policy-absent", "policy-absent-ancestor", "shared-absent", "shared-absent-ancestor"];
+    changed.push({ witness: hash(key.slice(0, separator)).slice(0, 12),
+      kind: knownKinds.includes(rawKind) ? rawKind : "other", fields: [...values] });
+  }
+  const packages = [];
+  for (const id of new Set([...before.locals.keys(), ...after.locals.keys()])) {
+    const left = before.locals.get(id), right = after.locals.get(id);
+    if (left?.identity !== right?.identity || left?.content !== right?.content || left?.provenance !== right?.provenance) {
+      packages.push({ name: name(right?.name ?? left?.name), presence: !!left !== !!right,
+        content: left?.content !== right?.content, identity: left?.identity !== right?.identity,
+        provenance: left?.provenance !== right?.provenance });
+    }
+  }
+  const detail = { schema: 1, digestChanged: before.digest !== after.digest, stabilityChanged: before.stability !== after.stability,
+    changedObservations: changed.length, observations: changed.slice(0, 8),
+    changedPackages: packages.length, packages: packages.slice(0, 8) };
+  const error = new Error(`SOURCE_PROOF_INPUT_CHANGED_DURING_COMMAND ${JSON.stringify(detail)}`);
+  error.sourceProofInputs = detail;
+  return error;
+}
