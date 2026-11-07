@@ -10,7 +10,7 @@ use askama::Template;
 /// (a mention, an assignment, a review request, a review, a comment, a state change).
 /// Short on purpose: what happened, an excerpt, a link to the thread, why the recipient
 /// got it, and links to the notification settings and to stop these emails.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ThreadNotification {
     pub site_name: String,
     pub base_url: String,
@@ -60,3 +60,9 @@ struct ThreadNotificationHtml<'a> {
 }
 
 templates!(ThreadNotification, text = ThreadNotificationText, html = ThreadNotificationHtml);
+
+impl std::fmt::Debug for ThreadNotification {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.debug_struct("ThreadNotification").finish_non_exhaustive()
+    }
+}

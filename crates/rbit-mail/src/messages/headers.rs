@@ -2,7 +2,7 @@
 
 /// Optional headers of a message. Message ids are written with their angle brackets
 /// (`<owner/repo/issues/1@host>`).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub struct MailHeaders {
     /// `Message-ID`; the relay assigns one when `None`.
     pub message_id: Option<String>,
@@ -29,5 +29,11 @@ impl MailHeaders {
             pairs.push(("List-Unsubscribe-Post", "List-Unsubscribe=One-Click".to_owned()));
         }
         pairs
+    }
+}
+
+impl std::fmt::Debug for MailHeaders {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.debug_struct("MailHeaders").finish_non_exhaustive()
     }
 }

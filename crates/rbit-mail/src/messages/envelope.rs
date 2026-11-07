@@ -5,7 +5,7 @@ use crate::MailError;
 use rbit_core::Email;
 
 /// A rendered message, ready for any transport.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Mail {
     /// Optional live instance name for the sender; the configured address is retained.
     pub from_name: Option<String>,
@@ -55,4 +55,10 @@ pub trait MailMessage {
     fn subject(&self) -> String;
     fn render_text(&self) -> Result<String, MailError>;
     fn render_html(&self) -> Result<String, MailError>;
+}
+
+impl std::fmt::Debug for Mail {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.debug_struct("Mail").finish_non_exhaustive()
+    }
 }

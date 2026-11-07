@@ -10,6 +10,10 @@
 //!
 //! The crate knows nothing about accounts or tokens: callers decide *what* to say and
 //! *to whom*; this crate turns that into a MIME message and delivers it.
+//!
+//! Content-bearing message, envelope, header and transport `Debug` output is opaque.
+//! This does not redact explicit data access, MIME output, error `Display` text or
+//! the development [`LogMailer`], which intentionally records full messages and links.
 
 mod error;
 pub mod messages;

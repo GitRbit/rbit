@@ -7,7 +7,7 @@ use askama::Template;
 // ------------------------------------------------------------------ password reset
 
 /// Sent from `/password/forgot` (or by an administrator): a link to choose a new password.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct PasswordReset {
     pub site_name: String,
     pub base_url: String,
@@ -51,7 +51,7 @@ pub enum VerifyReason {
 }
 
 /// Sent after sign-up, after an address change or on request: a link that confirms the address.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct VerifyEmail {
     pub site_name: String,
     pub base_url: String,
@@ -96,7 +96,7 @@ templates!(VerifyEmail, text = VerifyEmailText, html = VerifyEmailHtml);
 // ------------------------------------------------------------------ email changed
 
 /// Sent to the *previous* address after a change, so a hijacked account does not go unnoticed.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct EmailChanged {
     pub site_name: String,
     pub base_url: String,
@@ -124,3 +124,21 @@ struct EmailChangedHtml<'a> {
 }
 
 templates!(EmailChanged, text = EmailChangedText, html = EmailChangedHtml);
+
+impl std::fmt::Debug for PasswordReset {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.debug_struct("PasswordReset").finish_non_exhaustive()
+    }
+}
+
+impl std::fmt::Debug for VerifyEmail {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.debug_struct("VerifyEmail").finish_non_exhaustive()
+    }
+}
+
+impl std::fmt::Debug for EmailChanged {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.debug_struct("EmailChanged").finish_non_exhaustive()
+    }
+}

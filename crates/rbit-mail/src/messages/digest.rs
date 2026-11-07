@@ -9,7 +9,7 @@ use askama::Template;
 /// Notifications collected into one email a day or a week, grouped by repository and
 /// thread: what happened, a short excerpt and a link for each, plus the same settings and
 /// unsubscribe links as a [`super::ThreadNotification`].
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DigestNotification {
     pub site_name: String,
     pub base_url: String,
@@ -23,7 +23,7 @@ pub struct DigestNotification {
 }
 
 /// One repository of a digest.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DigestRepository {
     /// `owner/repo`.
     pub name: String,
@@ -32,7 +32,7 @@ pub struct DigestRepository {
 }
 
 /// One issue or pull request of a digest.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DigestThread {
     pub number: u64,
     pub title: String,
@@ -42,7 +42,7 @@ pub struct DigestThread {
 }
 
 /// One notification of a digest.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DigestEntry {
     /// One sentence, e.g. `bob commented on issue #3.`
     pub headline: String,
@@ -99,3 +99,27 @@ struct DigestNotificationHtml<'a> {
 }
 
 templates!(DigestNotification, text = DigestNotificationText, html = DigestNotificationHtml);
+
+impl std::fmt::Debug for DigestNotification {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.debug_struct("DigestNotification").finish_non_exhaustive()
+    }
+}
+
+impl std::fmt::Debug for DigestRepository {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.debug_struct("DigestRepository").finish_non_exhaustive()
+    }
+}
+
+impl std::fmt::Debug for DigestThread {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.debug_struct("DigestThread").finish_non_exhaustive()
+    }
+}
+
+impl std::fmt::Debug for DigestEntry {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.debug_struct("DigestEntry").finish_non_exhaustive()
+    }
+}
