@@ -112,7 +112,7 @@ pub(super) fn repository(
         return Err(WikiObjectError::Binding);
     }
     let repo = gix::open_opts(&path, gix::open::Options::isolated()).map_err(crate::GitError::backend)?;
-    if repo.work_dir().is_some() {
+    if repo.workdir().is_some() {
         return Err(WikiObjectError::Binding);
     }
     Ok(repo)
