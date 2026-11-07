@@ -4398,6 +4398,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbit-platform"
+version = "0.2.0"
+dependencies = [
+ "getrandom 0.4.3",
+ "tempfile",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "rbit-process-tree-probe"
 version = "0.2.0"
 dependencies = [
