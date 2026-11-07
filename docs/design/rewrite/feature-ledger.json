@@ -63,6 +63,11 @@
     {"id":"presentation.navigation","behavior":"HTMX/history, preloader limits, no-JS and safe fragment caching","target":"rbit-presentation","status":"baseline-retained","source":"crates/rbit-web/src/partial.rs","test":"scripts/tests/preload.test.mjs"},
     {"id":"delivery.releases","behavior":"Five binary platforms, paired runner, containers, checksums and provenance","target":"repository-ci","status":"baseline-retained","source":".github/workflows/release.yml","test":".github/workflows/ci.yml"}
   ],
+  "plannedStateDefinitions": {
+    "planned": "New scope absent from main; its plan is recorded, and preparation may be incomplete.",
+    "in-progress": "Implementation and partial acceptance are underway; the complete product remains unverified.",
+    "implemented": "Complete target-crate implementation and per-delivery-phase acceptance references are recorded and require inspection."
+  },
   "plannedAdditions": [
     {
       "id": "wikis.repository-documentation",

@@ -8,6 +8,7 @@ import { checkIdentityFeatures, checkIdentityModelGraphs, checkIdentityTokenGrap
 import { checkCollaborationFeatures, checkCollaborationGraphs } from "./collaboration-features.mjs";
 import { checkUnifiedModelBoundary } from "./identity-model-boundary.mjs";
 import { checkInventoryCompileIsolation } from "./inventory-isolation.mjs";
+import { checkPlannedAdditions } from "./planned-features.mjs";
 
 export const LIMIT = 400;
 const GENERATED = new Set([
@@ -144,7 +145,7 @@ export function checkLedger(root, ledger) {
       if (feature.status === "changed" && !safe(feature.decision)) violations.push(`${feature.id}: changed behavior needs a decision`);
     }
   }
-  return violations;
+  return [...violations, ...checkPlannedAdditions(root, ledger.plannedAdditions, ids)];
 }
 
 export function check(root) {

@@ -14,6 +14,16 @@ Literal route declarations do not resolve dynamically constructed routes, condit
 
 `security-contracts.md` defines required threat and regression boundaries. Legacy implementations remain while features are ported. Do not remove a feature merely because the first replacement slice does not implement it yet.
 
+Newly requested product scope lives in `plannedAdditions`, without pretending it was
+present in the pinned baseline. Its plan, target crate and delivery phases are
+required. `planned` and `in-progress` entries may record partial preparation/results;
+`implemented` additionally requires complete implementation, actual target-crate
+source, acceptance-result files and a `phaseEvidence` file for every delivery phase.
+The checker validates these references and states; it does not establish that the
+referenced tests actually passed or cover the complete feature. Inspect those results
+and the runtime behavior before accepting completion. A wiki plan or W0 contract
+cannot satisfy the W1–W5 product and operational requirements.
+
 The policy command rejects new internal dependency edges, new authored files over 400 physical lines, growth beyond baseline ceilings for existing oversized files, and edits/removal of historical SQL migrations. Cumulative logical-type checking is a separate AST gate for strict replacement crates. Public interfaces require crate/module responsibility and invariant documentation.
 
 The same checker also audits services/server production source for the legacy
