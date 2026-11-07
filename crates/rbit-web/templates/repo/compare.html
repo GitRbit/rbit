@@ -13,13 +13,13 @@
 {% if let Some(summary) = summary %}
 <section class="mt-6" aria-label="Comparison">
   <div class="flex flex-wrap items-center gap-x-3 gap-y-2 text-[13px]">
-    <span class="min-w-0 truncate font-mono text-xs"><span class="text-ink-muted">{{ summary.base }}</span> … <span class="text-ink">{{ summary.head }}</span></span>
+    <span class="min-w-0 truncate font-mono text-xs" dir="ltr"><span class="text-ink-muted">{{ summary.base }}</span> … <span class="text-ink">{{ summary.head }}</span></span>
     <span class="badge">{{ summary.ahead_label }} ahead</span>
     <span class="badge">{{ summary.behind_label }} behind</span>
     {% if let Some(merge_base) = summary.merge_base %}
-    <span class="text-xs text-ink-muted">merge base <a class="font-mono text-ink hover:underline hover:underline-offset-4" href="{{ merge_base.url }}">{{ merge_base.short_id }}</a></span>
+    <span class="text-xs text-ink-muted">merge base <a class="font-mono text-ink hover:underline hover:underline-offset-4" dir="ltr" href="{{ merge_base.url }}">{{ merge_base.short_id }}</a></span>
     {% endif %}
-    <span class="ml-auto flex items-center gap-2">
+    <span class="ms-auto flex items-center gap-2">
       {% if let Some(url) = summary.swap_url %}<a href="{{ url }}" class="btn btn-ghost h-7 px-2 text-xs sm:h-7">{% call ui::icon("transfer", "size-3.5") %}{% endcall %}Swap</a>{% endif %}
       {% if let Some(url) = summary.create_url %}<a href="{{ url }}" class="btn btn-primary h-11 px-3 text-xs sm:h-7">{% call ui::icon("git-pull-request", "size-3.5") %}{% endcall %}Create pull request</a>{% endif %}
     </span>
@@ -41,7 +41,7 @@
         <a href="{{ commit.url }}" class="block truncate text-[13px] font-medium hover:underline hover:underline-offset-4" title="{{ commit.summary }}">{{ commit.summary }}</a>
         <p class="mt-0.5 truncate text-xs text-ink-muted">{{ commit.author }} · <time datetime="{{ commit.when_iso }}">{{ commit.when }}</time></p>
       </div>
-      <a href="{{ commit.url }}" class="btn h-7 shrink-0 px-2 font-mono text-xs sm:h-7">{{ commit.short_id }}</a>
+      <a href="{{ commit.url }}" class="btn h-7 shrink-0 px-2 font-mono text-xs sm:h-7" dir="ltr">{{ commit.short_id }}</a>
     </li>
     {% endfor %}
   </ol>

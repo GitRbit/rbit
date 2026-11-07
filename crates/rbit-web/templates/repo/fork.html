@@ -13,12 +13,12 @@
       <div>
         <label class="label" for="fork-owner">Owner</label>
         <div class="relative">
-          <select class="input cursor-pointer appearance-none pr-9" id="fork-owner" name="owner">
+          <select class="input cursor-pointer appearance-none pe-9" id="fork-owner" name="owner">
             {% for owner in owners %}
             <option value="{{ owner.name }}" {% if owner.selected %}selected{% endif %}>{{ owner.name }}</option>
             {% endfor %}
           </select>
-          {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
+          {% call ui::icon("chevron-down", "pointer-events-none absolute inset-e-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
         </div>
       </div>
       <span class="hidden h-9 items-center text-ink-faint sm:flex" aria-hidden="true">/</span>

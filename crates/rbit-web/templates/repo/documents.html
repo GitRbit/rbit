@@ -21,7 +21,7 @@
     {% if readme.is_markdown %}
     <article class="prose-rbit repo-document-content px-5 py-6 sm:px-8">{{ readme.html|safe }}</article>
     {% else %}
-    <pre class="repo-document-content overflow-x-auto px-5 py-5 font-mono text-[12.5px] leading-5">{{ readme.html|safe }}</pre>
+    <pre class="repo-document-content overflow-x-auto px-5 py-5 font-mono text-[12.5px] leading-5" dir="ltr">{{ readme.html|safe }}</pre>
     {% endif %}
   </div>
 </section>

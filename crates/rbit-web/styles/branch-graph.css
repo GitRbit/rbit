@@ -7,7 +7,7 @@
 .commit-graph-table tr:last-child td { border-bottom: 0; }
 .commit-graph-lanes { position: relative; padding: 0; }
 .commit-graph-lanes svg { position: absolute; inset: 0; max-width: 100%; height: 100%; overflow: hidden; }
-.commit-graph-details { height: 88px; padding: .75rem .75rem .75rem .25rem; overflow-wrap: anywhere; }
+.commit-graph-details { height: 88px; padding-block: .75rem; padding-inline: .25rem .75rem; overflow-wrap: anywhere; }
 .commit-graph-labels { display: flex; align-items: center; flex-wrap: wrap; gap: .3rem; margin-bottom: .2rem; }
 .commit-graph-track { flex-shrink: 0; padding: .05rem .3rem; border: 1px solid currentColor; border-radius: 4px; font-size: 10px; cursor: pointer; }
 .commit-graph-track[aria-pressed="true"] { outline: 2px solid currentColor; outline-offset: 2px; }
@@ -37,7 +37,7 @@ path.graph-color-7 { stroke-dasharray: var(--graph-dash-7, none); }
 .commit-graph[data-graph-selected] tr.graph-highlight .commit-graph-details { background: var(--surface); }
 @media (max-width: 480px) {
   .commit-graph-column { width: 72px; }
-  .commit-graph-details { padding-right: .5rem; }
+  .commit-graph-details { padding-inline-end: .5rem; }
 }
 
 .commit-graph[data-graph-selected] [data-graph-node].graph-highlight { stroke-width: 10; }

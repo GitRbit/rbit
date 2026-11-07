@@ -13,10 +13,10 @@
     <input type="hidden" name="variant" value="{{ gallery.variant }}">
     {%- endif %}
     <div class="relative min-w-0 flex-1 basis-48 sm:max-w-xs">
-      {% call ui::icon("search", "pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint") %}{% endcall %}
-      <input class="input pl-9" type="search" name="q" value="{{ gallery.query }}" maxlength="100" placeholder="Search {{ gallery.total }} themes" aria-label="Search themes" autocapitalize="none" autocomplete="off" spellcheck="false" data-theme-search>
+      {% call ui::icon("search", "pointer-events-none absolute inset-s-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint") %}{% endcall %}
+      <input class="input ps-9" type="search" name="q" value="{{ gallery.query }}" maxlength="100" placeholder="Search {{ gallery.total }} themes" aria-label="Search themes" autocapitalize="none" autocomplete="off" spellcheck="false" data-theme-search>
     </div>
-    <p class="ml-auto text-xs text-ink-faint" data-theme-count aria-live="polite">{{ gallery.shown_label() }}</p>
+    <p class="ms-auto text-xs text-ink-faint" data-theme-count aria-live="polite">{{ gallery.shown_label() }}</p>
   </form>
 
   <form method="post" action="/themes" hx-boost="false" data-theme-form>

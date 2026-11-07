@@ -21,9 +21,9 @@
       <h2 id="repos-title" class="box-title">Repositories</h2>
       <span class="badge tabular-nums" id="dashboard-repos-count" title="{{ private_count() }} private">{{ repos.len() }}</span>
       {% if !repos.is_empty() %}
-      <div class="relative order-last w-full sm:order-none sm:ml-auto sm:w-56">
-        {% call ui::icon("search", "pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint") %}{% endcall %}
-        <input class="input h-9 pl-8 text-[13px] sm:h-8" type="search" placeholder="Find a repository…" aria-label="Filter your repositories" aria-controls="dashboard-repos" autocapitalize="none" spellcheck="false" autocomplete="off" data-filter="dashboard-repos" data-filter-count="dashboard-repos-count">
+      <div class="relative order-last w-full sm:order-none sm:ms-auto sm:w-56">
+        {% call ui::icon("search", "pointer-events-none absolute inset-s-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint") %}{% endcall %}
+        <input class="input h-9 ps-8 text-[13px] sm:h-8" type="search" placeholder="Find a repository…" aria-label="Filter your repositories" aria-controls="dashboard-repos" autocapitalize="none" spellcheck="false" autocomplete="off" data-filter="dashboard-repos" data-filter-count="dashboard-repos-count">
       </div>
       {% endif %}
     </div>
@@ -63,7 +63,7 @@
       <div class="box-header">
         <h2 id="orgs-title" class="box-title">Organizations</h2>
         {% if !orgs.is_empty() %}<span class="badge tabular-nums">{{ orgs.len() }}</span>{% endif %}
-        {% if can_create_org %}<a href="/organizations/new" class="btn btn-ghost btn-icon -mr-2 ml-auto" aria-label="New organization" title="New organization">{% call ui::icon("plus", "size-4") %}{% endcall %}</a>{% endif %}
+        {% if can_create_org %}<a href="/organizations/new" class="btn btn-ghost btn-icon -me-2 ms-auto" aria-label="New organization" title="New organization">{% call ui::icon("plus", "size-4") %}{% endcall %}</a>{% endif %}
       </div>
       {% if orgs.is_empty() %}
       <p class="px-4 py-6 text-center text-[13px] text-ink-muted">

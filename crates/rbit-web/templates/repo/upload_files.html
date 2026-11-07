@@ -5,7 +5,7 @@
 {% block content %}
 <section class="mx-auto max-w-2xl">
   <h1 class="text-xl font-semibold tracking-tight">Upload files</h1>
-  <p class="mt-1 text-[13px] text-ink-muted break-words">Into <span class="font-mono text-xs">{{ directory }}</span> on <span class="font-mono text-xs">{{ commit.branch }}</span>. Files with the same name are replaced.</p>
+  <p class="mt-1 text-[13px] text-ink-muted break-words">Into <span class="font-mono text-xs" dir="ltr">{{ directory }}</span> on <span class="font-mono text-xs" dir="ltr">{{ commit.branch }}</span>. Files with the same name are replaced.</p>
 
   {#- Not boosted: the files stream to the server as an ordinary form submission. -#}
   <form method="post" action="{{ action_url }}" enctype="multipart/form-data" class="mt-6" hx-boost="false" novalidate>

@@ -4,7 +4,7 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <div class="mb-3 flex min-h-8 flex-wrap items-center justify-between gap-3">
-  <h1 class="text-[13px] font-medium text-ink-muted">{% if kind == "branch" %}Branches{% else %}Tags{% endif %} <span class="ml-1 text-ink-faint">{{ pagination.total }}</span></h1>
+  <h1 class="text-[13px] font-medium text-ink-muted">{% if kind == "branch" %}Branches{% else %}Tags{% endif %} <span class="ms-1 text-ink-faint">{{ pagination.total }}</span></h1>
   {% if kind == "branch" %}
   <nav class="flex gap-1" aria-label="Branch view">
     <a href="{{ header.branches_url }}?view=list" class="btn {% if graph.is_none() %}btn-primary{% endif %}" {% if graph.is_none() %}aria-current="page"{% endif %}>List</a>
@@ -35,7 +35,7 @@
       {% if kind == "branch" %}{% call ui::icon("branch", "size-4 shrink-0 text-ink-faint") %}{% endcall %}{% else %}{% call ui::icon("tag", "size-4 shrink-0 text-ink-faint") %}{% endcall %}{% endif %}
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2">
-          <a href="{{ row.url }}" class="truncate font-mono text-[13px] font-medium hover:underline hover:underline-offset-4">{{ row.name }}</a>
+          <a href="{{ row.url }}" class="truncate font-mono text-[13px] font-medium hover:underline hover:underline-offset-4" dir="ltr">{{ row.name }}</a>
           {% if row.is_default %}<span class="badge">default</span>{% endif %}
           {% if row.protected %}<span class="badge" title="A branch protection rule applies to this branch">{% call ui::icon("shield", "size-3") %}{% endcall %}Protected</span>{% endif %}
         </div>
@@ -51,7 +51,7 @@
       <a href="{{ row.zip_url }}" class="btn btn-ghost hidden h-7 shrink-0 px-2 text-xs sm:inline-flex sm:h-7" hx-boost="false" download title="Download ZIP">zip</a>
       <a href="{{ row.tar_url }}" class="btn btn-ghost hidden h-7 shrink-0 px-2 text-xs sm:inline-flex sm:h-7" hx-boost="false" download title="Download tar.gz">tar.gz</a>
       {% endif %}
-      <a href="{{ row.commit.url }}" class="btn h-7 shrink-0 px-2 font-mono text-xs sm:h-7">{{ row.commit.short_id }}</a>
+      <a href="{{ row.commit.url }}" class="btn h-7 shrink-0 px-2 font-mono text-xs sm:h-7" dir="ltr">{{ row.commit.short_id }}</a>
     </li>
     {% endfor %}
   </ul>

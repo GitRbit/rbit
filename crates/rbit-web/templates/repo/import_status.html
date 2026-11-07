@@ -8,7 +8,7 @@
     <h1 class="text-xl font-semibold tracking-tight">Import</h1>
     <span class="badge {{ status_class }}">{{ status_label }}</span>
   </div>
-  <p class="mt-1 break-all text-[13px] text-ink-muted">From {{ source_label }}: <a class="link font-mono text-xs" href="{{ source_url }}" rel="noreferrer noopener" target="_blank">{{ source_url }}</a></p>
+  <p class="mt-1 break-all text-[13px] text-ink-muted">From {{ source_label }}: <a class="link font-mono text-xs" dir="ltr" href="{{ source_url }}" rel="noreferrer noopener" target="_blank">{{ source_url }}</a></p>
 
   {% if let Some(message) = error %}
   <div role="alert" class="mt-6 flex items-start gap-2 rounded-(--radius-ui) border border-danger/40 bg-danger-subtle px-3 py-2.5 text-[13px] text-danger">

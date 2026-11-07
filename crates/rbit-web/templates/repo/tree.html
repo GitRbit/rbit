@@ -24,7 +24,7 @@
     <div class="mb-3 flex min-h-8 flex-wrap items-center gap-2 sm:gap-3">
       {% include "repo/ref_switcher.html" %}
       {% if breadcrumbs.len() > 1 %}{% include "repo/breadcrumbs.html" %}{% endif %}
-      <a href="{{ history_url }}" class="btn btn-ghost ml-auto" aria-label="History" title="History">{% call ui::icon("history", "size-3.5") %}{% endcall %}<span class="hidden sm:inline">History</span></a>
+      <a href="{{ history_url }}" class="btn btn-ghost ms-auto" aria-label="History" title="History">{% call ui::icon("history", "size-3.5") %}{% endcall %}<span class="hidden sm:inline">History</span></a>
       {% if let Some(url) = new_file_url %}<a href="{{ url }}" class="btn">{% call ui::icon("plus", "size-3.5") %}{% endcall %}Add file</a>{% endif %}
       {% if let Some(url) = upload_url %}<a href="{{ url }}" class="btn btn-icon" aria-label="Upload files" title="Upload files">{% call ui::icon("upload", "size-3.5") %}{% endcall %}</a>{% endif %}
     </div>
@@ -34,7 +34,7 @@
       {% include "repo/latest_commit.html" %}
       <ul>
         {% if let Some(parent) = parent_url %}
-        <li><a href="{{ parent }}" class="row row-link font-mono text-[13px] text-ink-muted" aria-label="Parent directory">..</a></li>
+        <li><a href="{{ parent }}" class="row row-link font-mono text-[13px] text-ink-muted" dir="ltr" aria-label="Parent directory">..</a></li>
         {% endif %}
         {#- The name link stretches over the whole row (`after:inset-0`); the commit link
             sits above it (`z-10`) so both are clickable without nesting anchors. -#}

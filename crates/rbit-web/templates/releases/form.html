@@ -11,7 +11,7 @@
     {% call ui::form_error(error) %}{% endcall %}
 
     <label class="label" for="release-tag">Tag</label>
-    <input class="input font-mono text-xs" id="release-tag" name="tag" value="{{ form.tag }}" list="release-tags" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+    <input class="input font-mono text-xs" dir="ltr" id="release-tag" name="tag" value="{{ form.tag }}" list="release-tags" autocomplete="off" autocapitalize="none" spellcheck="false" required>
     <datalist id="release-tags">
       {% for tag in tags %}<option value="{{ tag }}"></option>{% endfor %}
     </datalist>
@@ -20,12 +20,12 @@
 
     <label class="label mt-5" for="release-target">Create a new tag from <span class="font-normal text-ink-faint">used only when the tag does not exist</span></label>
     <div class="relative">
-      <select class="input cursor-pointer appearance-none pr-9 font-mono text-xs" id="release-target" name="target">
+      <select class="input cursor-pointer appearance-none pe-9 font-mono text-xs" id="release-target" name="target">
         {% for branch in branches %}
         <option value="{{ branch }}" {% if *branch == form.target %}selected{% endif %}>{{ branch }}</option>
         {% endfor %}
       </select>
-      {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
+      {% call ui::icon("chevron-down", "pointer-events-none absolute inset-e-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
     </div>
     {% else %}
     <p class="hint">One of the repository's <a class="link" href="{{ tags_url }}">tags</a>.</p>
@@ -35,7 +35,7 @@
     <input class="input" id="release-name" name="name" value="{{ form.name }}" maxlength="255">
 
     <label class="label mt-5" for="release-notes">Notes <span class="font-normal text-ink-faint">Markdown</span></label>
-    <textarea class="input h-64 resize-y py-2 font-mono text-xs" id="release-notes" name="notes" rows="12">{{ form.notes }}</textarea>
+    <textarea class="input h-64 resize-y py-2 font-mono text-xs" dir="auto" id="release-notes" name="notes" rows="12">{{ form.notes }}</textarea>
 
     <label class="mt-5 flex cursor-pointer items-start gap-3">
       <input type="checkbox" name="prerelease" value="on" class="mt-1 accent-(--ink)" {% if form.is_prerelease %}checked{% endif %}>

@@ -6,7 +6,7 @@
 {# Error substitution may replace a secret-bearing page; never snapshot its URL or DOM. #}
 <section class="auth-shell sm:py-20" hx-history="false">
   <div class="card flex flex-col items-center text-center">
-    <span class="tile font-mono text-[13px] font-medium">{{ info.status.as_u16() }}</span>
+    <span class="tile font-mono text-[13px] font-medium" dir="ltr">{{ info.status.as_u16() }}</span>
     <h1 class="mt-5 text-lg font-semibold tracking-tight">{{ info.title }}</h1>
     <p class="mt-1.5 max-w-xs text-[13px] text-ink-muted text-balance">{{ info.message }}</p>
     <div class="mt-6 flex w-full flex-col gap-2 sm:flex-row sm:justify-center">

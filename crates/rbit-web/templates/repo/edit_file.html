@@ -4,8 +4,8 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <section class="mx-auto max-w-4xl">
-  <h1 class="text-xl font-semibold tracking-tight break-words">{% if is_new %}New file{% else %}Edit <span class="font-mono text-lg">{{ original_path }}</span>{% endif %}</h1>
-  <p class="mt-1 text-[13px] text-ink-muted">On <span class="font-mono text-xs">{{ commit.branch }}</span>. {% if is_new %}Type a path with <span class="font-mono">/</span> to create directories.{% else %}Change the path to rename or move the file.{% endif %}</p>
+  <h1 class="text-xl font-semibold tracking-tight break-words">{% if is_new %}New file{% else %}Edit <span class="font-mono text-lg" dir="ltr">{{ original_path }}</span>{% endif %}</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">On <span class="font-mono text-xs" dir="ltr">{{ commit.branch }}</span>. {% if is_new %}Type a path with <span class="font-mono" dir="ltr">/</span> to create directories.{% else %}Change the path to rename or move the file.{% endif %}</p>
 
   {% if let Some(message) = not_editable %}
   <p class="box mt-6 px-4 py-10 text-center text-[13px] text-ink-muted">{{ message }}</p>
@@ -15,14 +15,14 @@
     {% call ui::form_error(error) %}{% endcall %}
 
     <label class="label" for="file-path">Path</label>
-    <input class="input font-mono text-xs" id="file-path" name="path" value="{{ path }}" maxlength="1024" autocomplete="off" autocapitalize="none" spellcheck="false" required {% if is_new %}autofocus{% endif %}>
+    <input class="input font-mono text-xs" dir="ltr" id="file-path" name="path" value="{{ path }}" maxlength="1024" autocomplete="off" autocapitalize="none" spellcheck="false" required {% if is_new %}autofocus{% endif %}>
 
     <div class="mt-5 flex items-end justify-between gap-3">
       <label class="label mb-0" for="file-content">Content</label>
       <span class="text-xs text-ink-faint">At most {{ max_size }}</span>
     </div>
     {#- The newline after the tag is dropped by the HTML parser, so a file that starts with a blank line keeps it. -#}
-    <textarea class="input mt-2 min-h-96 resize-y py-2 font-mono text-xs leading-5" id="file-content" name="content" data-markdown-editor data-preview-url="{{ preview_url }}" rows="24" wrap="off" spellcheck="false" autocapitalize="none" {% if !is_new %}autofocus{% endif %}>
+    <textarea class="input mt-2 min-h-96 resize-y py-2 font-mono text-xs leading-5" dir="ltr" id="file-content" name="content" data-markdown-editor data-preview-url="{{ preview_url }}" rows="24" wrap="off" spellcheck="false" autocapitalize="none" {% if !is_new %}autofocus{% endif %}>
 {{ content }}</textarea>
 
     {% include "repo/commit_box.html" %}

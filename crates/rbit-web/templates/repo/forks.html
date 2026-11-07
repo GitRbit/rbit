@@ -4,8 +4,8 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <div class="mb-3 flex min-h-8 items-center gap-3">
-  <h1 class="text-[13px] font-medium text-ink-muted">Forks <span class="ml-1 text-ink-faint">{{ forks.len() }}</span></h1>
-  {% if let Some(url) = fork_url %}<a href="{{ url }}" class="btn ml-auto">{% call ui::icon("git-fork", "size-3.5") %}{% endcall %}Fork</a>{% endif %}
+  <h1 class="text-[13px] font-medium text-ink-muted">Forks <span class="ms-1 text-ink-faint">{{ forks.len() }}</span></h1>
+  {% if let Some(url) = fork_url %}<a href="{{ url }}" class="btn ms-auto">{% call ui::icon("git-fork", "size-3.5") %}{% endcall %}Fork</a>{% endif %}
 </div>
 
 <div class="box">

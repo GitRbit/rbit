@@ -68,7 +68,9 @@ document.addEventListener('keydown', event => {
   if (!tab || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
   event.preventDefault();
   const tabs = [...tab.closest('[role=tablist]').querySelectorAll('[data-repo-type]')];
-  const index = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (tabs.indexOf(tab) + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length;
+  // The arrow pointing along the reading direction moves to the next tab.
+  const next = getComputedStyle(tab).direction === 'rtl' ? 'ArrowLeft' : 'ArrowRight';
+  const index = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (tabs.indexOf(tab) + (event.key === next ? 1 : tabs.length - 1)) % tabs.length;
   tabs[index].focus(); switchType(tabs[index]);
 });
 document.addEventListener('htmx:beforeSwap', () => { request?.abort(); request = null; });

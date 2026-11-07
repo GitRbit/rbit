@@ -104,6 +104,7 @@ async function previewLanguageFile(link) {
     heading.className = 'language-preview-path';
     const path = document.createElement('strong');
     path.textContent = link.title;
+    path.dir = 'ltr';
     const full = document.createElement('a');
     full.href = link.href;
     full.className = 'link shrink-0';

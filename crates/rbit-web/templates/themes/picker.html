@@ -12,7 +12,7 @@
       {% call ui::icon("search", "size-4 shrink-0 text-ink-faint") %}{% endcall %}
       <input type="search" placeholder="{{ labels.search_prefix() }} {{ total }} {{ labels.theme_plural() }}" aria-label="{{ labels.search() }}" role="combobox" aria-expanded="true" aria-controls="tpk-list" aria-autocomplete="list" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="100" data-tpk-search>
       <kbd class="kbd hidden sm:inline">Esc</kbd>
-      <button class="btn btn-ghost btn-icon -mr-2 sm:hidden" type="button" aria-label="{{ labels.close() }}" data-tpk-close>{% call ui::icon("x", "size-4") %}{% endcall %}</button>
+      <button class="btn btn-ghost btn-icon -me-2 sm:hidden" type="button" aria-label="{{ labels.close() }}" data-tpk-close>{% call ui::icon("x", "size-4") %}{% endcall %}</button>
     </div>
     <div class="tpk-bar">
       <div class="theme-segment tpk-segment" role="group" aria-label="{{ labels.show() }}">
@@ -21,7 +21,7 @@
         <button type="button" data-tpk-variant="light" aria-pressed="false">{{ labels.light() }}</button>
         <button type="button" data-tpk-variant="colorblind" aria-pressed="false">{{ labels.colorblind() }}</button>
       </div>
-      <p class="ml-auto text-xs text-ink-faint" data-tpk-count aria-live="polite">{{ total }} {{ labels.theme_plural() }}</p>
+      <p class="ms-auto text-xs text-ink-faint" data-tpk-count aria-live="polite">{{ total }} {{ labels.theme_plural() }}</p>
     </div>
   </div>
 
@@ -64,7 +64,7 @@
           <p class="tpk-info-name" data-tpk-name>{{ labels.system() }}</p>
           <p class="tpk-info-meta" data-tpk-meta>{{ labels.built_in() }} · {{ labels.auto() }}</p>
         </div>
-        <button class="btn btn-primary ml-auto shrink-0" type="submit" form="tpk-list" name="theme" value="system" data-tpk-apply>{{ labels.apply() }}</button>
+        <button class="btn btn-primary ms-auto shrink-0" type="submit" form="tpk-list" name="theme" value="system" data-tpk-apply>{{ labels.apply() }}</button>
       </div>
       <div class="tpk-preview" lang="en" dir="ltr" data-theme="system" data-tpk-preview aria-hidden="true">
         <div class="pv-top">

@@ -39,7 +39,12 @@ test("the header, tabs and footer inherit the document direction", async () => {
     assert.doesNotMatch(tag, /\bdir=/, `${name} must not pin its own direction: ${tag}`);
   }
   for (const path of CHROME_TEMPLATES.slice(3)) {
-    assert.doesNotMatch(await read(path), /\bdir="(?:ltr|rtl)"/, `${path} pins a direction`);
+    const source = await read(path);
+    assert.doesNotMatch(source, /\bdir="rtl"/, `${path} pins a direction`);
+    // Only machine values (clone URLs, the mirror's source) are left-to-right islands.
+    for (const [tag] of source.matchAll(/<[a-z]+\b[^>]*\bdir="ltr"[^>]*>(?:\s*<input\b[^>]*>)?/g)) {
+      assert.match(tag, /\bfont-mono\b/, `${path} pins a direction on chrome: ${tag}`);
+    }
   }
 });
 

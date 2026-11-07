@@ -4,7 +4,7 @@
 <div class="box mb-5 border-line-strong px-4 py-3 text-[13px]" role="alert">
   <p class="font-medium">{% if conflict.current_short.is_some() %}{{ conflict.branch }} changed since you started{% else %}{{ conflict.branch }} no longer exists{% endif %}</p>
   {% if let Some(current) = conflict.current_short %}
-  <p class="mt-1 text-ink-muted">It now points at <span class="font-mono">{{ current }}</span>. Nothing was committed. <a class="link" href="{{ conflict.history_url }}">Review the new commits</a>, then commit again: your changes are kept below and will be committed on top of the new version.</p>
+  <p class="mt-1 text-ink-muted">It now points at <span class="font-mono" dir="ltr">{{ current }}</span>. Nothing was committed. <a class="link" href="{{ conflict.history_url }}">Review the new commits</a>, then commit again: your changes are kept below and will be committed on top of the new version.</p>
   {% else %}
   <p class="mt-1 text-ink-muted">Nothing was committed. Commit to a new branch instead; your changes are kept below.</p>
   {% endif %}
@@ -24,7 +24,7 @@
     <label class="flex items-start gap-3 px-4 py-3 {% if commit.direct_allowed() %}cursor-pointer hover:bg-subtle has-checked:bg-subtle{% else %}text-ink-faint{% endif %}">
       <input type="radio" name="target" value="branch" class="mt-1 accent-(--ink)" {% if !commit.direct_allowed() %}disabled{% else if !commit.new_branch_selected %}checked{% endif %}>
       <span class="min-w-0">
-        <span class="block font-medium">Commit directly to <span class="font-mono text-xs">{{ commit.branch }}</span></span>
+        <span class="block font-medium">Commit directly to <span class="font-mono text-xs" dir="ltr">{{ commit.branch }}</span></span>
         {% if let Some(reason) = commit.protected_reason %}
         <span class="block text-[13px]">Not allowed: {{ reason }}.</span>
         {% endif %}
@@ -34,7 +34,7 @@
       <input type="radio" name="target" value="new" class="mt-1 accent-(--ink)" {% if commit.new_branch_selected || !commit.direct_allowed() %}checked{% endif %}>
       <span class="min-w-0 flex-1">
         <span class="block font-medium">Create a new branch and start a pull request</span>
-        <input class="input mt-2 font-mono text-xs" name="new_branch" value="{{ commit.new_branch }}" aria-label="New branch name" autocomplete="off" autocapitalize="none" spellcheck="false">
+        <input class="input mt-2 font-mono text-xs" dir="ltr" name="new_branch" value="{{ commit.new_branch }}" aria-label="New branch name" autocomplete="off" autocapitalize="none" spellcheck="false">
       </span>
     </label>
   </div>

@@ -334,8 +334,10 @@ document.addEventListener('keydown', (event) => {
   if (tab && ['ArrowLeft', 'ArrowRight', 'Home', 'End', ' ', 'Enter'].includes(event.key)) {
     const tabs = [...tab.closest('[role="tablist"]').querySelectorAll('[role="tab"]')];
     let index = tabs.indexOf(tab);
-    if (event.key === 'ArrowLeft') index = (index - 1 + tabs.length) % tabs.length;
-    else if (event.key === 'ArrowRight') index = (index + 1) % tabs.length;
+    // The arrow pointing along the reading direction moves to the next tab.
+    const step = getComputedStyle(tab).direction === 'rtl' ? -1 : 1;
+    if (event.key === 'ArrowLeft') index = (index - step + tabs.length) % tabs.length;
+    else if (event.key === 'ArrowRight') index = (index + step + tabs.length) % tabs.length;
     else if (event.key === 'Home') index = 0;
     else if (event.key === 'End') index = tabs.length - 1;
     event.preventDefault();

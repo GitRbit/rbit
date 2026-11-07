@@ -8,7 +8,7 @@
   </form>
   {% for row in picker.rows %}
   <a href="{{ row.link.url }}" class="menu-item {% if row.link.is_current %}bg-hover{% endif %}" data-ref-option>
-    <span class="min-w-0 flex-1 truncate font-mono text-xs">{{ row.link.name }}</span>
+    <span class="min-w-0 flex-1 truncate font-mono text-xs"><bdi dir="ltr">{{ row.link.name }}</bdi></span>
     <span class="text-xs text-ink-faint">{{ row.kind }}</span>
     {% if row.link.is_default %}<span class="badge">default</span>{% endif %}
   </a>

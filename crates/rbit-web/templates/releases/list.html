@@ -5,7 +5,7 @@
 {% block content %}
 <div class="mb-3 flex min-h-8 items-center gap-3">
   <h1 class="text-[13px] font-medium text-ink-muted">Releases</h1>
-  {% if can_write %}<a href="{{ new_url }}" class="btn btn-primary ml-auto">{% call ui::icon("plus", "size-3.5") %}{% endcall %}New release</a>{% endif %}
+  {% if can_write %}<a href="{{ new_url }}" class="btn btn-primary ms-auto">{% call ui::icon("plus", "size-3.5") %}{% endcall %}New release</a>{% endif %}
 </div>
 
 {% if releases.is_empty() %}

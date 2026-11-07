@@ -981,7 +981,7 @@
 .language-dialog > .box { border: 0; height: 100%; display: flex; flex-direction: column; min-height: 0; }
 .language-dialog .box-header, .language-dialog [data-listing-search] { flex-shrink: 0; }
 .language-browser { display: grid; grid-template-columns: minmax(13rem, 28%) minmax(0, 1fr); min-height: 0; flex: 1; }
-.language-file-list { --diff-tree-indent: 18px; min-width: 0; overflow: auto; overscroll-behavior: contain; border-right: 1px solid var(--line); }
+.language-file-list { --diff-tree-indent: 18px; min-width: 0; overflow: auto; overscroll-behavior: contain; border-inline-end: 1px solid var(--line); }
 .language-preview { min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .language-preview > .box { border: 0; border-radius: 0; }
 .language-preview-path { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.75rem 1rem; border-bottom: 1px solid var(--line); font-size: 12px; overflow-wrap: anywhere; }
@@ -1543,14 +1543,14 @@ html:has(.tpk[open]) { overflow: hidden; }
 
 /* Family index: jumps to a group and follows the list as it scrolls. */
 .tpk-index {
-  @apply hidden w-48 shrink-0 overflow-y-auto overscroll-contain border-r border-line p-2 lg:block;
+  @apply hidden w-48 shrink-0 overflow-y-auto overscroll-contain border-e border-line p-2 lg:block;
 }
 
 .tpk-index a {
   @apply flex h-7 items-center gap-2 rounded px-2 text-[13px] text-ink-muted hover:bg-hover hover:text-ink;
 }
 
-.tpk-index a span { @apply ml-auto text-[11px] tabular-nums text-ink-faint; }
+.tpk-index a span { @apply ms-auto text-[11px] tabular-nums text-ink-faint; }
 
 .tpk-index a[aria-current] { @apply bg-hover font-medium text-ink; }
 
@@ -1571,7 +1571,7 @@ html:has(.tpk[open]) { overflow: hidden; }
 }
 
 .tpk-opt {
-  @apply flex h-11 w-full cursor-pointer items-center gap-3 rounded-md px-2 text-left text-[13px] text-ink sm:h-10;
+  @apply flex h-11 w-full cursor-pointer items-center gap-3 rounded-md px-2 text-start text-[13px] text-ink sm:h-10;
   content-visibility: auto;
   contain-intrinsic-size: auto 2.5rem;
 }
@@ -1586,7 +1586,7 @@ html:has(.tpk[open]) { overflow: hidden; }
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ink) 6%, transparent);
 }
 
-.tpk-chip b { @apply mr-auto text-[11px] font-semibold leading-none; }
+.tpk-chip b { @apply me-auto text-[11px] font-semibold leading-none; }
 .tpk-chip i { @apply size-1.5 rounded-full; }
 .tpk-chip i:nth-of-type(1) { background: var(--syntax-keyword); }
 .tpk-chip i:nth-of-type(2) { background: var(--syntax-string); }
@@ -1604,7 +1604,7 @@ html:has(.tpk[open]) { overflow: hidden; }
 /* Preview pane: the theme's name and Apply on the page's surface, then the miniature page in
    the highlighted theme's own colours. */
 .tpk-side {
-  @apply hidden w-[28rem] shrink-0 flex-col gap-3 overflow-y-auto border-l border-line bg-subtle p-4 md:flex xl:w-[32rem];
+  @apply hidden w-[28rem] shrink-0 flex-col gap-3 overflow-y-auto border-s border-line bg-subtle p-4 md:flex xl:w-[32rem];
 }
 
 .tpk-info { @apply flex items-center gap-3; }
@@ -1618,7 +1618,7 @@ html:has(.tpk[open]) { overflow: hidden; }
 }
 
 .pv-top { @apply flex h-9 items-center gap-2 border-b border-line bg-surface px-3; }
-.pv-crumb { @apply mr-auto truncate text-ink-muted; }
+.pv-crumb { @apply me-auto truncate text-ink-muted; }
 .pv-crumb b { @apply font-semibold text-ink; }
 
 .pv-btn {
@@ -1726,7 +1726,7 @@ html:has(.tpk[open]) { overflow: hidden; }
 }
 
 .theme-card {
-  @apply block w-full cursor-pointer overflow-hidden rounded-[5px] bg-canvas text-left text-ink;
+  @apply block w-full cursor-pointer overflow-hidden rounded-[5px] bg-canvas text-start text-ink;
 }
 
 .theme-card:focus-visible { outline: none; }
@@ -1777,7 +1777,7 @@ html:has(.tpk[open]) { overflow: hidden; }
 .branch-graph { border-collapse: collapse; }
 .branch-graph td { height: 48px; border-bottom: 1px solid var(--line); }
 .branch-graph tr:last-child td { border-bottom: 0; }
-.branch-graph-lanes { width: 1%; padding: 0 0 0 12px; }
+.branch-graph-lanes { width: 1%; padding-block: 0; padding-inline: 12px 0; }
 
 /* Leading pull request filters open to the right to stay inside the viewport. */
 @media (width >= 40rem) {

@@ -13,16 +13,16 @@
 .repo-document-outline summary { list-style: none; cursor: pointer; }
 .repo-document-outline summary::-webkit-details-marker { display: none; }
 .repo-document-outline[open] summary { background: var(--hover); }
-.repo-document-outline-menu { position: absolute; right: 0; top: calc(100% + .5rem); width: min(300px, calc(100vw - 3rem)); border: 1px solid var(--line-strong); border-radius: var(--radius-ui); padding: .6rem; background: var(--surface); box-shadow: 0 8px 24px rgb(0 0 0 / .15); }
+.repo-document-outline-menu { position: absolute; inset-inline-end: 0; top: calc(100% + .5rem); width: min(300px, calc(100vw - 3rem)); border: 1px solid var(--line-strong); border-radius: var(--radius-ui); padding: .6rem; background: var(--surface); box-shadow: 0 8px 24px rgb(0 0 0 / .15); }
 .repo-document-outline-menu nav { max-height: min(50vh, 24rem); overflow-y: auto; margin-top: .5rem; }
 .repo-document-outline-menu ul { padding: 0; margin: 0; list-style: none; }
 .repo-document-outline-menu a { display: block; padding: .4rem .5rem; border-radius: 4px; font-size: 12px; color: var(--ink-muted); overflow-wrap: anywhere; }
 .repo-document-outline-menu a:hover, .repo-document-outline-menu a:focus-visible { color: var(--ink); background: var(--hover); }
-.repo-document-outline-menu [data-heading-depth="1"] a { padding-left: 1.2rem; }
-.repo-document-outline-menu [data-heading-depth="2"] a { padding-left: 1.9rem; }
-.repo-document-outline-menu [data-heading-depth="3"] a { padding-left: 2.6rem; }
-.repo-document-outline-menu [data-heading-depth="4"] a { padding-left: 3.3rem; }
-.repo-document-outline-menu [data-heading-depth="5"] a { padding-left: 4rem; }
+.repo-document-outline-menu [data-heading-depth="1"] a { padding-inline-start: 1.2rem; }
+.repo-document-outline-menu [data-heading-depth="2"] a { padding-inline-start: 1.9rem; }
+.repo-document-outline-menu [data-heading-depth="3"] a { padding-inline-start: 2.6rem; }
+.repo-document-outline-menu [data-heading-depth="4"] a { padding-inline-start: 3.3rem; }
+.repo-document-outline-menu [data-heading-depth="5"] a { padding-inline-start: 4rem; }
 .repo-document-outline-empty, .repo-document-status { padding: .75rem 1rem; color: var(--ink-muted); font-size: 12px; }
 .repo-document-status { border-bottom: 1px solid var(--line); }
 .repo-document-status a { text-decoration: underline; }
