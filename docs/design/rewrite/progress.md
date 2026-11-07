@@ -76,8 +76,34 @@ The separate [production visual workflow](../../../.github/workflows/actions-pro
 now admits a focused Linux fixture build/capture independently of required CI and
 its Windows matrix. An irrelevant later delta cannot cancel an already running
 capture. The default pending queue may still replace a pending relevant run.
-A fresh hosted execution, exact provenance checks and human review remain required;
-latest actual production browser evidence still has the late language failure.
+A fresh hosted execution, exact provenance checks and human review remain required.
+
+The late language failure was two CSP refusals on the refreshed page: the
+screenshot caret-hiding `style` attribute was restored from the htmx history
+snapshot. `b99ce611` strips style attributes from history snapshots. The next
+run then showed the Spanish theme picker still visible right after Escape under
+reduced motion. `4430c5aa` makes reduced motion close discretely transitioned
+dialogs at once. [Production visual run 42362022776](https://github.com/GitRbit/rbit/actions/runs/42362022776)
+at `4430c5aa` is the first hosted production capture with no failures: 15
+captures, candidate review required. Human screenshot review remains open. It
+found that RTL presentation mirrors only the Actions content (header, repository
+navigation and footer stay LTR) and that the mobile run page wraps the branch
+chip alone.
+
+`12d88feb` publishes the 18-commit identity active-runtime stack, including
+stopped/active identity migrations 0067 and 0068. Folding the compile fix into
+its owning commits makes each commit pass workspace Clippy. Qualification found
+and fixed a mixed anonymous/numbered SQL placeholder that bound NULL into
+`created_at`. `2ae46c50` then publishes the 14-commit Wiki writer stack: W0
+contracts, fenced mutations, bounded startup enumeration and scratch, and
+migrations 0069/0070, which require 0068. Under one-row statistics, its startup
+catalog plan may scan only the Wiki table, following the planner-scenario
+precedent; None/Large statistics still require the rowid search. `rbit-platform`
+is not yet a workspace member and has no Rust build, Clippy or native
+fixtures. [CI at `2ae46c50`](https://github.com/GitRbit/rbit/actions/runs/42398520426)
+passed every required job, including Windows/Ubuntu tests, and its
+[production visual run](https://github.com/GitRbit/rbit/actions/runs/42398520449)
+passed.
 
 Security activation, complete Wiki publication/UI, remaining feature retirement,
 full localization, paired performance, bounded build retention and release-platform
