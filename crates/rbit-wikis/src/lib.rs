@@ -5,6 +5,7 @@
 //! consumes trusted current repository facts; persistence must enforce its own atomic
 //! CAS and permission/archive checks. No production wiki backend exists in this slice.
 
+pub mod commands;
 mod content;
 mod identity;
 mod names;

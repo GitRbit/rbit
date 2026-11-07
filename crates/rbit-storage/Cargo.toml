@@ -10,6 +10,7 @@ autotests = false
 
 [dependencies]
 rbit-notifications.workspace = true
+rbit-access = { workspace = true, default-features = false }
 rbit-wikis = { workspace = true, default-features = false }
 rbit-collaboration = { workspace = true, default-features = false, features = ["applications"] }
 rbit-identity-models.workspace = true

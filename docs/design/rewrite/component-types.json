@@ -61,7 +61,12 @@
         "lib::kv::recovery::CredentialRecoveryPermit",
         "lib::notification_inbox::NotificationInboxStore",
         "lib::repository_forks::ForkCreationStore",
-        "lib::repository_forks::ForkReadStore"
+        "lib::repository_forks::ForkReadStore",
+        "lib::sqlite::wiki_mutations::WikiMutationStore",
+        "lib::sqlite::wiki_mutations::WikiMutationError",
+        "lib::sqlite::wiki_mutations::authorization::WriteAccessRow",
+        "lib::sqlite::wiki_mutations::rows::IntentRow",
+        "lib::sqlite::wiki_mutations::authorization::AuthorizedWiki"
       ]
     },
     {

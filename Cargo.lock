@@ -4578,6 +4578,7 @@ dependencies = [
  "metrics",
  "metrics-exporter-prometheus",
  "postcard",
+ "rbit-access",
  "rbit-collaboration",
  "rbit-core",
  "rbit-identity-models",

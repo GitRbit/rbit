@@ -49,7 +49,7 @@ impl Fixture {
         Self { directory, database, raw, services, owner, outsider, repo, objects, work, wiki }
     }
 
-    async fn user(database: &Database, name: &str) -> User {
+    pub(super) async fn user(database: &Database, name: &str) -> User {
         database
             .accounts()
             .create_user(NewUser {

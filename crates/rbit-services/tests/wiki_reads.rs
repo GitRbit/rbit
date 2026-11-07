@@ -1,4 +1,6 @@
 //! Production catalog + native object adapters through the feature read application.
+mod acceptance;
+mod actor_incarnation;
 mod fixture;
 mod incarnation;
 
