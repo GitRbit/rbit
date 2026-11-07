@@ -37,8 +37,10 @@ pub struct OverviewText {
 }
 
 impl OverviewText {
-    pub const fn option(&self, message: OverviewControlMessage) -> OverviewControlDisplay {
-        self.catalog.overview_control(message)
+    /// Askama passes typed option fields by reference at the rendering boundary.
+    #[allow(clippy::trivially_copy_pass_by_ref, reason = "match Askama's borrowed enum field argument")]
+    pub const fn option(&self, message: &OverviewControlMessage) -> OverviewControlDisplay {
+        self.catalog.overview_control(*message)
     }
 
     pub fn new(locale: Locale, count: usize) -> Self {
