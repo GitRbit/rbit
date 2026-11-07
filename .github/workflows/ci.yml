@@ -41,7 +41,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       # Bootstrap registry sources before guarded compilation's offline metadata scan.
       - run: node scripts/workspace.mjs fetch --locked
-      - run: node --test scripts/tests/rewrite-*.test.mjs scripts/tests/identity-features.test.mjs scripts/tests/workspace*.test.mjs
+      - run: node --test scripts/tests/rewrite-*.test.mjs scripts/tests/identity-features.test.mjs scripts/tests/platform-boundary.test.mjs scripts/tests/workspace*.test.mjs
       - run: node scripts/rewrite/check.mjs
       # Separate invocations prevent workspace feature unification from hiding a
       # missing model-only or credentials-only dependency/compile contract.
@@ -57,6 +57,9 @@ jobs:
       - run: node scripts/workspace.mjs test --package rbit-collaboration --no-default-features --features applications --locked
       - run: node scripts/workspace.mjs test --package rbit-contracts --package rbit-core --package rbit-repositories --package rbit-kernel --package rbit-localization --package rbit-identity-models --package rbit-identity --package rbit-collaboration --package rbit-auth --package rbit-rewrite-check --features rbit-identity/password-work,rbit-identity/sessions,rbit-collaboration/applications --locked
       - run: node scripts/workspace.mjs test --package rbit-render-probe --no-default-features --features inheritance,segments,blocks,count-8 --locked
+      # rbit-platform's native namespace boundary is Windows-only code that the Linux lint
+      # job never compiles, so it is linted strictly on both matrix platforms here.
+      - run: node scripts/workspace.mjs clippy --package rbit-platform --all-targets --locked -- -D warnings
       - run: node scripts/rewrite/check-types.mjs
 
   lint:

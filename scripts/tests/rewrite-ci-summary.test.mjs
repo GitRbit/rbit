@@ -80,5 +80,9 @@ test("workflow gate covers every validation, preserves platform/smoke checks and
   assert.ok(!gate.includes("GH_TOKEN")); assert.doesNotMatch(gate, /:\s*(write|write-all)\s*$/m);
   for (const match of workflow.matchAll(/uses: ([^\s#]+)/g)) if (!match[1].startsWith("./")) assert.match(match[1], /@[a-f0-9]{40}$/);
   assert.equal([...workflow.matchAll(/os: \[ubuntu-latest, windows-latest\]/g)].length, 2);
+  // The Windows-only native platform boundary is linted and policy-tested on both matrix platforms.
+  const contracts = workflow.slice(workflow.indexOf("\n  rewrite-contracts:"), workflow.indexOf("\n  lint:"));
+  assert.match(contracts, /^      - run: node scripts\/workspace\.mjs clippy --package rbit-platform --all-targets --locked -- -D warnings\r?$/m);
+  assert.match(contracts, /^      - run: node --test .* scripts\/tests\/platform-boundary\.test\.mjs .*\r?$/m);
   for (const command of ["docker build --file Dockerfile.runner", "docker run --rm rbit-runner:ci --version", "--entrypoint git rbit-runner:ci --version", "--entrypoint docker rbit-runner:ci --version"]) assert.ok(workflow.includes(command));
 });
