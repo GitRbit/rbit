@@ -197,15 +197,16 @@ async fn failed_migration_does_not_leave_a_partially_installed_writer_barrier() 
 }
 
 #[tokio::test]
-async fn incompatible_registered_comparison_refuses_before_changing_credentials() {
+async fn wrong_named_valid_protocol_refuses_the_immutable_v1_guard_before_changing_credentials() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("incompatible.db");
     let pool = legacy_fixture(&path).await;
-    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
-    let incompatible = register(options(&path)).collation("rbit_credential_writer_v1", |_, _| std::cmp::Ordering::Less);
+    // Isolate the released v1 contract. Other fixtures retain latest-schema coverage.
+    sqlx::migrate!("./migrations").run_to(61, &pool).await.unwrap();
+    let incompatible = options(&path).collation("rbit_credential_writer_v0", str::cmp);
     let mut connection = SqliteConnection::connect_with(&incompatible).await.unwrap();
     let error = sqlx::query(CHANGE).bind("refused").execute(&mut connection).await.unwrap_err();
-    assert!(error.as_database_error().unwrap().message().contains("credential writer version refused"));
+    assert_eq!(error.as_database_error().unwrap().message(), "no such collation sequence: rbit_credential_writer_v1");
     let hash: String = sqlx::query_scalar("SELECT password_hash FROM user_logins WHERE account_id=1").fetch_one(&pool).await.unwrap();
     assert_eq!(hash, "original");
     connection.close().await.unwrap();
