@@ -10,21 +10,21 @@ use rbit_storage::{Work, count_work};
 #[tokio::test]
 async fn reset_after_lookup_cannot_consume_any_original_second_factor() {
     for factor in Factor::ALL {
-        invalidated(factor, Change::Reset).await;
+        Box::pin(invalidated(factor, Change::Reset)).await;
     }
 }
 
 #[tokio::test]
 async fn suspension_after_lookup_cannot_consume_any_original_second_factor() {
     for factor in Factor::ALL {
-        invalidated(factor, Change::Suspend).await;
+        Box::pin(invalidated(factor, Change::Suspend)).await;
     }
 }
 
 #[tokio::test]
 async fn current_pending_after_lookup_cannot_consume_any_original_second_factor() {
     for factor in Factor::ALL {
-        invalidated(factor, Change::Pending).await;
+        Box::pin(invalidated(factor, Change::Pending)).await;
     }
 }
 

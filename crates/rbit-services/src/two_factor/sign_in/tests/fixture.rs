@@ -117,12 +117,12 @@ impl Fixture {
         if original {
             match self.services.sign_in_original("alice", PASSWORD.into(), &client()).await.unwrap() {
                 OriginalSignInOutcome::SecondFactorRequired(pending) => pending,
-                _ => panic!("fixture must require an original second factor"),
+                OriginalSignInOutcome::SignedIn(_) => panic!("fixture must require an original second factor"),
             }
         } else {
             match self.services.sign_in("alice", PASSWORD.into(), &client()).await.unwrap() {
                 SignInOutcome::SecondFactorRequired(pending) => pending,
-                _ => panic!("fixture must require a second factor"),
+                SignInOutcome::SignedIn(_) => panic!("fixture must require a second factor"),
             }
         }
     }
