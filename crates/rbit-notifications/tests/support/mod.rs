@@ -116,7 +116,7 @@ impl InboxAccess for Fake {
     fn find_repository(&self, repo: RepoId) -> impl Future<Output = Result<Option<()>, Self::Error>> + Send {
         self.result(&format!("repository:{}", repo.0), (!self.missing_repository).then_some(()))
     }
-    fn can_read(&self, _: &()) -> impl Future<Output = Result<bool, Self::Error>> + Send {
+    fn can_read(&self, (): &()) -> impl Future<Output = Result<bool, Self::Error>> + Send {
         self.result("can-read", !self.denied)
     }
 }

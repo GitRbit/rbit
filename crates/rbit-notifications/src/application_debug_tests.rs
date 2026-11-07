@@ -10,12 +10,12 @@ impl std::fmt::Debug for PanicDebug {
 }
 #[test]
 fn debug_has_no_payload_bounds_or_viewer_disclosure() {
-    let value = InboxApplication { repository: &NoDebug, access: &NoDebug, user: AccountId(987654321) };
+    let value = InboxApplication { repository: &NoDebug, access: &NoDebug, user: AccountId(987_654_321) };
     assert_eq!(format!("{value:?}"), "InboxApplication { .. }");
     assert_eq!(format!("{value:#?}"), "InboxApplication { .. }");
 }
 #[test]
 fn debug_never_invokes_even_panicking_payload_formatters() {
-    let value = InboxApplication { repository: &PanicDebug, access: &PanicDebug, user: AccountId(987654321) };
+    let value = InboxApplication { repository: &PanicDebug, access: &PanicDebug, user: AccountId(987_654_321) };
     assert_eq!(format!("{value:?}"), "InboxApplication { .. }");
 }
