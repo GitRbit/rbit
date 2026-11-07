@@ -7,27 +7,10 @@ use rbit_wikis::{
     commands::{WikiIntent, WikiWriteCommand},
     ownership::{WikiCatalogOwnership, WikiObjectOwnership},
 };
-use std::{
-    fmt,
-    future::Future,
-    num::NonZeroU32,
-    path::Path,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-};
+use std::{fmt, future::Future, num::NonZeroU32, path::Path, sync::Arc};
 
 struct GrantedObjects<K> {
     objects: K,
-    permission: Arc<AtomicBool>,
-}
-impl<K> Drop for GrantedObjects<K> {
-    fn drop(&mut self) {
-        // Revoke BEFORE actual root ownership is destroyed. Each queued SQL job
-        // and returned acceptance retains this guard, not merely a copied flag.
-        self.permission.store(false, Ordering::Release);
-    }
 }
 /// Actual object resource plus private SQL-permission lifetime. It has no public
 /// constructor/flag setter and is not native integrity/readiness authority.
@@ -112,17 +95,49 @@ impl FullWikiWriter {
         self,
         objects: K,
     ) -> impl Future<Output = Result<FencedWikiRecovery<K>, WikiWriteError>> + Send + use<K> {
-        let writer = self.clone();
-        let permission = Arc::clone(&self.0.protocol_permission);
-        let job = self.start_operation(jobs::Admission::BeginFence, move |pool, catalog| async move {
-            let objects = check_objects(catalog.clone(), objects).await?;
-            let objects = WikiRecoveryObjects(Arc::new(GrantedObjects { objects, permission }));
-            objects.0.permission.store(true, Ordering::Release);
-            let epoch = prepare_protocol(&pool).await?;
-            check_objects(catalog, objects.clone()).await?;
-            Ok(FencedWikiRecovery { epoch, writer, objects })
+        let objects = WikiRecoveryObjects(Arc::new(GrantedObjects { objects }));
+        let checking = objects.clone();
+        let job = self.start_operation(jobs::Admission::BeginFence, move |_pool, catalog| async move {
+            check_objects(catalog, checking).await.map(|_| ())
         });
-        async move { job?.await.map_err(|_| WikiWriteError::Uncertain)? }
+        let handoff = job.map(|job| {
+            // Construct retention BEFORE the handoff future's first poll. A
+            // discarded/aborted supervisor cannot release these actual resources.
+            let catalog = self.catalog();
+            let mut retention = super::retention::NativeRetention::bound(catalog.clone(), objects.clone());
+            tokio::spawn(async move {
+                let checked = job.await.map_err(|_| WikiWriteError::Uncertain)?;
+                if let Err(error) = checked {
+                    // Completed validation refused BEFORE any private-generation
+                    // initialization. There is no private callback to outlive K.
+                    retention.verified();
+                    return Err(error);
+                }
+                // OUTSIDE the counted validation job: waiting for that same job
+                // from within it would deadlock drain.
+                self.close().await?;
+                let writer = super::opening::open_owned(catalog, objects.clone(), retention).await?;
+                let owned = objects.clone();
+                let operation = writer.start_operation(jobs::Admission::Recovery, move |pool, catalog| async move {
+                    check_objects(catalog.clone(), owned.clone()).await?;
+                    let epoch = prepare_protocol(&pool).await?;
+                    check_objects(catalog, owned).await?;
+                    Ok(epoch)
+                });
+                let epoch = match operation {
+                    Ok(operation) => operation.await.map_err(|_| WikiWriteError::Uncertain)?,
+                    Err(error) => Err(error),
+                };
+                match epoch {
+                    Ok(epoch) => Ok(FencedWikiRecovery { epoch, writer, objects }),
+                    Err(error) => {
+                        let _cleanup = writer.close().await;
+                        Err(error)
+                    }
+                }
+            })
+        });
+        async move { handoff?.await.map_err(|_| WikiWriteError::Uncertain)? }
     }
 }
 

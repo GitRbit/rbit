@@ -114,7 +114,6 @@ struct Writer {
     catalog: WikiCatalogHandle,
     state: Arc<retention::NativeState>,
     protocol_claimed: std::sync::atomic::AtomicBool,
-    protocol_permission: Arc<std::sync::atomic::AtomicBool>,
     completion: watch::Receiver<shutdown::Completion>,
     // Last: losing the last controller wakes the real pool-close supervisor.
     shutdown: watch::Sender<bool>,

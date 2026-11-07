@@ -30,7 +30,7 @@ impl WikiObjectOwnership for FileObjects {
         Ok(())
     }
 }
-fn objects(writer: &FullWikiWriter, directory: &Path) -> FileObjects {
+pub(super) fn objects(writer: &FullWikiWriter, directory: &Path) -> FileObjects {
     let file = File::create_new(directory.join("physical-object-scope")).unwrap();
     file.try_lock().unwrap();
     FileObjects { file: Arc::new(file), catalog: writer.catalog() }
@@ -179,17 +179,29 @@ async fn actual_guard_retention_and_fresh_full_open_do_not_leak_closed_permissio
     let original = database.wiki_mutations().accept(command, Timestamp(7), tests::capacity()).await.unwrap();
     let clone = writer.clone();
     let recovery = fenced(writer, directory.path()).await;
+    assert!(clone.0.pool.is_closed(), "initial LEGACY physical generation was closed before private setup");
+    assert!(clone.0.state.accounted());
+    assert!(!Arc::ptr_eq(&clone.0, &recovery.writer.0));
+    let private = recovery.writer.clone();
     let accepted = recovery.replay(original.command, Timestamp(9), tests::capacity()).await.unwrap();
     drop(recovery);
-    assert!(clone.0.protocol_permission.load(std::sync::atomic::Ordering::Acquire), "accepted result retains the actual guard");
+    assert!(matches!(database.wiki_catalog_lease().await, Err(WikiCatalogLeaseError::Busy)));
     drop(accepted);
-    assert!(!clone.0.protocol_permission.load(std::sync::atomic::Ordering::Acquire));
-    let denied = sqlx::query("UPDATE wiki_writer_protocol SET epoch=epoch+1").execute(&clone.0.pool).await.unwrap_err();
-    assert_eq!(denied.as_database_error().unwrap().message(), "wiki writer protocol refused");
+    // Its callback remains immutable and the real root remains owned through
+    // physical close. No last-result drop mutates registered comparison answers.
+    let still_private: i64 =
+        sqlx::query_scalar("SELECT 'managed' COLLATE rbit_wiki_writer_v1 = 'permit'").fetch_one(&private.0.pool).await.unwrap();
+    assert_eq!(still_private, 1);
+    assert!(matches!(database.wiki_catalog_lease().await, Err(WikiCatalogLeaseError::Busy)));
+    private.close().await.unwrap();
+    assert!(private.0.state.accounted());
+    drop(private);
     clone.close().await.unwrap();
     drop(clone);
     let fresh = FullWikiWriter::open(database.wiki_catalog_lease().await.unwrap()).await.unwrap();
-    assert!(!fresh.0.protocol_permission.load(std::sync::atomic::Ordering::Acquire));
+    let only_legacy: i64 =
+        sqlx::query_scalar("SELECT 'managed' COLLATE rbit_wiki_writer_v1 = 'permit'").fetch_one(&fresh.0.pool).await.unwrap();
+    assert_eq!(only_legacy, 0);
     let result = fresh.accept(second, Timestamp(10), NonZeroU32::new(2).unwrap()).await;
     match result {
         Err(WikiWriteError::Acceptance(WikiMutationError::Storage(crate::StorageError::Sqlite(error)))) => {
@@ -200,4 +212,46 @@ async fn actual_guard_retention_and_fresh_full_open_do_not_leak_closed_permissio
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM wiki_mutation_intents").fetch_one(&database.pool).await.unwrap();
     assert_eq!(count, 1);
     fresh.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn discarded_unpolled_handoff_keeps_root_until_initial_connection_and_replacement_really_close() {
+    let (directory, database, writer, _command) = tests::fixture().await;
+    let initial = writer.clone();
+    let mut borrowed = initial.0.pool.acquire().await.unwrap();
+    let native = objects(&writer, directory.path());
+    let response = writer.begin_recovery(native);
+    drop(response);
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !initial.0.tasks.is_closed() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let legacy: i64 =
+        sqlx::query_scalar("SELECT 'managed' COLLATE rbit_wiki_writer_v1 = 'permit'").fetch_one(&mut *borrowed).await.unwrap();
+    assert_eq!(legacy, 0, "no private generation exists while the first is physically borrowed");
+    let object_file = File::options().read(true).write(true).open(directory.path().join("physical-object-scope")).unwrap();
+    assert!(matches!(object_file.try_lock(), Err(std::fs::TryLockError::WouldBlock)));
+    assert!(matches!(database.wiki_catalog_lease().await, Err(WikiCatalogLeaseError::Busy)));
+    drop(borrowed);
+    initial.close().await.unwrap();
+    drop(initial);
+    let next = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match database.wiki_catalog_lease().await {
+                Ok(lease) => break lease,
+                Err(WikiCatalogLeaseError::Busy) => tokio::task::yield_now().await,
+                Err(error) => panic!("unexpected catalog failure: {error:?}"),
+            }
+        }
+    })
+    .await
+    .unwrap();
+    let mode: (String, i64) =
+        sqlx::query_as("SELECT mode,epoch FROM wiki_writer_protocol WHERE singleton=1").fetch_one(&database.pool).await.unwrap();
+    assert_eq!(mode, ("preparing".to_owned(), 1));
+    object_file.try_lock().unwrap();
+    drop(next);
 }

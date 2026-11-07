@@ -103,20 +103,27 @@ impl Drop for InitializationAttempt {
     }
 }
 
-/// Exactly one per consumed physical catalog lease. No registry/task-loop/reaper.
-pub(super) struct NativeRetention {
+/// One per owned generation/handoff, sharing the same consumed catalog lease.
+/// The two-generation startup is bounded; no registry/task-loop/reaper is used.
+pub(super) struct NativeRetention<K = ()> {
     catalog: Option<WikiCatalogHandle>,
+    objects: Option<K>,
     verified: bool,
 }
-impl NativeRetention {
+impl NativeRetention<()> {
     pub(super) fn new(catalog: WikiCatalogHandle) -> Self {
-        Self { catalog: Some(catalog), verified: false }
+        Self { catalog: Some(catalog), objects: None, verified: false }
+    }
+}
+impl<K> NativeRetention<K> {
+    pub(super) fn bound(catalog: WikiCatalogHandle, objects: K) -> Self {
+        Self { catalog: Some(catalog), objects: Some(objects), verified: false }
     }
     pub(super) fn verified(&mut self) {
         self.verified = true;
     }
 }
-impl Drop for NativeRetention {
+impl<K> Drop for NativeRetention<K> {
     fn drop(&mut self) {
         if !self.verified
             && let Some(catalog) = self.catalog.take()
@@ -125,6 +132,13 @@ impl Drop for NativeRetention {
             // supervisor/runtime abort. Only process exit can recover this
             // unknown native lifetime; another owner cannot allocate again.
             std::mem::forget(catalog);
+        }
+        if !self.verified
+            && let Some(objects) = self.objects.take()
+        {
+            // The private callback and actual root cannot outlive each other's
+            // accounted generation. Unknown shutdown retains both resources.
+            std::mem::forget(objects);
         }
     }
 }

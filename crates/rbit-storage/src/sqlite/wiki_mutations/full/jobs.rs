@@ -28,12 +28,14 @@ impl FullWikiWriter {
         if self.0.state.is_uncertain() {
             return Err(WikiWriteError::Quarantined);
         }
+        let claimed = self.0.protocol_claimed.load(Ordering::Acquire);
+        if matches!(admission, Admission::Legacy) && claimed {
+            return Err(WikiWriteError::FencedOwnerRequired);
+        }
         if *closed {
             return Err(WikiWriteError::Closed);
         }
-        let claimed = self.0.protocol_claimed.load(Ordering::Acquire);
         match admission {
-            Admission::Legacy if claimed => return Err(WikiWriteError::FencedOwnerRequired),
             Admission::Recovery if !claimed => return Err(WikiWriteError::Binding),
             Admission::BeginFence if claimed => return Err(WikiWriteError::Busy),
             _ => {}

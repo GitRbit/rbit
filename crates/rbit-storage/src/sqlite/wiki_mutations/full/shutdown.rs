@@ -12,12 +12,11 @@ pub(super) enum Completion {
     Unproved,
 }
 
-pub(super) fn own_pool(
+pub(super) fn own_pool<K: Send + 'static>(
     pool: sqlx::SqlitePool,
     catalog: WikiCatalogHandle,
     state: Arc<retention::NativeState>,
-    mut retention: retention::NativeRetention,
-    permission: Arc<std::sync::atomic::AtomicBool>,
+    mut retention: retention::NativeRetention<K>,
 ) -> FullWikiWriter {
     let (stop, mut stopping) = watch::channel(false);
     let (done, completion) = watch::channel(Completion::Waiting);
@@ -31,7 +30,6 @@ pub(super) fn own_pool(
         catalog: catalog.clone(),
         state: Arc::clone(&state),
         protocol_claimed: std::sync::atomic::AtomicBool::new(false),
-        protocol_permission: permission,
         completion,
         shutdown: stop,
     }));

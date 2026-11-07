@@ -7,7 +7,9 @@ const DIRECTORY: &str = "RBIT_TEST_WIKI_NATIVE_DIRECTORY";
 
 #[test]
 fn runtime_abort_and_unaccounted_replacement_retain_actual_catalog_exclusion() {
-    for case in ["runtime-abort", "unaccounted-replacement", "post-connect-binding-failure"] {
+    for case in
+        ["runtime-abort", "unaccounted-replacement", "post-connect-binding-failure", "owned-runtime-abort", "owned-unaccounted-replacement"]
+    {
         let directory = tempfile::tempdir().unwrap();
         let mut child = std::process::Command::new(std::env::current_exe().unwrap())
             .args(["--exact", "sqlite::wiki_mutations::full::tests_quarantine::native_quarantine_child", "--nocapture"])
@@ -53,6 +55,33 @@ fn native_quarantine_child() {
         return;
     }
     let writer = runtime.block_on(async { FullWikiWriter::open(database.wiki_catalog_lease().await.unwrap()).await.unwrap() });
+    if case.starts_with("owned-") {
+        let recovery = runtime.block_on(super::fencing_tests::fenced(writer, &directory));
+        if case == "owned-unaccounted-replacement" {
+            runtime.block_on(async {
+                let connection = recovery.writer.0.pool.acquire().await.unwrap();
+                connection.close().await.unwrap();
+                tokio::time::timeout(Duration::from_secs(5), async {
+                    tokio::select! {
+                        result = recovery.writer.0.pool.acquire() => assert!(result.is_err()),
+                        () = recovery.writer.0.state.unproved() => {},
+                    }
+                })
+                .await
+                .unwrap();
+                assert!(matches!(recovery.close().await, Err(WikiWriteError::Quarantined)));
+            });
+        }
+        drop(runtime);
+        drop(recovery);
+        let next = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+        next.block_on(assert_excluded(&database));
+        let root = std::fs::File::options().read(true).write(true).open(directory.join("physical-object-scope")).unwrap();
+        for _ in 0..3 {
+            assert!(matches!(root.try_lock(), Err(std::fs::TryLockError::WouldBlock)));
+        }
+        return;
+    }
     match case.as_str() {
         "runtime-abort" => {
             // Keep the controller alive: its waiting supervisor cannot observe a

@@ -16,20 +16,28 @@ and the ACTUAL canonical catalog path. A foreign actual catalog/root refuses bef
 any protocol update. This trusted I/O composition is not authentication or a
 cryptographic attestation from arbitrary embedded Rust implementations.
 
-The FULL connection starts with only legacy Wiki permission. A PRIVATE lifetime
-guard, constructed only after those checks, owns the actual object resource and
-activates its connection callback. Jobs and accepted results hold that same guard.
-Its final Drop revokes permission BEFORE destroying the actual object owner. No
-caller boolean, parsed ID, exported options function or marker grants this role.
+The initial FULL connection starts with only immutable legacy Wiki permission.
+After those checks its actual worker is physically closed/accounted; a second FULL
+generation then registers an immutable PRIVATE comparator retaining the actual
+object resource. Neither registered comparison changes its answers during its
+lifetime. Jobs and accepted results hold that same root guard. A typed retention
+guard is installed before the handoff task's first await and transfers into the
+replacement pool's actual shutdown supervisor before physical initialization.
+Only proved physical close releases it; uncertainty/runtime abort retains both the
+actual root and catalog until process restart. No caller boolean, parsed ID,
+exported options function or marker grants this role.
 Fresh standalone FULL owners of a preparing/managed database therefore do not
 inherit closed Wiki permission merely by opening the catalog.
 
 The one synchronous gate/try-admission path covers legacy acceptance, fence setup
 and exact recovery. Claiming a protocol owner disables old FULL clones' unfenced
 entry point. Jobs are tracked before returning even an unpolled response future;
-cancellation retains actual root/catalog resources. This remains one bounded job,
-one private physical SQL connection and no pre-pool wait queue. The existing native
-physical-close/generation/quarantine guard remains unchanged.
+cancellation retains actual root/catalog resources. This remains bounded work with
+no pre-pool wait queue. Startup adds one actual LEGACY close and one PRIVATE physical
+open/PRAGMA, never simultaneous active generations. The handoff waits outside its
+tracked validation job to avoid self-drain deadlock. A discarded response cannot
+cancel the handoff. Old controller clones remain permanently claimed and closed;
+a new standalone FULL owner always starts with only the stable LEGACY callback.
 
 ## Software compatibility and phase
 
@@ -99,6 +107,20 @@ The SQL-only tests use a physical file-lock object-owner port; separate service 
 compose the actual native Git owner and reject a foreign actual catalog/root. A
 same-connection minimal-schema mechanism fixture tests an old cached unregistered
 statement against exact0069, independently of the complete-schema fixtures.
+
+The stable-collation correction additionally prepares a real two-generation test:
+the initial worker is accounted/closed before the PRIVATE owner appears; dropping
+results never changes the PRIVATE comparator; fresh standalone FULL remains LEGACY.
+A borrowed initial physical connection deterministically blocks the handoff while
+its discarded response still retains the root; release permits replacement and
+verified final cleanup. Controlled subprocesses exercise private-generation runtime
+abort and unaccounted replacement, requiring both real catalog and root exclusion
+to remain held; this test runs in the rbit-storage suite below.
+
+SQLite requires a registered comparator to always return the same answer for the
+same inputs; no-index usage does not waive that contract. The previous mutable
+permission callback is removed rather than justified by the absence of indexes.
+See the [official collation contract](https://sqlite.org/c3ref/create_collation.html).
 
 Run on the shared build lane once identity 0067/0068 were published beneath 0069:
 rustfmt, strict workspace Clippy, the source/AST checks, and the rbit-storage

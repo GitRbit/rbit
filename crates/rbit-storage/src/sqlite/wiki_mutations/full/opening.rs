@@ -1,7 +1,8 @@
 //! Connection setup is separate from command statements and verified on replacement.
+use super::fencing::WikiRecoveryObjects;
 use super::{FullWikiWriter, WikiCatalogHandle, WikiCatalogLease, WikiCatalogLeaseError, WikiWriteError, retention, shutdown};
-use rbit_wikis::ownership::WikiCatalogOwnership;
-use sqlx::sqlite::{SqlitePoolOptions, SqliteSynchronous};
+use rbit_wikis::ownership::{WikiCatalogOwnership, WikiObjectOwnership};
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteSynchronous};
 use std::{future::Future, sync::Arc};
 
 pub(super) async fn open(lease: WikiCatalogLease) -> Result<FullWikiWriter, WikiWriteError> {
@@ -16,13 +17,32 @@ pub(super) async fn open_after(lease: WikiCatalogLease, initialized: impl Future
     })
     .await
     .map_err(|_| WikiWriteError::Uncertain)??;
-    let permission = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let options = super::super::protocol::owned_options(lease.connection_options(), Arc::clone(&permission))
-        .create_if_missing(false)
-        .synchronous(SqliteSynchronous::Full)
-        .optimize_on_close(false, None);
+    let options = super::super::protocol::legacy_options(lease.connection_options());
     let catalog = WikiCatalogHandle(Arc::new(lease));
     let retention = retention::NativeRetention::new(catalog.clone());
+    open_options(catalog, options, retention, initialized).await
+}
+
+/// Second generation only: actual initial worker shutdown has been proved by the
+/// handoff, and the real object guard is already retained before physical setup.
+pub(super) async fn open_owned<K: WikiObjectOwnership>(
+    catalog: WikiCatalogHandle,
+    objects: WikiRecoveryObjects<K>,
+    retention: retention::NativeRetention<WikiRecoveryObjects<K>>,
+) -> Result<FullWikiWriter, WikiWriteError> {
+    let options = super::super::protocol::owned_options(catalog.0.connection_options(), objects);
+    let writer = open_options(catalog, options, retention, std::future::ready(())).await?;
+    writer.0.protocol_claimed.store(true, std::sync::atomic::Ordering::Release);
+    Ok(writer)
+}
+
+async fn open_options<K: Send + 'static>(
+    catalog: WikiCatalogHandle,
+    options: SqliteConnectOptions,
+    retention: retention::NativeRetention<K>,
+    initialized: impl Future<Output = ()>,
+) -> Result<FullWikiWriter, WikiWriteError> {
+    let options = options.create_if_missing(false).synchronous(SqliteSynchronous::Full).optimize_on_close(false, None);
     let state = Arc::new(retention::NativeState::default());
     let initialization = Arc::clone(&state);
     let pool = SqlitePoolOptions::new()
@@ -45,7 +65,7 @@ pub(super) async fn open_after(lease: WikiCatalogLease, initialized: impl Future
         })
         .connect_lazy_with(options);
     // Install real pool-close ownership BEFORE any async physical connection setup.
-    let writer = shutdown::own_pool(pool, catalog, state, retention, permission);
+    let writer = shutdown::own_pool(pool, catalog, state, retention);
     match initialize(&writer, initialized).await {
         Ok(()) => Ok(writer),
         Err(error) => {

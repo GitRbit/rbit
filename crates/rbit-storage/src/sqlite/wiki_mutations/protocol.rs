@@ -1,10 +1,6 @@
 //! Private connection-local Wiki compatibility; never a public default capability.
 use sqlx::sqlite::SqliteConnectOptions;
 use std::cmp::Ordering;
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering as AtomicOrdering},
-};
 
 const NAME: &str = "rbit_wiki_writer_v1";
 
@@ -25,13 +21,13 @@ fn private(left: &str, right: &str) -> Ordering {
 pub(crate) fn legacy_options(options: SqliteConnectOptions) -> SqliteConnectOptions {
     options.collation(NAME, legacy)
 }
-pub(super) fn owned_options(options: SqliteConnectOptions, permission: Arc<AtomicBool>) -> SqliteConnectOptions {
-    options.collation(
-        NAME,
-        move |left, right| {
-            if permission.load(AtomicOrdering::Acquire) { private(left, right) } else { legacy(left, right) }
-        },
-    )
+pub(super) fn owned_options<K: Send + Sync + 'static>(options: SqliteConnectOptions, objects: K) -> SqliteConnectOptions {
+    options.collation(NAME, move |left, right| {
+        // Lifetime only: this particular registration NEVER changes ordering.
+        // The actual root is retained until accounted physical connection close.
+        let _objects = &objects;
+        private(left, right)
+    })
 }
 
 #[cfg(test)]
@@ -48,6 +44,26 @@ mod tests {
         assert_ne!(legacy("managed", "permit"), Ordering::Equal);
         assert_eq!(private("managed", "permit"), Ordering::Equal);
         assert_ne!(private("other", "permit"), Ordering::Equal);
+    }
+
+    #[test]
+    fn each_registered_comparator_is_a_total_preorder_for_mode_and_foreign_inputs() {
+        let values = ["", "legacy", "preparing", "managed", "permit", "other", "\0", "é"];
+        for compare in [legacy as fn(&str, &str) -> Ordering, private] {
+            for a in values {
+                for b in values {
+                    assert_eq!(compare(a, b), compare(b, a).reverse());
+                    for c in values {
+                        if compare(a, b) == Ordering::Equal && compare(b, c) == Ordering::Equal {
+                            assert_eq!(compare(a, c), Ordering::Equal);
+                        }
+                        if compare(a, b) == Ordering::Less && compare(b, c) == Ordering::Less {
+                            assert_eq!(compare(a, c), Ordering::Less);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     #[tokio::test]
