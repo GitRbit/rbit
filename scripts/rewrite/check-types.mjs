@@ -1,7 +1,8 @@
-/** Compile the development-only AST checker through the shared lane, then check new crates. */
+/** Compile the development-only AST checker through the shared lane, then check strict crates. */
 import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { dirname, relative } from "node:path";
+import { strictCrateNames } from "./check.mjs";
 import { context } from "../workspace/paths.mjs";
 import { cargo } from "../workspace/build.mjs";
 import { pruneGenerations, runBinary } from "../workspace/runtime.mjs";
@@ -18,12 +19,12 @@ async function verifiedRun(ctx, executable, args) {
 async function main() {
   const ctx = await context();
   const baseline = JSON.parse(await readFile(new URL("../../docs/design/rewrite/main-inventory.json", import.meta.url), "utf8"));
-  const legacy = new Set(baseline.crates.map((crate) => crate.name));
   // Metadata with --locked is read-only and does not invoke compiler/build-script writers.
   const metadata = JSON.parse(execFileSync("cargo", ["metadata", "--no-deps", "--locked", "--format-version=1"], {
     cwd: ctx.checkout, encoding: "utf8", windowsHide: true, stdio: ["pipe", "pipe", "pipe"], maxBuffer: 8 * 1024 * 1024,
   }));
-  const roots = metadata.packages.filter((pkg) => metadata.workspace_members.includes(pkg.id) && !legacy.has(pkg.name))
+  const strict = new Set(strictCrateNames(metadata, baseline));
+  const roots = metadata.packages.filter((pkg) => metadata.workspace_members.includes(pkg.id) && strict.has(pkg.name))
     .map((pkg) => relative(ctx.checkout, dirname(pkg.manifest_path)));
   if (!roots.length) throw new Error("No strict replacement crates found");
   const build = await cargo(ctx, "build", ["--package", "rbit-rewrite-check", "--locked"]);

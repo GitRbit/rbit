@@ -11,6 +11,15 @@ import { checkInventoryCompileIsolation } from "./inventory-isolation.mjs";
 import { checkPlannedAdditions } from "./planned-features.mjs";
 
 export const LIMIT = 400;
+// These complete former legacy crates now obey strict physical and cumulative bounds.
+export const PROMOTED_CRATES = Object.freeze(["rbit-workflow"]);
+
+/** The same whole-crate selection drives the real AST command and fixture checks. */
+export function strictCrateNames(metadata, baseline) {
+  const legacy = new Set(baseline.crates.map(crate => crate.name));
+  return metadata.packages.filter(pkg => metadata.workspace_members.includes(pkg.id)
+    && (!legacy.has(pkg.name) || PROMOTED_CRATES.includes(pkg.name))).map(pkg => pkg.name);
+}
 const GENERATED = new Set([
   "crates/rbit-web/assets/app.bundle.js", "crates/rbit-web/src/themes/catalog.rs",
 ]);
@@ -82,7 +91,8 @@ export function checkSizes(files, baseline) {
   const ceilings = new Map(baseline.authoredSizeBaseline.map((entry) => [entry.path, entry.lines]));
   return [...files].flatMap(([path, source]) => {
     const count = source === "" ? 0 : source.split("\n").length - Number(source.endsWith("\n"));
-    const allowed = Math.max(LIMIT, ceilings.get(path) ?? LIMIT);
+    const promoted = PROMOTED_CRATES.some(name => path.startsWith(`crates/${name}/`));
+    const allowed = promoted ? LIMIT : Math.max(LIMIT, ceilings.get(path) ?? LIMIT);
     return count > allowed ? [`${path}: ${count} physical lines exceeds ${allowed}; split by responsibility`] : [];
   });
 }

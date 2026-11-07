@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync, symlinkSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { authored, checkSizes, checkEdges, checkMigrations, checkLedger, sourceFiles } from "../rewrite/check.mjs";
+import { authored, checkSizes, checkEdges, checkMigrations, checkLedger, sourceFiles, strictCrateNames } from "../rewrite/check.mjs";
 
 test("legacy ceilings cannot grow and new authored files have no blanket exemptions", () => {
   const baseline = { authoredSizeBaseline: [{ path: "legacy.rs", lines: 500 }] };
@@ -146,4 +146,27 @@ test("locale adapters accept exact model contracts without widening application 
   const models = packages.find(pkg => pkg.name === "rbit-identity-models");
   models.dependencies.push({ name: "rbit-storage", kind: null });
   assert.match(checkEdges(metadata, baseline).join("\n"), /rbit-identity-models -> rbit-storage: forbidden dependency/);
+});
+
+
+test("promoted workflow source loses all old physical exemptions and receives the full AST target", () => {
+  const baseline = { crates: [{ name: "rbit-workflow" }, { name: "rbit-storage" }], authoredSizeBaseline: [
+    { path: "crates/rbit-workflow/src/spec.rs", lines: 1045 },
+    { path: "crates/rbit-workflow/tests/conformance.rs", lines: 533 },
+    { path: "crates/rbit-storage/src/legacy.rs", lines: 800 },
+  ] };
+  const files = [
+    ["crates/rbit-workflow/src/spec.rs", "x\n".repeat(401)],
+    ["crates/rbit-workflow/tests/conformance.rs", "x\n".repeat(401)],
+    ["crates/rbit-workflow-copy/source.rs", "x\n".repeat(400)],
+    ["crates/rbit-storage/src/legacy.rs", "x\n".repeat(800)],
+  ];
+  assert.equal(checkSizes(files, baseline).length, 2);
+  files[0][1] = "x\n".repeat(400); files[1][1] = "x\n".repeat(400);
+  assert.deepEqual(checkSizes(files, baseline), []);
+  const metadata = { workspace_members: ["workflow", "storage", "new"], packages: [
+    { id: "workflow", name: "rbit-workflow" }, { id: "storage", name: "rbit-storage" },
+    { id: "new", name: "rbit-new" }, { id: "dependency", name: "serde" },
+  ] };
+  assert.deepEqual(strictCrateNames(metadata, baseline), ["rbit-workflow", "rbit-new"]);
 });
