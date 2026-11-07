@@ -1453,6 +1453,9 @@
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+    /* Even a 0.01ms `display`/`overlay` transition keeps a closed dialog rendered until a
+       later frame; without motion, closing hides it at once. */
+    transition-behavior: normal !important;
   }
 }
 
