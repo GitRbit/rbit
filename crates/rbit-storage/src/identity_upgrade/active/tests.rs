@@ -41,7 +41,7 @@ async fn publication_restarts_without_rebasing_or_ending_new_sessions() {
         .unwrap();
     drop(sessions);
     assert!(owner.publish_active_inner().await.unwrap() == checkpoint);
-    drop(owner.accept_active_inner().await.unwrap());
+    close_owner(owner.accept_active_inner().await.unwrap().owner).await;
     let owner = f.owner().await;
     let accepted = owner.accept_active_inner().await.unwrap();
     assert!(accepted.checkpoint == checkpoint);
@@ -57,12 +57,12 @@ async fn sql_publication_cut_finishes_only_the_exact_prepared_pair() {
     let checkpoint = owner.validate_prepared().await.unwrap();
     sql::publish(&mut owner.connection, checkpoint).await.unwrap();
     assert!(!kv::is_active(&owner.db, checkpoint, limits()).unwrap());
-    drop(owner);
+    close_owner(owner).await;
     // Acceptance never repairs. Only explicit publication may finish this cut.
     assert!(f.owner().await.accept_active_inner().await.is_err());
     let mut owner = f.owner().await;
     assert!(owner.publish_active_inner().await.unwrap() == checkpoint);
-    drop(owner.accept_active_inner().await.unwrap());
+    close_owner(owner.accept_active_inner().await.unwrap().owner).await;
 }
 #[tokio::test]
 async fn unpaired_or_modified_prepared_cut_cannot_be_adopted() {
@@ -229,4 +229,11 @@ async fn runtime_floor_rejects_exhaustion_without_mutating_current_floor() {
         tx.commit().unwrap();
     }
     assert_eq!(runtime::read(&owner.db).unwrap(), Some(checkpoint.final_floor().unwrap()));
+}
+
+// Active callbacks intentionally retain KV until the SQLite worker is closed.
+// Dropping a connection schedules worker shutdown; it does not await that boundary.
+async fn close_owner(owner: StoppedIdentityUpgrade) {
+    owner.connection.close().await.unwrap();
+    drop(owner.db);
 }

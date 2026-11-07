@@ -8,7 +8,12 @@ async fn pinned_main_layout_installs_under_owner_without_key_or_session_cleanup_
     let f = Fixture::main_snapshot().await;
     let before = f.migration_rows().await;
     assert_eq!(before.last().unwrap().0, 59);
-    let owner = StoppedIdentityUpgrade::open_for_install(&f.sql, &f.kv, limits()).await.unwrap().install_layout().await.unwrap();
+    let owner = StoppedIdentityUpgrade::open_for_install(&f.sql, &f.kv, limits())
+        .await
+        .unwrap()
+        .install_layout()
+        .await
+        .unwrap_or_else(|failure| panic!("layout installation failed: {:?}", failure.error()));
     assert_eq!(f.migration_rows().await.last().unwrap().0, 68);
     assert!(!f.sql.with_file_name(crate::sealing::KEY_FILE_NAME).exists());
     assert_eq!(f.state().await, "legacy");
@@ -74,7 +79,7 @@ async fn cancellation_of_install_waiter_does_not_drop_queued_operation_native_ow
     write_lock.commit().await.unwrap();
     let owner = tokio::time::timeout(Duration::from_secs(15), async {
         loop {
-            match StoppedIdentityUpgrade::open(&f.sql, &f.kv, limits()).await {
+            match StoppedIdentityUpgrade::open_for_install(&f.sql, &f.kv, limits()).await {
                 Ok(owner) => break owner,
                 Err(_) => tokio::task::yield_now().await,
             }
@@ -99,7 +104,12 @@ async fn supported_rewrite_prefix_is_preserved_and_prepare_cannot_skip_installat
     connection.close().await.unwrap();
     let before = f.migration_rows().await;
     assert_eq!(before.last().unwrap().0, 64);
-    let owner = StoppedIdentityUpgrade::open_for_install(&f.sql, &f.kv, limits()).await.unwrap().install_layout().await.unwrap();
+    let owner = StoppedIdentityUpgrade::open_for_install(&f.sql, &f.kv, limits())
+        .await
+        .unwrap()
+        .install_layout()
+        .await
+        .unwrap_or_else(|failure| panic!("layout installation failed: {:?}", failure.error()));
     let after = f.migration_rows().await;
     assert_eq!(&after[..before.len()], before.as_slice());
     assert_eq!(owner.prepare().await.unwrap().summary().rebased_accounts, 1);
