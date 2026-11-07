@@ -85,7 +85,23 @@
     },
     {
       "crate": "crates/rbit-workflow",
-      "types": ["lib::parse::expressions::Scope"]
+      "types": [
+        "lib::parse::expressions::Scope",
+        "lib::plan::loader::Loader",
+        "lib::plan::loader::Loaded",
+        "lib::plan::loader::NoCalls",
+        "lib::plan::contexts::RunContext",
+        "lib::plan::contexts::JobContexts",
+        "lib::plan::planning::CallScope",
+        "lib::plan::planning::Planner",
+        "lib::plan::planning::Expansion",
+        "lib::plan::calls::CallInputs",
+        "lib::plan::evaluation::Evaluator",
+        "lib::plan::matrix::Combination",
+        "lib::plan::matrix::Axes",
+        "lib::plan::group_context::GroupContext",
+        "lib::plan::tests::support::Files"
+      ]
     }
   ]
 }
