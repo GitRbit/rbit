@@ -112,6 +112,19 @@ They found no defect. Reinstating an upserting stale renewal makes the three
 parked-revocation scenarios fail. This covers one of the seven mandatory groups;
 the inactive epoch session paths are not part of this claim.
 
+The permission regression group now has a table-driven differential matrix:
+eleven actors against personal/organisation, public/private and archived
+repositories, with the expected table proven equal to the pure policy and
+compared with the actual decision of the services, browser pages and forms,
+browser edits, REST API, Git smart HTTP, SSH and runner task credentials, plus
+listing omission and conditional-request (`ETag`/304) checks. Its 19 tests (6
+services, 12 web, 1 SSH) are described in the
+[security contracts](security-contracts.md#permission-group-status). They found
+no defect; removing the archive check from the push gate makes the Git and task
+push assertions fail. This covers two of the seven mandatory groups; deploy
+keys, sub-`admin` token scopes, LFS/release files, pull requests and the inactive
+replacement ports remain outside this claim.
+
 Security activation, complete Wiki publication/UI, remaining feature retirement,
 full localization, paired performance, bounded build retention and release-platform
 gates remain open. Earlier evidence below is historical.
