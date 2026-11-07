@@ -1,7 +1,8 @@
 # Shared build cache retention
 
-Status: graph normalization and a non-mutating decision planner are implemented;
-automatic graph rotation remains deferred pending measurement and an executor review.
+Status: graph normalization, a non-mutating decision planner and opt-in bounded
+measurement sessions are implemented. Actual profile measurements and automatic
+graph rotation remain deferred pending execution and a retention-executor review.
 
 The shared helper serializes compilation, tests, publication, and maintenance with
 one repository management lease. Compiler compatibility namespaces are shared
@@ -93,7 +94,8 @@ The modules are `scripts/workspace/retention/graph.mjs`, `planner.mjs`, and
 no Cargo execution, repository discovery, cache measurement, directory creation,
 copy, move, prune or rotation. The existing build helper and manual pruning behavior
 are unchanged. Every decision has `apply: false`, including simulated enabled
-rotation. No environment variable activates an executor because none exists yet.
+rotation. No environment variable activates a retention promotion/rotation executor; none
+exists yet. The separate explicit measurement executor is described below.
 
 The graph normalizer accepts a command, an argument array, explicit environment
 observations and observed compatibility/manifest/configuration digests. It sorts
@@ -357,3 +359,37 @@ It never removes the old record to force replacement. Deterministic IO fixtures
 cover transient/persistent refusal and an unrelated record appearing between retries.
 Diagnostic attachment is best-effort for frozen errors: failure to record or attach
 a secondary error must not replace the original uncertain outcome or release its lease.
+
+
+## Bounded multi-command measurement sessions
+
+`measure-session` extends explicit measurement beyond the one-command candidate.
+It uses the current source-provenance guard and owned Cargo implementation on every
+step; it does not import the earlier experimental executor or its native helpers.
+See [the operator contract](../development-build-measurements.md) for closed plan
+inputs and the explicit command. No measurement is claimed by these source changes.
+
+One live repository lease owns one singleton candidate and at most two fresh arm
+lanes. Each arm has both target and intermediate directories beneath that candidate.
+Arms differ only in declared profile choices/overrides, run serially in alternating
+AB/BA order by step, and reuse only their own outputs for at most sixteen steps.
+Each command needs its own opaque current-guard invocation and branded same-lease
+native completion. Replayed/foreign/missing completion stops and quarantines the
+session; unknown descendants retain the global blocked lease. Successful native
+completion does not waive source admission or independent exact-copy validation.
+
+Git source/lock/manifests plus ignored public CSS have content and stability seals.
+Current per-command inputSnapshot additionally covers local-package ignored files,
+configuration and local dependency provenance. Source edit/revert, configuration
+change and untrusted source completion fail before handoff. Inherited flags,
+wrappers and common configuration are preserved and hashed, not silently stripped.
+Their external compiler outputs/cache state remain unproved. Fresh arm directories
+are not a fully cold compiler/registry/OS-cache qualification.
+
+Reports retain bounded status/exit, source-proof and artifact counters, wall time,
+usage and exact handoff hashes; no raw arguments, private paths, environment or
+error bodies. Command wall excludes provenance preparation and later scans/copies,
+and includes the native launcher. No peak memory is measured. The ordinary helper
+and automatic soft-watermark policy remain unchanged. There is no resume,
+promotion, deletion, automatic rotation or hard-cap authority in this command;
+existing managed evidence still blocks another allocation until separately reviewed.

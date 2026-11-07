@@ -1,0 +1,127 @@
+{
+  "schema": 1,
+  "arms": [
+    {
+      "steps": [
+        {
+          "command": "build",
+          "args": [
+            "-p",
+            "rbit-auth",
+            "--locked"
+          ]
+        },
+        {
+          "command": "check",
+          "args": [
+            "-p",
+            "rbit-auth",
+            "--locked"
+          ]
+        },
+        {
+          "command": "clippy",
+          "args": [
+            "-p",
+            "rbit-auth",
+            "--all-targets",
+            "--locked",
+            "--",
+            "-D",
+            "warnings"
+          ]
+        },
+        {
+          "command": "test",
+          "args": [
+            "-p",
+            "rbit-auth",
+            "--locked"
+          ]
+        },
+        {
+          "command": "nextest",
+          "args": [
+            "run",
+            "-p",
+            "rbit-auth",
+            "--locked",
+            "--profile",
+            "ci"
+          ]
+        },
+        {
+          "command": "build",
+          "args": [
+            "-p",
+            "rbit-auth",
+            "--locked"
+          ]
+        }
+      ]
+    },
+    {
+      "environment": {
+        "CARGO_PROFILE_DEV_DEBUG": "0",
+        "CARGO_PROFILE_TEST_DEBUG": "0"
+      },
+      "steps": [
+        {
+          "command": "build",
+          "args": [
+            "-p",
+            "rbit-auth",
+            "--locked"
+          ]
+        },
+        {
+          "command": "check",
+          "args": [
+            "-p",
+            "rbit-auth",
+            "--locked"
+          ]
+        },
+        {
+          "command": "clippy",
+          "args": [
+            "-p",
+            "rbit-auth",
+            "--all-targets",
+            "--locked",
+            "--",
+            "-D",
+            "warnings"
+          ]
+        },
+        {
+          "command": "test",
+          "args": [
+            "-p",
+            "rbit-auth",
+            "--locked"
+          ]
+        },
+        {
+          "command": "nextest",
+          "args": [
+            "run",
+            "-p",
+            "rbit-auth",
+            "--locked",
+            "--profile",
+            "ci"
+          ]
+        },
+        {
+          "command": "build",
+          "args": [
+            "-p",
+            "rbit-auth",
+            "--locked"
+          ]
+        }
+      ]
+    }
+  ]
+}

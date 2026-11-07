@@ -118,3 +118,12 @@ export async function quarantineCandidate(handle, error, successCompletion, leas
   await publish(value, record, lease);
   candidates.delete(handle);
 }
+
+/** In-process session allocation only; serialized records cannot reconstruct write authority. */
+export async function allocateMeasurementSession(ctx, namespace, requiredFreeBytes, lease) {
+  const { handle, path } = await createCandidate(ctx, namespace, requiredFreeBytes, lease);
+  const value = owned(handle, lease);
+  candidates.delete(handle);
+  return Object.freeze({ path, record: Object.freeze({ ...value.record }),
+    publish: record => publish(value, record, lease) });
+}
