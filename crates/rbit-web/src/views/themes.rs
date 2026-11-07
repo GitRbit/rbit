@@ -297,12 +297,10 @@ impl ThemePicker {
         let row = |card: ThemeCard, family: &'static str, letter: Option<char>| {
             let search = if page.locale == rbit_localization::Locale::English {
                 format!("{} {family} {} {}", card.name, card.credit, card.variant)
+            } else if card.slug == "system" {
+                format!("{} {family} {} {} {} {}", card.name, card.credit, card.variant, labels.variant(card.variant), labels.system())
             } else {
-                if card.slug == "system" {
-                    format!("{} {family} {} {} {} {}", card.name, card.credit, card.variant, labels.variant(card.variant), labels.system())
-                } else {
-                    format!("{} {family} {} {} {}", card.name, card.credit, card.variant, labels.variant(card.variant))
-                }
+                format!("{} {family} {} {} {}", card.name, card.credit, card.variant, labels.variant(card.variant))
             }
             .to_lowercase();
             PickerRow { card, search, letter }
