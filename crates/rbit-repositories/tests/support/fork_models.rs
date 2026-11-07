@@ -13,7 +13,6 @@ pub fn user() -> User {
         },
         email: "alice@example.com".parse().unwrap(),
         is_admin: false,
-        email_verified_at: None,
     }
 }
 pub fn repository(id: i64) -> OwnedRepository {
