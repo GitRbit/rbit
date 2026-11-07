@@ -25,6 +25,10 @@ impl Services {
         callback: Callback,
         client: &ClientInfo,
     ) -> Result<OriginalExternalSignIn, ServiceError> {
+        // A sealed legacy bare ID is not original-session link authority.
+        if callback.link_account.is_some() {
+            return Err(ServiceError::Forbidden);
+        }
         Ok(match self.complete_external_with::<Original>(callback, client).await? {
             Completion::SignedIn(proven) => OriginalExternalSignIn::SignedIn(proven),
             Completion::SecondFactorRequired(token) => OriginalExternalSignIn::SecondFactorRequired(token),
@@ -79,7 +83,7 @@ impl Services {
             && let Some(email) = identity.email.as_deref()
             && let Some((account, origin)) = M::email(&store, email).await?
         {
-            match store.link(account, new, now).await? {
+            match M::link_accepted(&store, account, new, now, &origin).await? {
                 Ok(linked) => {
                     if let Some(user) = external.inner.database.accounts().find_active_user(account).await? {
                         external.record(linked_entry(&user, &config, &identity, client, ", by verified email")).await;

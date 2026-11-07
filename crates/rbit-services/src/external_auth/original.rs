@@ -6,7 +6,7 @@ use rbit_identity::accounts::{CreatedAccountSnapshot, ProviderCreationRepository
 use rbit_identity::accounts::{ProvenAccount, ProviderAuthentication, ProviderOrigin};
 use rbit_storage::{
     Database, NewUser, StorageError,
-    sqlite::external_identities::{ExternalIdentityStore, LinkConflict, NewExternalIdentity},
+    sqlite::external_identities::{ExternalIdentityStore, GuardedIdentityLink, LinkConflict, NewExternalIdentity},
 };
 use std::future::Future;
 
@@ -39,6 +39,13 @@ pub(super) trait Mode {
         store: &ExternalIdentityStore,
         email: &str,
     ) -> impl Future<Output = Result<Option<(AccountId, Self::Origin)>, ServiceError>> + Send;
+    fn link_accepted(
+        store: &ExternalIdentityStore,
+        account: AccountId,
+        identity: NewExternalIdentity<'_>,
+        at: rbit_core::Timestamp,
+        origin: &Self::Origin,
+    ) -> impl Future<Output = Result<Result<ExternalIdentity, LinkConflict>, ServiceError>> + Send;
     fn finish(
         database: &Database,
         account: AccountId,
@@ -63,6 +70,15 @@ impl Mode for Legacy {
     }
     async fn email(store: &ExternalIdentityStore, email: &str) -> Result<Option<(AccountId, ())>, ServiceError> {
         Ok(store.account_with_verified_email(email).await?.map(|account| (account, ())))
+    }
+    async fn link_accepted(
+        store: &ExternalIdentityStore,
+        account: AccountId,
+        identity: NewExternalIdentity<'_>,
+        at: rbit_core::Timestamp,
+        (): &(),
+    ) -> Result<Result<ExternalIdentity, LinkConflict>, ServiceError> {
+        Ok(store.link(account, identity, at).await?)
     }
     async fn finish(database: &Database, account: AccountId, (): ()) -> Result<User, ServiceError> {
         database.accounts().find_active_user(account).await?.ok_or(ServiceError::NotFound)
@@ -96,6 +112,22 @@ impl Mode for Original {
     }
     async fn email(store: &ExternalIdentityStore, email: &str) -> Result<Option<(AccountId, ProviderOrigin)>, ServiceError> {
         Ok(ProviderAuthentication::capture_verified_email(store, email).await?.map(|origin| (origin.account(), origin)))
+    }
+    async fn link_accepted(
+        store: &ExternalIdentityStore,
+        account: AccountId,
+        identity: NewExternalIdentity<'_>,
+        at: rbit_core::Timestamp,
+        origin: &ProviderOrigin,
+    ) -> Result<Result<ExternalIdentity, LinkConflict>, ServiceError> {
+        if origin.account() != account || origin.was_pending() {
+            return Err(ServiceError::Unavailable { retry_after_seconds: 1 });
+        }
+        match store.link_at_epoch(account, identity, at, origin.original_epoch()).await? {
+            GuardedIdentityLink::Linked(linked) => Ok(Ok(linked)),
+            GuardedIdentityLink::Conflict(conflict) => Ok(Err(conflict)),
+            GuardedIdentityLink::Unavailable => Err(ServiceError::Unavailable { retry_after_seconds: 1 }),
+        }
     }
     fn finish(
         _database: &Database,

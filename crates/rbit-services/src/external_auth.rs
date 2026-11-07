@@ -39,7 +39,11 @@
 //! access token. An identity can't be unlinked while it is the account's only way to
 //! sign in (no password, no other identity at a configured provider).
 
+mod callback_mode;
 pub mod client;
+mod links;
+pub use callback_mode::OriginalProviderCallback;
+pub use links::OriginalLinkCallback;
 
 use std::{
     collections::HashMap,
@@ -206,6 +210,7 @@ struct Inner {
     throttle: ThrottleService,
     key: OnceCell<FlowKey>,
     pending: Mutex<HashMap<TokenDigest, PendingRegistration>>,
+    original_links: links::OriginalLinks,
 }
 
 #[derive(Debug, Clone)]
@@ -252,6 +257,7 @@ impl ExternalAuthService {
                 throttle,
                 key: OnceCell::new(),
                 pending: Mutex::default(),
+                original_links: links::OriginalLinks::new(ctx.kv.sessions().epoch_sidecar()),
             }),
         })
     }
@@ -305,13 +311,23 @@ impl ExternalAuthService {
         let provider = self.provider(provider_id).ok_or(ServiceError::NotFound)?;
         let key = self.key().await?;
         let flow = Flow::new(provider_id, next, link_account.map(|account| account.0), Timestamp::now().seconds());
-        let pkce = key.pkce(&flow);
+        self.authorization_flow(provider, key, &flow).await
+    }
+
+    async fn begin_flow(&self, flow: &Flow) -> Result<(String, String), ServiceError> {
+        let provider = self.provider(&flow.provider).ok_or(ServiceError::NotFound)?;
+        self.authorization_flow(provider, self.key().await?, flow).await
+    }
+
+    async fn authorization_flow(&self, provider: &Provider, key: &FlowKey, flow: &Flow) -> Result<(String, String), ServiceError> {
+        let provider_id = &flow.provider;
+        let pkce = key.pkce(flow);
         let config = &provider.config;
         let redirect_uri = self.redirect_uri(provider_id);
         let scopes = config.effective_scopes().join(" ");
         let challenge = pkce.challenge();
         let (endpoint, nonce) = match config.kind {
-            ProviderKind::Oidc => (self.discovery(provider).await?.authorization_endpoint.clone(), Some(key.nonce(&flow))),
+            ProviderKind::Oidc => (self.discovery(provider).await?.authorization_endpoint.clone(), Some(key.nonce(flow))),
             ProviderKind::Github => (format!("{}/login/oauth/authorize", config.github_base_url()), None),
         };
         let mut url = self.client()?.endpoint(&endpoint).map_err(|error| unreachable_provider(config, &error))?;
@@ -329,7 +345,7 @@ impl ExternalAuthService {
                 query.append_pair("nonce", nonce);
             }
         }
-        Ok((url.into(), key.seal(&flow)))
+        Ok((url.into(), key.seal(flow)))
     }
 
     /// Checks a callback against the flow cookie and asks the provider who signed in.
@@ -342,12 +358,35 @@ impl ExternalAuthService {
         params: CallbackParams<'_>,
         client: &ClientInfo,
     ) -> Result<Callback, ServiceError> {
+        self.callback_with::<callback_mode::Legacy>(provider_id, cookie, params, client).await
+    }
+
+    /// One verified original callback: login retains its trusted Callback DTO, while
+    /// manual linking requires the opaque context captured before provider redirect.
+    pub async fn callback_original(
+        &self,
+        provider_id: &str,
+        cookie: Option<&str>,
+        params: CallbackParams<'_>,
+        client: &ClientInfo,
+    ) -> Result<OriginalProviderCallback, ServiceError> {
+        self.callback_with::<callback_mode::Original>(provider_id, cookie, params, client).await
+    }
+
+    async fn callback_with<M: callback_mode::Mode>(
+        &self,
+        provider_id: &str,
+        cookie: Option<&str>,
+        params: CallbackParams<'_>,
+        client: &ClientInfo,
+    ) -> Result<M::Output, ServiceError> {
         let provider = self.provider(provider_id).ok_or(ServiceError::NotFound)?;
         let ip = ip_key(client);
         self.inner.throttle.check_client(ThrottleScope::ExternalSignIn, &ip)?;
-        match self.verify_callback(provider, cookie, params).await {
+        match self.verify_callback::<M>(provider, cookie, params).await {
             Ok(callback) => Ok(callback),
-            Err(Refusal { log, user }) => {
+            Err(callback_mode::CheckError::Unavailable) => Err(ServiceError::Unavailable { retry_after_seconds: 1 }),
+            Err(callback_mode::CheckError::Remote(Refusal { log, user })) => {
                 tracing::info!(provider = provider_id, reason = %log, "external sign-in refused");
                 self.inner.throttle.record_client_failure(ThrottleScope::ExternalSignIn, &ip);
                 let entry =
@@ -358,7 +397,12 @@ impl ExternalAuthService {
         }
     }
 
-    async fn verify_callback(&self, provider: &Provider, cookie: Option<&str>, params: CallbackParams<'_>) -> Result<Callback, Refusal> {
+    async fn verify_callback<M: callback_mode::Mode>(
+        &self,
+        provider: &Provider,
+        cookie: Option<&str>,
+        params: CallbackParams<'_>,
+    ) -> Result<M::Output, callback_mode::CheckError> {
         let config = &provider.config;
         let key = self.key().await.map_err(|error| Refusal::new(error.to_string(), "something went wrong; try again"))?;
         let expired = "the sign-in took too long or was started in another browser; try again";
@@ -366,10 +410,10 @@ impl ExternalAuthService {
             .and_then(|value| key.open(value, Timestamp::now().seconds(), FLOW_TTL_SECONDS))
             .ok_or_else(|| Refusal::new("missing, forged or expired flow cookie", expired))?;
         if flow.provider != config.id {
-            return Err(Refusal::new("flow cookie for another provider", expired));
+            return Err(Refusal::new("flow cookie for another provider", expired).into());
         }
         if !params.state.is_some_and(|state| flow.state_matches(state)) {
-            return Err(Refusal::new("state mismatch", expired));
+            return Err(Refusal::new("state mismatch", expired).into());
         }
         if let Some(error) = params.error {
             let detail = params.error_description.map_or_else(|| error.to_owned(), |description| format!("{error}: {description}"));
@@ -378,15 +422,16 @@ impl ExternalAuthService {
             } else {
                 format!("{} reported an error: {}", config.name, truncate(&detail, 120))
             };
-            return Err(Refusal::new(format!("provider error {detail}"), message));
+            return Err(Refusal::new(format!("provider error {detail}"), message).into());
         }
         let code = params.code.filter(|code| !code.is_empty() && code.len() <= 2048).ok_or_else(|| Refusal::new("no code", expired))?;
+        M::before_exchange(self, &flow)?;
         let identity = match config.kind {
             ProviderKind::Oidc => self.oidc_identity(provider, key, &flow, code).await,
             ProviderKind::Github => self.github_identity(provider, key, &flow, code).await,
         }
         .map_err(|log| Refusal::new(log, format!("{} couldn't confirm who you are; try again", config.name)))?;
-        Ok(Callback { identity, next: flow.next, link_account: flow.link_account.map(AccountId) })
+        M::finish(self, flow, identity)
     }
 
     /// The provider's discovery document (cached for an hour, refetched on failure).

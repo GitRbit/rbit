@@ -26,6 +26,12 @@ impl ProviderOrigin {
     pub fn account(&self) -> AccountId {
         self.0.user.id()
     }
+    pub fn original_epoch(&self) -> rbit_identity_models::credential::CredentialEpoch {
+        self.0.fence.epoch
+    }
+    pub fn was_pending(&self) -> bool {
+        self.0.fence.pending
+    }
 }
 impl fmt::Debug for ProviderOrigin {
     fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {

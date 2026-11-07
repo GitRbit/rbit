@@ -14,7 +14,10 @@ use rbit_core::{AccountId, Timestamp, User};
 
 use super::accounts::{NewUser, insert_user};
 use crate::StorageError;
+mod insertion;
 mod original;
+pub use insertion::GuardedIdentityLink;
+use insertion::insert;
 
 /// A linked identity.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -232,40 +235,5 @@ impl ExternalIdentityStore {
         }
         tx.commit().await?;
         Ok(Ok(created))
-    }
-}
-
-/// Inserts an identity inside `tx`, reporting which uniqueness rule refused it.
-async fn insert(
-    tx: &mut super::pool::WriteTransaction,
-    account: AccountId,
-    identity: NewExternalIdentity<'_>,
-    at: Timestamp,
-) -> Result<Result<ExternalIdentity, LinkConflict>, StorageError> {
-    let inserted: Result<IdentityRow, sqlx::Error> = sqlx::query_as(concat!(
-        "INSERT INTO external_identities (account_id, provider_id, subject, email, username, created_at, last_used_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?) ",
-        "RETURNING id, account_id, provider_id, subject, email, username, created_at, last_used_at"
-    ))
-    .bind(account.0)
-    .bind(identity.provider_id)
-    .bind(identity.subject)
-    .bind(identity.email)
-    .bind(identity.username)
-    .bind(at.0)
-    .bind(at.0)
-    .fetch_one(&mut **tx)
-    .await;
-    match inserted {
-        Ok(row) => Ok(Ok(row.into())),
-        Err(sqlx::Error::Database(error)) if error.is_unique_violation() => {
-            let taken: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM external_identities WHERE provider_id = ? AND subject = ?)")
-                .bind(identity.provider_id)
-                .bind(identity.subject)
-                .fetch_one(&mut **tx)
-                .await?;
-            Ok(Err(if taken { LinkConflict::IdentityTaken } else { LinkConflict::ProviderTaken }))
-        }
-        Err(error) => Err(error.into()),
     }
 }

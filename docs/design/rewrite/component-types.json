@@ -39,7 +39,16 @@
         "lib::external_auth::original::ProviderCreation",
         "lib::external_auth::original::CreationError",
         "lib::accounts::AccountService",
-        "lib::admin::AdminService"
+        "lib::admin::AdminService",
+        "lib::external_auth::links::OriginalLinkCallback",
+        "lib::external_auth::links::owner::OriginalLinks",
+        "lib::external_auth::links::owner::State",
+        "lib::external_auth::links::owner::Pending",
+        "lib::external_auth::links::owner::Reservation",
+        "lib::external_auth::callback_mode::OriginalProviderCallback",
+        "lib::external_auth::callback_mode::CheckError",
+        "lib::external_auth::callback_mode::Legacy",
+        "lib::external_auth::callback_mode::Original"
       ]
     },
     {
@@ -108,7 +117,8 @@
         "lib::sqlite::external_identities::ExternalIdentityStore",
         "lib::sqlite::external_identities::IdentityRow",
         "lib::sqlite::external_identities::original::LinkedRow",
-        "lib::sqlite::external_identities::original::PrincipalRow"
+        "lib::sqlite::external_identities::original::PrincipalRow",
+        "lib::sqlite::external_identities::insertion::GuardedIdentityLink"
       ]
     },
     {
