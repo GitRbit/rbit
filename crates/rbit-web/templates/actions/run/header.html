@@ -48,12 +48,14 @@
         <a class="hover:underline hover:underline-offset-4" href="{{ run.workflow_url }}"><bdi>{{ run.workflow }}</bdi></a>
       </dd>
     </div>
+    {#- The sha and ref share one wrapping line that follows the cell's direction; a block
+        `bdi` would take its own LTR direction and sit alone at the left edge. -#}
     <div class="min-w-0">
       <dt class="text-xs text-ink-muted">{{ text.commit }}</dt>
-      <dd class="mt-1 break-words">
-        <a class="font-mono text-xs hover:underline hover:underline-offset-4"
+      <dd class="mt-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 font-mono text-xs">
+        <a class="hover:underline hover:underline-offset-4"
            href="{{ run.commit_url }}" title="{{ run.sha }}"><bdi dir="ltr">{{ run.short_sha }}</bdi></a>
-        {% if !run.reference.is_empty() %}<bdi class="mt-1 block font-mono text-xs text-ink-muted">{{ run.reference }}</bdi>{% endif %}
+        {% if !run.reference.is_empty() %}<bdi class="min-w-0 break-all text-ink-muted">{{ run.reference }}</bdi>{% endif %}
       </dd>
     </div>
     {% if let Some(duration) = run.duration %}

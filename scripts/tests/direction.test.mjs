@@ -74,3 +74,19 @@ test("directional icons, and only those, are marked to mirror", async () => {
   assert.deepEqual(flipped, ["chevron-left", "chevron-right", "log-out"]);
   assert.match(marker, /\bdir-icon\b/);
 });
+
+test("the run's commit and ref wrap together as one group", async () => {
+  const header = await read("templates/actions/run/header.html");
+  const commit = header.match(/<dt[^>]*>\{\{ text\.commit \}\}<\/dt>\s*<dd([^>]*)>([\s\S]*?)<\/dd>/);
+  assert.ok(commit, "the commit cell is a dt/dd pair");
+  const [, attributes, body] = commit;
+  assert.match(attributes, /\bflex\b/, "the sha and ref share one flex line");
+  assert.match(attributes, /\bflex-wrap\b/, "and wrap as a group on narrow screens");
+  assert.doesNotMatch(attributes, PHYSICAL_UTILITY);
+  const ref = body.match(/<bdi\b[^>]*>\{\{ run\.reference \}\}<\/bdi>/)?.[0];
+  assert.ok(ref, "the ref is isolated");
+  // A block-level `bdi` resolves its own (LTR) direction and aligns to the left edge on
+  // its own line inside a right-to-left cell.
+  assert.doesNotMatch(ref, /\bblock\b/);
+  assert.match(body, /<bdi dir="ltr">\{\{ run\.short_sha \}\}<\/bdi>/, "the sha stays an LTR identifier");
+});
