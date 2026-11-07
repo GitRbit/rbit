@@ -36,6 +36,8 @@ mod external_auth;
 // The fake GitHub that imports and mirrors fetch from.
 #[path = "support/fake_forge.rs"]
 mod fake_forge;
+#[path = "support/fault_schema.rs"]
+mod fault_schema;
 mod forks;
 mod imports;
 mod issues;

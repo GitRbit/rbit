@@ -45,21 +45,34 @@ async fn simultaneous_deletes_publish_only_the_sql_winner() {
 }
 #[tokio::test]
 async fn failed_best_effort_audit_does_not_restore_deleted_issue_or_suppress_event() {
-    let fixture = Fixture::new().await;
+    const SENTINEL: &str = "fixture audit failure";
+    let fixture = Fixture::with_fault_schema(
+        "CREATE TRIGGER fixture_reject_audit BEFORE INSERT ON audit_events \
+         BEGIN SELECT RAISE(ABORT,'fixture audit failure'); END",
+    )
+    .await;
     let number = fixture.create(&fixture.alice, "audit failure", "").await;
     let ctx = fixture.open(&fixture.alice, number).await;
     use sqlx::Connection as _;
-    let options = sqlx::sqlite::SqliteConnectOptions::new().filename(fixture.directory.path().join("rbit.db"));
+    let options = rbit_storage::sqlite::writer_compatibility::register(
+        sqlx::sqlite::SqliteConnectOptions::new().filename(fixture.directory.path().join("rbit.db")),
+    );
     let mut connection = sqlx::SqliteConnection::connect_with(&options).await.unwrap();
-    sqlx::query("CREATE TRIGGER fixture_reject_audit BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT,'fixture audit failure'); END")
+    let before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM audit_events").fetch_one(&mut connection).await.unwrap();
+    let failure = sqlx::query("INSERT INTO audit_events(created_at,category,action) VALUES(1,'fixture','probe')")
         .execute(&mut connection)
         .await
-        .unwrap();
+        .unwrap_err();
+    assert_eq!(failure.as_database_error().expect("injected database failure").message(), SENTINEL);
+    let after_probe: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM audit_events").fetch_one(&mut connection).await.unwrap();
+    assert_eq!(after_probe, before, "the proven audit fault inserts no row");
     let mut events = fixture.services.events.subscribe();
     let (result, work) = count_work(fixture.services.issues.delete(&fixture.alice, &ctx)).await;
     result.unwrap();
     assert_eq!((work.acquisitions, work.statements), (2, 2));
-    assert_eq!(issue_actions(&mut events).len(), 1);
+    assert!(matches!(issue_actions(&mut events).as_slice(), [IssueAction::Deleted { .. }]));
     assert!(fixture.database.issues().find_by_number(ctx.issue.repo_id, number).await.unwrap().is_none());
+    let after_delete: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM audit_events").fetch_one(&mut connection).await.unwrap();
+    assert_eq!(after_delete, before, "best-effort audit remains rejected after successful issue deletion");
     connection.close().await.unwrap();
 }
