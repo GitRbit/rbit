@@ -40,7 +40,14 @@ async fn legacy_fixture(path: &Path) -> SqlitePool {
     pool
 }
 fn missing_protocol(error: &sqlx::Error) -> bool {
-    error.as_database_error().is_some_and(|error| error.message().contains("no such collation sequence: rbit_credential_writer_v1"))
+    // Preparing a statement resolves every trigger collation before executing it;
+    // SQLite need not report the oldest missing protocol first after a later upgrade.
+    error.as_database_error().is_some_and(|error| {
+        matches!(
+            error.message().strip_prefix("no such collation sequence: "),
+            Some("rbit_credential_writer_v1" | "rbit_credential_fenced_v2" | "rbit_credential_active_v3")
+        )
+    })
 }
 
 #[tokio::test]
@@ -195,7 +202,7 @@ async fn incompatible_registered_comparison_refuses_before_changing_credentials(
     let path = dir.path().join("incompatible.db");
     let pool = legacy_fixture(&path).await;
     sqlx::migrate!("./migrations").run(&pool).await.unwrap();
-    let incompatible = options(&path).collation("rbit_credential_writer_v1", |_, _| std::cmp::Ordering::Less);
+    let incompatible = register(options(&path)).collation("rbit_credential_writer_v1", |_, _| std::cmp::Ordering::Less);
     let mut connection = SqliteConnection::connect_with(&incompatible).await.unwrap();
     let error = sqlx::query(CHANGE).bind("refused").execute(&mut connection).await.unwrap_err();
     assert!(error.as_database_error().unwrap().message().contains("credential writer version refused"));
