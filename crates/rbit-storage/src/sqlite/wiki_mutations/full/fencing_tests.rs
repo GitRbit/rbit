@@ -5,7 +5,7 @@ use fencing::FencedWikiRecovery;
 use rbit_wikis::{commands::WikiCommandId, ownership::WikiObjectOwnership};
 use std::{fs::File, time::Duration};
 
-struct FileObjects {
+pub(super) struct FileObjects {
     file: Arc<File>,
     catalog: WikiCatalogHandle,
 }
@@ -47,7 +47,7 @@ fn retry(command: &WikiWriteCommand) -> WikiWriteCommand {
     }
 }
 
-async fn fenced(writer: FullWikiWriter, directory: &Path) -> FencedWikiRecovery<FileObjects> {
+pub(super) async fn fenced(writer: FullWikiWriter, directory: &Path) -> FencedWikiRecovery<FileObjects> {
     let objects = objects(&writer, directory);
     writer.begin_recovery(objects).await.unwrap()
 }

@@ -6,6 +6,7 @@ mod jobs;
 mod opening;
 mod retention;
 mod shutdown;
+pub mod startup;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

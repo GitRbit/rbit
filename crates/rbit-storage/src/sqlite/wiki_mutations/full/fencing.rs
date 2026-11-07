@@ -46,6 +46,9 @@ impl<K> WikiRecoveryObjects<K> {
     pub fn objects(&self) -> &K {
         &self.0.objects
     }
+    pub(super) fn same_owner(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
 }
 impl<K: WikiObjectOwnership> WikiCatalogOwnership for WikiRecoveryObjects<K> {
     type Error = K::Error;
@@ -68,10 +71,10 @@ impl<K: WikiObjectOwnership> WikiObjectOwnership for WikiRecoveryObjects<K> {
 /// Requires a stopped host and prerequisite destructive-operation bridges BEFORE
 /// production use. No public transition to managed/ready is provided in this slice.
 pub struct FencedWikiRecovery<K> {
-    epoch: i64,
+    pub(super) epoch: i64,
     pub(super) writer: FullWikiWriter,
     // Last: keep actual object-root ownership through the controller lifetime.
-    objects: WikiRecoveryObjects<K>,
+    pub(super) objects: WikiRecoveryObjects<K>,
 }
 impl<K> fmt::Debug for FencedWikiRecovery<K> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

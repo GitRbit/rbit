@@ -140,6 +140,10 @@
         "lib::sqlite::wiki_mutations::full::fencing::WikiRecoveryObjects",
         "lib::sqlite::wiki_mutations::full::fencing::FencedWikiRecovery",
         "lib::sqlite::wiki_mutations::full::fencing::FencedWikiAcceptance",
+        "lib::sqlite::wiki_mutations::full::startup::WikiStartupCursor",
+        "lib::sqlite::wiki_mutations::full::startup::WikiStartupBatch",
+        "lib::sqlite::wiki_mutations::full::startup::CatalogRow",
+        "lib::sqlite::wiki_mutations::full::startup::PendingRow",
         "lib::sqlite::wiki_mutations::full::fencing_tests::FileObjects"
       ]
     },
