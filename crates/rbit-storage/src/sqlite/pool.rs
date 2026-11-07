@@ -88,6 +88,17 @@ impl Pool {
     pub(crate) fn require_legacy(&self) -> Result<(), crate::StorageError> {
         self.protocol.require_legacy()
     }
+    #[cfg(test)]
+    pub(super) fn recovery_cursor(&self, after: i64) -> Result<i64, crate::StorageError> {
+        self.protocol.recovery_cursor(after)
+    }
+    #[cfg(test)]
+    pub(super) fn retirement(
+        &self,
+        pending: &rbit_identity_models::sessions::PendingSessionRevocation,
+    ) -> super::protocol::IntentRetirement {
+        self.protocol.retirement(pending)
+    }
 
     /// A connection for several statements outside a transaction.
     pub(crate) async fn acquire(&self) -> Result<Conn, Error> {

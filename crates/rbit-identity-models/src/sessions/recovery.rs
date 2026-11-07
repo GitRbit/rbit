@@ -59,6 +59,8 @@ impl CompletedSessionRevocation {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SessionRevocationState {
+    /// Explicit accepted-upgrade invalidation, not a current cleanup/ACK witness.
+    Retired,
     CurrentPending,
     Resolved,
     NewerPending,
@@ -74,6 +76,8 @@ pub enum SessionRevocationAcknowledgment {
 
 /// The concrete owner MUST serialize classify→apply→ack across all finalizers and
 /// recovery workers for a store. Otherwise replay after ack can remove fresh sessions.
+/// `Retired` requires an accepted stopped-upgrade range and an authoritative matching
+/// persisted fact. It is not an acknowledgment or current cleanup witness.
 pub trait SessionRevocationRepository: Sync {
     type Error: std::error::Error + Send + Sync + 'static;
     type Applied: Send + Sync;

@@ -4,6 +4,7 @@ use crate::{Database, NewUser, StorageError};
 use rbit_core::{AccountId, Timestamp};
 use rbit_identity_models::credential::{CredentialEpoch, CredentialProofWrite};
 mod recovery;
+mod retirement;
 mod sealing;
 
 struct SqlFixture {

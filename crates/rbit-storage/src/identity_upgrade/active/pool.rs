@@ -11,8 +11,12 @@ use std::sync::Arc;
 
 pub(crate) struct ActiveSqlPool {
     inner: SqlitePool,
+    checkpoint: Checkpoint,
 }
 impl ActiveSqlPool {
+    pub(crate) fn checkpoint(&self) -> Checkpoint {
+        self.checkpoint
+    }
     /// Crate-private ownership handoff to Database, never a public raw-pool escape.
     pub(crate) fn into_storage_parts(self) -> (SqlitePool, crate::sqlite::protocol::SqlProtocol) {
         let protocol = crate::sqlite::protocol::SqlProtocol::accepted(&self);
@@ -76,7 +80,7 @@ impl ActiveIdentityPair {
             })
             .connect_with(options)
             .await?;
-        Ok(ActiveSqlPool { inner })
+        Ok(ActiveSqlPool { inner, checkpoint })
     }
 }
 fn protocol_error(error: &Error) -> sqlx::Error {

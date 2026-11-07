@@ -12,6 +12,10 @@ This section remains unreleased until the complete rewrite and release gates pas
 
 ### Security
 
+- Prepare explicit accepted-upgrade intent retirement without rewriting historical
+  cleanup metadata. Active recovery skips the proven old range and distinguishes
+  retirement from a new credential cleanup; production activation remains pending.
+
 - Prepare private accepted-pair SQL composition that refuses legacy credential and
   one-use proof writes before SQL while retaining allowed profile and sealing paths.
   Production runtime, all authentication producers and restore remain unselected;

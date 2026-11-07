@@ -11,6 +11,7 @@ pub enum SessionRecoveryError<E> {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SessionRecoveryDisposition {
+    Retired,
     Completed,
     AlreadyResolved,
     Deferred,
@@ -26,6 +27,8 @@ pub struct SessionRecoveryBatch {
     pub deferred: usize,
     pub superseded: usize,
     pub unsupported: usize,
+    /// Accepted initial invalidations, never newly acknowledged cleanup.
+    pub retired: usize,
 }
 pub struct SessionRecoveryApplication<'a, R> {
     repository: &'a R,
@@ -55,6 +58,7 @@ impl<'a, R: SessionRevocationRepository> SessionRecoveryApplication<'a, R> {
             result.cursor = pending.id();
             result.visited += 1;
             match self.reconcile(&pending).await? {
+                SessionRecoveryDisposition::Retired => result.retired += 1,
                 SessionRecoveryDisposition::Completed => result.completed += 1,
                 SessionRecoveryDisposition::AlreadyResolved => result.already_resolved += 1,
                 SessionRecoveryDisposition::Deferred => result.deferred += 1,
@@ -69,6 +73,7 @@ impl<'a, R: SessionRevocationRepository> SessionRecoveryApplication<'a, R> {
         pending: &PendingSessionRevocation,
     ) -> Result<SessionRecoveryDisposition, SessionRecoveryError<R::Error>> {
         match self.repository.state(pending).await.map_err(SessionRecoveryError::Store)? {
+            SessionRevocationState::Retired => Ok(SessionRecoveryDisposition::Retired),
             SessionRevocationState::Resolved => Ok(if pending.request().is_some() {
                 SessionRecoveryDisposition::AlreadyResolved
             } else {
@@ -97,6 +102,8 @@ fn acknowledged(ack: Ack, applied: SessionRecoveryDisposition) -> SessionRecover
     }
 }
 
+#[cfg(test)]
+mod tests;
 #[cfg(test)]
 mod diagnostics {
     use super::SessionRecoveryApplication;

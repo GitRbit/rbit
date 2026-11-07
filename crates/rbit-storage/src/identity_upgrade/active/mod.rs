@@ -106,6 +106,17 @@ async fn runtime_history(
     if counter < history.floor || counter < checkpoint.final_floor()? {
         return Err(Error::Mismatch);
     }
+    let retirement_valid: bool = sqlx::query_scalar(
+        "SELECT NOT EXISTS(SELECT 1 FROM credential_revocations WHERE
+        (id<=?1 AND target_epoch>?2) OR (id>?1 AND target_epoch<=?2))",
+    )
+    .bind(checkpoint.retired)
+    .bind(checkpoint.floor)
+    .fetch_one(&mut **tx)
+    .await?;
+    if !retirement_valid {
+        return Err(Error::Invalid);
+    }
     let floor = tokio::task::spawn_blocking(move || crate::kv::sessions::epoch::stopped::active_floor(&db, limits)).await??;
     if floor > counter {
         return Err(Error::Mismatch);

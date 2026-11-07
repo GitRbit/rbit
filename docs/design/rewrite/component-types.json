@@ -91,7 +91,9 @@
         "lib::sqlite::pool::Pool",
         "lib::sqlite::pool::Conn",
         "lib::sqlite::pool::WriteTransaction",
-        "lib::sqlite::protocol::SqlProtocol"
+        "lib::sqlite::protocol::SqlProtocol",
+        "lib::sqlite::protocol::IntentRetirement",
+        "lib::sqlite::protocol::RetiredRange"
       ]
     },
     {

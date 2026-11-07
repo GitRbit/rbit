@@ -173,6 +173,45 @@ The private Database is still unavailable to normal server/CLI composition; sele
 it alone would intentionally make those old credential methods fail rather than
 silently preserve unfenced behavior. All other production closure gates still apply.
 
+### Proven initial intent retirement
+
+The sealed SQL protocol now carries only the actual accepted pool's two immutable
+retirement bounds, not a supplied cursor/floor or parsed startup marker. The full
+checkpoint remains bound to the actual pool and worker callbacks; copying store
+protocols needs neither another Arc nor all checkpoint bytes. Active pending sweeps bind
+`max(caller_cursor, retired_intent_cutoff)` to their EXISTING indexed keyset query.
+This skips the complete proven old interval so many old unsupported rows cannot
+starve newly committed work. Default legacy SQL and cursor behavior are unchanged.
+
+Exact classification requires BOTH id at/below that cutoff and target at/below the
+observed pre-rebase floor. It then reuses the checked immutable-fact projection and
+compares the entire stored pending fact (account, id, target, decision/promotion).
+Missing, mismatched or malformed candidates cannot become Retired. Above-floor old
+facts are Invalid; newer IDs use normal current-state classification. Initial
+retirement produces no current cleanup receipt or SQL acknowledgment.
+
+The pure state/application contract now distinguishes `Retired`, with a separate
+batch counter. The original credential finalizer treats it as unavailable, never
+successful cleanup of a newly committed password mutation. No old `completed_at`,
+`cleanup_pair`, outcome or supersession field is rewritten; no row is deleted by this
+path. Retired metadata GC needs a separate explicit proof/budget review.
+
+One active exact-retirement query replaces the existing state lookup (one acquisition,
+one logical statement); it does not perform find-then-state twice. Pending retains one
+query. Active startup adds one bounded history validation query checking old-ID/new-
+target and new-ID/old-target anomalies against the immutable checkpoint. These are
+startup/recovery costs, not ordinary request queries. The same default writer/API and
+new credential transaction semantics remain gated until the closed runtime selects
+them together.
+
+Prepared fixtures cover 128 committed historical IDs with legitimate pre-upgrade
+middle/highest completed-row deletion, many retained pending rows, new AUTO-INCREMENT
+IDs above the deleted maximum, restart, unchanged old metadata, full-fact mismatches,
+missing rows and malformed post-upgrade history. A pure application fixture proves
+Retired never calls apply/ACK/supersede. These four new Rust fixtures are unrun here.
+The supported history assumes official automatic IDs and retained SQLite sequence;
+manual ID assignment/sequence editing is not accepted proof of nonreuse.
+
 ## Delivery gates
 
 Internal publication and restart code is an implementation seam, not activation.

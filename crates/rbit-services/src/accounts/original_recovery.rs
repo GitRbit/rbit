@@ -89,7 +89,8 @@ impl OriginalCredentialMutation<'_> {
             SessionRecoveryDisposition::Completed
             | SessionRecoveryDisposition::AlreadyResolved
             | SessionRecoveryDisposition::Superseded => Ok(()),
-            SessionRecoveryDisposition::Deferred | SessionRecoveryDisposition::Unsupported => {
+            // Stopped-upgrade retirement is not this worker's new committed cleanup.
+            SessionRecoveryDisposition::Retired | SessionRecoveryDisposition::Deferred | SessionRecoveryDisposition::Unsupported => {
                 Err(ServiceError::Unavailable { retry_after_seconds: 1 })
             }
         }

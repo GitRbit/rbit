@@ -7,8 +7,10 @@ mod queries;
 mod rows;
 use super::super::pool::Pool;
 use super::RevocationIntent;
+#[cfg(test)]
+use crate::sqlite::protocol::IntentRetirement;
 use crate::{AppliedSessionRevocation, EpochSessionStore, StorageError};
-use rbit_core::Timestamp;
+use rbit_core::{AccountId, Timestamp};
 use rbit_identity_models::sessions::{
     CompletedSessionRevocation, PendingSessionRevocation, SessionRevocationAcknowledgment, SessionRevocationDecision,
     SessionRevocationOutcome, SessionRevocationRequest, SessionRevocationState,
@@ -24,20 +26,32 @@ impl CredentialRevocationStore {
         Self { pool }
     }
     pub async fn pending(&self, after: i64, limit: NonZeroU8) -> Result<Vec<PendingSessionRevocation>, StorageError> {
+        #[cfg(test)]
+        let after = self.pool.recovery_cursor(after)?;
         let rows: Vec<rows::CandidateRow> =
             sqlx::query_as(queries::PENDING).bind(after).bind(i64::from(limit.get())).fetch_all(&self.pool).await?;
         rows.into_iter().map(rows::CandidateRow::checked).collect()
     }
     pub async fn find(&self, intent: &RevocationIntent) -> Result<Option<PendingSessionRevocation>, StorageError> {
-        let row: Option<rows::CandidateRow> = sqlx::query_as(queries::FIND)
-            .bind(intent.id)
-            .bind(intent.account_id.0)
-            .bind(intent.target_epoch)
-            .fetch_optional(&self.pool)
-            .await?;
+        self.find_identity(intent.id, intent.account_id, intent.target_epoch).await
+    }
+    async fn find_identity(&self, id: i64, account: AccountId, target: i64) -> Result<Option<PendingSessionRevocation>, StorageError> {
+        let row: Option<rows::CandidateRow> =
+            sqlx::query_as(queries::FIND).bind(id).bind(account.0).bind(target).fetch_optional(&self.pool).await?;
         row.map(rows::CandidateRow::checked).transpose()
     }
     pub async fn state(&self, pending: &PendingSessionRevocation) -> Result<SessionRevocationState, StorageError> {
+        #[cfg(test)]
+        match self.pool.retirement(pending) {
+            IntentRetirement::Candidate => {
+                // Reuse the existing checked projection, not a caller's bare fact
+                // or a second current-account state query. No row is restamped.
+                let stored = self.find_identity(pending.id(), pending.account(), pending.target().get()).await?;
+                return Ok(if stored == Some(*pending) { SessionRevocationState::Retired } else { SessionRevocationState::Invalid });
+            }
+            IntentRetirement::Invalid => return Ok(SessionRevocationState::Invalid),
+            IntentRetirement::OutsideCutoff => {}
+        }
         let row: Option<rows::StateRow> = sqlx::query_as(queries::STATE)
             .bind(pending.id())
             .bind(pending.account().0)
