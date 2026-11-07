@@ -38,7 +38,7 @@ pub use original_recovery::{OriginalCredentialFinalizer, OriginalCredentialMutat
 mod registration;
 mod sessions;
 pub use original_sessions::{OriginalIssuedSession, OriginalResolvedSession};
-pub use registration::create_user_offline;
+pub use registration::{create_user_offline, create_user_offline_original};
 
 pub use rbit_identity::accounts::SignUp;
 

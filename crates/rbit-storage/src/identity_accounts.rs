@@ -42,3 +42,26 @@ impl rbit_identity_models::credential::CredentialLoginRepository for AccountStor
         AccountStore::find_login_snapshot(self, login)
     }
 }
+
+impl rbit_identity_models::accounts::AccountCreationRepository for AccountStore {
+    fn create_user_original(
+        &self,
+        new: NewUser,
+    ) -> impl Future<Output = Result<rbit_identity_models::accounts::CreatedAccountSnapshot, Self::Error>> + Send {
+        AccountStore::create_user_original(self, new)
+    }
+    fn create_user_with_initial_password_original(
+        &self,
+        new: NewUser,
+    ) -> impl Future<Output = Result<rbit_identity_models::accounts::CreatedAccountSnapshot, Self::Error>> + Send {
+        AccountStore::create_user_with_initial_password_original(self, new)
+    }
+
+    fn register_user_original(
+        &self,
+        new: NewUser,
+        registration_open: bool,
+    ) -> impl Future<Output = Result<rbit_identity_models::accounts::CreatedAccountSnapshot, Self::Error>> + Send {
+        AccountStore::register_user_original(self, new, registration_open)
+    }
+}

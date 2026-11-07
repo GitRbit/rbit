@@ -4,13 +4,16 @@
 //! refused, and [`AccountStore::find_active_user`] never resolves a suspended user.
 
 mod fenced;
+mod insertion;
 #[cfg(test)]
 mod locale_tests;
 #[cfg(test)]
 mod login_tests;
+mod original_creation;
+pub(super) use insertion::{insert_user, insert_user_original};
 
 use super::pool::Pool;
-use rbit_core::{Account, AccountId, AccountKind, AccountName, Timestamp, User};
+use rbit_core::{Account, AccountId, AccountName, Timestamp, User};
 
 use super::rows::{AccountRow, UserRow};
 use crate::StorageError;
@@ -287,56 +290,4 @@ impl AccountStore {
     pub async fn count_users(&self) -> Result<i64, StorageError> {
         Ok(sqlx::query_scalar("SELECT COUNT(*) FROM user_logins").fetch_one(&self.pool).await?)
     }
-}
-
-/// Shared by password and external registration so the bootstrap decision is serialized
-/// across both paths. The first INSERT acquires `SQLite`'s write lock before we inspect
-/// the logins. No password hashing or other slow work runs while holding the lock.
-pub(super) async fn insert_user(
-    tx: &mut super::pool::WriteTransaction,
-    mut new: NewUser,
-    registration_open: Option<bool>,
-    email_verified: bool,
-) -> Result<User, StorageError> {
-    let now = Timestamp::now();
-    let id: i64 =
-        sqlx::query_scalar("INSERT INTO accounts (kind, name, display_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?) RETURNING id")
-            .bind(AccountKind::User.as_str())
-            .bind(new.name.as_str())
-            .bind(new.display_name.as_deref())
-            .bind(now.0)
-            .bind(now.0)
-            .fetch_one(&mut **tx)
-            .await
-            .map_err(|e| StorageError::from_insert(e, "username"))?;
-
-    if let Some(open) = registration_open {
-        let first: bool = sqlx::query_scalar("SELECT NOT EXISTS (SELECT 1 FROM user_logins)").fetch_one(&mut **tx).await?;
-        if !open && !first {
-            return Err(StorageError::RegistrationClosed);
-        }
-        new.is_admin = first;
-    }
-    sqlx::query("INSERT INTO user_logins (account_id, email, password_hash, is_admin, email_verified_at) VALUES (?, ?, ?, ?, ?)")
-        .bind(id)
-        .bind(new.email.as_str())
-        .bind(&new.password_hash)
-        .bind(new.is_admin)
-        .bind(email_verified.then_some(now.0))
-        .execute(&mut **tx)
-        .await
-        .map_err(|e| StorageError::from_insert(e, "email"))?;
-
-    Ok(User {
-        account: Account {
-            id: AccountId(id),
-            kind: AccountKind::User,
-            name: new.name,
-            display_name: new.display_name,
-            bio: None,
-            created_at: now,
-        },
-        email: new.email,
-        is_admin: new.is_admin,
-    })
 }

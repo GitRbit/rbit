@@ -31,7 +31,15 @@
         "lib::notifications::inbox::InboxView",
         "lib::forks::ForkService",
         "lib::forks::effects::ForkEffects",
-        "lib::forks::reading::ParentAccess"
+        "lib::forks::reading::ParentAccess",
+        "lib::external_auth::original::OriginalExternalSignIn",
+        "lib::external_auth::original::Completion",
+        "lib::external_auth::original::Legacy",
+        "lib::external_auth::original::Original",
+        "lib::external_auth::original::ProviderCreation",
+        "lib::external_auth::original::CreationError",
+        "lib::accounts::AccountService",
+        "lib::admin::AdminService"
       ]
     },
     {
@@ -95,7 +103,12 @@
         "lib::sqlite::protocol::IntentRetirement",
         "lib::sqlite::protocol::RetiredRange",
         "lib::sqlite::accounts::AccountStore",
-        "lib::sqlite::accounts::LoginRow"
+        "lib::sqlite::accounts::LoginRow",
+        "lib::sqlite::accounts::insertion::InsertedAccount",
+        "lib::sqlite::external_identities::ExternalIdentityStore",
+        "lib::sqlite::external_identities::IdentityRow",
+        "lib::sqlite::external_identities::original::LinkedRow",
+        "lib::sqlite::external_identities::original::PrincipalRow"
       ]
     },
     {

@@ -55,6 +55,7 @@ mod password_policy;
 mod preferences;
 mod profiles;
 mod protection;
+mod provider_original;
 mod pulls;
 mod push_mirrors;
 mod recovery;

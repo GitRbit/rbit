@@ -1,6 +1,6 @@
 //! Only identity-owned verified original origins can select the fenced issuer.
 #[cfg(feature = "password-work")]
-use crate::accounts::authentication::proven::OriginalProofReceipt;
+use crate::accounts::proof::OriginalProofReceipt;
 use rbit_contracts::AccountId;
 use rbit_identity_models::credential::CredentialEpoch;
 mod sealed {

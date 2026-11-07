@@ -6,6 +6,7 @@
 mod query_count;
 
 mod access_tokens;
+mod account_creation;
 mod accounts;
 // Actions: foundation (F).
 mod actions;

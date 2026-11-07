@@ -14,6 +14,7 @@ use rbit_core::{AccountId, Timestamp, User};
 
 use super::accounts::{NewUser, insert_user};
 use crate::StorageError;
+mod original;
 
 /// A linked identity.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -213,6 +214,24 @@ impl ExternalIdentityStore {
         }
         tx.commit().await?;
         Ok(Ok(user))
+    }
+    /// Inactive original-creation counterpart; linking and epoch-bearing insertion
+    /// share exactly one transaction, and conflicts cannot publish a creation snapshot.
+    pub async fn register_original(
+        &self,
+        new: NewUser,
+        email_verified: bool,
+        identity: NewExternalIdentity<'_>,
+        registration_open: bool,
+    ) -> Result<Result<rbit_identity_models::accounts::CreatedAccountSnapshot, LinkConflict>, StorageError> {
+        let now = Timestamp::now();
+        let mut tx = self.pool.begin().await?;
+        let created = super::accounts::insert_user_original(&mut tx, new, Some(registration_open), email_verified).await?;
+        if let Err(conflict) = insert(&mut tx, created.user.id(), identity, now).await? {
+            return Ok(Err(conflict));
+        }
+        tx.commit().await?;
+        Ok(Ok(created))
     }
 }
 

@@ -14,16 +14,39 @@ impl AdminService {
         input: SignUp,
         is_admin: bool,
     ) -> impl Future<Output = Result<User, ServiceError>> + Send + 'a {
+        self.create_user_with::<false>(actor, input, is_admin)
+    }
+
+    /// Inactive epoch-aware provisioning for the closed private ACTIVE composition.
+    pub fn create_user_original<'a>(
+        &'a self,
+        actor: &'a User,
+        input: SignUp,
+        is_admin: bool,
+    ) -> impl Future<Output = Result<User, ServiceError>> + Send + 'a {
+        self.create_user_with::<true>(actor, input, is_admin)
+    }
+
+    fn create_user_with<'a, const ORIGINAL: bool>(
+        &'a self,
+        actor: &'a User,
+        input: SignUp,
+        is_admin: bool,
+    ) -> impl Future<Output = Result<User, ServiceError>> + Send + 'a {
         let repository = self.ctx.database.accounts();
         // Constructing the protected input future has no policy, hash or store effects.
         let mut password = zeroize::Zeroizing::new(input.password);
         let input = SignUp { username: input.username, email: input.email, password: String::new() };
         async move {
             require_admin(actor)?;
-            let user = AccountRegistration::new(&repository, &self.passwords, self.ctx.config.security.min_password_length, None)
-                .create_user_with_initial_password(SignUp { password: std::mem::take(&mut *password), ..input }, is_admin)
-                .await
-                .map_err(crate::accounts::application_error::registration)?;
+            let application = AccountRegistration::new(&repository, &self.passwords, self.ctx.config.security.min_password_length, None);
+            let input = SignUp { password: std::mem::take(&mut *password), ..input };
+            let user = if ORIGINAL {
+                application.create_user_with_initial_password_original(input, is_admin).await.map(|created| created.into_parts().0)
+            } else {
+                application.create_user_with_initial_password(input, is_admin).await
+            }
+            .map_err(crate::accounts::application_error::registration)?;
             tracing::info!(admin = %actor.name(), user = %user.name(), is_admin, "administrator created account");
             // Subscribers (e.g. email verification) treat every new account the same way.
             self.ctx.events.publish(DomainEvent::UserSignedUp { user: user.id() });

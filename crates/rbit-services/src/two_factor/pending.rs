@@ -32,8 +32,14 @@ impl TwoFactorService {
     /// sign-in routes retain legacy pending until the full fenced mode is activated.
     /// The sign-in orchestrator checks enrollment before calling, without another query here.
     pub fn start_original_password_pending(&self, proven: ProvenAccount) -> SessionToken {
+        self.start_original_provider_pending(proven, "password")
+    }
+
+    /// Inactive provider counterpart, retaining the same proof and existing configured
+    /// provider name for the second-factor audit. No enrollment lookup or new map owner.
+    pub(crate) fn start_original_provider_pending(&self, proven: ProvenAccount, method: &str) -> SessionToken {
         let (_, receipt) = proven.into_parts();
-        self.start_pending_bound(receipt.account(), "password", Some(receipt))
+        self.start_pending_bound(receipt.account(), method, Some(receipt))
     }
 
     fn start_pending_bound(&self, account: AccountId, method: &str, original: Option<OriginalProofReceipt>) -> SessionToken {

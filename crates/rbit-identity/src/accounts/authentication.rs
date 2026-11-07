@@ -7,7 +7,7 @@ use zeroize::Zeroizing;
 pub(crate) mod proven;
 mod verification;
 
-pub use proven::{OriginalProofReceipt, PasswordProofError, PasswordProofOutcome, ProvenAccount};
+pub use proven::{PasswordProofError, PasswordProofOutcome};
 
 use super::{AccountError, AccountRepository};
 use crate::{PasswordWork, User};
