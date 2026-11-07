@@ -1,4 +1,5 @@
 //! Managed, bounded preparation ownership. No ref, durability or completion receipt.
+pub(super) mod startup;
 use super::{WikiObjectError, WikiObjects, layout, objects, writer_lock};
 use rbit_kernel::AdmissionError;
 use rbit_wikis::{WikiId, WikiRevisionId, commands::WikiIntent};

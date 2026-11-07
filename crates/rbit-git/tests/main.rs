@@ -16,3 +16,4 @@ mod remote;
 mod storage;
 mod wiki_managed_objects;
 mod wiki_objects;
+mod wiki_startup;

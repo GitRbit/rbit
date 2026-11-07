@@ -6,6 +6,7 @@ mod managed_writer;
 pub use catalog_bound::{CatalogBoundWikiObjects, CatalogPreparedWikiObjects};
 mod objects;
 mod writer_lock;
+pub use managed_writer::startup::{WikiLooseScan, WikiScanBatch};
 pub use managed_writer::{PreparedWikiObjects, WikiObjectWriter};
 
 use rbit_core::{AccountId, RepoId, Timestamp};

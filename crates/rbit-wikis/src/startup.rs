@@ -1,4 +1,5 @@
 //! Bounded startup projections. These are data, never integrity/readiness receipts.
+pub mod objects;
 use crate::{WikiId, policy::WikiHead};
 use rbit_contracts::RepoId;
 

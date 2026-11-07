@@ -64,6 +64,14 @@ impl WikiObjectWriter {
 }
 
 impl<C: WikiCatalogOwnership> CatalogBoundWikiObjects<C> {
+    /// Startup integrity progress only; no native synchronization/readiness receipt.
+    pub async fn scan_loose(
+        &self,
+        repository: rbit_core::RepoId,
+        wiki: rbit_wikis::WikiId,
+    ) -> Result<super::WikiLooseScan<Self>, WikiObjectError> {
+        self.owner.writer.start_scan_retaining(repository, wiki, self.clone()).await
+    }
     pub async fn prepare(&self, intent: WikiIntent) -> Result<CatalogPreparedWikiObjects<C>, WikiObjectError> {
         let (prepared, owner) = self
             .owner

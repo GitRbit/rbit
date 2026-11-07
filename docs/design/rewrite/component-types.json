@@ -161,7 +161,13 @@
         "lib::wikis::exact_object::Compare",
         "lib::wikis::catalog_bound::CatalogBoundWikiObjects",
         "lib::wikis::catalog_bound::CatalogPreparedWikiObjects",
-        "lib::wikis::catalog_bound::BoundOwner"
+        "lib::wikis::catalog_bound::BoundOwner",
+        "lib::wikis::managed_writer::startup::WikiLooseScan",
+        "lib::wikis::managed_writer::startup::WikiScanBatch",
+        "lib::wikis::managed_writer::startup::walk::Walk",
+        "lib::wikis::managed_writer::startup::walk::Step",
+        "lib::wikis::managed_writer::startup::loose::Decoded",
+        "lib::wikis::managed_writer::startup::pending::Pending"
       ]
     },
     {
