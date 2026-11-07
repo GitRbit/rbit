@@ -27,7 +27,7 @@ async fn localized(router: &Router, path: &str, cookie: &str, language: &str, ht
 }
 
 #[tokio::test]
-async fn presentation_locale_leaves_raw_bytes_redirects_and_errors_unchanged() {
+async fn presentation_locale_preserves_raw_redirects_and_the_default_error_catalog() {
     let fixture = Fixture::new().await;
     let credential = fixture.runner(&["linux"]).await;
     let run = seed(&fixture, &[payload(&template("build", &["linux"], &[]))]).await;
@@ -47,7 +47,15 @@ async fn presentation_locale_leaves_raw_bytes_redirects_and_errors_unchanged() {
             .unwrap();
         let response = router.clone().oneshot(request).await.unwrap();
         assert_eq!(response.status(), expected);
-        assert!(!response.headers().contains_key(header::CONTENT_LANGUAGE));
+        if expected == StatusCode::NOT_FOUND {
+            assert_eq!(response.headers()[header::CONTENT_LANGUAGE], "en", "HTML errors use the shared shell's default catalog");
+            assert_eq!(response.headers()["rbit-catalog-key"], "1.en");
+            assert!(response.headers()[header::CONTENT_TYPE].to_str().unwrap().starts_with("text/html"));
+        } else {
+            assert!(!response.headers().contains_key(header::CONTENT_LANGUAGE));
+            assert!(!response.headers().contains_key("rbit-catalog-key"));
+        }
+        assert!(!response.headers().contains_key("hx-refresh"));
         if suffix == "/logs" {
             assert_eq!(response.headers()[header::LOCATION], path.as_str());
         }
