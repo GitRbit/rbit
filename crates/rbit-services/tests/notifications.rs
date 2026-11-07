@@ -344,3 +344,5 @@ async fn reviews_and_review_requests_notify() {
     assert_eq!(fixture.unread(&fixture.bob).await.len(), 1, "commenters reach subscribers even when the comment is gone");
     assert_eq!(notifications.prune().await.unwrap(), 0);
 }
+
+mod inbox;

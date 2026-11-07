@@ -26,3 +26,15 @@ test("model and application graphs reject transitive runtime, crypto and legacy 
     assert.match(collaborationGraphViolations(`${graph}${name} v1.0.0\n`)[0], /runtime\/adapter dependency/);
   }
 });
+
+test("notifications borrow collaboration models without activating application features", () => {
+  const edge = { name: "rbit-collaboration", kind: null, rename: null, target: null, uses_default_features: false, features: [] };
+  const pkg = { id: "notifications", name: "rbit-notifications", dependencies: [edge] };
+  const metadata = { workspace_members: [pkg.id], packages: [pkg] };
+  assert.deepEqual(checkCollaborationFeatures(metadata), []);
+  edge.features = ["applications"];
+  assert.match(checkCollaborationFeatures(metadata)[0], /exactly \[\]/);
+  edge.features = [];
+  edge.uses_default_features = true;
+  assert.match(checkCollaborationFeatures(metadata)[0], /disable defaults/);
+});

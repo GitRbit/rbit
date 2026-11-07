@@ -59,8 +59,8 @@ pub mod statuses;
 pub mod teams;
 pub mod two_factor;
 pub mod webhooks;
-pub mod writer_compatibility;
 pub mod wikis;
+pub mod writer_compatibility;
 
 use std::path::Path;
 

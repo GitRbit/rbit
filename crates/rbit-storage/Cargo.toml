@@ -9,6 +9,7 @@ license.workspace = true
 autotests = false
 
 [dependencies]
+rbit-notifications.workspace = true
 rbit-wikis = { workspace = true, default-features = false }
 rbit-collaboration = { workspace = true, default-features = false, features = ["applications"] }
 rbit-identity-models.workspace = true

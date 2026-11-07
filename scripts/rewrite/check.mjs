@@ -23,6 +23,7 @@ const FEATURE_EDGES = {
   "rbit-access": [],
   "rbit-repositories": ["rbit-contracts", "rbit-identity-models"],
   "rbit-wikis": ["rbit-contracts", "rbit-access"],
+  "rbit-notifications": ["rbit-contracts", "rbit-collaboration"],
   "rbit-collaboration": ["rbit-identity-models", "rbit-contracts", "rbit-access", "rbit-repositories", "rbit-kernel"],
   "rbit-actions": ["rbit-contracts", "rbit-access", "rbit-workflow", "rbit-kernel"],
   "rbit-presentation": ["rbit-contracts", "rbit-localization"],
@@ -30,10 +31,10 @@ const FEATURE_EDGES = {
 // Reviewed seams added to legacy adapters during incremental replacement.
 const ADDED_EDGES = {
   "rbit-core": ["rbit-contracts", "rbit-access", "rbit-identity-models", "rbit-repositories", "rbit-collaboration"], "rbit-web": ["rbit-localization", "rbit-identity-models"],
-  "rbit-auth": ["rbit-identity", "rbit-access"], "rbit-services": ["rbit-identity", "rbit-kernel", "rbit-repositories", "rbit-collaboration", "rbit-identity-models", "rbit-actions"],
+  "rbit-auth": ["rbit-identity", "rbit-access"], "rbit-services": ["rbit-identity", "rbit-kernel", "rbit-repositories", "rbit-collaboration", "rbit-identity-models", "rbit-actions", "rbit-notifications"],
   "rbit-server": ["rbit-kernel"],
   "rbit-git": ["rbit-wikis", "rbit-kernel"],
-  "rbit-storage": ["rbit-identity-models", "rbit-repositories", "rbit-collaboration", "rbit-wikis"],
+  "rbit-storage": ["rbit-identity-models", "rbit-repositories", "rbit-collaboration", "rbit-wikis", "rbit-notifications"],
 };
 // HTTP acceptance fixtures may inject the shared owner without adding production edges.
 const DEV_EDGES = { "rbit-web": ["rbit-identity", "rbit-kernel"], "rbit-services": ["rbit-wikis"] };

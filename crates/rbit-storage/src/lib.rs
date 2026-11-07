@@ -21,6 +21,8 @@ mod identity_accounts;
 mod identity_epoch_sessions;
 mod identity_sessions;
 pub mod kv;
+mod notification_inbox;
+pub use notification_inbox::NotificationInboxStore;
 mod repository_creation;
 mod repository_discovery;
 pub mod sealing;

@@ -27,7 +27,8 @@
         "lib::accounts::original_recovery::EpochSessionRecovery",
         "lib::accounts::original_recovery::OriginalCredentialFinalizer",
         "lib::accounts::original_recovery::OriginalCredentialMutation",
-        "lib::accounts::original_recovery::backend::RecoveryLease"
+        "lib::accounts::original_recovery::backend::RecoveryLease",
+        "lib::notifications::inbox::InboxView"
       ]
     },
     {
@@ -54,7 +55,8 @@
         "lib::sqlite::credential_epochs::EpochAllocationError",
         "lib::work::CapturedWork",
         "lib::kv::recovery::CredentialRecoveryGate",
-        "lib::kv::recovery::CredentialRecoveryPermit"
+        "lib::kv::recovery::CredentialRecoveryPermit",
+        "lib::notification_inbox::NotificationInboxStore"
       ]
     },
     {

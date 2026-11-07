@@ -15,59 +15,11 @@ use super::pool::Pool;
 use rbit_core::{AccountId, IssueId, IssueKind, IssueNumber, IssueState, RepoId, StateReason, Timestamp};
 
 use crate::StorageError;
+pub use rbit_notifications::{Notification, NotificationReason, NotificationRecipient, Subscription};
 
 /// Maximum recipients in one fan-out transaction, keeping `SQLite`'s writer available
 /// between batches even for threads with many subscribers.
 pub const NOTIFICATION_BATCH_SIZE: usize = 100;
-
-/// Why a user hears about a thread, weakest first; the strongest wins.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum NotificationReason {
-    /// Subscribed by hand.
-    Manual,
-    Comment,
-    /// Reviewed the pull request.
-    Reviewed,
-    /// Opened the thread.
-    Author,
-    Mention,
-    Assigned,
-    ReviewRequested,
-}
-
-impl NotificationReason {
-    pub const ALL: [Self; 7] =
-        [Self::Manual, Self::Comment, Self::Reviewed, Self::Author, Self::Mention, Self::Assigned, Self::ReviewRequested];
-
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Manual => "manual",
-            Self::Comment => "comment",
-            Self::Reviewed => "reviewed",
-            Self::Author => "author",
-            Self::Mention => "mention",
-            Self::Assigned => "assigned",
-            Self::ReviewRequested => "review_requested",
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|reason| reason.as_str() == value)
-    }
-
-    /// How the inbox explains it.
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Manual => "Subscribed",
-            Self::Comment => "Commented",
-            Self::Reviewed => "Reviewed",
-            Self::Author => "Author",
-            Self::Mention => "Mentioned",
-            Self::Assigned => "Assigned",
-            Self::ReviewRequested => "Review requested",
-        }
-    }
-}
 
 /// The rank of reason column `$column` in SQL (matching [`NotificationReason`]'s order).
 macro_rules! rank {
@@ -81,54 +33,11 @@ macro_rules! rank {
     };
 }
 
-/// A user's subscription to a thread.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Subscription {
-    pub reason: NotificationReason,
-    pub subscribed: bool,
-}
-
 /// Issue `?1`'s subscription row of user `?2` (both `NULL` without one) and whether
 /// that user has an unread notification about it (`UNIQUE (user_id, issue_id)`).
 const THREAD_STATE: &str = "SELECT s.reason, s.subscribed, \
      EXISTS (SELECT 1 FROM notifications WHERE user_id = ?2 AND issue_id = ?1 AND unread = 1) AS unread \
      FROM (SELECT 1) LEFT JOIN issue_subscriptions s ON s.issue_id = ?1 AND s.user_id = ?2";
-
-/// One already-authorized recipient of an activity. Direct participation is optional;
-/// an explicit unsubscribe is never overwritten by automatic participation.
-#[derive(Debug, Clone, Copy)]
-pub struct NotificationRecipient {
-    pub user: AccountId,
-    pub reason: NotificationReason,
-    pub participation: Option<NotificationReason>,
-}
-
-/// One inbox row with what it needs to be shown.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Notification {
-    pub id: i64,
-    pub user: AccountId,
-    pub issue: IssueId,
-    pub repo: RepoId,
-    pub reason: NotificationReason,
-    pub unread: bool,
-    pub last_actor: Option<AccountId>,
-    pub updated_at: Timestamp,
-    pub number: IssueNumber,
-    pub kind: IssueKind,
-    pub state: IssueState,
-    pub state_reason: Option<StateReason>,
-    pub title: String,
-    /// The repository's owner and name.
-    pub owner: String,
-    pub repo_name: String,
-}
-
-impl Notification {
-    pub fn full_name(&self) -> String {
-        format!("{}/{}", self.owner, self.repo_name)
-    }
-}
 
 #[derive(Debug, sqlx::FromRow)]
 struct NotificationRow {

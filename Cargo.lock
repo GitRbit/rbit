@@ -4389,6 +4389,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbit-notifications"
+version = "0.1.5"
+dependencies = [
+ "rbit-collaboration",
+ "rbit-contracts",
+ "tokio",
+]
+
+[[package]]
 name = "rbit-process-tree-probe"
 version = "0.1.5"
 dependencies = [
@@ -4515,6 +4524,7 @@ dependencies = [
  "rbit-identity-models",
  "rbit-kernel",
  "rbit-mail",
+ "rbit-notifications",
  "rbit-repositories",
  "rbit-storage",
  "rbit-wikis",
@@ -4571,6 +4581,7 @@ dependencies = [
  "rbit-collaboration",
  "rbit-core",
  "rbit-identity-models",
+ "rbit-notifications",
  "rbit-repositories",
  "rbit-wikis",
  "redb",
