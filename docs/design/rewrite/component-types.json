@@ -82,6 +82,10 @@
         "lib::wikis::objects::PageInput",
         "lib::wikis::exact_object::Compare"
       ]
+    },
+    {
+      "crate": "crates/rbit-workflow",
+      "types": ["lib::parse::expressions::Scope"]
     }
   ]
 }

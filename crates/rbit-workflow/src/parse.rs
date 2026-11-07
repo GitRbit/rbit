@@ -1,15 +1,15 @@
-//! Workflow file Ã¢â€ â€™ [`Workflow`], with every problem reported at its place in the file.
+//! Workflow file → [`Workflow`], with every problem reported at its place in the file.
 //!
-//! Every key of Ã‚Â§12.2 is read into the typed model, and every other key is an error at
+//! Every key of §12.2 is read into the typed model, and every other key is an error at
 //! every level, because a typo must not silently change what a job does. GitHub keys rbit
-//! lacks (container `ports`, runner groups, `cancel-timeout-minutes`, Ã¢â‚¬Â¦) say "not supported
+//! lacks (container `ports`, runner groups, `cancel-timeout-minutes`, …) say "not supported
 //! by rbit".
 //!
 //! Structural checks: the shape of `on`, filters that compile, job ids, `runs-on`, `needs`
 //! that name existing jobs without a cycle, a matrix that is a mapping of lists,
 //! `permissions`, `concurrency`, containers, services, and steps with exactly one of `run`
 //! and `uses`. Every `${{ }}` is parsed here, and may only use the contexts its field is
-//! evaluated with (Ã‚Â§12.4): `run-name` and `strategy` see `github`, `inputs` and `vars`; the
+//! evaluated with (§12.4): `run-name` and `strategy` see `github`, `inputs` and `vars`; the
 //! fields the server evaluates per job also `matrix` and `strategy`; a job's `if` also
 //! `needs`; what the runner evaluates sees everything. Status functions only work in `if`
 //! and `hashFiles` only on the runner. Expressions are left as written; planning evaluates

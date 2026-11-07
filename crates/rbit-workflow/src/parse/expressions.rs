@@ -4,7 +4,7 @@ use crate::error::{Location, WorkflowError};
 use crate::expr::{Condition, Expr, Function, Template};
 use crate::yaml::{Mapping, Node, ScalarValue};
 
-/// Where a field is evaluated (Â§12.4), which decides the contexts and functions it may use.
+/// Where a field is evaluated (§12.4), which decides the contexts and functions it may use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Scope {
     /// The server, when the run is created: `run-name`, workflow `concurrency`.

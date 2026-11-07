@@ -49,5 +49,7 @@ Rust/native validation is pending. Through the owned shared build helper, run th
 whole `rbit-workflow` unit suite and its `conformance` integration target, then
 strict all-target Clippy. Keep the existing Actions evaluation, reusable-workflow,
 planning and runner acceptance gates: they exercise downstream parse API consumers.
-The cumulative AST and physical source bounds must pass before acceptance. No
+The extracted expression `Scope` is registered in the cumulative component policy;
+its enum and implementation share one 400-line logical-type limit. The cumulative
+AST and physical source bounds must pass before acceptance. No
 Cargo or metadata command was used to prepare this extraction.
