@@ -45,6 +45,6 @@ pub trait ForkReadRepository: Sync {
 }
 pub trait ForkParentAccess: Sync {
     type Error;
-    /// False means the original NotFound suppression; other errors retain identity.
+    /// False means the original `NotFound` suppression; other errors retain identity.
     fn can_open(&self, parent: &OwnedRepository) -> impl Future<Output = Result<bool, Self::Error>> + Send;
 }
