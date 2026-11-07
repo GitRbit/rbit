@@ -13,7 +13,7 @@
     <div class="p-4">
       {% call ui::form_error(error) %}{% endcall %}
       <label class="label" for="team-name">Name</label>
-      <input class="input font-mono text-[13px] sm:max-w-72" id="team-name" name="name" value="{{ form.name }}" maxlength="50" autocapitalize="none" autocomplete="off" spellcheck="false" pattern="[A-Za-z0-9._\-]+" required>
+      <input class="input font-mono text-[13px] sm:max-w-72" dir="ltr" id="team-name" name="name" value="{{ form.name }}" maxlength="50" autocapitalize="none" autocomplete="off" spellcheck="false" pattern="[A-Za-z0-9._\-]+" required>
       <p class="hint">Renaming changes the team's address.</p>
 
       <label class="label mt-5" for="team-description">Description <span class="font-normal text-ink-faint">optional</span></label>

@@ -6,7 +6,7 @@
 
 <div class="mt-6 max-w-3xl">
   <div class="mb-3 flex h-8 items-center justify-between gap-3">
-    <h2 class="text-[13px] font-medium text-ink-muted">Teams <span class="ml-1 text-ink-faint">{{ teams.len() }}</span></h2>
+    <h2 class="text-[13px] font-medium text-ink-muted">Teams <span class="ms-1 text-ink-faint">{{ teams.len() }}</span></h2>
     {% if can_manage %}
     <a href="{{ new_url }}" class="btn btn-primary">{% call ui::icon("plus", "size-3.5") %}{% endcall %}New team</a>
     {% endif %}

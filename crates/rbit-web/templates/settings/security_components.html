@@ -7,7 +7,7 @@
 <label class="label" for="{{ id }}-password">Password</label>
 <input class="input" id="{{ id }}-password" name="password" type="password" autocomplete="current-password" required>
 <label class="label mt-4" for="{{ id }}-code">{% if app_codes %}Authentication or recovery code{% else %}Recovery code{% endif %}</label>
-<input class="input font-mono sm:max-w-60" id="{{ id }}-code" name="code" {% if app_codes %}inputmode="numeric"{% endif %} autocomplete="one-time-code" autocapitalize="none" spellcheck="false" maxlength="20">
+<input class="input font-mono sm:max-w-60" dir="ltr" id="{{ id }}-code" name="code" {% if app_codes %}inputmode="numeric"{% endif %} autocomplete="one-time-code" autocapitalize="none" spellcheck="false" maxlength="20">
 {% if options.is_some() %}
 <p class="hint" data-passkey-only hidden>Or confirm with one of your passkeys instead of a code.</p>
 <input type="hidden" name="passkey" value="">

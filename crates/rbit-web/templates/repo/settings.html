@@ -48,14 +48,14 @@
       <p class="text-[13px] text-ink-muted">Push a branch to choose the default branch.</p>
       {% else %}
       <div class="relative sm:max-w-72">
-        <select class="input cursor-pointer appearance-none pr-9 font-mono text-[13px]" id="default-branch" name="default_branch">
+        <select class="input cursor-pointer appearance-none pe-9 font-mono text-[13px]" id="default-branch" name="default_branch">
           {% for branch in general.branches %}
           <option value="{{ branch.name }}" {% if branch.selected %}selected{% endif %}>{{ branch.name }}</option>
           {% endfor %}
         </select>
-        {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
+        {% call ui::icon("chevron-down", "pointer-events-none absolute inset-e-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
       </div>
-      <p class="hint">Shown first when browsing, and checked out by <span class="font-mono">git clone</span>.</p>
+      <p class="hint">Shown first when browsing, and checked out by <span class="font-mono" dir="ltr">git clone</span>.</p>
       {% endif %}
     </div>
     <div class="flex justify-end border-t border-line px-4 py-3">
@@ -70,7 +70,7 @@
     <div class="p-4">
       {% call ui::form_error(rename_error) %}{% endcall %}
       <label class="label" for="name">Name</label>
-      <input class="input font-mono text-[13px] sm:max-w-72" id="name" name="name" value="{{ name }}" maxlength="100" autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9._\-]+" required>
+      <input class="input font-mono text-[13px] sm:max-w-72" dir="ltr" id="name" name="name" value="{{ name }}" maxlength="100" autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9._\-]+" required>
       <p class="hint">Links and clone URLs that use the old name stop working.</p>
     </div>
     <div class="flex justify-end border-t border-line px-4 py-3">
@@ -109,8 +109,8 @@
         {% call ui::form_error(delete_error) %}{% endcall %}
         <p class="font-medium">Delete this repository</p>
         <p class="mt-1 text-[13px] text-ink-muted">Its files, history and stars are removed permanently. This cannot be undone.</p>
-        <label class="label mt-4" for="confirm-delete">Type <span class="font-mono">{{ full_name }}</span> to confirm</label>
-        <input class="input font-mono text-[13px] sm:max-w-72" id="confirm-delete" name="confirm" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+        <label class="label mt-4" for="confirm-delete">Type <span class="font-mono" dir="ltr">{{ full_name }}</span> to confirm</label>
+        <input class="input font-mono text-[13px] sm:max-w-72" dir="ltr" id="confirm-delete" name="confirm" autocomplete="off" autocapitalize="none" spellcheck="false" required>
       </div>
       <div class="flex justify-end border-t border-danger/40 px-4 py-3">
         <button class="btn btn-danger w-full sm:w-auto" type="submit">Delete repository</button>

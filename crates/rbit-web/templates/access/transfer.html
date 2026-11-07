@@ -15,7 +15,7 @@
 
       {% if free_entry %}
       <label class="label" for="transfer-owner">New owner</label>
-      <input class="input font-mono text-[13px] sm:max-w-72" id="transfer-owner" name="new_owner" value="{{ form.new_owner }}" list="transfer-owners" maxlength="39" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+      <input class="input font-mono text-[13px] sm:max-w-72" dir="ltr" id="transfer-owner" name="new_owner" value="{{ form.new_owner }}" list="transfer-owners" maxlength="39" autocomplete="off" autocapitalize="none" spellcheck="false" required>
       <datalist id="transfer-owners">
         {% for owner in owners %}<option value="{{ owner.name }}">{{ owner.label }}</option>{% endfor %}
       </datalist>
@@ -40,8 +40,8 @@
       </fieldset>
       {% endif %}
 
-      <label class="label mt-5" for="transfer-confirm">Type <span class="font-mono">{{ full_name }}</span> to confirm</label>
-      <input class="input font-mono text-[13px] sm:max-w-72" id="transfer-confirm" name="confirm" value="{{ form.confirm }}" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+      <label class="label mt-5" for="transfer-confirm">Type <span class="font-mono" dir="ltr">{{ full_name }}</span> to confirm</label>
+      <input class="input font-mono text-[13px] sm:max-w-72" dir="ltr" id="transfer-confirm" name="confirm" value="{{ form.confirm }}" autocomplete="off" autocapitalize="none" spellcheck="false" required>
     </div>
     <div class="flex justify-end border-t border-danger/40 px-4 py-3">
       <button class="btn btn-danger w-full sm:w-auto" type="submit">Transfer repository</button>

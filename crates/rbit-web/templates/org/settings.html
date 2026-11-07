@@ -64,7 +64,7 @@
       <p class="font-medium">Delete this organization</p>
       {% if repo_count == 0 %}
       <p class="mt-1 text-[13px] text-ink-muted">This permanently removes the organization and all of its memberships. It cannot be undone.</p>
-      <label class="label mt-4" for="org-confirm">Type <span class="font-mono">{{ header.name }}</span> to confirm</label>
+      <label class="label mt-4" for="org-confirm">Type <span class="font-mono" dir="ltr">{{ header.name }}</span> to confirm</label>
       <input class="input" id="org-confirm" name="confirm" autocomplete="off" autocapitalize="none" spellcheck="false" required>
       {% else %}
       <p class="mt-1 text-[13px] text-ink-muted">{{ header.name }} still owns {{ repo_count }} {% if repo_count == 1 %}repository{% else %}repositories{% endif %}. Delete or transfer {% if repo_count == 1 %}it{% else %}them{% endif %} first.</p>

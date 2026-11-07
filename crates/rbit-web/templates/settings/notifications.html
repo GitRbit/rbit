@@ -56,10 +56,10 @@
     </fieldset>
     <label class="label mt-6" for="digest-hour">Digest time</label>
     <div class="relative w-full sm:w-48">
-      <select class="input cursor-pointer appearance-none pr-9" id="digest-hour" name="digest_hour" aria-describedby="digest-hour-hint">
+      <select class="input cursor-pointer appearance-none pe-9" id="digest-hour" name="digest_hour" aria-describedby="digest-hour-hint">
         {% for hour in hours %}<option value="{{ hour.value }}"{% if hour.selected %} selected{% endif %}>{{ hour.label }}</option>{% endfor %}
       </select>
-      {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
+      {% call ui::icon("chevron-down", "pointer-events-none absolute inset-e-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
     </div>
     <p class="hint" id="digest-hour-hint">Digests leave out threads you have already read here. Every email has a link that turns them off in one click.</p>
   </div>

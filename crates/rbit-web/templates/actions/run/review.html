@@ -15,7 +15,7 @@
 
   {% for deployment in deployments %}
   <div class="mt-6 rounded-(--radius-ui) border border-warning/40 px-3 py-3 text-[13px]" role="status" lang="en" dir="ltr">
-    <p class="flex items-start gap-2 font-medium">{% call ui::icon("shield", "mt-px size-4 shrink-0 text-warning") %}{% endcall %}<span>Waiting for review: <span class="font-mono">{{ deployment.environment }}</span></span></p>
+    <p class="flex items-start gap-2 font-medium">{% call ui::icon("shield", "mt-px size-4 shrink-0 text-warning") %}{% endcall %}<span>Waiting for review: <span class="font-mono" dir="ltr">{{ deployment.environment }}</span></span></p>
     <p class="mt-1 text-ink-muted">{{ deployment.jobs }} {% if deployment.jobs.contains(", ") %}deploy{% else %}deploys{% endif %} to {{ deployment.environment }}, whose reviewers must approve it first.</p>
     {% if deployment.can_review %}
     <form data-run-review="deployment" method="post" action="{{ review_url }}" class="mt-3">

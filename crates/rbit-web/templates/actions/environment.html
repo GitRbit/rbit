@@ -15,7 +15,7 @@
     <div class="p-4">
       {% call ui::form_error(error) %}{% endcall %}
       <label class="label" for="environment-reviewers">Required reviewers</label>
-      <textarea class="input h-24 resize-y py-2 font-mono text-[13px]" id="environment-reviewers" name="reviewers" rows="3" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="one username per line">{{ reviewers }}</textarea>
+      <textarea class="input h-24 resize-y py-2 font-mono text-[13px]" dir="ltr" id="environment-reviewers" name="reviewers" rows="3" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="one username per line">{{ reviewers }}</textarea>
       <p class="hint">Up to six people who can read this repository. A job in this environment waits until one of them approves it; a rejected job fails. With none, jobs run without review.</p>
       <label class="mt-4 flex cursor-pointer items-start gap-3">
         <input type="checkbox" name="prevent_self_review" value="on" class="mt-1 accent-(--ink)" {% if prevent_self_review %}checked{% endif %}>
@@ -41,8 +41,8 @@
             <input type="radio" name="policy" value="selected" class="mt-1 accent-(--ink)" {% if policy == "selected" %}checked{% endif %}>
             <span class="min-w-0 flex-1">
               <span class="block font-medium">Selected branches and tags</span>
-              <textarea class="input mt-2 h-20 resize-y py-2 font-mono text-[13px]" name="patterns" rows="2" autocomplete="off" autocapitalize="none" spellcheck="false" aria-label="Branch and tag patterns" placeholder="main">{{ patterns }}</textarea>
-              <span class="block text-xs text-ink-muted">One pattern per line, as in workflow filters. Branches by name (<span class="font-mono">release/*</span>), tags with <span class="font-mono">refs/tags/</span> (<span class="font-mono">refs/tags/v*</span>); <span class="font-mono">!</span> excludes.</span>
+              <textarea class="input mt-2 h-20 resize-y py-2 font-mono text-[13px]" dir="ltr" name="patterns" rows="2" autocomplete="off" autocapitalize="none" spellcheck="false" aria-label="Branch and tag patterns" placeholder="main">{{ patterns }}</textarea>
+              <span class="block text-xs text-ink-muted">One pattern per line, as in workflow filters. Branches by name (<span class="font-mono" dir="ltr">release/*</span>), tags with <span class="font-mono" dir="ltr">refs/tags/</span> (<span class="font-mono" dir="ltr">refs/tags/v*</span>); <span class="font-mono" dir="ltr">!</span> excludes.</span>
             </span>
           </label>
         </div>

@@ -25,11 +25,11 @@
 
       {% if authenticator %}
       <label class="label" for="code">Authentication code</label>
-      <input class="input font-mono tracking-widest" id="code" name="code" inputmode="numeric" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" maxlength="20" placeholder="123456" {% if passkey_options.is_none() %}required autofocus{% endif %}>
+      <input class="input font-mono tracking-widest" dir="ltr" id="code" name="code" inputmode="numeric" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" maxlength="20" placeholder="123456" {% if passkey_options.is_none() %}required autofocus{% endif %}>
       <p class="hint">Lost your device? Enter one of your recovery codes instead.</p>
       {% else %}
       <label class="label" for="code">Recovery code</label>
-      <input class="input font-mono" id="code" name="code" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" maxlength="20" placeholder="xxxx-xxxx-xxxx">
+      <input class="input font-mono" dir="ltr" id="code" name="code" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" maxlength="20" placeholder="xxxx-xxxx-xxxx">
       <p class="hint">Lost your passkey? Enter one of your recovery codes.</p>
       {% endif %}
 

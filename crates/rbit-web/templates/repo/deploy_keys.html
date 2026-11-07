@@ -20,7 +20,7 @@
       <p class="hint">Defaults to the key's comment.</p>
 
       <label class="label mt-5" for="key-value">Key</label>
-      <textarea class="input h-32 resize-y py-2 font-mono text-xs sm:h-28" id="key-value" name="key" rows="4" placeholder="ssh-ed25519 AAAA… deploy@server" autocomplete="off" autocapitalize="none" spellcheck="false" required>{{ form.key }}</textarea>
+      <textarea class="input h-32 resize-y py-2 font-mono text-xs sm:h-28" dir="ltr" id="key-value" name="key" rows="4" placeholder="ssh-ed25519 AAAA… deploy@server" autocomplete="off" autocapitalize="none" spellcheck="false" required>{{ form.key }}</textarea>
       <p class="hint">A key can belong to only one repository or account; generate a separate key for each.</p>
 
       <label class="mt-5 flex cursor-pointer items-start gap-3">
@@ -54,7 +54,7 @@
               <span class="badge">{{ key.type_label }}</span>
               {% if let Some(access) = key.access_label %}<span class="badge">{{ access }}</span>{% endif %}
             </div>
-            <p class="mt-1 break-all font-mono text-xs text-ink">{{ key.fingerprint }}</p>
+            <p class="mt-1 break-all font-mono text-xs text-ink"><bdi dir="ltr">{{ key.fingerprint }}</bdi></p>
             <p class="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-ink-muted">
               <time datetime="{{ key.added_iso }}">{{ key.added }}</time>
               <span>{{ key.last_used }}</span>

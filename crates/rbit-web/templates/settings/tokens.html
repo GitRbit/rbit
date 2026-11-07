@@ -2,7 +2,7 @@
 {% import "macros.html" as ui %}
 {% block settings_content %}
 <h2 class="text-xl font-semibold tracking-tight">Access tokens</h2>
-<p class="mt-1 text-[13px] text-ink-muted">Use a token instead of your password for Git over HTTPS: enter your username <span class="font-mono text-ink">{{ username }}</span> and paste the token when Git asks for a password. The REST API at <span class="font-mono text-ink">/api/v1</span> takes it as <span class="font-mono text-ink">Authorization: Bearer</span>. Tokens start with <span class="font-mono text-ink">rbit_</span>; tokens from earlier releases start with <span class="font-mono text-ink">rit_</span> and keep working.</p>
+<p class="mt-1 text-[13px] text-ink-muted">Use a token instead of your password for Git over HTTPS: enter your username <span class="font-mono text-ink" dir="ltr">{{ username }}</span> and paste the token when Git asks for a password. The REST API at <span class="font-mono text-ink" dir="ltr">/api/v1</span> takes it as <span class="font-mono text-ink" dir="ltr">Authorization: Bearer</span>. Tokens start with <span class="font-mono text-ink" dir="ltr">rbit_</span>; tokens from earlier releases start with <span class="font-mono text-ink" dir="ltr">rit_</span> and keep working.</p>
 
 {% if let Some(created) = created %}
 {#- hx-history="false" keeps this page (and the secret) out of htmx's localStorage history cache. -#}
@@ -13,9 +13,9 @@
   </div>
   <div class="p-4">
     <label class="label" for="new-token">Copy your new token now. You won't be able to see it again.</label>
-    <div class="flex">
-      <input id="new-token" class="input min-w-0 rounded-r-none font-mono text-[13px]" value="{{ created.secret }}" readonly autocomplete="off" spellcheck="false">
-      <button type="button" class="btn btn-icon -ml-px h-10 rounded-l-none sm:h-9 sm:w-9" data-copy="new-token" aria-label="Copy token" title="Copy">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
+    <div class="flex" dir="ltr">
+      <input id="new-token" class="input min-w-0 rounded-e-none font-mono text-[13px]" value="{{ created.secret }}" readonly autocomplete="off" spellcheck="false">
+      <button type="button" class="btn btn-icon -ms-px h-10 rounded-s-none sm:h-9 sm:w-9" data-copy="new-token" aria-label="Copy token" title="Copy">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
     </div>
   </div>
 </section>
@@ -50,12 +50,12 @@
 
     <label class="label mt-5" for="token-expires">Expiration</label>
     <div class="relative sm:max-w-60">
-      <select class="input cursor-pointer appearance-none pr-9" id="token-expires" name="expires">
+      <select class="input cursor-pointer appearance-none pe-9" id="token-expires" name="expires">
         {% for choice in form.expiry_choices %}
         <option value="{{ choice.value }}" {% if choice.selected %}selected{% endif %}>{{ choice.label }}</option>
         {% endfor %}
       </select>
-      {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
+      {% call ui::icon("chevron-down", "pointer-events-none absolute inset-e-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
     </div>
   </div>
   <div class="flex justify-end border-t border-line px-4 py-3">
@@ -81,7 +81,7 @@
             <span class="badge">{{ token.scope_label }}</span>
           </div>
           <p class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-ink-muted">
-            <span class="font-mono text-ink">{{ token.hint }}</span>
+            <span class="font-mono text-ink" dir="ltr">{{ token.hint }}</span>
             <time datetime="{{ token.created_iso }}">{{ token.created }}</time>
             <span>{{ token.last_used }}</span>
             <span {% if token.is_expired %}class="text-danger"{% endif %}>{{ token.expiry }}</span>

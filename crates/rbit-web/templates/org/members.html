@@ -20,11 +20,11 @@
         <div>
           <label class="label" for="member-role">Role</label>
           <div class="relative">
-            <select class="input cursor-pointer appearance-none pr-9" id="member-role" name="role">
+            <select class="input cursor-pointer appearance-none pe-9" id="member-role" name="role">
               <option value="member" {% if !form.owner %}selected{% endif %}>Member</option>
               <option value="owner" {% if form.owner %}selected{% endif %}>Owner</option>
             </select>
-            {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
+            {% call ui::icon("chevron-down", "pointer-events-none absolute inset-e-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
           </div>
         </div>
         <button class="btn btn-primary h-10 w-full sm:h-9 sm:w-auto" type="submit">Add</button>
@@ -37,7 +37,7 @@
   {% endif %}
 
   <div class="mb-3 flex h-8 items-center">
-    <h2 class="text-[13px] font-medium text-ink-muted">Members <span class="ml-1 text-ink-faint">{{ members.len() }}</span></h2>
+    <h2 class="text-[13px] font-medium text-ink-muted">Members <span class="ms-1 text-ink-faint">{{ members.len() }}</span></h2>
   </div>
   <div class="box">
     <ul>

@@ -18,7 +18,7 @@
 
   <section class="mt-6" aria-labelledby="members-title">
     <div class="mb-3 flex h-8 items-center justify-between">
-      <h2 id="members-title" class="text-[13px] font-medium text-ink-muted">Members <span class="ml-1 text-ink-faint">{{ members.len() }}</span></h2>
+      <h2 id="members-title" class="text-[13px] font-medium text-ink-muted">Members <span class="ms-1 text-ink-faint">{{ members.len() }}</span></h2>
     </div>
     {% if can_manage %}
     <form method="post" action="{{ members_url }}" class="box mb-3" novalidate>
@@ -69,7 +69,7 @@
 
   <section class="mt-6" aria-labelledby="repositories-title">
     <div class="mb-3 flex h-8 items-center justify-between">
-      <h2 id="repositories-title" class="text-[13px] font-medium text-ink-muted">Repositories <span class="ml-1 text-ink-faint">{{ repositories.len() }}</span></h2>
+      <h2 id="repositories-title" class="text-[13px] font-medium text-ink-muted">Repositories <span class="ms-1 text-ink-faint">{{ repositories.len() }}</span></h2>
     </div>
     {% if can_manage %}
     <form method="post" action="{{ repositories_url }}" class="box mb-3" novalidate>
@@ -83,12 +83,12 @@
           <div>
             <label class="label" for="team-repository-permission">Permission</label>
             <div class="relative">
-              <select class="input cursor-pointer appearance-none pr-9" id="team-repository-permission" name="permission">
+              <select class="input cursor-pointer appearance-none pe-9" id="team-repository-permission" name="permission">
                 {% for option in repo_form.options %}
                 <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>
                 {% endfor %}
               </select>
-              {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
+              {% call ui::icon("chevron-down", "pointer-events-none absolute inset-e-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
             </div>
           </div>
           <button class="btn btn-primary h-10 w-full sm:h-9 sm:w-auto" type="submit">Add</button>
@@ -115,12 +115,12 @@
               <input type="hidden" name="name" value="{{ repo.name }}">
               <label class="sr-only" for="repo-permission-{{ loop.index }}">Permission on {{ repo.full_name }}</label>
               <div class="relative">
-                <select class="input h-8 cursor-pointer appearance-none pr-8 text-[13px] sm:h-8" id="repo-permission-{{ loop.index }}" name="permission">
+                <select class="input h-8 cursor-pointer appearance-none pe-8 text-[13px] sm:h-8" id="repo-permission-{{ loop.index }}" name="permission">
                   {% for option in repo.options %}
                   <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>
                   {% endfor %}
                 </select>
-                {% call ui::icon("chevron-down", "pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
+                {% call ui::icon("chevron-down", "pointer-events-none absolute inset-e-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
               </div>
               <button class="btn" type="submit" aria-label="Save permission on {{ repo.full_name }}">Save</button>
             </form>

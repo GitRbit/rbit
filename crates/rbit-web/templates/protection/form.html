@@ -6,10 +6,10 @@
 <div class="mx-auto max-w-3xl">
   <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">Settings</a> <span class="text-ink-faint">/</span> <a class="text-ink-muted hover:text-ink" href="{{ list_url }}">Branch protection</a></p>
   {% if let Some(rule) = rule %}
-  <h1 class="mt-1 truncate font-mono text-xl font-semibold tracking-tight">{{ rule.pattern }}</h1>
+  <h1 class="mt-1 truncate font-mono text-xl font-semibold tracking-tight"><bdi dir="ltr">{{ rule.pattern }}</bdi></h1>
   <p class="mt-1 text-[13px] text-ink-muted">
     {% if rule.matches.is_empty() %}Matches no branch yet.{% else %}Matches:
-    {% for name in rule.matches %}<span class="font-mono text-ink">{{ name }}</span>{% if !loop.last %}, {% endif %}{% endfor %}{% endif %}
+    {% for name in rule.matches %}<span class="font-mono text-ink" dir="ltr">{{ name }}</span>{% if !loop.last %}, {% endif %}{% endfor %}{% endif %}
   </p>
   {% else %}
   <h1 class="mt-1 text-xl font-semibold tracking-tight">New branch protection rule</h1>
@@ -30,8 +30,8 @@
       {% call ui::form_error(error) %}{% endcall %}
 
       <label class="label" for="rule-pattern">Branch name pattern</label>
-      <input class="input font-mono text-[13px]" id="rule-pattern" name="pattern" value="{{ form.pattern }}" maxlength="255" placeholder="main" autocomplete="off" autocapitalize="none" spellcheck="false" required>
-      <p class="hint">A branch name, or a pattern: <span class="font-mono">*</span> matches within one part of the name, <span class="font-mono">**</span> across parts (<span class="font-mono">release/**</span>), <span class="font-mono">?</span> one character. Case-sensitive.</p>
+      <input class="input font-mono text-[13px]" dir="ltr" id="rule-pattern" name="pattern" value="{{ form.pattern }}" maxlength="255" placeholder="main" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+      <p class="hint">A branch name, or a pattern: <span class="font-mono" dir="ltr">*</span> matches within one part of the name, <span class="font-mono" dir="ltr">**</span> across parts (<span class="font-mono" dir="ltr">release/**</span>), <span class="font-mono" dir="ltr">?</span> one character. Case-sensitive.</p>
 
       <fieldset class="mt-5">
         <legend class="label">Protect matching branches</legend>
@@ -58,16 +58,16 @@
                 <span class="block text-[13px] text-ink-muted">Changes arrive only by merging a pull request; direct pushes to an existing branch are refused.</span>
               </span>
             </label>
-            <div class="space-y-3 px-4 pb-4 sm:pl-11">
+            <div class="space-y-3 px-4 pb-4 sm:ps-11">
               <div class="max-w-48">
                 <label class="label" for="rule-approvals">Required approvals</label>
                 <div class="relative">
-                  <select class="input cursor-pointer appearance-none pr-9" id="rule-approvals" name="required_approvals">
+                  <select class="input cursor-pointer appearance-none pe-9" id="rule-approvals" name="required_approvals">
                     {% for option in form.approvals %}
                     <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.value }}</option>
                     {% endfor %}
                   </select>
-                  {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
+                  {% call ui::icon("chevron-down", "pointer-events-none absolute inset-e-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
                 </div>
               </div>
               <label class="flex cursor-pointer items-start gap-3 text-[13px]">
@@ -88,7 +88,7 @@
                 <span class="block text-[13px] text-ink-muted">Only the people{% if is_org %} and teams{% endif %} below may push or merge. Deploy keys never may.</span>
               </span>
             </label>
-            <div class="space-y-3 px-4 pb-4 sm:pl-11">
+            <div class="space-y-3 px-4 pb-4 sm:ps-11">
               <div>
                 <label class="label" for="rule-users">People</label>
                 <input class="input" id="rule-users" name="users" value="{{ form.users }}" placeholder="alice bob" autocomplete="off" autocapitalize="none" spellcheck="false">
@@ -122,9 +122,9 @@
                 <span class="block text-[13px] text-ink-muted">Pull requests merge only when the latest status of every check below is a success on their head commit.</span>
               </span>
             </label>
-            <div class="px-4 pb-4 sm:pl-11">
+            <div class="px-4 pb-4 sm:ps-11">
               <label class="label" for="rule-contexts">Required checks</label>
-              <textarea class="input h-24 resize-y py-2 font-mono text-[13px]" id="rule-contexts" name="contexts" rows="4" placeholder="ci/build" autocomplete="off" autocapitalize="none" spellcheck="false">{{ form.contexts }}</textarea>
+              <textarea class="input h-24 resize-y py-2 font-mono text-[13px]" dir="ltr" id="rule-contexts" name="contexts" rows="4" placeholder="ci/build" autocomplete="off" autocapitalize="none" spellcheck="false">{{ form.contexts }}</textarea>
               <p class="hint">One context per line, exactly as your CI reports it (case-sensitive), at most {{ form.max_contexts }}.</p>
             </div>
           </div>
@@ -151,7 +151,7 @@
     <div class="p-4">
       {% call ui::form_error(delete_error) %}{% endcall %}
       <p class="font-medium">Delete this rule</p>
-      <p class="mt-1 text-[13px] text-ink-muted">Branches matching <span class="font-mono text-ink">{{ rule.pattern }}</span> lose its protection immediately.</p>
+      <p class="mt-1 text-[13px] text-ink-muted">Branches matching <span class="font-mono text-ink" dir="ltr">{{ rule.pattern }}</span> lose its protection immediately.</p>
       <label class="mt-4 flex cursor-pointer items-center gap-3 text-[13px]">
         <input type="checkbox" name="confirm" value="on" class="accent-(--ink)" required>
         <span>I understand that this rule will be deleted</span>

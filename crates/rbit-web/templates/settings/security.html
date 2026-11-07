@@ -71,7 +71,7 @@
       <p data-passkey-unsupported class="text-[13px] text-ink-muted">Adding a passkey needs a browser that supports passkeys, with JavaScript on.</p>
     </form>
     {% else %}
-    <p class="border-t border-line p-4 text-[13px] text-ink-muted {% if overview.passkeys.is_empty() %}mt-3{% endif %}">Passkeys need <code class="font-mono">server.public_url</code> to be set to this site's address.</p>
+    <p class="border-t border-line p-4 text-[13px] text-ink-muted {% if overview.passkeys.is_empty() %}mt-3{% endif %}">Passkeys need <code class="font-mono" dir="ltr">server.public_url</code> to be set to this site's address.</p>
     {% endif %}
   </div>
 
@@ -197,7 +197,7 @@
             {% if session.is_current %}<span class="badge">This device</span>{% endif %}
           </div>
           <p class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-ink-muted">
-            {% if let Some(ip) = session.ip_address %}<span class="font-mono">{{ ip }}</span>{% endif %}
+            {% if let Some(ip) = session.ip_address %}<span class="font-mono" dir="ltr">{{ ip }}</span>{% endif %}
             <time datetime="{{ session.signed_in_iso }}">{{ session.signed_in }}</time>
             <span>{{ session.last_active }}</span>
           </p>
@@ -226,7 +226,7 @@
       <li class="row items-start gap-3 py-2.5">
         <div class="min-w-0 flex-1">
           <p class="truncate text-[13px] {% if event.is_failure %}text-danger{% endif %}">{{ event.label }}{% if !event.detail.is_empty() %}<span class="text-ink-muted"> · {{ event.detail }}</span>{% endif %}</p>
-          {% if let Some(ip) = event.ip_address %}<p class="mt-0.5 font-mono text-xs text-ink-faint">{{ ip }}</p>{% endif %}
+          {% if let Some(ip) = event.ip_address %}<p class="mt-0.5 font-mono text-xs text-ink-faint"><bdi dir="ltr">{{ ip }}</bdi></p>{% endif %}
         </div>
         <time class="shrink-0 text-xs text-ink-faint" datetime="{{ event.when_iso }}">{{ event.when }}</time>
       </li>
@@ -248,9 +248,9 @@
     <div class="size-44 shrink-0 overflow-hidden rounded-(--radius-ui) border border-line">{{ setup.qr_svg|safe }}</div>
     <div class="min-w-0 w-full">
       <label class="label" for="totp-secret">Can't scan? Enter this key instead</label>
-      <div class="flex">
-        <input id="totp-secret" class="input min-w-0 rounded-r-none font-mono text-[13px]" value="{{ setup.secret }}" readonly autocomplete="off" spellcheck="false">
-        <button type="button" class="btn btn-icon -ml-px h-10 rounded-l-none sm:h-9 sm:w-9" data-copy="totp-secret" aria-label="Copy key" title="Copy">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
+      <div class="flex" dir="ltr">
+        <input id="totp-secret" class="input min-w-0 rounded-e-none font-mono text-[13px]" value="{{ setup.secret }}" readonly autocomplete="off" spellcheck="false">
+        <button type="button" class="btn btn-icon -ms-px h-10 rounded-s-none sm:h-9 sm:w-9" data-copy="totp-secret" aria-label="Copy key" title="Copy">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
       </div>
       <p class="hint">Time-based, 6 digits, every 30 seconds.</p>
     </div>
@@ -264,7 +264,7 @@
   <div class="p-4">
     {% call ui::form_error(setup.error) %}{% endcall %}
     <label class="label" for="setup-code">Authentication code</label>
-    <input class="input font-mono tracking-widest sm:max-w-60" id="setup-code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="20" placeholder="123456" required autofocus>
+    <input class="input font-mono tracking-widest sm:max-w-60" dir="ltr" id="setup-code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="20" placeholder="123456" required autofocus>
   </div>
   <div class="flex flex-col-reverse gap-2 border-t border-line px-4 py-3 sm:flex-row sm:justify-end">
     <button class="btn w-full sm:w-auto" type="submit" formaction="/settings/security/two-factor/cancel" formnovalidate>Cancel</button>
@@ -285,7 +285,7 @@
   </div>
   <div class="p-4">
     <p class="text-[13px] text-ink-muted">Each code signs you in once if you lose your passkeys or authenticator app. They won't be shown again, so keep them somewhere safe, such as a password manager.</p>
-    <ul class="mt-4 grid grid-cols-2 gap-x-6 gap-y-1.5 font-mono text-[13px] sm:max-w-sm">
+    <ul class="mt-4 grid grid-cols-2 gap-x-6 gap-y-1.5 font-mono text-[13px] sm:max-w-sm" dir="ltr">
       {% for code in recovery.codes %}
       <li>{{ code }}</li>
       {% endfor %}

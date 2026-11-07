@@ -17,7 +17,7 @@
   {% if users.is_empty() %}
   {% call ui::empty_state("user", "No users found", "Try a different search.") %}{% endcall %}
   {% else %}
-  <table class="w-full text-left text-[13px]">
+  <table class="w-full text-start text-[13px]">
     <thead class="border-b border-line bg-subtle text-xs text-ink-muted">
       <tr>
         <th scope="col" class="h-9 px-4 font-medium">User</th>
@@ -46,11 +46,11 @@
         </td>
         <td class="hidden px-4 tabular-nums text-ink-muted md:table-cell">{{ user.repositories }}</td>
         <td class="hidden whitespace-nowrap px-4 text-ink-muted lg:table-cell"><time datetime="{{ user.joined_iso }}">{{ user.joined }}</time></td>
-        <td class="px-4 py-2.5 text-right">
+        <td class="px-4 py-2.5 text-end">
           {% if !user.is_self %}
-          <details class="relative inline-block text-left" data-menu>
+          <details class="relative inline-block text-start" data-menu>
             <summary class="btn btn-ghost btn-icon" aria-label="Actions for {{ user.name }}" title="Actions">{% call ui::icon("chevron-down", "size-4") %}{% endcall %}</summary>
-            <div class="menu right-0 w-52">
+            <div class="menu inset-e-0 w-52">
               {% if user.is_admin %}
               <form method="post" action="{{ user.demote_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item" type="submit">Remove administrator</button></form>
               {% else %}

@@ -12,7 +12,7 @@
   {% if repos.is_empty() %}
   {% call ui::empty_state("repo", "No repositories found", "Repositories will be listed here once they exist.") %}{% endcall %}
   {% else %}
-  <table class="w-full text-left text-[13px]">
+  <table class="w-full text-start text-[13px]">
     <thead class="border-b border-line bg-subtle text-xs text-ink-muted">
       <tr>
         <th scope="col" class="h-9 px-4 font-medium">Repository</th>
@@ -32,7 +32,7 @@
           {% if let Some(description) = repo.description %}<p class="truncate text-xs text-ink-muted">{{ description }}</p>{% endif %}
         </td>
         <td class="hidden whitespace-nowrap px-4 text-ink-muted md:table-cell"><time datetime="{{ repo.updated_iso }}">{{ repo.updated }}</time></td>
-        <td class="px-4 py-2.5 text-right">
+        <td class="px-4 py-2.5 text-end">
           <a href="{{ repo.delete_url }}" class="btn btn-danger" aria-label="Delete {{ repo.full_name }}">Delete</a>
         </td>
       </tr>

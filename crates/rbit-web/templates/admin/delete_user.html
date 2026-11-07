@@ -18,8 +18,8 @@
     {% call ui::form_error(error) %}{% endcall %}
     <p class="text-[13px] text-ink-muted">This permanently deletes <span class="font-medium text-ink">{{ user.name }}</span>, their repositories ({{ user.repositories }}, including all Git data), access tokens and organization memberships. It cannot be undone.</p>
 
-    <label class="label mt-5" for="confirm">Type <span class="font-mono">{{ user.name }}</span> to confirm</label>
-    <input class="input font-mono" id="confirm" name="confirm" autocomplete="off" autocapitalize="none" spellcheck="false" required autofocus>
+    <label class="label mt-5" for="confirm">Type <span class="font-mono" dir="ltr">{{ user.name }}</span> to confirm</label>
+    <input class="input font-mono" dir="ltr" id="confirm" name="confirm" autocomplete="off" autocapitalize="none" spellcheck="false" required autofocus>
   </div>
   <div class="flex justify-end gap-2 border-t border-line px-4 py-3">
     <a href="/admin/users" class="btn">Cancel</a>

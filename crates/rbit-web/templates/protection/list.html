@@ -33,7 +33,7 @@
         <a href="{{ row.edit_url }}" class="flex items-start gap-3 px-4 py-3 hover:bg-subtle">
           {% call ui::icon("shield", "mt-0.5 size-4 shrink-0 text-ink-faint") %}{% endcall %}
           <span class="min-w-0 flex-1">
-            <span class="block truncate font-mono text-[13px] font-medium">{{ row.pattern }}</span>
+            <span class="block truncate font-mono text-[13px] font-medium"><bdi dir="ltr">{{ row.pattern }}</bdi></span>
             <span class="mt-1 flex flex-wrap gap-1.5">
               {% for badge in row.badges %}<span class="badge">{{ badge }}</span>{% endfor %}
             </span>

@@ -4,7 +4,7 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <section class="mx-auto max-w-2xl">
-  <a href="{{ header.settings_url }}" class="btn btn-ghost -ml-2.5">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}Settings</a>
+  <a href="{{ header.settings_url }}" class="btn btn-ghost -ms-2.5">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}Settings</a>
   <h1 class="mt-3 text-xl font-semibold tracking-tight">Push mirrors</h1>
   <p class="mt-1 text-[13px] text-ink-muted">Remotes that receive this repository's branches and tags. Each push overwrites the remote's branches and tags and deletes those that no longer exist here.</p>
 
@@ -24,7 +24,7 @@
       {% for mirror in mirrors %}
       <li class="border-b border-line px-4 py-3 last:border-b-0">
         <div class="flex flex-wrap items-center gap-2">
-          <span class="min-w-0 flex-1 break-all font-mono text-xs">{{ mirror.url }}</span>
+          <span class="min-w-0 flex-1 break-all font-mono text-xs"><bdi dir="ltr">{{ mirror.url }}</bdi></span>
           {% if !mirror.enabled %}<span class="badge">Paused</span>{% endif %}
           {% if mirror.sync_on_push %}<span class="badge">On push</span>{% endif %}
         </div>
@@ -36,18 +36,18 @@
           {% else %}
           <span>Not pushed yet</span>
           {% endif %}
-          {% if !mirror.username.is_empty() %}<span>as <span class="font-mono">{{ mirror.username }}</span></span>{% endif %}
+          {% if !mirror.username.is_empty() %}<span>as <span class="font-mono" dir="ltr">{{ mirror.username }}</span></span>{% endif %}
           {% if mirror.has_secret %}<span>secret configured</span>{% endif %}
         </div>
         {% if let Some(error) = mirror.last_error %}
-        <p class="mt-2 whitespace-pre-wrap break-words font-mono text-xs text-danger">{{ error }}</p>
+        <p class="mt-2 whitespace-pre-wrap break-words font-mono text-xs text-danger" dir="ltr">{{ error }}</p>
         {% endif %}
         <div class="mt-3 flex flex-wrap gap-2">
           <form method="post" action="{{ mirror.sync_url }}">
             <button type="submit" class="btn">{% call ui::icon("refresh", "size-3.5") %}{% endcall %}Push now</button>
           </form>
           <a href="{{ mirror.edit_url }}" class="btn">Edit</a>
-          <form method="post" action="{{ mirror.delete_url }}" class="ml-auto">
+          <form method="post" action="{{ mirror.delete_url }}" class="ms-auto">
             <button type="submit" class="btn btn-danger">{% call ui::icon("trash", "size-3.5") %}{% endcall %}Remove</button>
           </form>
         </div>

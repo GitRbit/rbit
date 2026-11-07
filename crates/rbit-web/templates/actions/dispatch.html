@@ -7,7 +7,7 @@
     <form method="get" action="{{ form.page_url }}" class="flex flex-wrap items-end gap-2">
       <div class="min-w-0 flex-1 basis-48">
         <label class="label" for="dispatch-ref">{{ text.workflow_from }}</label>
-        <input class="input font-mono" id="dispatch-ref" name="ref" value="{{ form.reference }}" list="dispatch-refs" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+        <input class="input font-mono" dir="ltr" id="dispatch-ref" name="ref" value="{{ form.reference }}" list="dispatch-refs" autocomplete="off" autocapitalize="none" spellcheck="false" required>
         <datalist id="dispatch-refs">{% for name in form.refs %}<option value="{{ name }}"></option>{% endfor %}</datalist>
       </div>
       <button class="btn h-10 sm:h-9" type="submit">{{ text.change }}</button>
@@ -27,9 +27,9 @@
       <div>
         {% if input.kind == "boolean" %}
         <input type="hidden" name="{{ input.field }}" value="false">
-        <label class="flex min-h-11 items-center gap-2 text-[13px]"><input class="accent-(--ink)" type="checkbox" id="{{ input.id }}" name="{{ input.field }}" value="true" {% if input.checked() %}checked{% endif %}><span class="font-mono">{{ input.name }}</span></label>
+        <label class="flex min-h-11 items-center gap-2 text-[13px]"><input class="accent-(--ink)" type="checkbox" id="{{ input.id }}" name="{{ input.field }}" value="true" {% if input.checked() %}checked{% endif %}><span class="font-mono" dir="ltr">{{ input.name }}</span></label>
         {% else %}
-        <label class="label" for="{{ input.id }}"><span class="font-mono">{{ input.name }}</span>{% if input.required %}<span class="text-danger" aria-hidden="true"> *</span>{% endif %}</label>
+        <label class="label" for="{{ input.id }}"><span class="font-mono" dir="ltr">{{ input.name }}</span>{% if input.required %}<span class="text-danger" aria-hidden="true"> *</span>{% endif %}</label>
         {% if input.kind == "choice" %}
         <div class="relative">
           <select class="input cursor-pointer appearance-none pe-9" id="{{ input.id }}" name="{{ input.field }}" {% if input.required %}required{% endif %}>

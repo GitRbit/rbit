@@ -31,7 +31,7 @@ async fn send(fixture: &Fixture, user: &rbit_core::User, method: Method, path: &
 
 /// The token value shown on a page after creating one.
 fn issued(page: &str) -> String {
-    let start = page.find(r#"id="issued-token" class="input rounded-r-none font-mono text-xs" value=""#).expect("a token is shown");
+    let start = page.find(r#"id="issued-token" class="input rounded-e-none font-mono text-xs" value=""#).expect("a token is shown");
     let rest = &page[start..];
     let value = &rest[rest.find("value=\"").unwrap() + 7..];
     value[..value.find('"').unwrap()].to_owned()

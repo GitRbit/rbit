@@ -2,7 +2,7 @@
 {% import "macros.html" as ui %}
 {% block settings_content %}
 <h2 class="text-xl font-semibold tracking-tight">SSH keys</h2>
-<p class="mt-1 text-[13px] text-ink-muted">Keys let you clone, fetch and push over SSH without a password. Paste the contents of your public key file, usually <span class="font-mono text-ink">~/.ssh/id_ed25519.pub</span>.</p>
+<p class="mt-1 text-[13px] text-ink-muted">Keys let you clone, fetch and push over SSH without a password. Paste the contents of your public key file, usually <span class="font-mono text-ink" dir="ltr">~/.ssh/id_ed25519.pub</span>.</p>
 
 <form method="post" action="/settings/keys" class="box mt-6" novalidate>
   <div class="box-header">
@@ -16,8 +16,8 @@
     <p class="hint">Defaults to the key's comment.</p>
 
     <label class="label mt-5" for="key-value">Public Key</label>
-    <textarea class="input h-32 resize-y py-2 font-mono text-xs sm:h-28" id="key-value" name="key" rows="4" placeholder="ssh-ed25519 AAAA… you@example.com" autocomplete="off" autocapitalize="none" spellcheck="false" required>{{ form.key }}</textarea>
-    <p class="hint">Ed25519, ECDSA, RSA (2048 bits or more) or a security key (<span class="font-mono">sk-…</span>). Create one with <span class="font-mono">ssh-keygen -t ed25519</span>.</p>
+    <textarea class="input h-32 resize-y py-2 font-mono text-xs sm:h-28" dir="ltr" id="key-value" name="key" rows="4" placeholder="ssh-ed25519 AAAA… you@example.com" autocomplete="off" autocapitalize="none" spellcheck="false" required>{{ form.key }}</textarea>
+    <p class="hint">Ed25519, ECDSA, RSA (2048 bits or more) or a security key (<span class="font-mono" dir="ltr">sk-…</span>). Create one with <span class="font-mono" dir="ltr">ssh-keygen -t ed25519</span>.</p>
   </div>
   <div class="flex justify-end border-t border-line px-4 py-3">
     <button class="btn btn-primary w-full sm:w-auto" type="submit">Add key</button>
@@ -41,7 +41,7 @@
             <span class="truncate font-medium">{{ key.title }}</span>
             <span class="badge">{{ key.type_label }}</span>
           </div>
-          <p class="mt-1 break-all font-mono text-xs text-ink">{{ key.fingerprint }}</p>
+          <p class="mt-1 break-all font-mono text-xs text-ink"><bdi dir="ltr">{{ key.fingerprint }}</bdi></p>
           <p class="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-ink-muted">
             <time datetime="{{ key.added_iso }}">{{ key.added }}</time>
             <span>{{ key.last_used }}</span>
@@ -56,7 +56,7 @@
     {% endif %}
   </div>
   {% if let Some(command) = test_command %}
-  <p class="hint mt-3">Check that a key works with <span class="font-mono text-ink">{{ command }}</span>.</p>
+  <p class="hint mt-3">Check that a key works with <span class="font-mono text-ink" dir="ltr">{{ command }}</span>.</p>
   {% endif %}
 </section>
 {% endblock %}

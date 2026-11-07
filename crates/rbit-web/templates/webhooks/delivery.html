@@ -9,7 +9,7 @@
       <span class="badge {{ status.class }}">{{ status.label }}</span>
     </h1>
     <p class="mt-1 flex flex-wrap gap-x-3 text-xs text-ink-muted">
-      <span class="break-all font-mono">{{ guid }}</span>
+      <span class="break-all font-mono" dir="ltr">{{ guid }}</span>
       <time datetime="{{ created_iso }}">Created {{ created }}</time>
       <span>{{ attempts }} {% if attempts == 1 %}attempt{% else %}attempts{% endif %}</span>
       {% if !duration.is_empty() %}<span>{{ duration }}</span>{% endif %}
@@ -32,32 +32,32 @@
   {% if request_headers.is_empty() %}
   <p class="px-4 py-3 text-[13px] text-ink-muted">Not sent yet.</p>
   {% else %}
-  <dl class="border-b border-line px-4 py-3 font-mono text-xs">
+  <dl class="border-b border-line px-4 py-3 font-mono text-xs" dir="ltr">
     {% for (name, value) in request_headers %}
     <div class="flex flex-wrap gap-x-2"><dt class="text-ink-muted">{{ name }}:</dt><dd class="min-w-0 break-all">{{ value }}</dd></div>
     {% endfor %}
   </dl>
   {% endif %}
-  <pre class="max-h-[32rem] overflow-auto px-4 py-3 font-mono text-xs leading-5">{{ payload }}</pre>
+  <pre class="max-h-[32rem] overflow-auto px-4 py-3 font-mono text-xs leading-5" dir="ltr">{{ payload }}</pre>
 </section>
 
 <section class="box mt-6" aria-labelledby="response-title">
   <div class="box-header">
     <h2 id="response-title" class="text-[13px] font-medium">Response</h2>
-    {% if let Some(code) = response_status %}<span class="ml-auto font-mono text-xs text-ink-muted">{{ code }}</span>{% endif %}
+    {% if let Some(code) = response_status %}<span class="ms-auto text-xs text-ink-muted"><bdi class="font-mono" dir="ltr">{{ code }}</bdi></span>{% endif %}
   </div>
   {% if response_status.is_none() %}
   <p class="px-4 py-3 text-[13px] text-ink-muted">No response was received.</p>
   {% else %}
   {% if !response_headers.is_empty() %}
-  <dl class="border-b border-line px-4 py-3 font-mono text-xs">
+  <dl class="border-b border-line px-4 py-3 font-mono text-xs" dir="ltr">
     {% for (name, value) in response_headers %}
     <div class="flex flex-wrap gap-x-2"><dt class="text-ink-muted">{{ name }}:</dt><dd class="min-w-0 break-all">{{ value }}</dd></div>
     {% endfor %}
   </dl>
   {% endif %}
   {% if let Some(body) = response_body %}
-  <pre class="max-h-[32rem] overflow-auto px-4 py-3 font-mono text-xs leading-5">{{ body }}</pre>
+  <pre class="max-h-[32rem] overflow-auto px-4 py-3 font-mono text-xs leading-5" dir="ltr">{{ body }}</pre>
   {% else %}
   <p class="px-4 py-3 text-[13px] text-ink-muted">The body was empty.</p>
   {% endif %}

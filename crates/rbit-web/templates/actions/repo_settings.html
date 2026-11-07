@@ -7,7 +7,7 @@
 <div class="mx-auto max-w-3xl" hx-history="false">
   <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">Settings</a> <span class="text-ink-faint">/</span> Actions</p>
   <h1 class="mt-1 text-xl font-semibold tracking-tight">Actions</h1>
-  <p class="mt-1 text-[13px] text-ink-muted">Workflows under <span class="font-mono text-ink">.rbit/workflows</span> run on runners when their events happen in <span class="text-ink">{{ header.owner }}/{{ header.name }}</span>.</p>
+  <p class="mt-1 text-[13px] text-ink-muted">Workflows under <span class="font-mono text-ink" dir="ltr">.rbit/workflows</span> run on runners when their events happen in <span class="text-ink">{{ header.owner }}/{{ header.name }}</span>.</p>
 
   {% include "actions/notice.html" %}
 
@@ -38,7 +38,7 @@
           </label>
           {% endfor %}
         </div>
-        <p class="hint">A workflow's <span class="font-mono">permissions:</span> can only lower it. Runs from forks and outside authors always get a read-only token.</p>
+        <p class="hint">A workflow's <span class="font-mono" dir="ltr">permissions:</span> can only lower it. Runs from forks and outside authors always get a read-only token.</p>
       </fieldset>
     </div>
     <div class="flex justify-end border-t border-line px-4 py-3">

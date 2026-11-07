@@ -698,7 +698,7 @@ mod tests {
 
         assert!(html.contains("Suspended a user"));
         assert!(html.contains(r#"href="/root""#), "verified actors link to their profile");
-        assert!(html.contains("as <span class=\"font-mono\">ghost</span>"), "attempted logins are not links");
+        assert!(html.contains("as <span class=\"font-mono\" dir=\"ltr\">ghost</span>"), "attempted logins are not links");
         assert!(html.contains("198.51.100.23"));
         assert!(html.contains(r#"<option value="administration" selected>"#));
         assert!(html.contains(r#"value="mall""#));

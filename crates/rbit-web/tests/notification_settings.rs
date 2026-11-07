@@ -98,7 +98,7 @@ async fn the_form_shows_immediate_delivery_and_the_instance_hour_by_default() {
         assert!(page.contains(&format!(r#"name="delivery" value="{value}""#)), "{value}");
     }
     assert!(page.contains(r#"<option value="" selected>Default (07:00 UTC)</option>"#), "the configured default hour");
-    assert!(page.contains(r#"<select class="input cursor-pointer appearance-none pr-9" id="digest-hour" name="digest_hour""#));
+    assert!(page.contains(r#"<select class="input cursor-pointer appearance-none pe-9" id="digest-hour" name="digest_hour""#));
     assert!(!page.contains("style="), "no inline styles");
 }
 

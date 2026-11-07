@@ -3,7 +3,7 @@
 {% import "macros.html" as ui %}
 <section class="mt-8" aria-labelledby="variables-title">
   <h2 id="variables-title" class="text-[13px] font-medium">Variables</h2>
-  <p class="mt-1 text-[13px] text-ink-muted">Workflows read them as <span class="font-mono text-ink">{% raw %}${{ vars.NAME }}{% endraw %}</span>. They are not secret: anyone who can change a workflow can print them. Runs from forks and from authors without write access never receive them.</p>
+  <p class="mt-1 text-[13px] text-ink-muted">Workflows read them as <span class="font-mono text-ink" dir="ltr">{% raw %}${{ vars.NAME }}{% endraw %}</span>. They are not secret: anyone who can change a workflow can print them. Runs from forks and from authors without write access never receive them.</p>
 
   <div class="box mt-4">
     {% if variables.rows.is_empty() %}
@@ -14,8 +14,8 @@
       <li class="border-b border-line px-4 py-3 last:border-b-0">
         <div class="flex items-start gap-3">
           <div class="min-w-0 flex-1">
-            <span class="block truncate font-mono text-[13px] font-medium">{{ variable.name }}</span>
-            <p class="mt-1 whitespace-pre-wrap break-words font-mono text-xs">{{ variable.value }}</p>
+            <span class="block truncate font-mono text-[13px] font-medium"><bdi dir="ltr">{{ variable.name }}</bdi></span>
+            <p class="mt-1 whitespace-pre-wrap break-words font-mono text-xs" dir="ltr">{{ variable.value }}</p>
             <p class="mt-0.5 text-xs text-ink-muted">Updated <time datetime="{{ variable.updated_iso }}">{{ variable.updated }}</time></p>
           </div>
           <form method="post" action="{{ variables.action_url }}" class="shrink-0">
@@ -31,8 +31,8 @@
             <input type="hidden" name="kind" value="variable">
             <input type="hidden" name="action" value="put">
             <input type="hidden" name="name" value="{{ variable.name }}">
-            <label class="label" for="variable-{{ loop.index }}-value">Value of <span class="font-mono">{{ variable.name }}</span></label>
-            <textarea class="input h-28 resize-y py-2 font-mono text-[13px]" id="variable-{{ loop.index }}-value" name="value" rows="4" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+            <label class="label" for="variable-{{ loop.index }}-value">Value of <span class="font-mono" dir="ltr">{{ variable.name }}</span></label>
+            <textarea class="input h-28 resize-y py-2 font-mono text-[13px]" dir="ltr" id="variable-{{ loop.index }}-value" name="value" rows="4" autocomplete="off" autocapitalize="none" spellcheck="false" required>
 {{ variable.value }}</textarea>
             <button class="btn btn-primary mt-3 w-full sm:w-auto" type="submit">Save variable</button>
           </form>
@@ -52,10 +52,10 @@
       <input type="hidden" name="kind" value="variable">
       <input type="hidden" name="action" value="put">
       <label class="label" for="variable-name">Name</label>
-      <input class="input font-mono text-[13px] sm:max-w-72" id="variable-name" name="name" value="{{ variables.name }}" maxlength="100" autocomplete="off" autocapitalize="characters" spellcheck="false" required>
+      <input class="input font-mono text-[13px] sm:max-w-72" dir="ltr" id="variable-name" name="name" value="{{ variables.name }}" maxlength="100" autocomplete="off" autocapitalize="characters" spellcheck="false" required>
       <p class="hint">The same rules as secret names; an existing name is replaced.</p>
       <label class="label mt-5" for="variable-value">Value</label>
-      <textarea class="input h-28 resize-y py-2 font-mono text-[13px]" id="variable-value" name="value" rows="4" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+      <textarea class="input h-28 resize-y py-2 font-mono text-[13px]" dir="ltr" id="variable-value" name="value" rows="4" autocomplete="off" autocapitalize="none" spellcheck="false" required>
 {{ variables.value }}</textarea>
       <p class="hint">At most {{ variables.max_kib }} KiB.</p>
     </div>

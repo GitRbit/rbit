@@ -32,7 +32,7 @@
   {% for choice in choices.iter() %}
   <label class="flex min-h-11 cursor-pointer items-center gap-3 border-b border-line px-4 py-2 last:border-b-0 hover:bg-subtle has-checked:bg-subtle">
     <input type="checkbox" name="repository" value="{{ choice.id }}" class="accent-(--ink)" {% if choice.checked %}checked{% endif %}>
-    <span class="min-w-0 truncate font-mono text-[13px]">{{ choice.name }}</span>
+    <span class="min-w-0 truncate font-mono text-[13px]" dir="ltr">{{ choice.name }}</span>
   </label>
   {% endfor %}
 </div>

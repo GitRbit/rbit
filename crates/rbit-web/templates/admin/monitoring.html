@@ -25,7 +25,7 @@
         <caption>HTTP responses <span>Current window</span></caption>
         <thead><tr><th scope="col">Status</th><th scope="col">Requests</th><th scope="col">Share</th></tr></thead>
         <tbody>{% for row in responses %}<tr>
-          <th scope="row"><span class="font-mono">{{ row.label }}</span> <span class="monitor-meaning">{{ row.meaning }}</span></th>
+          <th scope="row"><span class="font-mono" dir="ltr">{{ row.label }}</span> <span class="monitor-meaning">{{ row.meaning }}</span></th>
           <td>{{ row.count }}</td><td><span class="monitor-share"><svg viewBox="0 0 100 4" aria-hidden="true"><rect class="monitor-bar-track" width="100" height="4" rx="2"/><rect class="monitor-bar" width="{{ row.width }}" height="4" rx="2"/></svg>{{ row.share }}</span></td>
         </tr>{% endfor %}</tbody>
       </table>

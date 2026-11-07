@@ -4,9 +4,9 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <section class="mx-auto max-w-2xl">
-  <a href="{{ list_url }}" class="btn btn-ghost -ml-2.5">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}Push mirrors</a>
+  <a href="{{ list_url }}" class="btn btn-ghost -ms-2.5">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}Push mirrors</a>
   <h1 class="mt-3 break-all text-xl font-semibold tracking-tight">Edit push mirror</h1>
-  <p class="mt-1 break-all font-mono text-xs text-ink-muted">{{ mirror.url }}</p>
+  <p class="mt-1 break-all font-mono text-xs text-ink-muted"><bdi dir="ltr">{{ mirror.url }}</bdi></p>
 
   <form method="post" action="{{ mirror.edit_url }}" class="box mt-6" novalidate>
     <div class="p-4">

@@ -10,7 +10,7 @@
 </div>
 {% else %}
 <h1 class="mt-1 text-xl font-semibold tracking-tight">New webhook</h1>
-<p class="mt-1 text-[13px] text-ink-muted">A <span class="font-mono text-ink">ping</span> is sent as soon as the webhook is saved.</p>
+<p class="mt-1 text-[13px] text-ink-muted">A <span class="font-mono text-ink" dir="ltr">ping</span> is sent as soon as the webhook is saved.</p>
 {% endif %}
 
 {% if saved %}
@@ -32,12 +32,12 @@
     {% call ui::form_error(error) %}{% endcall %}
 
     <label class="label" for="hook-url">Payload URL</label>
-    <input class="input font-mono text-[13px]" id="hook-url" name="url" type="url" value="{{ form.url }}" maxlength="2048" placeholder="https://example.com/hooks/rbit" autocomplete="off" autocapitalize="none" spellcheck="false" required>
-    <p class="hint">Payloads are <span class="font-mono">application/json</span>. Redirects are not followed.</p>
+    <input class="input font-mono text-[13px]" dir="ltr" id="hook-url" name="url" type="url" value="{{ form.url }}" maxlength="2048" placeholder="https://example.com/hooks/rbit" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+    <p class="hint">Payloads are <span class="font-mono" dir="ltr">application/json</span>. Redirects are not followed.</p>
 
     <label class="label mt-5" for="hook-secret">Secret <span class="font-normal text-ink-faint">optional</span></label>
-    <input class="input font-mono text-[13px]" id="hook-secret" name="secret" type="password" maxlength="256" autocomplete="new-password" spellcheck="false" {% if form.has_secret %}placeholder="Configured — leave blank to keep it"{% endif %}>
-    <p class="hint">Signs every payload: <span class="font-mono">X-Rbit-Signature-256</span> and <span class="font-mono">X-Hub-Signature-256</span> carry <span class="font-mono">sha256=</span> and the HMAC-SHA256 of the body. It cannot be shown again.</p>
+    <input class="input font-mono text-[13px]" dir="ltr" id="hook-secret" name="secret" type="password" maxlength="256" autocomplete="new-password" spellcheck="false" {% if form.has_secret %}placeholder="Configured — leave blank to keep it"{% endif %}>
+    <p class="hint">Signs every payload: <span class="font-mono" dir="ltr">X-Rbit-Signature-256</span> and <span class="font-mono" dir="ltr">X-Hub-Signature-256</span> carry <span class="font-mono" dir="ltr">sha256=</span> and the HMAC-SHA256 of the body. It cannot be shown again.</p>
     {% if form.has_secret %}
     <label class="mt-3 flex cursor-pointer items-center gap-3 text-[13px]">
       <input type="checkbox" name="remove_secret" value="on" class="accent-(--ink)">
@@ -92,7 +92,7 @@
               <span class="badge {{ delivery.status.class }}">{{ delivery.status.label }}</span>
             </span>
             <span class="mt-0.5 flex flex-wrap gap-x-3 text-xs text-ink-muted">
-              <span class="truncate font-mono">{{ delivery.guid }}</span>
+              <span class="truncate font-mono" dir="ltr">{{ delivery.guid }}</span>
               <time datetime="{{ delivery.when_iso }}">{{ delivery.when }}</time>
               {% if !delivery.duration.is_empty() %}<span>{{ delivery.duration }}</span>{% endif %}
             </span>

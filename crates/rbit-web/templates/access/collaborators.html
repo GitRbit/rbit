@@ -22,12 +22,12 @@
         <div>
           <label class="label" for="collaborator-permission">Permission</label>
           <div class="relative">
-            <select class="input cursor-pointer appearance-none pr-9" id="collaborator-permission" name="permission">
+            <select class="input cursor-pointer appearance-none pe-9" id="collaborator-permission" name="permission">
               {% for option in form.options %}
               <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>
               {% endfor %}
             </select>
-            {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
+            {% call ui::icon("chevron-down", "pointer-events-none absolute inset-e-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
           </div>
         </div>
         <button class="btn btn-primary h-10 w-full sm:h-9 sm:w-auto" type="submit">Add</button>
@@ -61,12 +61,12 @@
             <form method="post" action="{{ row.permission_url }}" class="flex items-center gap-2">
               <label class="sr-only" for="permission-{{ loop.index }}">Permission for {{ row.name }}</label>
               <div class="relative">
-                <select class="input h-8 cursor-pointer appearance-none pr-8 text-[13px] sm:h-8" id="permission-{{ loop.index }}" name="permission">
+                <select class="input h-8 cursor-pointer appearance-none pe-8 text-[13px] sm:h-8" id="permission-{{ loop.index }}" name="permission">
                   {% for option in row.options %}
                   <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>
                   {% endfor %}
                 </select>
-                {% call ui::icon("chevron-down", "pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
+                {% call ui::icon("chevron-down", "pointer-events-none absolute inset-e-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
               </div>
               <button class="btn" type="submit" aria-label="Save permission for {{ row.name }}">Save</button>
             </form>
