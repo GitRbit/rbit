@@ -7,6 +7,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+The ground-up rewrite targets **0.2.0**, including both the server and runner.
+This section remains unreleased until the complete rewrite and release gates pass.
+
 ### Security
 
 - Prepare inactive paired session reconciliation with durable fixed keep-current/end-all

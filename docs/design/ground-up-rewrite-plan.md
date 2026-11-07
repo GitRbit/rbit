@@ -2,6 +2,10 @@
 
 Prepared 2026-11-05. Status: implementation authorized and active. Work proceeds in atomic commits against the pinned baseline; the phase exit gates below still govern completion.
 
+The release target for this rewrite is **0.2.0** for the server, runner and workspace
+crates. The pinned 0.1.5 baseline remains the compatibility and performance reference.
+The release tag and dated changelog entry follow completion of the gates below.
+
 The rewrite will retain Rust, Axum, Askama, HTMX, Tailwind CSS v4, SQLite and redb, preserve the platform's features, and reorganize the application around small, documented modules. A statically linked application microkernel will own lifecycle and resource coordination. Feature crates will own behavior, while the existing separate runner remains the execution boundary for CI jobs.
 
 The baseline is **GitHub `GitRbit/rbit` main at `39f932a00b7aa35b324e06a9ff2343a57d4bed76`**, fetched on 2026-11-05. [Pinned source](https://github.com/GitRbit/rbit/tree/39f932a00b7aa35b324e06a9ff2343a57d4bed76). Neither the active pull request nor the local `main` branch is the baseline. Later main changes will enter through a reviewed baseline update and feature-ledger reconciliation.
