@@ -30,6 +30,11 @@ pub struct SessionRecoveryBatch {
 pub struct SessionRecoveryApplication<'a, R> {
     repository: &'a R,
 }
+impl<R> std::fmt::Debug for SessionRecoveryApplication<'_, R> {
+    fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        output.debug_struct("SessionRecoveryApplication").finish_non_exhaustive()
+    }
+}
 impl<'a, R: SessionRevocationRepository> SessionRecoveryApplication<'a, R> {
     pub fn new(repository: &'a R) -> Self {
         Self { repository }
@@ -89,5 +94,31 @@ fn acknowledged(ack: Ack, applied: SessionRecoveryDisposition) -> SessionRecover
         Ack::Applied => applied,
         Ack::AlreadyResolved => SessionRecoveryDisposition::AlreadyResolved,
         Ack::Changed => SessionRecoveryDisposition::Deferred,
+    }
+}
+
+#[cfg(test)]
+mod diagnostics {
+    use super::SessionRecoveryApplication;
+
+    #[test]
+    fn formatting_requires_no_repository_diagnostics() {
+        struct OpaqueRepository;
+        let repository = OpaqueRepository;
+        let application = SessionRecoveryApplication { repository: &repository };
+        assert_eq!(format!("{application:?}"), "SessionRecoveryApplication { .. }");
+    }
+
+    #[test]
+    fn formatting_never_traverses_repository_state() {
+        struct PrivateRepository;
+        impl std::fmt::Debug for PrivateRepository {
+            fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                panic!("repository state must remain opaque");
+            }
+        }
+        let repository = PrivateRepository;
+        let application = SessionRecoveryApplication { repository: &repository };
+        assert_eq!(format!("{application:?}"), "SessionRecoveryApplication { .. }");
     }
 }
