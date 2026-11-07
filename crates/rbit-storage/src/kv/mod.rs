@@ -28,6 +28,7 @@ pub struct KvStore {
 impl KvStore {
     pub fn open(path: &Path) -> Result<Self, StorageError> {
         let db = redb::Database::create(path).map_err(kv_error)?;
+        sessions::epoch::stopped::legacy_allowed(&db)?;
         let store = Self { db: Arc::new(db), credential_recovery: CredentialRecoveryGate::default() };
         store.sessions().ensure_table()?;
         store.insights().ensure_tables()?;

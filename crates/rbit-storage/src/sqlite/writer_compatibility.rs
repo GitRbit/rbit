@@ -11,11 +11,18 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous};
 ///
 /// Use for intentional direct SQL writers as well as pooled connections. This pure
 /// comparison has no credentials, state, IO or session-fencing authority. Registering
-/// a different protocol does not satisfy the persisted v1 triggers. Read-only tools
+/// a different protocol does not satisfy the persisted v1 triggers. Migration0067
+/// also requires the compatible v2 layout marker. This ordinary registration DENIES
+/// fenced writes; only the private stopped owner receives that separate capability.
+/// Mode/version checks are compatibility controls, never DB-owner authentication.
+/// Read-only tools
 /// need not opt in. Do not use this to hide a mixed-version deployment.
 #[must_use]
 pub fn register(options: SqliteConnectOptions) -> SqliteConnectOptions {
-    options.collation("rbit_credential_writer_v1", str::cmp)
+    options
+        .collation("rbit_credential_writer_v1", str::cmp)
+        .collation("rbit_credential_layout_v2", str::cmp)
+        .collation("rbit_credential_fenced_v2", |_, _| std::cmp::Ordering::Greater)
 }
 
 pub(super) fn database_options(path: &Path) -> Result<SqliteConnectOptions, sqlx::Error> {
@@ -30,4 +37,9 @@ pub(super) fn database_options(path: &Path) -> Result<SqliteConnectOptions, sqlx
             .pragma("mmap_size", "268435456")
             .pragma("temp_store", "memory"),
     ))
+}
+
+/// Private stopped-upgrade connection, never installed on ordinary application pools.
+pub(crate) fn register_stopped(options: SqliteConnectOptions) -> SqliteConnectOptions {
+    register(options).collation("rbit_credential_fenced_v2", str::cmp)
 }

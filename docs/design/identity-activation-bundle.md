@@ -8,6 +8,13 @@ end legacy sessions during a stopped upgrade, preserve accounts and every authen
 method, and accept new sessions only after both stores agree on the active protocol.
 There is no safe requirement to adopt ambiguous legacy session records.
 
+The separate [stopped preparation implementation](identity-stopped-upgrade.md) now
+prepares explicit existing-store layout installation, complete scan, paired checkpoints,
+global rebase and a PREPARED-only owner. Native/Rust acceptance remains pending. It
+selects no active service, issuer, resolver or CLI, and must not be treated as completion
+of this bundle. Released/unfenced writer exclusion and checkpoint ownership still need
+the complete production consumer and operational gates below.
+
 ## What is prepared, and what it actually closes
 
 | Source/change | Prepared ownership; remaining condition |

@@ -102,7 +102,9 @@ impl Database {
             .max_connections(std::thread::available_parallelism().map_or(4, |n| n.get().clamp(2, 16)).try_into().unwrap_or(4))
             .connect_with(options)
             .await?;
+        crate::identity_upgrade::require_legacy_sql(&pool).await?;
         sqlx::migrate!("./migrations").run(&pool).await?;
+        crate::identity_upgrade::require_legacy_sql(&pool).await?;
 
         let key = match SealingKey::load(key_file)? {
             Some(key) => key,

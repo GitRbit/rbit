@@ -20,6 +20,7 @@ pub mod error;
 mod identity_accounts;
 mod identity_epoch_sessions;
 mod identity_sessions;
+pub mod identity_upgrade;
 pub mod kv;
 mod notification_inbox;
 pub use notification_inbox::NotificationInboxStore;

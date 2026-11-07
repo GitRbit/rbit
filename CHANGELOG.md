@@ -12,6 +12,11 @@ This section remains unreleased until the complete rewrite and release gates pas
 
 ### Security
 
+- Prepare explicit stopped identity layout installation and paired session invalidation
+  checkpoints. Migration 0067 changes writer compatibility; stop mixed versions and
+  retain a consistent SQLite/KV/key backup before installation. Defaults stay legacy;
+  no CLI or runtime fencing is activated. See [stopped preparation](docs/design/identity-stopped-upgrade.md).
+
 - Prepare inactive paired session reconciliation with durable fixed keep-current/end-all
   decisions. Migration 0064 requires a stopped pre-upgrade backup for downgrade; no
   production session or credential path selects the new protocol. See

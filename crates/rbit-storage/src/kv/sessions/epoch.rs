@@ -5,6 +5,7 @@ mod identity;
 mod lifecycle;
 mod revocation;
 mod snapshot;
+pub(crate) mod stopped;
 pub use revocation::AppliedSessionRevocation;
 
 use super::{ACCOUNT_SESSIONS, SESSIONS, SessionRecord, decode_session, encode_session, remove};

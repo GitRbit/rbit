@@ -5,7 +5,9 @@ use crate::StorageError;
 impl Database {
     /// Applies migrations embedded in the binary at compile time.
     pub async fn migrate(&self) -> Result<(), StorageError> {
+        crate::identity_upgrade::require_legacy_sql(&self.pool).await?;
         sqlx::migrate!("./migrations").run(&self.pool).await?;
+        crate::identity_upgrade::require_legacy_sql(&self.pool).await?;
         Ok(())
     }
 
