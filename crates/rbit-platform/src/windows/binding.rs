@@ -2,6 +2,7 @@
 use super::native::{self, Identity, Subject};
 use crate::{Component, PlatformError};
 use std::{
+    fmt::Write as _,
     fs::{self, File, OpenOptions, TryLockError},
     os::windows::fs::{MetadataExt, OpenOptionsExt},
     path::{Path, PathBuf},
@@ -107,7 +108,6 @@ pub(super) fn same_file(left: Identity, right: Identity) -> bool {
 pub(super) fn nonce() -> Result<Component, PlatformError> {
     let mut bytes = [0_u8; 16];
     getrandom::fill(&mut bytes).map_err(|_| PlatformError::Unsupported)?;
-    use std::fmt::Write;
     let mut name = String::from(".stage-");
     for byte in bytes {
         write!(name, "{byte:02x}").map_err(|_| PlatformError::Unsupported)?;

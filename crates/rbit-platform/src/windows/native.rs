@@ -81,7 +81,7 @@ pub(super) fn information(file: &File) -> Result<Identity, PlatformError> {
     let mut info = BY_HANDLE_FILE_INFORMATION::default();
     // SAFETY: File owns a live borrowed handle; binding-defined integer-only
     // output is initialized, correctly aligned and lives through this sync call.
-    let success = unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) };
+    let success = unsafe { GetFileInformationByHandle(file.as_raw_handle(), &raw mut info) };
     if success == 0 {
         return Err(std::io::Error::last_os_error().into());
     }
@@ -106,7 +106,7 @@ fn ntfs(file: &File) -> Result<(), PlatformError> {
             0,
             std::ptr::null_mut(),
             std::ptr::null_mut(),
-            &mut flags,
+            &raw mut flags,
             filesystem.as_mut_ptr(),
             16,
         )

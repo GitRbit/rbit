@@ -25,7 +25,7 @@ impl std::fmt::Debug for OwnedDirectory {
 }
 impl OwnedDirectory {
     /// Existing controlled directory only. Fresh namespace bootstrap must use
-    /// create_child from an established durable host base; open/marker is no proof.
+    /// `create_child` from an established durable host base; open/marker is no proof.
     /// Requires cooperating writers and static topology outside held lineage.
     pub fn open_local_ntfs(path: &Path) -> Result<Self, PlatformError> {
         let (root, lineage) = binding::root(path)?;
