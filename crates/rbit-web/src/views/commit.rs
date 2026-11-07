@@ -643,8 +643,8 @@ pub(crate) mod tests {
                     .unwrap();
             assert!(!html.contains("diffstat"), "no unlabeled proportional squares");
             // Both the total and per-file summaries spell out what each count means.
-            assert_eq!(html.matches(&format!("<b>+{added}</b> Added")).count(), 2);
-            assert_eq!(html.matches(&format!("<b>−{deleted}</b> Deleted")).count(), 2);
+            assert_eq!(html.matches(&format!("<b dir=\"ltr\">+{added}</b> Added")).count(), 2);
+            assert_eq!(html.matches(&format!("<b dir=\"ltr\">−{deleted}</b> Deleted")).count(), 2);
             let unknown = html.split("id=\"diff-1\"").nth(1).unwrap().split("</summary>").next().unwrap();
             assert!(!unknown.contains("change-counts"), "undiffed files do not claim zero changes");
         }

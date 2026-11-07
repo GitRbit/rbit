@@ -3,12 +3,12 @@
 <div {% if comment.is_reply %}id="{{ comment.anchor }}"{% endif %} class="scroll-mt-28 {% if comment.is_reply %}border-t border-line{% endif %}">
   {% if show_hunk && !comment.is_reply %}
   <div class="flex flex-wrap items-center gap-2 border-b border-line bg-subtle px-3 py-1.5 text-xs">
-    <a href="{{ comment.line_url }}" class="min-w-0 flex-1 truncate font-mono text-ink hover:underline hover:underline-offset-4">{{ comment.path }}</a>
-    <span class="font-mono text-ink-faint">{{ comment.line_label }}</span>
+    <a href="{{ comment.line_url }}" class="min-w-0 flex-1 truncate font-mono text-ink hover:underline hover:underline-offset-4"><bdi dir="ltr">{{ comment.path }}</bdi></a>
+    <span class="font-mono text-ink-faint" dir="ltr">{{ comment.line_label }}</span>
     {% if comment.outdated %}<span class="badge">Outdated</span>{% endif %}
   </div>
   {% if !comment.hunk.is_empty() %}
-  <div class="diff-scroll border-b border-line"><div class="diff-view diff-excerpt">
+  <div class="diff-scroll border-b border-line" dir="ltr"><div class="diff-view diff-excerpt">
     <div class="diff-hunk">{{ comment.hunk_header }}</div>
     {%- for line in comment.hunk %}<div class="diff-{{ line.0 }}">{{ line.1 }}</div>{% endfor %}
   </div></div>

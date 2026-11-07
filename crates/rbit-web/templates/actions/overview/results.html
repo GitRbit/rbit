@@ -46,7 +46,7 @@
   </div>
   {% if let Some(url) = next_url %}
   <nav class="mt-4 flex justify-end" aria-label="{{ text.pagination }}">
-    <a href="{{ url }}" class="btn" rel="next">{{ text.older_runs }}{% call ui::icon("chevron-right", "size-3.5 rtl:rotate-180") %}{% endcall %}</a>
+    <a href="{{ url }}" class="btn" rel="next">{{ text.older_runs }}{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</a>
   </nav>
   {% endif %}
 </div>

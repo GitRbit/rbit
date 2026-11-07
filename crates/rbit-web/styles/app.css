@@ -1056,7 +1056,7 @@
 }
 
 .diff-filter-input {
-  @apply block h-8 w-full rounded-(--radius-ui) border border-line bg-surface pl-8 pr-12 text-[13px] text-ink
+  @apply block h-8 w-full rounded-(--radius-ui) border border-line bg-surface ps-8 pe-12 text-[13px] text-ink
     transition-colors placeholder:text-ink-faint hover:border-line-strong focus:border-ink focus:outline-none;
 }
 
@@ -1065,7 +1065,7 @@
 }
 
 .diff-filter-count {
-  @apply pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 font-mono text-[11px] text-ink-faint tabular-nums;
+  @apply pointer-events-none absolute inset-e-2.5 top-1/2 -translate-y-1/2 font-mono text-[11px] text-ink-faint tabular-nums;
 }
 
 .diff-tree {
@@ -1091,16 +1091,16 @@
    time scrolling a 152-file pull request, see docs/performance-followups.md). File rows
    are links, so `transition-none` also overrides the base layer's fade on every `a`. */
 .diff-tree-item {
-  @apply flex h-7 w-full items-center gap-1.5 rounded pr-1.5 text-left text-[13px] text-ink-muted transition-none
+  @apply flex h-7 w-full items-center gap-1.5 rounded pe-1.5 text-start text-[13px] text-ink-muted transition-none
     hover:bg-hover hover:text-ink hover:transition-colors;
-  padding-left: calc(0.375rem + var(--depth, 0) * var(--diff-tree-indent));
+  padding-inline-start: calc(0.375rem + var(--depth, 0) * var(--diff-tree-indent));
   background-image: repeating-linear-gradient(
-    to right,
+    to var(--inline-end),
     transparent 0 5.5px,
     var(--line) 5.5px 6.5px,
     transparent 6.5px var(--diff-tree-indent)
   );
-  background-position: 0.375rem 0;
+  background-position: var(--inline-start) 0.375rem top 0;
   background-size: calc(var(--depth, 0) * var(--diff-tree-indent)) 100%;
   background-repeat: no-repeat;
 }
@@ -1111,7 +1111,7 @@
 }
 
 .diff-tree-chevron {
-  @apply rotate-90 transition-transform duration-150;
+  @apply rotate-inline-90 transition-transform duration-150;
 }
 
 .diff-tree-closed,
@@ -1169,7 +1169,7 @@
 }
 
 .diff-file-header {
-  @apply sticky z-10 flex min-h-10 cursor-pointer select-none items-center gap-2.5 bg-subtle pl-3 pr-1.5
+  @apply sticky z-10 flex min-h-10 cursor-pointer select-none items-center gap-2.5 bg-subtle ps-3 pe-1.5
     transition-colors hover:bg-hover;
   top: var(--diff-top);
 }
@@ -1265,7 +1265,7 @@
 .diff-view :is(.diff-add, .diff-del, .diff-ctx, .diff-hunk, .diff-eof) {
   display: flex;
   height: var(--row-h);
-  padding-right: 1.5rem;
+  padding-inline-end: 1.5rem;
   white-space: pre;
   /* No `overflow-y: clip`: a clip per row costs every frame (a clip node per row to walk
      before paint and to layerize; about 13 % of the main thread's time scrolling a
@@ -1277,19 +1277,19 @@
 
 /* The sign, after the numbers (`order`), before the text. */
 .diff-view :is(.diff-add, .diff-del, .diff-ctx)::before {
-  @apply w-5 shrink-0 pl-1.5 text-ink-faint;
+  @apply w-5 shrink-0 ps-1.5 text-ink-faint;
   content: " ";
 }
 
 .diff-view .num {
-  @apply shrink-0 select-none px-2 text-right text-ink-faint;
+  @apply shrink-0 select-none px-2 text-end text-ink-faint;
   order: -1;
   box-sizing: content-box;
   width: var(--num-w);
 }
 
 .diff-view .num + .num {
-  @apply pr-3;
+  @apply pe-3;
 }
 
 /* Lines of a pull request file the viewer may comment on (`data-comment`, diff.js):
@@ -1309,7 +1309,7 @@
 }
 
 .diff-hunk-comment {
-  @apply ml-6 text-ink-muted underline underline-offset-4;
+  @apply ms-6 text-ink-muted underline underline-offset-4;
 }
 
 [data-ready] .diff-hunk-comment {
@@ -1348,12 +1348,12 @@
 
 .diff-view .diff-hunk {
   @apply bg-subtle text-ink-faint;
-  padding-left: calc(var(--nums-w) + 0.375rem);
+  padding-inline-start: calc(var(--nums-w) + 0.375rem);
 }
 
 .diff-view .diff-eof {
   @apply text-[11px] text-ink-faint italic;
-  padding-left: calc(var(--nums-w) + 1.25rem);
+  padding-inline-start: calc(var(--nums-w) + 1.25rem);
 }
 
 /* A linked line (#diff-…-R12) lands below the sticky top bar and tabs. */
@@ -1365,7 +1365,7 @@
    left edge and as wide as the visible diff, so they stay in view whatever the code's
    horizontal scroll. */
 .diff-comment {
-  @apply sticky left-0 border-y border-line bg-subtle p-3 font-sans text-[13px] whitespace-normal text-ink;
+  @apply sticky inset-s-0 border-y border-line bg-subtle p-3 font-sans text-[13px] whitespace-normal text-ink;
   width: 100cqi;
 }
 
@@ -1401,7 +1401,7 @@
 
 /* Drawn from `data-line`, so it is never copied with the code; nav.js handles clicks. */
 .code-line .line-number {
-  @apply w-11 shrink-0 sm:w-14 cursor-pointer select-none pr-3 text-right text-ink-faint;
+  @apply w-11 shrink-0 sm:w-14 cursor-pointer select-none pe-3 text-end text-ink-faint;
 }
 
 .code-line .line-number::before {
@@ -1413,7 +1413,7 @@
 }
 
 .code-line .line-code {
-  @apply whitespace-pre pl-2 pr-6 sm:pl-3;
+  @apply whitespace-pre ps-2 pe-6 sm:ps-3;
 }
 
 /* Blame (repo/blame.html): hunks one after another in the file's blocks. A hunk header is
@@ -1440,7 +1440,7 @@
 }
 
 .blame-hunk-info {
-  @apply sticky left-0 flex h-full min-w-0 items-center gap-2 px-4 leading-4;
+  @apply sticky inset-s-0 flex h-full min-w-0 items-center gap-2 px-4 leading-4;
   width: 100cqw;
 }
 

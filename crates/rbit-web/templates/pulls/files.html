@@ -21,16 +21,16 @@
   </button>
   {% endif %}
   <span class="text-ink-muted"><span class="font-medium text-ink">{{ files.len() }}</span> {% if files.len() == 1 %}file{% else %}files{% endif %} changed</span>
-  <span class="font-mono text-xs text-success">+{{ additions }}</span>
-  <span class="font-mono text-xs text-danger">−{{ deletions }}</span>
+  <span class="font-mono text-xs text-success" dir="ltr">+{{ additions }}</span>
+  <span class="font-mono text-xs text-danger" dir="ltr">−{{ deletions }}</span>
   {% if has_tree %}
-  <button type="button" class="btn btn-ghost ml-auto h-8 px-2 text-xs sm:h-8" data-diff-collapse-all hidden>
+  <button type="button" class="btn btn-ghost ms-auto h-8 px-2 text-xs sm:h-8" data-diff-collapse-all hidden>
     <span class="contents" data-when="expanded">{% call ui::icon("chevrons-down-up", "size-3.5") %}{% endcall %}Collapse all</span>
     <span class="hidden" data-when="collapsed">{% call ui::icon("chevrons-up-down", "size-3.5") %}{% endcall %}Expand all</span>
   </button>
   {% endif %}
   {% if outdated_count > 0 %}<span class="text-xs text-ink-faint">{{ outdated_count }} outdated {% if outdated_count == 1 %}comment is{% else %}comments are{% endif %} in the conversation</span>{% endif %}
-  {% if let Some(form) = review_form %}{% if form.pending_comments > 0 %}<a href="#submit-review" hx-boost="false" class="btn ml-auto h-8">Finish your review <span class="badge text-warning">{{ form.pending_comments }}</span></a>{% endif %}{% endif %}
+  {% if let Some(form) = review_form %}{% if form.pending_comments > 0 %}<a href="#submit-review" hx-boost="false" class="btn ms-auto h-8">Finish your review <span class="badge text-warning">{{ form.pending_comments }}</span></a>{% endif %}{% endif %}
 </div>
 {% if !signed_in %}
 <p class="mb-4 text-[13px] text-ink-muted"><a href="{{ sign_in_url }}" class="font-medium text-ink underline underline-offset-4">Sign in</a> to comment on lines.</p>
@@ -49,17 +49,17 @@
       (app.css "Virtual blocks"); absent when threads make the height unknown. -#}
   <details id="{{ file.anchor }}" class="diff-file box group" data-path="{{ file.path }}"{% if let Some(rows) = file.rows() %} data-rows="{{ rows }}"{% endif %}{% if can_comment %} data-comment="{{ pull.urls.files }}"{% endif %} open>
     <summary class="diff-file-header" title="Click to collapse or expand | Alt-click for every file">
-      {% call ui::icon("chevron-right", "size-3.5 shrink-0 text-ink-faint transition-transform group-open:rotate-90") %}{% endcall %}
-      <span class="min-w-0 flex-1 truncate font-mono text-xs">{% if let Some(old) = file.old_path %}<span class="text-ink-muted">{{ old }} → </span>{% endif %}{{ file.path }}</span>
+      {% call ui::icon("chevron-right", "size-3.5 shrink-0 text-ink-faint transition-transform group-open:rotate-inline-90") %}{% endcall %}
+      <span class="min-w-0 flex-1 truncate font-mono text-xs"><bdi dir="ltr">{% if let Some(old) = file.old_path %}<span class="text-ink-muted">{{ old }} → </span>{% endif %}{{ file.path }}</bdi></span>
       <span class="badge hidden sm:inline-flex">{{ file.status }}</span>
-      {% if file.stats_known %}<span class="font-mono text-xs text-success">+{{ file.additions }}</span><span class="font-mono text-xs text-danger">−{{ file.deletions }}</span>{% endif %}
+      {% if file.stats_known %}<span class="font-mono text-xs text-success" dir="ltr">+{{ file.additions }}</span><span class="font-mono text-xs text-danger" dir="ltr">−{{ file.deletions }}</span>{% endif %}
     </summary>
     {% if let Some(url) = file.view_url %}
     <div class="diff-file-bar"><a href="{{ url }}" class="btn btn-ghost h-7 px-2 text-xs sm:h-7">View file</a></div>
     {% endif %}
     {% match file.body %}
     {% when PullDiffBody::Text(text) %}
-    <div class="diff-scroll"><div class="diff-view {{ text.width_classes }}">
+    <div class="diff-scroll" dir="ltr"><div class="diff-view {{ text.width_classes }}">
       {%- for part in text.parts %}
       {%- match part %}
       {%- when DiffPart::Rows(block) %}
@@ -79,7 +79,7 @@
       {%- when DiffPart::Thread(thread) %}
       {%- if !thread.comments.is_empty() %}
       <div class="diff-comment">
-        <div class="box overflow-hidden">
+        <div class="box overflow-hidden" dir="{{ page.content_locale.direction().as_str() }}">
           {% let show_hunk = false %}
           {% let thread_view = "files" %}
           {% let can_reply = can_comment %}
@@ -89,7 +89,7 @@
       {%- endif %}
       {%- if thread.show_form %}
       <div class="diff-comment">
-        <form method="post" action="{{ pull.urls.line_comments }}" class="box p-3">
+        <form method="post" action="{{ pull.urls.line_comments }}" class="box p-3" dir="{{ page.content_locale.direction().as_str() }}">
           <input type="hidden" name="path" value="{{ file.path }}">
           <input type="hidden" name="side" value="{{ thread.side }}">
           <input type="hidden" name="line" value="{{ thread.line }}">
@@ -111,7 +111,7 @@
     {% when PullDiffBody::TooLarge %}
     <p class="diff-placeholder">Diff too large to display.</p>
     {% when PullDiffBody::Submodule { old, new } %}
-    <p class="diff-placeholder font-mono text-xs">Submodule commit {{ old }} → {{ new }}</p>
+    <p class="diff-placeholder font-mono text-xs">Submodule commit <bdi dir="ltr">{{ old }} → {{ new }}</bdi></p>
     {% when PullDiffBody::NoContentChanges %}
     <p class="diff-placeholder">No content changes.</p>
     {% endmatch %}
