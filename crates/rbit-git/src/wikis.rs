@@ -63,7 +63,7 @@ impl WikiObjects {
         reservation
             .spawn(move || {
                 layout::verify_root(&root, identity)?;
-                objects::prepare(&root, identity, request)
+                objects::prepare(&root, identity, &request)
             })
             .await?
     }

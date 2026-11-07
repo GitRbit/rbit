@@ -81,7 +81,7 @@ pub(super) fn read(
     WikiContent::try_from(text).map_err(|_| WikiObjectError::Format)
 }
 
-pub(super) fn prepare(root: &Path, identity: WikiStoreId, request: PrepareWikiPage) -> Result<WikiRevisionId, WikiObjectError> {
+pub(super) fn prepare(root: &Path, identity: WikiStoreId, request: &PrepareWikiPage) -> Result<WikiRevisionId, WikiObjectError> {
     if request.actor.0 <= 0 {
         return Err(WikiObjectError::Format);
     }
