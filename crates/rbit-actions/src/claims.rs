@@ -5,7 +5,7 @@ mod application;
 mod ports;
 
 pub use application::RunnerClaims;
-pub use ports::{ClaimQueue, LeaseReplay, Specification};
+pub use ports::{ClaimQueue, LeaseReplay, QueueClaimResult, Specification};
 
 /// A committed storage claim, with the original concrete records moved intact.
 pub struct Claimed<J, T> {

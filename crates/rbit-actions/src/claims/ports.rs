@@ -3,6 +3,9 @@ use std::future::Future;
 
 use super::Claimed;
 
+/// Storage outcome for one atomic queue claim, retaining the concrete records.
+pub type QueueClaimResult<J, T, E> = Result<Option<Claimed<J, T>>, E>;
+
 /// Trusted composition supplies concrete model/secret types, without converting them
 /// into a second DTO tree. Debug/serialization are deliberately not required of tokens.
 pub trait Specification: Sync {
@@ -32,7 +35,7 @@ pub trait ClaimQueue: Specification {
         &self,
         token: &Self::Token,
         key: Option<&str>,
-    ) -> impl Future<Output = Result<Option<Claimed<Self::Job, Self::Task>>, Self::Error>> + Send;
+    ) -> impl Future<Output = QueueClaimResult<Self::Job, Self::Task, Self::Error>> + Send;
     fn remember_key(&self, key: &str, task: &Self::Task);
     fn claimed(&self, claim: &Claimed<Self::Job, Self::Task>);
     fn create_steps(&self, task: &Self::Task, spec: &Self::Spec) -> impl Future<Output = Result<(), Self::Error>> + Send;
