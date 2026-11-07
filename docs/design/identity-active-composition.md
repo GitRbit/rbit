@@ -220,3 +220,22 @@ every publication/commit/cleanup/ACK cut, duplicate-owner and cancellation tests
 cached old writers and same-binary legacy API refusal, all HTTP issuers and settings
 flows, explicit backup restore and downgrade fixtures, and representative work-count
 and latency checks. Prepared fixtures and static source checks are not those results.
+
+## Valid capability collations
+
+Unpublished identity layouts 0067/0068 compare two DISTINCT reserved tokens for
+fenced-v2 and active-v3. Default registration uses natural string ordering, so
+those tokens differ; it never returns a constant nonzero result for equal inputs.
+Private stopped/accepted registration orders deterministic canonical keys: only
+the matching requested/accepted token pair shares one key, and every other string
+retains its exact key. This gives a reflexive, symmetric, transitive ordering for
+all input strings. No collation is used in a persistent data index, and no native
+capability or backend ownership check is replaced by this token convention.
+
+SQLite requires a valid stable collation ordering; violating that contract causes
+undefined behavior ([official callback contract](https://www.sqlite.org/c3ref/create_collation.html)).
+Pure adversarial ordering vectors, actual SQLite default/stopped queries and actual
+accepted-owner equivalence tests supplement the existing protected-writer fixtures.
+These newly prepared Rust tests require native validation; they have not been run
+in the authoring checkout. Published migration 0061 and all migrations through0066
+are unchanged; only never-published0067/0068 are corrected before release.

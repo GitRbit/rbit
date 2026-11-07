@@ -237,3 +237,28 @@ async fn close_owner(owner: StoppedIdentityUpgrade) {
     owner.connection.close().await.unwrap();
     drop(owner.db);
 }
+
+#[tokio::test]
+async fn accepted_native_owner_enables_only_the_reserved_capability_equivalences() {
+    let f = Fixture::new().await;
+    let mut owner = prepared(&f).await;
+    owner.publish_active_inner().await.unwrap();
+    let granted: (bool, bool, bool) = sqlx::query_as(
+        "SELECT 'rbit-fenced-v2/requested' COLLATE rbit_credential_fenced_v2 = 'rbit-fenced-v2/accepted', \
+        'rbit-active-v3/requested' COLLATE rbit_credential_active_v3 = 'rbit-active-v3/accepted', \
+        'unrelated' COLLATE rbit_credential_active_v3 = 'unrelated'",
+    )
+    .fetch_one(&mut owner.connection)
+    .await
+    .unwrap();
+    assert_eq!(granted, (true, true, true));
+    let denied: (bool, bool) = sqlx::query_as(
+        "SELECT 'rbit-fenced-v2/requested' COLLATE rbit_credential_fenced_v2 = 'rbit-fenced-v2/accepted', \
+        'rbit-active-v3/requested' COLLATE rbit_credential_active_v3 = 'rbit-active-v3/accepted'",
+    )
+    .fetch_one(&mut f.connection().await)
+    .await
+    .unwrap();
+    assert_eq!(denied, (false, false));
+    close_owner(owner).await;
+}

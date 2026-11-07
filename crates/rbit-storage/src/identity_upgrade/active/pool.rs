@@ -30,11 +30,14 @@ impl std::fmt::Debug for ActiveSqlPool {
 }
 pub(super) async fn bind_writer(connection: &mut SqliteConnection, db: Arc<redb::Database>) -> Result<(), Error> {
     let mut handle = connection.lock_handle().await?;
-    for name in ["rbit_credential_fenced_v2", "rbit_credential_active_v3"] {
+    for (name, compare) in [
+        ("rbit_credential_fenced_v2", writer_compatibility::fenced_comparison as fn(&str, &str) -> std::cmp::Ordering),
+        ("rbit_credential_active_v3", writer_compatibility::active_comparison as fn(&str, &str) -> std::cmp::Ordering),
+    ] {
         let retained = Arc::clone(&db);
         handle.create_collation(name, move |a, b| {
             let _actual_owner = &retained;
-            a.cmp(b)
+            compare(a, b)
         })?;
     }
     Ok(())

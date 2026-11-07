@@ -24,8 +24,8 @@ pub fn register(options: SqliteConnectOptions) -> SqliteConnectOptions {
     options
         .collation("rbit_credential_writer_v1", str::cmp)
         .collation("rbit_credential_layout_v2", str::cmp)
-        .collation("rbit_credential_fenced_v2", |_, _| std::cmp::Ordering::Greater)
-        .collation("rbit_credential_active_v3", |_, _| std::cmp::Ordering::Greater)
+        .collation("rbit_credential_fenced_v2", str::cmp)
+        .collation("rbit_credential_active_v3", str::cmp)
 }
 
 pub(crate) fn database_options(path: &Path) -> Result<SqliteConnectOptions, sqlx::Error> {
@@ -44,5 +44,23 @@ pub(crate) fn database_options(path: &Path) -> Result<SqliteConnectOptions, sqlx
 
 /// Private stopped-upgrade connection, never installed on ordinary application pools.
 pub(crate) fn register_stopped(options: SqliteConnectOptions) -> SqliteConnectOptions {
-    register(options).collation("rbit_credential_fenced_v2", str::cmp)
+    register(options).collation("rbit_credential_fenced_v2", fenced_comparison)
 }
+
+/// Capability ordering is natural ordering of deterministic canonical keys. Exactly
+/// the two reserved guard tokens become equivalent; ALL inputs remain reflexive,
+/// symmetric and transitive as required by SQLite's collation callback contract.
+fn equivalent_comparison(a: &str, b: &str, requested: &str, accepted: &str) -> std::cmp::Ordering {
+    let a = if a == accepted { requested } else { a };
+    let b = if b == accepted { requested } else { b };
+    a.cmp(b)
+}
+pub(crate) fn fenced_comparison(a: &str, b: &str) -> std::cmp::Ordering {
+    equivalent_comparison(a, b, "rbit-fenced-v2/requested", "rbit-fenced-v2/accepted")
+}
+#[cfg(test)]
+pub(crate) fn active_comparison(a: &str, b: &str) -> std::cmp::Ordering {
+    equivalent_comparison(a, b, "rbit-active-v3/requested", "rbit-active-v3/accepted")
+}
+#[cfg(test)]
+mod tests;
