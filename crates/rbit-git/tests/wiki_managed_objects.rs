@@ -59,6 +59,10 @@ fn writable(path: &Path) {
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
     }
     #[cfg(windows)]
+    #[allow(
+        clippy::permissions_set_readonly_false,
+        reason = "Windows attributes are separate from Unix permissions, which use explicit 0600 above"
+    )]
     {
         let mut permissions = std::fs::metadata(path).unwrap().permissions();
         permissions.set_readonly(false);
@@ -76,7 +80,7 @@ async fn equal_existing_blob_tree_and_commit_are_reused_without_rewriting_files(
     let tree = commit.tree_id().unwrap().detach();
     let blob = gix::objs::compute_hash(raw.object_hash(), gix::objs::Kind::Blob, b"original").unwrap();
     let paths = [loose(directory.path(), commit.id), loose(directory.path(), tree), loose(directory.path(), blob)];
-    let old = SystemTime::UNIX_EPOCH + Duration::from_secs(946_684_800);
+    let old = SystemTime::UNIX_EPOCH + Duration::from_hours(262_968);
     for path in &paths {
         writable(path);
         std::fs::OpenOptions::new().write(true).open(path).unwrap().set_modified(old).unwrap();
