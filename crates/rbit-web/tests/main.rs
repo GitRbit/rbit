@@ -35,6 +35,10 @@ mod markdown_preview;
 mod mirror_progress;
 mod notification_settings;
 mod password_protocols;
+mod permission_matrix;
+// The permission regression world shared with rbit-services and rbit-ssh.
+#[path = "../../rbit-services/tests/support/permission_matrix.rs"]
+mod permission_world;
 mod properties;
 mod repository_documents;
 mod security;
