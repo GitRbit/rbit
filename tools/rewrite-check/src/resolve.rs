@@ -131,7 +131,10 @@ impl Sources {
         for index in 1..key.len() {
             let scope = &key[..index];
             if let Some(module) = self.scopes.get(scope) {
-                if let Some(imports) = module.imports.get(&key[index]) {
+                // A value export can share a module name. It cannot redirect an
+                // already-bound module prefix in a type path into itself.
+                let bound_module = self.scopes.contains_key(&key[..=index]);
+                if !bound_module && let Some(imports) = module.imports.get(&key[index]) {
                     for target in imports {
                         let target = [target.clone(), key[index + 1..].to_vec()].concat();
                         if let Some(found) = self.resolve_qualified(&target, active)? {
@@ -141,7 +144,7 @@ impl Sources {
                 }
                 // Existing module prefixes are already bound: a root glob must not
                 // reinterpret `models::Missing` as `models::models::Missing`.
-                if !self.scopes.contains_key(&key[..=index]) {
+                if !bound_module {
                     for base in &module.globs {
                         if let Some(found) = self.resolve_qualified(&[base.clone(), key[index..].to_vec()].concat(), active)? {
                             candidates.insert(found);

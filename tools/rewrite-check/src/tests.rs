@@ -156,3 +156,16 @@ fn imported_module_glob_resolution_has_a_hard_recursion_budget() {
     let root = fixture(&[("src/lib.rs", "mod models {}\nuse crate::models as m;\nuse m::*;\nimpl Missing {}\n")]);
     assert_ne!(check(root.path(), 400).violations, Vec::<String>::new());
 }
+
+#[test]
+fn module_value_export_does_not_redirect_bound_type_paths_or_parent_globs() {
+    let root = fixture(&[
+        ("src/lib.rs", "mod plan;\npub use plan::plan;\n"),
+        (
+            "src/plan.rs",
+            "pub fn plan() {}\nuse std::collections::BTreeMap;\npub type Mapping = BTreeMap<String, String>;\nmod tests {\nuse super::*;\nstruct Local;\nimpl Default for Local { fn default() -> Self { Self } }\n}\n",
+        ),
+    ]);
+    let report = assert_clean(root.path(), 400);
+    assert_eq!(named_lines(&report, "lib::plan::tests::Local"), 2);
+}
