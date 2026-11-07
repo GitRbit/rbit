@@ -11,7 +11,7 @@ use support::*;
 fn read_owner_name_and_lazy_store_precedence_is_unchanged() {
     let actor = user();
     let parent = repository(2);
-    let bridge = Bridge { fail_owner: true, ..Bridge::default() };
+    let bridge = Bridge { failures: ForkFailures { owner: true, ..ForkFailures::default() }, ..Bridge::default() };
     let port = &bridge;
     let app = ForkCreation::new(&port);
     assert!(matches!(
@@ -50,8 +50,11 @@ fn defaults_settings_archive_and_only_fork_event_are_preserved() {
 fn copy_and_relationship_failures_keep_disk_sql_compensation_and_error_identity() {
     for record in [false, true] {
         for sql in [false, true] {
-            let bridge =
-                Bridge { fail_copy: !record, fail_record: record, fail_disk_cleanup: true, fail_sql_cleanup: sql, ..Bridge::default() };
+            let bridge = Bridge {
+                failures: ForkFailures { copy: !record, record, ..ForkFailures::default() },
+                cleanup: CleanupFailures { disk: true, sql },
+                ..Bridge::default()
+            };
             let port = &bridge;
             let error = run(ForkCreation::new(&port).fork(&user(), &repository(2), true, ForkInput::default())).unwrap_err();
             if sql {

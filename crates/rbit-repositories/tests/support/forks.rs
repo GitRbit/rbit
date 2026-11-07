@@ -23,15 +23,23 @@ pub fn run<F: Future>(future: F) -> F::Output {
 #[path = "fork_models.rs"]
 mod models;
 pub use models::{repository, user};
-#[derive(Default)]
+#[derive(Debug, Default)]
+pub struct ForkFailures {
+    pub owner: bool,
+    pub copy: bool,
+    pub record: bool,
+}
+#[derive(Debug, Default)]
+pub struct CleanupFailures {
+    pub disk: bool,
+    pub sql: bool,
+}
+#[derive(Debug, Default)]
 pub struct Bridge {
     pub calls: Mutex<Vec<String>>,
     pub row: Mutex<Option<Repository>>,
-    pub fail_owner: bool,
-    pub fail_copy: bool,
-    pub fail_record: bool,
-    pub fail_disk_cleanup: bool,
-    pub fail_sql_cleanup: bool,
+    pub failures: ForkFailures,
+    pub cleanup: CleanupFailures,
     pub fail_pushed: bool,
     pub pause: AtomicBool,
 }
@@ -70,10 +78,10 @@ impl ForkCreationRepository for &Bridge {
     }
     fn delete(&self, _: RepoId) -> impl Future<Output = Result<(), Self::Error>> + Send {
         self.log("delete-sql");
-        if !self.fail_sql_cleanup {
+        if !self.cleanup.sql {
             self.row.lock().unwrap().take();
         }
-        ready(if self.fail_sql_cleanup { Err("delete-sql") } else { Ok(()) })
+        ready(if self.cleanup.sql { Err("delete-sql") } else { Ok(()) })
     }
     fn mark_pushed(&self, _: RepoId) -> impl Future<Output = Result<(), Self::Error>> + Send {
         self.log("pushed");
@@ -86,7 +94,7 @@ impl<'a> ForkCreationPort for &'a Bridge {
     type Store = &'a Bridge;
     fn owner(&self, actor: &User, owner: &str) -> impl Future<Output = Result<Account, Self::Error>> + Send {
         self.log(format!("owner:{owner}"));
-        ready(if self.fail_owner { Err("owner") } else { Ok(actor.account.clone()) })
+        ready(if self.failures.owner { Err("owner") } else { Ok(actor.account.clone()) })
     }
     fn store(&self) -> Self::Store {
         self.log("store");
@@ -95,16 +103,20 @@ impl<'a> ForkCreationPort for &'a Bridge {
     fn copy_disk(&self, _: RepoId, _: AccountId, _: RepoId) -> impl Future<Output = Result<(), Self::Error>> + Send {
         self.log("copy");
         poll_fn(|_| {
-            if self.pause.load(Ordering::SeqCst) { Poll::Pending } else { Poll::Ready(if self.fail_copy { Err("copy") } else { Ok(()) }) }
+            if self.pause.load(Ordering::SeqCst) {
+                Poll::Pending
+            } else {
+                Poll::Ready(if self.failures.copy { Err("copy") } else { Ok(()) })
+            }
         })
     }
     fn record(&self, _: RepoId, _: RepoId) -> impl Future<Output = Result<(), Self::Error>> + Send {
         self.log("record");
-        ready(if self.fail_record { Err("record") } else { Ok(()) })
+        ready(if self.failures.record { Err("record") } else { Ok(()) })
     }
     fn delete_disk(&self, _: AccountId, _: RepoId) -> impl Future<Output = Result<(), Self::CleanupError>> + Send {
         self.log("delete-disk");
-        ready(if self.fail_disk_cleanup { Err("delete-disk") } else { Ok(()) })
+        ready(if self.cleanup.disk { Err("delete-disk") } else { Ok(()) })
     }
     fn copy_failed(&self, error: &Self::Error, _: &OwnedRepository) {
         self.log(format!("failed:{error}"));

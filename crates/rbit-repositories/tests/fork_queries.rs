@@ -19,14 +19,18 @@ fn run<F: Future>(future: F) -> F::Output {
     }
 }
 #[derive(Default)]
+struct ParentAccess {
+    allowed: bool,
+    error: bool,
+}
+#[derive(Default)]
 struct Store {
     calls: Mutex<Vec<String>>,
     chain: i64,
     cycle: bool,
     private_at: Option<i64>,
     fail: bool,
-    can_open: bool,
-    access_error: bool,
+    access: ParentAccess,
 }
 impl Store {
     fn log(&self, value: impl Into<String>) {
@@ -80,7 +84,7 @@ impl ForkParentAccess for Store {
     type Error = &'static str;
     fn can_open(&self, _: &OwnedRepository) -> impl Future<Output = Result<bool, Self::Error>> + Send {
         self.log("open");
-        ready(if self.access_error { Err("access") } else { Ok(self.can_open) })
+        ready(if self.access.error { Err("access") } else { Ok(self.access.allowed) })
     }
 }
 #[test]
@@ -89,11 +93,16 @@ fn parent_public_fast_path_private_suppression_and_errors_match() {
     assert!(run(ForkQueries::new(&public).parent(RepoId(0), &public)).unwrap().is_some());
     assert_eq!(public.trace(), ["parent:0"]);
     for visible in [false, true] {
-        let private = Store { chain: 1, private_at: Some(1), can_open: visible, ..Store::default() };
+        let private = Store {
+            chain: 1,
+            private_at: Some(1),
+            access: ParentAccess { allowed: visible, ..ParentAccess::default() },
+            ..Store::default()
+        };
         assert_eq!(run(ForkQueries::new(&private).parent(RepoId(0), &private)).unwrap().is_some(), visible);
         assert_eq!(private.trace(), ["parent:0", "open"]);
     }
-    let bad = Store { chain: 1, private_at: Some(1), access_error: true, ..Store::default() };
+    let bad = Store { chain: 1, private_at: Some(1), access: ParentAccess { error: true, ..ParentAccess::default() }, ..Store::default() };
     assert!(matches!(run(ForkQueries::new(&bad).parent(RepoId(0), &bad)), Err(ForkParentError::Access("access"))));
     let missing = Store::default();
     assert!(run(ForkQueries::new(&missing).parent(RepoId(0), &missing)).unwrap().is_none());
