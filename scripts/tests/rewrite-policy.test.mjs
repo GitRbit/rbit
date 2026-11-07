@@ -170,3 +170,13 @@ test("promoted workflow source loses all old physical exemptions and receives th
   ] };
   assert.deepEqual(strictCrateNames(metadata, baseline), ["rbit-workflow", "rbit-new"]);
 });
+
+
+test("complete mail crate has strict physical and cumulative target coverage", () => {
+  const baseline = { crates: [{ name: "rbit-mail" }], authoredSizeBaseline: [
+    { path: "crates/rbit-mail/src/messages.rs", lines: 664 },
+  ] };
+  assert.equal(checkSizes([["crates/rbit-mail/src/messages.rs", "x\n".repeat(401)]], baseline).length, 1);
+  assert.deepEqual(checkSizes([["crates/rbit-mail/src/messages/envelope.rs", "x\n".repeat(400)]], baseline), []);
+  assert.deepEqual(strictCrateNames({ workspace_members: ["mail"], packages: [{ id: "mail", name: "rbit-mail" }] }, baseline), ["rbit-mail"]);
+});
