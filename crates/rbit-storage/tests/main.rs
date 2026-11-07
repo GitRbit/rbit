@@ -18,6 +18,7 @@ mod credential_mutations;
 mod credential_revocations;
 mod email_digests;
 mod external_identities;
+mod identity_races;
 mod imports;
 mod issue_meta;
 mod issue_search;
