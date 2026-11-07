@@ -8,13 +8,17 @@ use rbit_core::{
 };
 use rbit_storage::sqlite::actions_runs::{ActionsRunStore, ClaimRequest};
 use rbit_workflow::spec::JobSpec;
-use std::sync::atomic::Ordering;
+use std::{fmt, sync::atomic::Ordering};
 
-#[derive(Debug)]
 pub(super) struct ClaimSession<'a> {
     service: &'a ActionsService,
     runner: &'a CachedRunner,
     store: ActionsRunStore,
+}
+impl fmt::Debug for ClaimSession<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ClaimSession").field("runner", &self.runner.id).finish_non_exhaustive()
+    }
 }
 impl<'a> ClaimSession<'a> {
     pub(super) fn new(service: &'a ActionsService, runner: &'a CachedRunner) -> Self {

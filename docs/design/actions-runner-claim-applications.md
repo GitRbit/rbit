@@ -87,3 +87,12 @@ helper for rbit-actions tests and strict all-target Clippy; services integration
 integration `actions`; web integration `actions_runner_tasks`/permissions/environments;
 then the strict AST/graph gates and full workspace. Locked metadata cannot run in this
 unregistered source checkout and is not reported as passing.
+
+Generic claim/replay diagnostics reveal only bounded outcome names, never supplied
+job/task/specification contents, and require no payload `Debug` implementation.
+The borrowed session diagnostic prints only runner identity, not service/config/store
+internals. Existing concrete workflow secrets already redact themselves; this
+boundary additionally protects other valid composition types. Dedicated fixtures
+use non-Debug payloads and a deliberately panicking Debug implementation to require
+that neither normal nor alternate formatting traverses them. These Rust fixtures
+remain unrun until the shared-lane registration and acceptance above.
