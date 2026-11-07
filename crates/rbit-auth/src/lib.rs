@@ -11,6 +11,10 @@
 //! * [`oidc`] — external sign-in: sealed flow state, PKCE and ID token validation.
 //! * [`runner_token`], [`task_token`] — rbit Actions runner credentials (`rbrn_…`),
 //!   registration tokens (`rbrg_…`) and task tokens (`rbat_…`), stored as digests.
+//!
+//! Flow state, ID-token checks/claims and newly registered credential Debug output
+//! is opaque. Explicit field access and wire/cryptographic representations remain
+//! caller-owned data and are not redacted by this diagnostic boundary.
 
 pub mod access_token;
 pub mod oidc;

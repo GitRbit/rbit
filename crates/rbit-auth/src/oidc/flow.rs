@@ -49,7 +49,7 @@ impl Pkce {
 // ---------------------------------------------------------------------- the flow cookie
 
 /// One sign-in (or link) in progress, carried by the browser in a sealed cookie.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Flow {
     /// The provider id the flow was started for.
     #[serde(rename = "p")]
@@ -159,3 +159,9 @@ impl FlowKey {
 
 #[cfg(test)]
 mod tests;
+
+impl fmt::Debug for Flow {
+    fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
+        out.debug_struct("Flow").finish_non_exhaustive()
+    }
+}

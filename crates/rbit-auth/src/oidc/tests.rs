@@ -212,3 +212,54 @@ fn key_sets_skip_unusable_keys() {
     let token = sign(&json!({ "alg": "ES256", "kid": "e1" }), &claims());
     assert_eq!(verify_id_token(&token, &keys(&[pinned]), &check()), Err(OidcError::UnknownKey));
 }
+
+#[test]
+fn sealed_flow_debug_hides_state_navigation_and_link_identity_without_changing_wire_fields() {
+    let key = FlowKey::new(&[7; 32]).unwrap();
+    let flow = Flow::new("PRIVATE_PROVIDER_SENTINEL", "/PRIVATE_NEXT_SENTINEL", Some(847_261), NOW);
+    let sealed = key.seal(&flow);
+    let opened = key.open(&sealed, NOW, 600).unwrap();
+    assert_eq!(opened, flow);
+    assert_eq!(serde_json::to_value(&opened).unwrap()["s"], flow.state);
+    for debug in [format!("{opened:?}"), format!("{opened:#?}")] {
+        for private in [flow.state.as_str(), "PRIVATE_PROVIDER_SENTINEL", "PRIVATE_NEXT_SENTINEL", "847261"] {
+            assert!(!debug.contains(private), "flow Debug must not disclose correlation or identity data");
+        }
+    }
+}
+
+#[test]
+fn verified_claims_and_check_debug_hide_real_signed_fixture_identity_and_nonce() {
+    let set = keys(&[ec_jwk("e1")]);
+    let check = IdTokenCheck { nonce: "PRIVATE_NONCE_SENTINEL", ..check() };
+    let mut body = claims();
+    for (field, value) in [
+        ("sub", "PRIVATE_SUBJECT_SENTINEL"),
+        ("email", "private@example.test"),
+        ("name", "PRIVATE_NAME_SENTINEL"),
+        ("preferred_username", "PRIVATE_USERNAME_SENTINEL"),
+        ("nonce", check.nonce),
+    ] {
+        body[field] = json!(value);
+    }
+    body["amr"] = json!(["PRIVATE_METHOD_SENTINEL"]);
+    let token = sign(&json!({ "alg": "ES256", "kid": "e1" }), &body);
+    let verified = verify_id_token(&token, &set, &check).unwrap();
+    assert_eq!(verified.subject, "PRIVATE_SUBJECT_SENTINEL");
+    assert_eq!(verified.email.as_deref(), Some("private@example.test"));
+    assert_eq!(verified.name.as_deref(), Some("PRIVATE_NAME_SENTINEL"));
+    assert_eq!(verified.preferred_username.as_deref(), Some("PRIVATE_USERNAME_SENTINEL"));
+    assert_eq!(verified.amr, ["PRIVATE_METHOD_SENTINEL"]);
+    for debug in [format!("{check:?}"), format!("{check:#?}"), format!("{verified:?}"), format!("{verified:#?}")] {
+        for private in [
+            check.nonce,
+            "PRIVATE_SUBJECT_SENTINEL",
+            "private@example.test",
+            "PRIVATE_NAME_SENTINEL",
+            "PRIVATE_USERNAME_SENTINEL",
+            "PRIVATE_METHOD_SENTINEL",
+        ] {
+            assert!(!debug.contains(private), "token Debug must not disclose nonce or verified identity claims");
+        }
+    }
+}

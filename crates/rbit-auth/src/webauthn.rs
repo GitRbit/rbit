@@ -254,7 +254,7 @@ impl RelyingParty {
 }
 
 /// A credential that passed registration, ready to store.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct NewCredential {
     pub id: Vec<u8>,
     /// The COSE key exactly as the authenticator sent it.
@@ -384,3 +384,9 @@ impl PublicKey {
 
 #[cfg(test)]
 mod tests;
+
+impl fmt::Debug for NewCredential {
+    fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
+        out.debug_struct("NewCredential").finish_non_exhaustive()
+    }
+}

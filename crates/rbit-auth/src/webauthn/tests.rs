@@ -189,3 +189,20 @@ fn refuses_unsupported_keys() {
     assert!(PublicKey::from_cose(&cose).is_err());
     assert!(PublicKey::from_cose(&[0xff]).is_err());
 }
+
+#[test]
+fn registered_credential_debug_hides_the_actual_credential_identifier_and_key_bytes() {
+    let mut authenticator = Authenticator::new();
+    authenticator.id = b"PRIVATE_CREDENTIAL_ID_SENTINEL".to_vec();
+    let challenge = Challenge::generate();
+    let credential = rp().verify_registration(&challenge, &authenticator.register(&challenge)).unwrap();
+    assert_eq!(credential.id, authenticator.id);
+    assert_eq!(credential.public_key, authenticator.cose_key());
+    let private_id = format!("{:?}", credential.id);
+    let key_bytes = format!("{:?}", credential.public_key);
+    for debug in [format!("{credential:?}"), format!("{credential:#?}")] {
+        assert!(!debug.contains("PRIVATE_CREDENTIAL_ID_SENTINEL"));
+        assert!(!debug.contains(&private_id));
+        assert!(!debug.contains(&key_bytes));
+    }
+}

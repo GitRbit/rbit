@@ -131,7 +131,7 @@ fn parse_jwk(value: &Value) -> Option<Jwk> {
 // ---------------------------------------------------------------------- ID tokens
 
 /// What the ID token must say.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct IdTokenCheck<'a> {
     /// The issuer from discovery (compared exactly).
     pub issuer: &'a str,
@@ -142,7 +142,7 @@ pub struct IdTokenCheck<'a> {
 }
 
 /// The verified claims rbit uses.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct IdToken {
     pub subject: String,
     pub email: Option<String>,
@@ -254,4 +254,16 @@ fn check_claims(claims: &Value, check: &IdTokenCheck<'_>) -> Result<IdToken, Oid
         preferred_username: text("preferred_username").map(str::to_owned),
         amr: amr.unwrap_or_default(),
     })
+}
+
+impl fmt::Debug for IdTokenCheck<'_> {
+    fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
+        out.debug_struct("IdTokenCheck").finish_non_exhaustive()
+    }
+}
+
+impl fmt::Debug for IdToken {
+    fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
+        out.debug_struct("IdToken").finish_non_exhaustive()
+    }
 }
