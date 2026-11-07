@@ -4586,6 +4586,7 @@ dependencies = [
  "rbit-repositories",
  "rbit-wikis",
  "redb",
+ "rustix",
  "serde",
  "serde_json",
  "sqlx",
@@ -4594,6 +4595,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "winapi-util",
 ]
 
 [[package]]

@@ -1,7 +1,9 @@
 //! Dedicated immutable wiki objects; no code refs, hooks, processes or publisher.
+mod catalog_bound;
 mod exact_object;
 mod layout;
 mod managed_writer;
+pub use catalog_bound::{CatalogBoundWikiObjects, CatalogPreparedWikiObjects};
 mod objects;
 mod writer_lock;
 pub use managed_writer::{PreparedWikiObjects, WikiObjectWriter};

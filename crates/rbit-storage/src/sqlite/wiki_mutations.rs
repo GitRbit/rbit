@@ -1,5 +1,6 @@
 //! Committed command acceptance only. Nothing here publishes a caller-supplied OID.
 mod authorization;
+pub mod ownership;
 mod rows;
 
 use std::num::NonZeroU32;

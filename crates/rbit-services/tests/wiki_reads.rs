@@ -3,6 +3,7 @@ mod acceptance;
 mod actor_incarnation;
 mod fixture;
 mod incarnation;
+mod ownership;
 
 use fixture::Fixture;
 use rbit_core::{Permission, Timestamp};

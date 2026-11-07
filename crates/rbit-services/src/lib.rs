@@ -45,6 +45,7 @@ pub mod repo_settings;
 pub mod repositories;
 pub mod ssh_keys;
 pub mod stars;
+pub mod wikis;
 // Milestone 3: commit statuses (S).
 pub mod statuses;
 pub mod teams;

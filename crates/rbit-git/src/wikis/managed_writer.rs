@@ -88,6 +88,23 @@ impl WikiObjectWriter {
     /// fact. Constructing `WikiIntent` or preparing objects is never authentication.
     /// Cancellation keeps root/wiki/admission ownership in the real blocking worker.
     pub async fn prepare(&self, intent: WikiIntent) -> Result<PreparedWikiObjects, WikiObjectError> {
+        self.prepare_retaining(intent, (), |()| Ok(())).await.map(|(prepared, ())| prepared)
+    }
+
+    pub(super) fn store_id(&self) -> rbit_wikis::WikiStoreId {
+        self.owner.objects.identity
+    }
+
+    pub(super) async fn prepare_retaining<K, V>(
+        &self,
+        intent: WikiIntent,
+        keepalive: K,
+        verify: V,
+    ) -> Result<(PreparedWikiObjects, K), WikiObjectError>
+    where
+        K: Send + 'static,
+        V: Fn(&K) -> Result<(), WikiObjectError> + Send + 'static,
+    {
         if intent.store != self.owner.objects.identity {
             return Err(WikiObjectError::Binding);
         }
@@ -95,10 +112,12 @@ impl WikiObjectWriter {
         let scope = self.reserve(intent.command.wiki())?;
         reservation
             .spawn(move || {
+                verify(&keepalive)?;
                 let objects = &scope.owner.objects;
                 layout::verify_root(&objects.root, objects.identity)?;
                 let revision = objects::prepare_intent(&objects.root, &intent)?;
-                Ok(PreparedWikiObjects { intent, revision, _scope: scope })
+                verify(&keepalive)?;
+                Ok((PreparedWikiObjects { intent, revision, _scope: scope }, keepalive))
             })
             .await?
     }

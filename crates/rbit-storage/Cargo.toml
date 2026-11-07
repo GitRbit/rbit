@@ -38,6 +38,14 @@ metrics-exporter-prometheus.workspace = true
 tempfile.workspace = true
 tracing-subscriber.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+# Safe handle metadata; already present at this exact version in the workspace lock.
+winapi-util = "=0.1.11"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Stable mount IDs reject file-only bind aliases that bypass an adjacent lock.
+rustix = { version = "=1.1.5", default-features = false, features = ["std", "fs"] }
+
 [lints]
 workspace = true
 

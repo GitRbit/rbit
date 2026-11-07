@@ -10,6 +10,7 @@ autotests = false
 
 [dependencies]
 rbit-notifications.workspace = true
+rbit-wikis = { workspace = true, default-features = false }
 rbit-identity-models.workspace = true
 rbit-actions.workspace = true
 rbit-collaboration = { workspace = true, default-features = false, features = ["applications"] }
@@ -56,7 +57,6 @@ flate2.workspace = true
 tar.workspace = true
 
 [dev-dependencies]
-rbit-wikis = { workspace = true, default-features = false }
 tokio.workspace = true
 tempfile.workspace = true
 sqlx.workspace = true

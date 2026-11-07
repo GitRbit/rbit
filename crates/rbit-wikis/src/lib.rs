@@ -9,6 +9,7 @@ pub mod commands;
 mod content;
 mod identity;
 mod names;
+pub mod ownership;
 mod page;
 pub mod policy;
 pub mod reading;

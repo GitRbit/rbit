@@ -48,7 +48,9 @@
         "lib::external_auth::callback_mode::OriginalProviderCallback",
         "lib::external_auth::callback_mode::CheckError",
         "lib::external_auth::callback_mode::Legacy",
-        "lib::external_auth::callback_mode::Original"
+        "lib::external_auth::callback_mode::Original",
+        "lib::wikis::WikiStorageOwner",
+        "lib::wikis::WikiStorageOpenError"
       ]
     },
     {
@@ -118,7 +120,10 @@
         "lib::sqlite::external_identities::IdentityRow",
         "lib::sqlite::external_identities::original::LinkedRow",
         "lib::sqlite::external_identities::original::PrincipalRow",
-        "lib::sqlite::external_identities::insertion::GuardedIdentityLink"
+        "lib::sqlite::external_identities::insertion::GuardedIdentityLink",
+        "lib::sqlite::wiki_mutations::ownership::WikiCatalogLease",
+        "lib::sqlite::wiki_mutations::ownership::WikiCatalogLeaseError",
+        "lib::sqlite::wiki_mutations::ownership::files::Identity"
       ]
     },
     {
@@ -132,7 +137,10 @@
         "lib::wikis::managed_writer::Owner",
         "lib::wikis::managed_writer::WikiScope",
         "lib::wikis::objects::PageInput",
-        "lib::wikis::exact_object::Compare"
+        "lib::wikis::exact_object::Compare",
+        "lib::wikis::catalog_bound::CatalogBoundWikiObjects",
+        "lib::wikis::catalog_bound::CatalogPreparedWikiObjects",
+        "lib::wikis::catalog_bound::BoundOwner"
       ]
     },
     {

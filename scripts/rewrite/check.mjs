@@ -40,13 +40,13 @@ const FEATURE_EDGES = {
 // Reviewed seams added to legacy adapters during incremental replacement.
 const ADDED_EDGES = {
   "rbit-core": ["rbit-contracts", "rbit-access", "rbit-identity-models", "rbit-repositories", "rbit-collaboration"], "rbit-web": ["rbit-localization", "rbit-identity-models"],
-  "rbit-auth": ["rbit-identity", "rbit-access"], "rbit-services": ["rbit-identity", "rbit-kernel", "rbit-repositories", "rbit-collaboration", "rbit-identity-models", "rbit-actions", "rbit-notifications"],
+  "rbit-auth": ["rbit-identity", "rbit-access"], "rbit-services": ["rbit-wikis", "rbit-identity", "rbit-kernel", "rbit-repositories", "rbit-collaboration", "rbit-identity-models", "rbit-actions", "rbit-notifications"],
   "rbit-server": ["rbit-kernel"],
   "rbit-git": ["rbit-wikis", "rbit-kernel"],
   "rbit-storage": ["rbit-access", "rbit-identity-models", "rbit-repositories", "rbit-collaboration", "rbit-wikis", "rbit-notifications"],
 };
 // HTTP acceptance fixtures may inject the shared owner without adding production edges.
-const DEV_EDGES = { "rbit-web": ["rbit-identity", "rbit-kernel"], "rbit-services": ["rbit-wikis"] };
+const DEV_EDGES = { "rbit-web": ["rbit-identity", "rbit-kernel"] };
 
 export function authored(path) {
   const prototypeStyle = path.startsWith("docs/design/prototypes/") && path.endsWith(".css");
