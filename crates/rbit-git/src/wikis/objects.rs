@@ -109,7 +109,7 @@ pub(super) fn prepare_intent(root: &Path, intent: &WikiIntent) -> Result<WikiRev
     let revision = prepare_input(
         root,
         intent.store,
-        request,
+        &request,
         format!("account-{}-wiki-actor-{}", intent.command.actor.0, intent.actor_incarnation.get()),
     )?;
     if intent.target.is_some_and(|target| target != revision) {
@@ -137,7 +137,7 @@ fn prepare_page(
     prepare_input(
         root,
         identity,
-        PageInput {
+        &PageInput {
             repository: request.repository,
             wiki: request.wiki,
             page: request.page,
@@ -153,7 +153,7 @@ fn prepare_page(
 fn prepare_input(
     root: &Path,
     identity: WikiStoreId,
-    request: PageInput<'_>,
+    request: &PageInput<'_>,
     actor_label: String,
 ) -> Result<WikiRevisionId, WikiObjectError> {
     if request.actor.0 <= 0 {
