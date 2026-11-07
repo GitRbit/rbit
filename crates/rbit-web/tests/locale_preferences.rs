@@ -134,7 +134,7 @@ async fn catalog_validators_and_refresh_guard_preserve_private_html_and_raw_boun
     assert_eq!(validated.headers()[header::CONTENT_LANGUAGE], "es");
     assert_eq!(validated.headers()["rbit-catalog-key"], "1.es");
     assert!(validated.headers().contains_key(header::CONTENT_SECURITY_POLICY));
-    assert!(html(validated).await.is_empty());
+    assert_eq!(html(validated).await, "");
     let mismatch = fixture.get("/login", &[("accept-language", "es"), ("hx-request", "true"), ("rbit-document-locale", "1.en")]).await;
     assert_eq!(mismatch.headers()["hx-refresh"], "true");
     assert!(mismatch.headers()[header::CACHE_CONTROL].to_str().unwrap().contains("no-store"));
