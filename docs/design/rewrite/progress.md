@@ -29,6 +29,40 @@ The kernel now coordinates password admission and its first statically owned bac
 
 ## Current validation checkpoint
 
+The release target is **0.2.0**, across the server, runner and workspace crates.
+The release remains unreleased and this PR remains draft.
+
+At `525f1d92`, local workspace/all-target Clippy qualifies 143 approved units
+with trusted source admission and owned Windows completion. Its optimized release
+build has the same trusted provenance, and the immutable executable reports
+`rbit 0.2.0`. All required hosted core jobs passed at that source, including
+Windows/Ubuntu tests, release build, Clippy, security, frontend and rewrite contracts.
+The separate production browser job failed a late language-navigation assertion;
+its underlying behavioral cause is still unproven.
+
+Production screenshot review identified reversed machine logs in RTL presentation.
+`f1aee1f6` supplies an explicit LTR boundary; `4d161137` adds bounded language
+failure diagnostics. The latter run exposed a stale exact-markup parity check.
+`3aa41f3a` requires exactly one LTR boundary and retains the original rendering
+program hash after accounting for that attribute. Its full Node run passes
+581 tests with seven skips and no failures. Fresh hosted browser gates remain.
+
+Local dogfooding now runs the qualified optimized `525f1d92` executable. Before
+upgrade, all 63 stopped snapshot files matched their original hashes. The old
+executable accepted an independent restored copy at migration 60; a separate
+candidate copy reached migration 66 with SQLite integrity and the original sealing
+key preserved. Live migration and restart then succeeded. Authenticated mirror
+settings, anonymous repository reads and commit navigation work; the mirror includes
+`3aa41f3a` and pinned main. These checks cover this local installation, not
+production-scale backup, restore, durability or performance acceptance.
+
+Workflow, Mail and Auth decomposition is queued separately for cumulative native
+validation before publication. Security activation, complete Wiki publication/UI,
+feature retirement, full localization, paired performance, bounded build retention
+and release-platform gates remain open. Earlier evidence below is historical.
+
+## Earlier composed validation checkpoint
+
 The current batch builds on published theme update `517c7896`, preserving its
 Appearance fallback and Colorblind filter. Repository creation/settings/deletion,
 issue deletion, persisted account locale, compiled Spanish presentation, original
