@@ -53,6 +53,9 @@ mod orgs;
 mod passkeys;
 mod password_admission;
 mod password_policy;
+mod permission_matrix;
+#[path = "support/permission_matrix.rs"]
+mod permission_world;
 mod preferences;
 mod profiles;
 mod protection;
