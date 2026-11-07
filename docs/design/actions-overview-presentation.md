@@ -37,9 +37,14 @@ Dynamic names, titles, reference text and errors remain escaped. Successful disp
 redirects and machine/protocol responses retain their existing contracts. Generic
 HTML errors use the shared shell/catalog pipeline; diagnostic requests fall back to
 the real document locale for those errors rather than enabling pseudo error text.
-Logical filter padding and isolated metadata support RTL. Existing event/status option labels,
-relative times and dispatch explanatory text retain their English representations;
-these remaining labels are not covered by the compiled Spanish presentation catalog.
+Logical filter padding and isolated metadata support RTL. Event/status filter options and native dispatch controls now use typed compiled
+English/Spanish labels, with trusted pseudo diagnostics. Their machine values and
+selection rules stay unchanged. Real catalog control labels write static literals
+directly through plain Display; only diagnostic transformations allocate. Row event/
+status labels, relative times and backend error prose retain their explicit English
+representations. User-authored workflow descriptions, input names/options, refs and
+errors remain escaped original content, never catalog input. Dispatch choice padding
+and icons follow logical direction without changing fields, actions or permissions.
 This is partial translation coverage, not a claim that all Actions text is translated.
 
 ## Acceptance
@@ -61,7 +66,10 @@ speed improvement is claimed by this presentation-only slice.
 
 ## Current coverage record
 
-This contract was checked against public `fb9f21dd`. Account locale, full/selected-root
+The prior coverage record was checked against public `fb9f21dd`. The additional
+filter/dispatch translation slice is source prepared against `a9daad5d`; its new
+real-router 422/work-parity and production-include escaping fixtures still require
+Rust and matching-revision isolated browser execution. Account locale, full/selected-root
 language attributes and compiled Spanish presentation are current behavior. See
 [account activation](account-locale-activation.md) for preference precedence and
 [the localization contract](localization-contracts.md) for the exact raw/error and

@@ -7,6 +7,7 @@ use rbit_core::{
     Account, AccountId,
     actions::{Run, RunEvent, Status},
 };
+use rbit_localization::OverviewControlMessage as Control;
 use std::collections::BTreeMap;
 
 /// One row of the runs list.
@@ -59,7 +60,7 @@ pub struct WorkflowLink {
 #[derive(Debug, Clone)]
 pub struct FilterOption {
     pub value: &'static str,
-    pub label: &'static str,
+    pub label: Control,
     pub selected: bool,
 }
 
@@ -80,11 +81,35 @@ impl RunFilters {
     pub fn new(action: String, branch: &str, actor: &str, event: Option<RunEvent>, status: Option<Status>) -> Self {
         let events = RunEvent::ALL
             .into_iter()
-            .map(|option| FilterOption { value: option.as_str(), label: event_label(option), selected: event == Some(option) })
+            .map(|option| FilterOption {
+                value: option.as_str(),
+                label: match option {
+                    RunEvent::Push => Control::Push,
+                    RunEvent::PullRequest => Control::PullRequest,
+                    RunEvent::WorkflowDispatch => Control::Manual,
+                    RunEvent::Schedule => Control::Schedule,
+                    RunEvent::WorkflowRun => Control::WorkflowRun,
+                    RunEvent::RepositoryDispatch => Control::Dispatch,
+                },
+                selected: event == Some(option),
+            })
             .collect();
         let statuses = Status::ALL
             .into_iter()
-            .map(|option| FilterOption { value: option.as_str(), label: StateLook::of(option).label, selected: status == Some(option) })
+            .map(|option| FilterOption {
+                value: option.as_str(),
+                label: match option {
+                    Status::Success => Control::Success,
+                    Status::Failure => Control::Failure,
+                    Status::Cancelled => Control::Cancelled,
+                    Status::Skipped => Control::Skipped,
+                    Status::Waiting => Control::Queued,
+                    Status::Running => Control::Running,
+                    Status::Blocked => Control::Waiting,
+                    Status::AwaitingApproval => Control::Approval,
+                },
+                selected: status == Some(option),
+            })
             .collect();
         let any = !branch.is_empty() || !actor.is_empty() || event.is_some() || status.is_some();
         Self { action, branch: branch.to_owned(), actor: actor.to_owned(), events, statuses, any }
@@ -136,3 +161,7 @@ impl RunsPage {
         super::OverviewText::new(self.page.locale, self.runs.len())
     }
 }
+
+#[cfg(test)]
+#[path = "overview_controls_tests.rs"]
+mod controls_tests;

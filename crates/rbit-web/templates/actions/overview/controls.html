@@ -19,7 +19,7 @@
 <p class="mb-4 rounded-(--radius-ui) border border-line bg-subtle px-3 py-3 text-[13px] text-ink-muted" role="status">{{ text.workflow_disabled }}</p>
 {% endif %}
 
-{% if let Some(form) = dispatch %}<div lang="en" dir="ltr">{% include "actions/dispatch.html" %}</div>{% endif %}
+{% if let Some(form) = dispatch %}{% include "actions/dispatch.html" %}{% endif %}
 
 <form method="get" action="{{ filters.action }}" class="box mb-4 p-3 sm:p-4" role="search" aria-label="{{ text.filters }}">
   <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -39,7 +39,7 @@
         <select class="input w-full cursor-pointer appearance-none pe-9" id="runs-event" name="event">
           <option value="">{{ text.any_event }}</option>
           {% for option in filters.events %}
-          <option lang="en" value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>
+          <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ text.option(option.label) }}</option>
           {% endfor %}
         </select>
         {% call ui::icon("chevron-down", "pointer-events-none absolute end-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
@@ -51,7 +51,7 @@
         <select class="input w-full cursor-pointer appearance-none pe-9" id="runs-status" name="status">
           <option value="">{{ text.any_status }}</option>
           {% for option in filters.statuses %}
-          <option lang="en" value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>
+          <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ text.option(option.label) }}</option>
           {% endfor %}
         </select>
         {% call ui::icon("chevron-down", "pointer-events-none absolute end-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}

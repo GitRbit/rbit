@@ -4,7 +4,9 @@ use std::{borrow::Cow, fmt, fmt::Write};
 
 use crate::{Locale, pseudo};
 mod overview;
+mod overview_controls;
 pub use overview::ActionsOverviewMessage;
+pub use overview_controls::{OverviewControlDisplay, OverviewControlMessage};
 mod actions;
 pub use actions::{ActionsDisplay, ActionsMessage};
 mod job;

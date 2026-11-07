@@ -154,3 +154,53 @@ async fn locale_and_htmx_selection_preserve_privacy_filter_values_and_storage_wo
         }
     }
 }
+
+#[tokio::test]
+async fn translated_options_and_native_invalid_dispatch_keep_forms_locale_and_sql_work() {
+    use rbit_localization::{Catalog, OverviewControlMessage as Control};
+    let fixture = Box::pin(enabled()).await;
+    let repo = fixture.services.repositories.open(Some(&fixture.alice), "alice", "rocket").await.unwrap();
+    push(&repo, &[(".rbit/workflows/release.yml", RELEASE)]);
+    let router = fixture.router.clone().layer(Extension(LocaleResolver::new(Locale::English, true).unwrap()));
+    let path = "/alice/rocket/actions/workflows/release.yml";
+    localized(&router, path, &fixture.owner, "en", false).await;
+    let (_, _, baseline) = localized(&router, path, &fixture.owner, "en", false).await;
+    let mut invalid_work = None;
+    for locale in [Locale::English, Locale::Spanish, Locale::PseudoExpanded, Locale::PseudoRtl] {
+        let language = locale.tag();
+        let (body, _, work) = localized(&router, path, &fixture.owner, language, false).await;
+        assert_eq!(work, baseline);
+        let catalog = Catalog::new(locale);
+        assert!(body.contains(&format!("value=\"workflow_dispatch\" >{}</option>", catalog.overview_control(Control::Manual))));
+        assert!(body.contains(&format!("value=\"running\" >{}</option>", catalog.overview_control(Control::Running))));
+        assert!(body.contains(&format!("for=\"dispatch-ref\">{}</label>", catalog.overview_control(Control::WorkflowFrom))));
+        assert!(!body.contains("<div lang=\"en\" dir=\"ltr\"><details"));
+        let request = Request::builder()
+            .method(Method::POST)
+            .uri(format!("{path}/dispatch"))
+            .header(header::HOST, "localhost:3000")
+            .header(header::ORIGIN, "http://localhost:3000")
+            .header(header::COOKIE, &fixture.owner)
+            .header(header::ACCEPT_LANGUAGE, language)
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(Body::from("ref=main&inputs%5Bversion%5D=&inputs%5Bchannel%5D=beta&inputs%5Bdry-run%5D=false"))
+            .unwrap();
+        let (response, work) = count_work(router.clone().oneshot(request)).await;
+        if let Some(expected) = invalid_work {
+            assert_eq!(work, expected);
+        } else {
+            invalid_work = Some(work);
+        }
+        let response = response.unwrap();
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(response.headers()[header::CONTENT_LANGUAGE], language);
+        assert!(!response.headers().contains_key(header::LOCATION));
+        let html = String::from_utf8(to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(html.contains(&format!("for=\"dispatch-ref\">{}</label>", catalog.overview_control(Control::WorkflowFrom))));
+        assert!(html.contains("name=\"inputs[version]\""));
+        assert!(html.contains("value=\"beta\" selected"));
+        assert!(html.contains("role=\"alert\""));
+    }
+    let spanish = localized(&router, path, &fixture.owner, "es", false).await.0;
+    assert!(spanish.contains("Usar el flujo de") && spanish.contains("En curso") && spanish.contains("Ejecutar flujo"));
+}

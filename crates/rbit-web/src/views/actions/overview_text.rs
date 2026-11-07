@@ -1,8 +1,14 @@
 //! Plain localized overview labels, prepared once per render.
-use rbit_localization::{ActionsMessage, ActionsOverviewMessage, Catalog, Locale, LocalizedText};
+use rbit_localization::{
+    ActionsMessage, ActionsOverviewMessage, Catalog, Locale, LocalizedText, OverviewControlDisplay, OverviewControlMessage,
+};
 
 #[derive(Debug)]
 pub struct OverviewText {
+    catalog: Catalog,
+    pub run_workflow: OverviewControlDisplay,
+    pub workflow_from: OverviewControlDisplay,
+    pub change: OverviewControlDisplay,
     pub actions: LocalizedText,
     pub workflows: LocalizedText,
     pub all_workflows: LocalizedText,
@@ -31,9 +37,17 @@ pub struct OverviewText {
 }
 
 impl OverviewText {
+    pub const fn option(&self, message: OverviewControlMessage) -> OverviewControlDisplay {
+        self.catalog.overview_control(message)
+    }
+
     pub fn new(locale: Locale, count: usize) -> Self {
         let catalog = Catalog::new(locale);
         Self {
+            catalog,
+            run_workflow: catalog.overview_control(OverviewControlMessage::RunWorkflow),
+            workflow_from: catalog.overview_control(OverviewControlMessage::WorkflowFrom),
+            change: catalog.overview_control(OverviewControlMessage::Change),
             actions: catalog.actions(ActionsMessage::Actions),
             workflows: catalog.overview(ActionsOverviewMessage::Workflows),
             all_workflows: catalog.overview(ActionsOverviewMessage::AllWorkflows),
