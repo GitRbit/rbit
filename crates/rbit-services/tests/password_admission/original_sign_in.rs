@@ -8,6 +8,8 @@ use rbit_storage::{
 };
 use sqlx::sqlite::SqliteConnectOptions;
 
+fn assert_send<T: Send>(_: &T) {}
+
 #[tokio::test]
 async fn original_first_factor_matches_legacy_success_work_and_audit_without_refreshing_its_epoch() {
     let fixture = Fixture::new().await;
@@ -61,7 +63,6 @@ async fn original_busy_and_closed_share_admission_without_failed_credential_char
         for _ in 0..8 {
             for name in ["alice", "missing"] {
                 let operation = fixture.services.sign_in_original(name, PASSWORD.into(), &client);
-                fn assert_send<T: Send>(_: &T) {}
                 assert_send(&operation);
                 unavailable(&operation.await);
             }

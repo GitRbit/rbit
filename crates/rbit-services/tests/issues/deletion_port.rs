@@ -3,6 +3,7 @@ use super::{Fixture, issue_actions};
 use rbit_core::{IssueKind, Timestamp, issue::IssueAction};
 use rbit_services::ServiceError;
 use rbit_storage::count_work;
+use sqlx::Connection as _;
 #[tokio::test]
 async fn permission_archive_and_missing_paths_keep_exact_work_without_throttle_or_clock() {
     let fixture = Fixture::new().await;
@@ -53,7 +54,6 @@ async fn failed_best_effort_audit_does_not_restore_deleted_issue_or_suppress_eve
     .await;
     let number = fixture.create(&fixture.alice, "audit failure", "").await;
     let ctx = fixture.open(&fixture.alice, number).await;
-    use sqlx::Connection as _;
     let options = rbit_storage::sqlite::writer_compatibility::register(
         sqlx::sqlite::SqliteConnectOptions::new().filename(fixture.directory.path().join("rbit.db")),
     );
