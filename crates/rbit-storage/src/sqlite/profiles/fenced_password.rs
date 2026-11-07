@@ -5,7 +5,10 @@ use crate::{
     sqlite::{credential_mutations, credential_revocations::RevocationIntent},
 };
 use rbit_core::{AccountId, Timestamp};
-use rbit_identity_models::credential::CredentialEpoch;
+use rbit_identity_models::{
+    credential::CredentialEpoch,
+    sessions::{SessionPromotion, SessionRevocationDecision},
+};
 
 impl ProfileStore {
     /// Administrator-authorized replacement, bound to the accepted target's original
@@ -18,7 +21,7 @@ impl ProfileStore {
         expected_epoch: CredentialEpoch,
         now: Timestamp,
     ) -> Result<Option<RevocationIntent>, StorageError> {
-        self.replace_password_at_epoch(account, hash, None, expected_epoch, now).await
+        self.replace_password_at_epoch(account, hash, None, expected_epoch, now, SessionRevocationDecision::EndAll).await
     }
 
     /// Original-password replacement: the same PHC, original epoch, active account
@@ -32,7 +35,32 @@ impl ProfileStore {
         expected_epoch: CredentialEpoch,
         now: Timestamp,
     ) -> Result<Option<RevocationIntent>, StorageError> {
-        self.replace_password_at_epoch(account, hash, Some(expected_hash), expected_epoch, now).await
+        self.replace_password_at_epoch(account, hash, Some(expected_hash), expected_epoch, now, SessionRevocationDecision::EndAll).await
+    }
+
+    /// Capture promotion from the initiating session BEFORE opening this SQL
+    /// transaction. Only that fixed original binding may survive reconciliation.
+    pub async fn set_password_hash_if_current_preserving(
+        &self,
+        account: AccountId,
+        hash: &str,
+        expected_hash: &str,
+        expected_epoch: CredentialEpoch,
+        now: Timestamp,
+        promotion: SessionPromotion,
+    ) -> Result<Option<RevocationIntent>, StorageError> {
+        if promotion.account() != account || promotion.original_epoch() != expected_epoch {
+            return Ok(None);
+        }
+        self.replace_password_at_epoch(
+            account,
+            hash,
+            Some(expected_hash),
+            expected_epoch,
+            now,
+            SessionRevocationDecision::KeepCurrent(promotion),
+        )
+        .await
     }
 
     async fn replace_password_at_epoch(
@@ -42,6 +70,7 @@ impl ProfileStore {
         expected_hash: Option<&str>,
         expected_epoch: CredentialEpoch,
         now: Timestamp,
+        decision: SessionRevocationDecision,
     ) -> Result<Option<RevocationIntent>, StorageError> {
         let mut tx = self.pool.begin().await?;
         // First statement takes the write lock. Provisional allocation rolls back
@@ -68,7 +97,7 @@ impl ProfileStore {
         if !changed {
             return Ok(None);
         }
-        let intent = credential_mutations::insert_intent(&mut tx, account, target, now).await?;
+        let intent = credential_mutations::insert_decision(&mut tx, account, target, now, decision).await?;
         sqlx::query("UPDATE email_tokens SET used_at = ? WHERE account_id = ? AND purpose = 'reset' AND used_at IS NULL")
             .bind(now.seconds())
             .bind(account.0)

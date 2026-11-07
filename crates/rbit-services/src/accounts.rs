@@ -31,7 +31,10 @@ mod password_authentication;
 pub use password_authentication::OriginalProofOutcome;
 pub use rbit_identity::accounts::{OriginalProofReceipt, ProvenAccount};
 mod epoch_repository;
+mod original_recovery;
 mod original_sessions;
+pub(crate) use original_recovery::{AccountSessionPersistence, session_persistence};
+pub use original_recovery::{OriginalCredentialFinalizer, OriginalCredentialMutation};
 mod registration;
 mod sessions;
 pub use original_sessions::{OriginalIssuedSession, OriginalResolvedSession};
@@ -47,6 +50,7 @@ pub struct AccountService {
     config: Arc<Config>,
     accounts: AccountStore,
     sessions: SessionStore,
+    original_recovery: Arc<original_recovery::EpochSessionRecovery>,
     instance: InstanceService,
     events: EventBus,
     audit: AuditService,
@@ -60,12 +64,15 @@ impl AccountService {
     pub(crate) fn new(
         config: Arc<Config>,
         accounts: AccountStore,
-        sessions: SessionStore,
+        persistence: AccountSessionPersistence,
         instance: InstanceService,
         events: EventBus,
         setup_token: Option<String>,
         passwords: PasswordWork,
     ) -> Self {
+        let AccountSessionPersistence { sessions, revocations, recovery_gate } = persistence;
+        let original_recovery =
+            Arc::new(original_recovery::EpochSessionRecovery::new(revocations, sessions.epoch_sidecar(), recovery_gate));
         let audit = AuditService::from_store(accounts.audit_log());
         let setup_token = setup_token.map(Arc::from);
         let password_changes = Arc::new(PasswordSessionEnforcement::new(effects::PasswordSessionEffects::new(
@@ -73,7 +80,7 @@ impl AccountService {
             sessions.clone(),
             audit.clone(),
         )));
-        Self { passwords, config, accounts, sessions, instance, events, audit, password_changes, setup_token }
+        Self { passwords, config, accounts, sessions, original_recovery, instance, events, audit, password_changes, setup_token }
     }
 
     pub(crate) fn password_work(&self) -> &PasswordWork {

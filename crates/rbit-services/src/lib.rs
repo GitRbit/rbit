@@ -255,7 +255,7 @@ impl Services {
         let accounts = AccountService::new(
             Arc::clone(&config),
             database.accounts(),
-            kv.sessions(),
+            accounts::session_persistence(database, kv),
             instance.clone(),
             ctx.events.clone(),
             setup_token,

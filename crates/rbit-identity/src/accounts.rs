@@ -3,7 +3,7 @@
 pub use rbit_identity_models::accounts::{AccountRepository, LoginRecord, NewUser, SignUp};
 
 #[cfg(feature = "password-work")]
-mod authentication;
+pub(crate) mod authentication;
 #[cfg(feature = "password-work")]
 mod error;
 #[cfg(feature = "password-work")]

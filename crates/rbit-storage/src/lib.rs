@@ -28,7 +28,10 @@ pub mod sqlite;
 mod work;
 
 pub use error::StorageError;
-pub use kv::{EpochSessionStore, EpochSnapshot, KvStore, SessionRecord, SessionStore};
+pub use kv::{
+    AppliedSessionRevocation, CredentialRecoveryGate, CredentialRecoveryPermit, EpochSessionStore, EpochSnapshot, KvStore, SessionRecord,
+    SessionStore,
+};
 pub use sealing::SealingKey;
 pub use sqlite::{AccessTokenStore, AccountStore, Database, NewAccessToken, NewRepository, NewUser, RepositoryStore, SessionUser};
 pub use work::{CapturedWork, Work, capture_work, count_work};

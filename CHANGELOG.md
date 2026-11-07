@@ -9,6 +9,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- Prepare inactive paired session reconciliation with durable fixed keep-current/end-all
+  decisions. Migration 0064 requires a stopped pre-upgrade backup for downgrade; no
+  production session or credential path selects the new protocol. See
+  [durable recovery](docs/design/identity-durable-session-recovery.md).
+
 - Require a connection-local writer protocol for identity and credential-table writes.
   Migration 0061 refuses older SQLite writers, including cached statements on already-open
   connections. Accounts, credentials and sessions are preserved; this does not activate

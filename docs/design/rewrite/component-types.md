@@ -8,6 +8,11 @@ are the initial required definitions; aliases do not substitute for their owners
 Reference service adapters and the new dormant SQL/redb credential components are
 also mapped explicitly, including internal bindings and row projections. Their
 location in legacy storage does not exempt new types from the cumulative limit.
+Epoch lifecycle ports, durable recovery owners/rows, pair metadata and captured-work
+handoffs are also registered. Pair identity persistence has its own concrete owner;
+the session facade delegates those operations rather than exceeding its type ceiling.
+Private adapter imports name their actual defining modules; public compatibility
+reexports remain available to external consumers.
 
 The mode shares the ordinary full-crate scanner, alias/import resolver and unique
 line-span aggregation. Every discovered inherent and trait impl is resolved before

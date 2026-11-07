@@ -115,7 +115,7 @@ impl<'a, S: EpochSessionRepository, A: EpochSessionUserRepository, C: SessionClo
         if let Some(snapshot) = self.sessions.get_snapshot(token.digest()).await.map_err(EpochSessionError::Session)?
             && snapshot.is_bound()
         {
-            self.sessions.delete(&snapshot).await.map_err(EpochSessionError::Session)?;
+            self.sessions.logout(&snapshot).await.map_err(EpochSessionError::Session)?;
         }
         Ok(())
     }

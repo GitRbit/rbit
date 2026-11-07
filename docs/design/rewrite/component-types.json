@@ -21,7 +21,13 @@
         "lib::transfers::TransferService",
         "lib::transfers::TransferBridge",
         "lib::repositories::aliases::AliasView",
-        "lib::actions::scheduler::claim_bridge::ClaimSession"
+        "lib::actions::scheduler::claim_bridge::ClaimSession",
+        "lib::accounts::epoch_repository::OwnedEpochSessions",
+        "lib::accounts::original_recovery::AccountSessionPersistence",
+        "lib::accounts::original_recovery::EpochSessionRecovery",
+        "lib::accounts::original_recovery::OriginalCredentialFinalizer",
+        "lib::accounts::original_recovery::OriginalCredentialMutation",
+        "lib::accounts::original_recovery::backend::RecoveryLease"
       ]
     },
     {
@@ -33,7 +39,16 @@
         "lib::sqlite::accounts::fenced::LoginSnapshotRow",
         "lib::sqlite::credential_revocations::RevocationIntent",
         "lib::sqlite::credential_revocations::RevocationOutcome",
-        "lib::sqlite::credential_revocations::Completion"
+        "lib::sqlite::credential_revocations::Completion",
+        "lib::kv::sessions::epoch::identity::PairIdentityStore",
+        "lib::kv::sessions::epoch::revocation::AppliedSessionRevocation",
+        "lib::sqlite::credential_revocations::recovery::CredentialRevocationStore",
+        "lib::sqlite::credential_revocations::recovery::rows::CandidateRow",
+        "lib::sqlite::credential_revocations::recovery::rows::StateRow",
+        "lib::sqlite::credential_epochs::EpochAllocationError",
+        "lib::work::CapturedWork",
+        "lib::kv::recovery::CredentialRecoveryGate",
+        "lib::kv::recovery::CredentialRecoveryPermit"
       ]
     }
   ]

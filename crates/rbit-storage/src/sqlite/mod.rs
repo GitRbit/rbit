@@ -143,6 +143,10 @@ impl Database {
         audit::AuditStore::new(self.store("audit"))
     }
 
+    pub fn credential_revocations(&self) -> credential_revocations::CredentialRevocationStore {
+        credential_revocations::CredentialRevocationStore::new(self.store("credential_revocations"))
+    }
+
     pub fn recovery(&self) -> recovery::RecoveryStore {
         recovery::RecoveryStore::new(self.store("recovery"))
     }

@@ -1,8 +1,11 @@
 //! Dormant epoch-bound redb operations. Legacy session APIs remain unchanged.
 //! No SQL lookup, proof verification, promotion or recovery happens in this module.
 mod binding;
+mod identity;
 mod lifecycle;
+mod revocation;
 mod snapshot;
+pub use revocation::AppliedSessionRevocation;
 
 use super::{ACCOUNT_SESSIONS, SESSIONS, SessionRecord, decode_session, encode_session, remove};
 use crate::{StorageError, error::kv_error};

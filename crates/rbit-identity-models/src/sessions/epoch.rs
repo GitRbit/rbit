@@ -34,6 +34,9 @@ pub trait EpochSessionRepository: Sync {
         seen: Timestamp,
     ) -> impl Future<Output = Result<bool, Self::Error>> + Send;
     fn delete(&self, expected: &Self::Snapshot) -> impl Future<Output = Result<bool, Self::Error>> + Send;
+    /// Cookie-secret logout matches the same incarnation across a monotonic epoch
+    /// promotion. It must still refuse a replacement incarnation/account.
+    fn logout(&self, expected: &Self::Snapshot) -> impl Future<Output = Result<bool, Self::Error>> + Send;
     /// Live, bound records for this account; never manufacture missing bindings.
     fn list_bound(&self, account: AccountId) -> impl Future<Output = Result<Vec<Self::Snapshot>, Self::Error>> + Send;
     /// Match a still-live current incarnation and delete its other same-epoch

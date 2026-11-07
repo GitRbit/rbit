@@ -28,6 +28,9 @@ impl Fixture {
         config.security.session_max_age_days = 1;
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
         let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let sessions = kv.sessions().epoch_sidecar();
+        sessions.initialize_identity_if_empty().await.unwrap();
+        database.credential_revocations().initialize_pair(&sessions).await.unwrap();
         let services = Services::new(Arc::new(config), &database, &kv).await.unwrap();
         let alice = services
             .accounts

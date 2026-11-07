@@ -1,5 +1,5 @@
 //! Static epoch-session ports use the actual redb CAS and one-statement SQL projection.
-use crate::{AccountStore, EpochSessionStore, EpochSnapshot, StorageError};
+use crate::{AccountStore, EpochSnapshot, StorageError, kv::sessions::epoch::EpochSessionStore};
 use rbit_core::{AccountId, Timestamp};
 use rbit_identity_models::{
     TokenDigest,
@@ -32,6 +32,9 @@ impl EpochSessionRepository for EpochSessionStore {
     }
     fn delete(&self, expected: &EpochSnapshot) -> impl Future<Output = Result<bool, Self::Error>> + Send {
         EpochSessionStore::delete(self, expected)
+    }
+    fn logout(&self, expected: &EpochSnapshot) -> impl Future<Output = Result<bool, Self::Error>> + Send {
+        EpochSessionStore::logout(self, expected)
     }
     fn list_bound(&self, account: AccountId) -> impl Future<Output = Result<Vec<EpochSnapshot>, Self::Error>> + Send {
         EpochSessionStore::list_bound(self, account)

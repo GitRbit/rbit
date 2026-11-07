@@ -4,7 +4,7 @@ use rbit_contracts::AccountId;
 use std::future::Future;
 use zeroize::Zeroizing;
 
-mod proven;
+pub(crate) mod proven;
 mod verification;
 
 pub use proven::{OriginalProofReceipt, PasswordProofError, PasswordProofOutcome, ProvenAccount};

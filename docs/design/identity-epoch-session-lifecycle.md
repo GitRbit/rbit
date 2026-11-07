@@ -65,7 +65,7 @@ graph checks. Preserve precise SQL work counts; owned audit measurement is expli
 carried by the preceding completed-value ownership change.
 
 Remaining active-mode gates are in [the closed bundle](identity-activation-bundle.md).
-Next is migration0064's durable end-all/keep-current decision and exact promotion
-specification, idempotent current-intent recovery/acknowledgment and supersession only
-after a newer committed cleanup. All credential producers, persistent v2 interlocks,
+The separate [durable recovery implementation](identity-durable-session-recovery.md)
+adds migration0064's durable decision, fixed promotion, paired acknowledgment and
+supersession. Its prepared source still requires compilation and real-store gates. All credential producers, persistent v2 interlocks,
 upgrade/relogin/rollback and production issuer switching must close together.

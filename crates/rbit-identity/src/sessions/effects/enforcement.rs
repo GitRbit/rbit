@@ -91,15 +91,18 @@ impl<F: SessionRevocationEffects> PasswordSessionEnforcement<F> {
 }
 
 impl<F: SessionRevocationEffects> SessionFinalizer<F> {
+    /// Validate an already-admitted context without capturing its scope controller.
+    pub fn validate_context(&self, context: &SessionMutationContext) -> Result<(), SessionEffectsError> {
+        if context.belongs_to(&self.authority) { Ok(()) } else { Err(SessionEffectsError::WrongScope) }
+    }
+
     pub async fn committed(
         &self,
         context: &SessionMutationContext,
         account: AccountId,
         preserve_current: bool,
     ) -> Result<(), EnforcementError<F::Error>> {
-        if !context.belongs_to(&self.authority) {
-            return Err(EnforcementError::Ownership(SessionEffectsError::WrongScope));
-        }
+        self.validate_context(context).map_err(EnforcementError::Ownership)?;
         if !preserve_current || self.ledger.on_event(account) {
             self.effects.revoke(account, None).await.map_err(EnforcementError::Effects)?;
         }

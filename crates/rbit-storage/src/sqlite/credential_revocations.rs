@@ -5,6 +5,10 @@
 //! do not call them yet. An intent is a database fact, not authentication evidence.
 //! No function here performs redb work or proves that an acknowledged effect occurred.
 
+mod recovery;
+pub use recovery::CredentialRevocationStore;
+pub(crate) use recovery::decision_parts;
+
 use std::num::NonZeroU8;
 
 use rbit_core::{AccountId, Timestamp};

@@ -19,3 +19,8 @@ mod fenced;
 pub use fenced::{
     EpochIssuanceProof, EpochSessionApplication, EpochSessionError, EpochSessionResult, IssuedEpochSession, ResolvedEpochSession,
 };
+
+#[cfg(feature = "sessions")]
+mod recovery;
+#[cfg(feature = "sessions")]
+pub use recovery::{SessionRecoveryApplication, SessionRecoveryBatch, SessionRecoveryDisposition, SessionRecoveryError};

@@ -65,6 +65,10 @@ impl EpochSessionRepository for OwnedEpochSessions<'_> {
         let expected = expected.clone();
         self.run(move |store| async move { store.delete_captured(expected).await })
     }
+    fn logout(&self, expected: &EpochSnapshot) -> impl Future<Output = Result<bool, Self::Error>> + Send {
+        let expected = expected.clone();
+        self.run(move |store| async move { store.logout_captured(expected).await })
+    }
     fn list_bound(&self, account: AccountId) -> impl Future<Output = Result<Vec<EpochSnapshot>, Self::Error>> + Send {
         async move { self.store.list_bound(account).await.map_err(ServiceError::from) }
     }

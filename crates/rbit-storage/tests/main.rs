@@ -35,6 +35,7 @@ mod push_mirrors;
 mod recovery;
 mod redirects;
 mod releases;
+mod revocation_recovery;
 mod sealing;
 mod statuses;
 mod teams;

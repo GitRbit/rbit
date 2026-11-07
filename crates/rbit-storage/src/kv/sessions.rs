@@ -5,9 +5,9 @@
 //! Both tables are written in the same transaction, so the index never drifts from the
 //! sessions it points to.
 
-mod epoch;
+pub(crate) mod epoch;
 
-pub use epoch::{EpochSessionStore, EpochSnapshot};
+pub use epoch::{AppliedSessionRevocation, EpochSessionStore, EpochSnapshot};
 
 use std::sync::Arc;
 

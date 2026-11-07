@@ -19,6 +19,12 @@ impl Binding {
         random(&mut incarnation).map_err(|()| corrupt())?;
         Ok(Self { account, epoch, incarnation })
     }
+    pub(super) fn promoted(self, epoch: CredentialEpoch) -> Self {
+        Self { epoch, ..self }
+    }
+    pub(super) fn same_incarnation(self, other: Self) -> bool {
+        self.account == other.account && self.incarnation == other.incarnation
+    }
     pub fn encode(self) -> [u8; 32] {
         let mut bytes = [0; 32];
         bytes[..8].copy_from_slice(&self.account.0.to_be_bytes());

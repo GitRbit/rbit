@@ -1,4 +1,6 @@
 //! Only identity-owned verified original origins can select the fenced issuer.
+#[cfg(feature = "password-work")]
+use crate::accounts::authentication::proven::OriginalProofReceipt;
 use rbit_contracts::AccountId;
 use rbit_identity_models::credential::CredentialEpoch;
 mod sealed {
@@ -21,9 +23,9 @@ pub trait EpochIssuanceProof: sealed::Sealed + Sync {
     fn original_epoch(&self) -> CredentialEpoch;
 }
 #[cfg(feature = "password-work")]
-impl sealed::Sealed for crate::accounts::OriginalProofReceipt {}
+impl sealed::Sealed for OriginalProofReceipt {}
 #[cfg(feature = "password-work")]
-impl EpochIssuanceProof for crate::accounts::OriginalProofReceipt {
+impl EpochIssuanceProof for OriginalProofReceipt {
     fn account(&self) -> AccountId {
         self.account()
     }

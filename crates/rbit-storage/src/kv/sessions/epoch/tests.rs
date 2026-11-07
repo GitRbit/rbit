@@ -4,6 +4,7 @@ use redb::ReadableTableMetadata;
 mod integrity;
 mod lifecycle;
 mod races;
+mod revocation;
 
 fn store() -> (tempfile::TempDir, super::super::SessionStore, EpochSessionStore) {
     let dir = tempfile::tempdir().unwrap();

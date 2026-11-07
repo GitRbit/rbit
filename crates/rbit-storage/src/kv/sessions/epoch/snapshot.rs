@@ -13,6 +13,18 @@ impl EpochSnapshot {
     pub fn record(&self) -> &SessionRecord {
         &self.record
     }
+    /// Captured before SQL mutation. This is bounded replay data, not proof that
+    /// the session remains live; the final transaction must compare its binding.
+    pub fn promotion_spec(&self) -> Option<rbit_identity_models::sessions::SessionPromotion> {
+        let binding = self.binding?;
+        if self.record.is_expired() {
+            return None;
+        }
+        let mut bytes = [0_u8; 64];
+        bytes[..32].copy_from_slice(&self.digest);
+        bytes[32..].copy_from_slice(&binding.encode());
+        rbit_identity_models::sessions::SessionPromotion::from_storage(self.record.account_id, &bytes)
+    }
     /// An absent sidecar is INITIAL only, never a fresh account epoch lookup.
     pub fn epoch(&self) -> CredentialEpoch {
         self.binding.map_or(CredentialEpoch::INITIAL, |binding| binding.epoch)

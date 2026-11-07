@@ -5,14 +5,16 @@
 //! pool; callers stay fully async.
 
 mod insights;
-mod sessions;
+mod recovery;
+pub(crate) mod sessions;
 
 use std::{path::Path, sync::Arc};
 
-pub use self::sessions::{EpochSessionStore, EpochSnapshot, SessionRecord, SessionStore, StoredSession};
+pub use self::sessions::{AppliedSessionRevocation, EpochSessionStore, EpochSnapshot, SessionRecord, SessionStore, StoredSession};
 pub use insights::{
     CachedCommit, CachedComparisonCounts, CachedContributions, CachedLanguage, CachedLanguageStats, CachedLastCommits, InsightsCache,
 };
+pub use recovery::{CredentialRecoveryGate, CredentialRecoveryPermit};
 
 use crate::{StorageError, error::kv_error};
 
@@ -20,15 +22,22 @@ use crate::{StorageError, error::kv_error};
 #[derive(Debug, Clone)]
 pub struct KvStore {
     db: Arc<redb::Database>,
+    credential_recovery: CredentialRecoveryGate,
 }
 
 impl KvStore {
     pub fn open(path: &Path) -> Result<Self, StorageError> {
         let db = redb::Database::create(path).map_err(kv_error)?;
-        let store = Self { db: Arc::new(db) };
+        let store = Self { db: Arc::new(db), credential_recovery: CredentialRecoveryGate::default() };
         store.sessions().ensure_table()?;
         store.insights().ensure_tables()?;
         Ok(store)
+    }
+
+    /// Shared by clones and independent service compositions on this backend.
+    /// It does not coordinate another process or independently opened database.
+    pub fn credential_recovery_gate(&self) -> CredentialRecoveryGate {
+        self.credential_recovery.clone()
     }
 
     pub fn sessions(&self) -> SessionStore {
