@@ -1,7 +1,7 @@
 //! Independent synchronous scripted ports pin authority, ordering and original partial effects.
 #[path = "support/settings.rs"]
 mod fixture;
-use fixture::{Bridge, repo, run, user};
+use fixture::{Bridge, Failures, repo, run, user};
 use rbit_contracts::Timestamp;
 use rbit_repositories::{
     Visibility,
@@ -54,7 +54,7 @@ fn private_ancestor_rejection_precedes_branch_lookup_and_sql() {
 fn sql_failure_restores_head_and_restore_failure_does_not_replace_original_error() {
     for restore_fails in [false, true] {
         let repo = repo();
-        let port = Bridge { fail_update: true, restore_fails, ..Bridge::default() };
+        let port = Bridge { failures: Failures { update: true, restore: restore_fails, ..Failures::default() }, ..Bridge::default() };
         let binding = &port;
         assert!(matches!(
             run(RepositorySettings::new(&repo, true).update(&binding, general(Visibility::Public, Some("other")))),
@@ -98,7 +98,7 @@ fn archive_constructor_precedes_clock_only_sql_winners_publish_and_unarchive_doe
 fn delete_confirmation_precedes_reader_close_and_disk_failure_prevents_store_acquisition() {
     let repo = repo();
     let actor = user();
-    let port = Bridge { fail_disk: true, ..Bridge::default() };
+    let port = Bridge { failures: Failures { disk: true, ..Failures::default() }, ..Bridge::default() };
     let binding = &port;
     let app = RepositorySettings::new(&repo, true);
     assert!(matches!(run(app.delete(&actor, &binding, "demo")), Err(RepositorySettingsError::Invalid(_))));

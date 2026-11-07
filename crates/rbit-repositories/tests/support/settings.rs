@@ -49,16 +49,21 @@ pub fn repo() -> OwnedRepository {
         },
     }
 }
-#[derive(Default)]
+#[derive(Debug, Default)]
+pub struct Failures {
+    pub update: bool,
+    pub restore: bool,
+    pub disk: bool,
+}
+
+#[derive(Debug, Default)]
 pub struct Bridge {
     pub log: Mutex<Vec<String>>,
     pub settings: Mutex<Option<RepoGeneralSettings>>,
     pub archived: Mutex<bool>,
     pub publications: Mutex<HashMap<String, bool>>,
     pub private_ancestor: bool,
-    pub fail_update: bool,
-    pub restore_fails: bool,
-    pub fail_disk: bool,
+    pub failures: Failures,
     pub pause_archive_effect: bool,
 }
 impl Bridge {
@@ -69,15 +74,16 @@ impl Bridge {
         self.log.lock().unwrap().clone()
     }
 }
+#[derive(Debug)]
 pub struct Rows<'a>(&'a Bridge);
 impl RepositorySettingsRepository for Rows<'_> {
     type Error = &'static str;
     fn update_general(&self, _: RepoId, settings: &RepoGeneralSettings) -> impl Future<Output = Result<(), Self::Error>> + Send {
         self.0.log(format!("update:{}", settings.default_branch));
-        if !self.0.fail_update {
+        if !self.0.failures.update {
             *self.0.settings.lock().unwrap() = Some(settings.clone());
         }
-        ready(if self.0.fail_update { Err("update") } else { Ok(()) })
+        ready(if self.0.failures.update { Err("update") } else { Ok(()) })
     }
     fn rename(&self, _: RepoId, _: &RepoName) -> impl Future<Output = Result<(), Self::Error>> + Send {
         self.0.log("rename");
@@ -108,7 +114,7 @@ impl<'a> RepositorySettingsPort for &'a Bridge {
     type Store = Rows<'a>;
     fn store(&self) -> Self::Store {
         self.log("store");
-        Rows(*self)
+        Rows(self)
     }
     fn has_private_ancestor(&self) -> impl Future<Output = Result<bool, Self::Error>> + Send {
         self.log("ancestor");
@@ -120,7 +126,7 @@ impl<'a> RepositorySettingsPort for &'a Bridge {
     }
     fn set_head(&self, branch: &str) -> impl Future<Output = Result<(), Self::Error>> + Send {
         self.log(format!("head:{branch}"));
-        ready(if self.restore_fails && branch == "main" { Err("restore") } else { Ok(()) })
+        ready(if self.failures.restore && branch == "main" { Err("restore") } else { Ok(()) })
     }
     fn restore_failed(&self, _: &Self::Error) {
         self.log("restore_failed");
@@ -147,7 +153,7 @@ impl<'a> RepositorySettingsPort for &'a Bridge {
     }
     fn delete_disk(&self) -> impl Future<Output = Result<(), Self::Error>> + Send {
         self.log("disk");
-        ready(if self.fail_disk { Err("disk") } else { Ok(()) })
+        ready(if self.failures.disk { Err("disk") } else { Ok(()) })
     }
     fn deleted(&self, _: &User, full_name: String) {
         self.log(format!("deleted:{full_name}"));
