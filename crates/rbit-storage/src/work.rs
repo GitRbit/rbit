@@ -72,7 +72,7 @@ pub(crate) fn cache_write() {
 pub struct CapturedWork(Option<Arc<Counter>>);
 
 /// Capture the current measurement before submitting explicitly owned child work.
-/// Outside count_work this performs no allocation and preserves no business owner.
+/// Outside `count_work` this performs no allocation and preserves no business owner.
 pub fn capture_work() -> CapturedWork {
     CapturedWork(COUNTER.try_with(Arc::clone).ok())
 }

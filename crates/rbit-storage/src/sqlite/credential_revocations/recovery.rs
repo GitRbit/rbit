@@ -69,7 +69,7 @@ impl CredentialRevocationStore {
             .bind(request.account().0)
             .bind(request.target().get())
             .bind(policy)
-            .bind(keep.as_ref().map(|bytes| bytes.as_slice()))
+            .bind(keep.as_ref().map(<[u8; 64]>::as_slice))
             .bind(outcome)
             .bind(now.seconds())
             .bind(pair.as_slice())

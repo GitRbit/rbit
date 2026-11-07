@@ -55,29 +55,28 @@ async fn invalid_pair_or_cross_account_index_cannot_commit_partial_revocation() 
 async fn identity_initialization_refuses_records_or_orphans_without_purging_or_adopting() {
     for kind in ["record", "index", "binding", "legacy"] {
         let (_dir, legacy, store) = store();
-        match kind {
-            "record" => legacy.put([1; 32], record(7, 3600)).await.unwrap(),
-            _ => {
-                let tx = store.db.begin_write().unwrap();
-                match kind {
-                    "index" => {
-                        tx.open_table(ACCOUNT_SESSIONS).unwrap().insert((7, &[1; 32]), ()).unwrap();
-                    }
-                    "binding" => {
-                        let binding = Binding::with_random(AccountId(7), epoch(1), |bytes| {
-                            bytes.fill(1);
-                            Ok(())
-                        })
-                        .unwrap();
-                        tx.open_table(EPOCHS).unwrap().insert(&[1; 32], &binding.encode()).unwrap();
-                    }
-                    "legacy" => {
-                        tx.open_table(super::super::super::LEGACY_SESSIONS).unwrap().insert(&[1; 32], &[1; 16]).unwrap();
-                    }
-                    _ => unreachable!(),
+        if kind == "record" {
+            legacy.put([1; 32], record(7, 3600)).await.unwrap();
+        } else {
+            let tx = store.db.begin_write().unwrap();
+            match kind {
+                "index" => {
+                    tx.open_table(ACCOUNT_SESSIONS).unwrap().insert((7, &[1; 32]), ()).unwrap();
                 }
-                tx.commit().unwrap();
+                "binding" => {
+                    let binding = Binding::with_random(AccountId(7), epoch(1), |bytes| {
+                        bytes.fill(1);
+                        Ok(())
+                    })
+                    .unwrap();
+                    tx.open_table(EPOCHS).unwrap().insert(&[1; 32], &binding.encode()).unwrap();
+                }
+                "legacy" => {
+                    tx.open_table(super::super::super::LEGACY_SESSIONS).unwrap().insert(&[1; 32], &[1; 16]).unwrap();
+                }
+                _ => unreachable!(),
             }
+            tx.commit().unwrap();
         }
         assert!(store.initialize_identity_if_empty().await.is_err(), "{kind}");
         assert!(store.pair_identity().await.unwrap().is_none(), "no identity published after {kind}");

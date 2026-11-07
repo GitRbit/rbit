@@ -1,4 +1,5 @@
 use super::*;
+use redb::ReadableTableMetadata;
 
 #[tokio::test]
 async fn list_and_revoke_others_are_account_epoch_and_current_incarnation_scoped() {
@@ -72,7 +73,6 @@ async fn bounded_expiry_purge_removes_record_binding_and_index_across_multiple_b
     store.put_if_absent([255; 32], record(7, 3600), AccountId(7), epoch(1)).await.unwrap();
     assert_eq!(store.purge_expired_bound().await.unwrap(), count);
     let tx = store.db.begin_read().unwrap();
-    use redb::ReadableTableMetadata;
     assert_eq!(tx.open_table(SESSIONS).unwrap().len().unwrap(), 1);
     assert_eq!(tx.open_table(ACCOUNT_SESSIONS).unwrap().len().unwrap(), 1);
     assert_eq!(tx.open_table(EPOCHS).unwrap().len().unwrap(), 1);

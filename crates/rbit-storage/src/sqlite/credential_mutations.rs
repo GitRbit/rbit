@@ -45,7 +45,7 @@ pub(super) async fn insert_decision(
     .bind(target.get())
     .bind(now.seconds())
     .bind(policy)
-    .bind(keep.as_ref().map(|bytes| bytes.as_slice()))
+    .bind(keep.as_ref().map(<[u8; 64]>::as_slice))
     .execute(&mut **transaction)
     .await?
     .last_insert_rowid();

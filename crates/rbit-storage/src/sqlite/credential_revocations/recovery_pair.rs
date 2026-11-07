@@ -7,7 +7,7 @@ const PAIR: &str = "SELECT CASE WHEN typeof(identity)='blob' THEN CASE WHEN leng
     AND (SELECT count(*) FROM (SELECT 1 FROM credential_session_pair LIMIT 2))=1";
 impl CredentialRevocationStore {
     /// Explicit composition only, after a separately accepted empty-KV initialization.
-    /// No replacement/reset/adoption. Never called by migration or Services::new.
+    /// No replacement/reset/adoption. Never called by migration or `Services::new`.
     pub async fn initialize_pair(&self, sessions: &EpochSessionStore) -> Result<SessionPairIdentity, StorageError> {
         let identity = sessions.pair_identity().await?.ok_or_else(rows::invalid)?;
         let bytes = identity.storage_bytes();
