@@ -17,7 +17,7 @@ impl TwoFactorService {
     ) -> impl std::future::Future<Output = Result<(), ServiceError>> {
         let mut password = zeroize::Zeroizing::new(password);
         async move {
-            let Some(record) = self.accounts.find_login(user.name().as_str()).await? else {
+            let Some(record) = self.accounts.find_login_by_id(user.id()).await? else {
                 return Err(ServiceError::InvalidCredentials);
             };
             if attempt.verify(std::mem::take(&mut *password), record.password_hash).await? {

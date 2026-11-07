@@ -12,6 +12,10 @@ This section remains unreleased until the complete rewrite and release gates pas
 
 ### Security
 
+- Bind sensitive-settings password reads to the signed-in account ID, preventing a
+  rename/reclaim race from selecting the reclaiming account's password. Preserve the
+  existing single-query lookup and proof/failure ordering.
+
 - Prepare explicit accepted-upgrade intent retirement without rewriting historical
   cleanup metadata. Active recovery skips the proven old range and distinguishes
   retirement from a new credential cleanup; production activation remains pending.

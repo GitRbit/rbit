@@ -6,6 +6,8 @@
 mod fenced;
 #[cfg(test)]
 mod locale_tests;
+#[cfg(test)]
+mod login_tests;
 
 use super::pool::Pool;
 use rbit_core::{Account, AccountId, AccountKind, AccountName, Timestamp, User};
@@ -27,6 +29,16 @@ macro_rules! select_user {
         )
     };
 }
+macro_rules! select_login {
+    ($clause:literal) => {
+        concat!(
+            "SELECT a.id, a.kind, a.name, a.display_name, a.bio, a.created_at, l.email, l.is_admin, l.password_hash, \
+             l.suspended_at FROM accounts a JOIN user_logins l ON l.account_id = a.id ",
+            $clause
+        )
+    };
+}
+const LOGIN_BY_ID: &str = select_login!("WHERE a.id = ?1");
 
 /// `?1` account, `?2` whether notifications are on. The stored password hash is not read;
 /// the unread check is a `CASE` so it is not even evaluated with notifications off.
@@ -54,6 +66,12 @@ struct LoginRow {
     #[sqlx(flatten)]
     user: UserRow,
     suspended_at: Option<i64>,
+}
+impl LoginRow {
+    fn into_record(self) -> Result<LoginRecord, StorageError> {
+        let suspended = self.suspended_at.is_some();
+        self.user.into_user_and_hash().map(|(user, password_hash)| LoginRecord { user, password_hash, suspended })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -115,19 +133,15 @@ impl AccountStore {
     /// Looks a user up by username *or* email, returning the stored password hash for
     /// verification and whether the account is suspended.
     pub async fn find_login(&self, username_or_email: &str) -> Result<Option<LoginRecord>, StorageError> {
-        let row: Option<LoginRow> = sqlx::query_as(
-            "SELECT a.id, a.kind, a.name, a.display_name, a.bio, a.created_at, l.email, l.is_admin, l.password_hash, \
-             l.suspended_at FROM accounts a JOIN user_logins l ON l.account_id = a.id \
-             WHERE a.name = ?1 OR l.email = ?1",
-        )
-        .bind(username_or_email)
-        .fetch_optional(&self.pool)
-        .await?;
-        row.map(|row| {
-            let suspended = row.suspended_at.is_some();
-            row.user.into_user_and_hash().map(|(user, password_hash)| LoginRecord { user, password_hash, suspended })
-        })
-        .transpose()
+        let row: Option<LoginRow> =
+            sqlx::query_as(select_login!("WHERE a.name = ?1 OR l.email = ?1")).bind(username_or_email).fetch_optional(&self.pool).await?;
+        row.map(LoginRow::into_record).transpose()
+    }
+    /// Sensitive settings already have a principal: never resolve its mutable name
+    /// again. Suspension remains a reported fact, preserving caller-owned policy.
+    pub async fn find_login_by_id(&self, id: AccountId) -> Result<Option<LoginRecord>, StorageError> {
+        let row: Option<LoginRow> = sqlx::query_as(LOGIN_BY_ID).bind(id.0).fetch_optional(&self.pool).await?;
+        row.map(LoginRow::into_record).transpose()
     }
 
     pub async fn find_user(&self, id: AccountId) -> Result<Option<User>, StorageError> {

@@ -93,7 +93,9 @@
         "lib::sqlite::pool::WriteTransaction",
         "lib::sqlite::protocol::SqlProtocol",
         "lib::sqlite::protocol::IntentRetirement",
-        "lib::sqlite::protocol::RetiredRange"
+        "lib::sqlite::protocol::RetiredRange",
+        "lib::sqlite::accounts::AccountStore",
+        "lib::sqlite::accounts::LoginRow"
       ]
     },
     {

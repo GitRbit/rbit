@@ -316,3 +316,5 @@ async fn wrong_passwords_are_throttled_and_audited() {
 }
 
 mod original_proof;
+#[path = "two_factor/principal_binding.rs"]
+mod principal_binding;
