@@ -126,29 +126,26 @@ impl WikiMutationStore {
         if full {
             return Err(WikiMutationError::Capacity);
         }
-        let actor_incarnation = match actor_incarnation {
-            Some(incarnation) => incarnation,
-            None => {
-                let id: i64 = sqlx::query_scalar("INSERT INTO wiki_actor_incarnations(account_id) VALUES(?) RETURNING id")
-                    .bind(command.actor.0)
-                    .fetch_one(&mut *tx)
-                    .await?;
-                WikiActorIncarnation::new(id).ok_or(WikiMutationError::Corrupt)?
-            }
-        };
-        let page = match expected_page {
-            Some(page) => page,
-            None => {
-                let floor: i64 = sqlx::query_scalar(
-                    "SELECT COALESCE(MAX(seq),0) FROM sqlite_sequence WHERE name IN ('wiki_pages','wiki_page_allocations')",
-                )
+        let actor_incarnation = if let Some(incarnation) = actor_incarnation {
+            incarnation
+        } else {
+            let id: i64 = sqlx::query_scalar("INSERT INTO wiki_actor_incarnations(account_id) VALUES(?) RETURNING id")
+                .bind(command.actor.0)
                 .fetch_one(&mut *tx)
                 .await?;
-                let id = floor.checked_add(1).and_then(WikiPageId::new).ok_or(WikiMutationError::Exhausted)?;
-                sqlx::query("INSERT INTO wiki_page_allocations(id) VALUES(?)").bind(id.get()).execute(&mut *tx).await?;
-                sqlx::query("DELETE FROM wiki_page_allocations WHERE id=?").bind(id.get()).execute(&mut *tx).await?;
-                id
-            }
+            WikiActorIncarnation::new(id).ok_or(WikiMutationError::Corrupt)?
+        };
+        let page = if let Some(page) = expected_page {
+            page
+        } else {
+            let floor: i64 =
+                sqlx::query_scalar("SELECT COALESCE(MAX(seq),0) FROM sqlite_sequence WHERE name IN ('wiki_pages','wiki_page_allocations')")
+                    .fetch_one(&mut *tx)
+                    .await?;
+            let id = floor.checked_add(1).and_then(WikiPageId::new).ok_or(WikiMutationError::Exhausted)?;
+            sqlx::query("INSERT INTO wiki_page_allocations(id) VALUES(?)").bind(id.get()).execute(&mut *tx).await?;
+            sqlx::query("DELETE FROM wiki_page_allocations WHERE id=?").bind(id.get()).execute(&mut *tx).await?;
+            id
         };
         sqlx::query("INSERT INTO wiki_mutation_intents(wiki_id,repo_id,actor_id,actor_incarnation,command_id,operation,expected_generation,expected_revision,page_id,generation,path,title,content,accepted_at,state) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending')")
             .bind(wiki.get()).bind(repository.0).bind(command.actor.0).bind(actor_incarnation.get()).bind(command.id.as_bytes().as_slice())
