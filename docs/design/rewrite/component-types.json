@@ -74,7 +74,13 @@
       "types": [
         "lib::wikis::WikiObjects",
         "lib::wikis::PrepareWikiPage",
-        "lib::wikis::WikiObjectError"
+        "lib::wikis::WikiObjectError",
+        "lib::wikis::managed_writer::WikiObjectWriter",
+        "lib::wikis::managed_writer::PreparedWikiObjects",
+        "lib::wikis::managed_writer::Owner",
+        "lib::wikis::managed_writer::WikiScope",
+        "lib::wikis::objects::PageInput",
+        "lib::wikis::exact_object::Compare"
       ]
     }
   ]

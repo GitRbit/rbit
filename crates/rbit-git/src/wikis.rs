@@ -1,6 +1,10 @@
 //! Dedicated immutable wiki objects; no code refs, hooks, processes or publisher.
+mod exact_object;
 mod layout;
+mod managed_writer;
 mod objects;
+mod writer_lock;
+pub use managed_writer::{PreparedWikiObjects, WikiObjectWriter};
 
 use rbit_core::{AccountId, RepoId, Timestamp};
 use rbit_kernel::{AdmissionError, BlockingBudget};
@@ -63,6 +67,7 @@ impl WikiObjects {
         reservation
             .spawn(move || {
                 layout::verify_root(&root, identity)?;
+                let _writer = writer_lock::acquire(&root)?;
                 objects::prepare(&root, identity, &request)
             })
             .await?

@@ -1,7 +1,9 @@
 //! Native Git object preparation/read with bounded headers and a flat stable-ID tree.
-use super::{PrepareWikiPage, WikiObjectError, layout};
+use super::{PrepareWikiPage, WikiObjectError, exact_object, layout};
 use rbit_core::RepoId;
-use rbit_wikis::{MAX_WIKI_CONTENT_BYTES, WikiContent, WikiId, WikiPageId, WikiRevisionId, WikiStoreId};
+use rbit_wikis::{
+    MAX_WIKI_CONTENT_BYTES, WikiContent, WikiId, WikiPageId, WikiRevisionId, WikiStoreId, commands::WikiIntent, policy::WikiExpected,
+};
 use std::path::Path;
 
 const MAX_COMMIT_BYTES: u64 = 64 * 1024;
@@ -82,6 +84,78 @@ pub(super) fn read(
 }
 
 pub(super) fn prepare(root: &Path, identity: WikiStoreId, request: &PrepareWikiPage) -> Result<WikiRevisionId, WikiObjectError> {
+    prepare_page(root, identity, request, format!("account-{}", request.actor.0))
+}
+
+pub(super) fn prepare_intent(root: &Path, intent: &WikiIntent) -> Result<WikiRevisionId, WikiObjectError> {
+    let (repository, wiki, head, page) = match intent.command.expected {
+        WikiExpected::Create { repository, wiki, head } => (repository, wiki, head, intent.page),
+        WikiExpected::Change { repository, wiki, head, page } => (repository, wiki, Some(head), page),
+    };
+    if page != intent.page
+        || head.map_or(Some(rbit_wikis::WikiGeneration::INITIAL), |head| head.generation.checked_next()) != Some(intent.generation)
+    {
+        return Err(WikiObjectError::Binding);
+    }
+    let request = PageInput {
+        repository,
+        wiki,
+        page,
+        parent: head.map(|head| head.revision),
+        content: &intent.command.content,
+        actor: intent.command.actor,
+        at: intent.accepted_at,
+    };
+    let revision = prepare_input(
+        root,
+        intent.store,
+        request,
+        format!("account-{}-wiki-actor-{}", intent.command.actor.0, intent.actor_incarnation.get()),
+    )?;
+    if intent.target.is_some_and(|target| target != revision) {
+        return Err(WikiObjectError::Binding);
+    }
+    Ok(revision)
+}
+
+struct PageInput<'a> {
+    repository: RepoId,
+    wiki: WikiId,
+    page: WikiPageId,
+    parent: Option<WikiRevisionId>,
+    content: &'a WikiContent,
+    actor: rbit_core::AccountId,
+    at: rbit_core::Timestamp,
+}
+
+fn prepare_page(
+    root: &Path,
+    identity: WikiStoreId,
+    request: &PrepareWikiPage,
+    actor_label: String,
+) -> Result<WikiRevisionId, WikiObjectError> {
+    prepare_input(
+        root,
+        identity,
+        PageInput {
+            repository: request.repository,
+            wiki: request.wiki,
+            page: request.page,
+            parent: request.parent,
+            content: &request.content,
+            actor: request.actor,
+            at: request.at,
+        },
+        actor_label,
+    )
+}
+
+fn prepare_input(
+    root: &Path,
+    identity: WikiStoreId,
+    request: PageInput<'_>,
+    actor_label: String,
+) -> Result<WikiRevisionId, WikiObjectError> {
     if request.actor.0 <= 0 {
         return Err(WikiObjectError::Format);
     }
@@ -102,15 +176,15 @@ pub(super) fn prepare(root: &Path, identity: WikiStoreId, request: &PrepareWikiP
     if position.is_err() && entries.len() == MAX_PAGES {
         return Err(WikiObjectError::Format);
     }
-    let blob = repo.write_blob(request.content.as_str()).map_err(crate::GitError::backend)?.detach();
+    let blob = exact_object::blob(&repo, request.content.as_str().as_bytes())?;
     let entry = gix::objs::tree::Entry { mode: gix::objs::tree::EntryKind::Blob.into(), filename: filename.into(), oid: blob };
     match position {
         Ok(index) => entries[index] = entry,
         Err(index) => entries.insert(index, entry),
     }
-    let tree = repo.write_object(gix::objs::Tree { entries }).map_err(crate::GitError::backend)?.detach();
+    let tree = exact_object::object(&repo, gix::objs::Tree { entries })?;
     let signature = gix::actor::Signature {
-        name: format!("account-{}", request.actor.0).into(),
+        name: actor_label.into(),
         email: "wiki@localhost".into(),
         time: gix::date::Time { seconds: request.at.seconds(), offset: 0 },
     };
@@ -123,6 +197,6 @@ pub(super) fn prepare(root: &Path, identity: WikiStoreId, request: &PrepareWikiP
         message: "Wiki page update\n".into(),
         extra_headers: Vec::new(),
     };
-    let prepared = repo.write_object(commit).map_err(crate::GitError::backend)?;
-    WikiRevisionId::try_from(prepared.detach().as_slice()).map_err(|_| WikiObjectError::Format)
+    let prepared = exact_object::object(&repo, commit)?;
+    WikiRevisionId::try_from(prepared.as_slice()).map_err(|_| WikiObjectError::Format)
 }
