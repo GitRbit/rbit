@@ -174,6 +174,22 @@ export async function scanUnits(lane, inputs) {
           }
         }
       }
+      // Executable examples have hashed compiler dep-info but Cargo exports their
+      // executable/debug symbols without a hash in each output root's examples/.
+      // Keep those aliases profile-scoped and fully witnessed, just like bins.
+      if (unit.prefix === "example-") {
+        const primary = join(primaryProfile(lane, profile.path), "examples");
+        const suffix = process.platform === "win32" ? ".exe" : "";
+        for (const root of new Set([join(profile.path, "examples"), primary])) {
+          for (const name of new Set([unit.target, unit.target.replaceAll("-", "_")])) {
+            for (const extension of [suffix, ".pdb", ".d"]) {
+              const file = join(root, `${name}${extension}`);
+              if (await exists(file)) unit.companions.push(await fileSignature(lane, file, extension === ".d", budget,
+                extension !== ".d", extension === ".d" && root === primary));
+            }
+          }
+        }
+      }
       // Cargo can share unhashed dynamic-library outputs between units.
       for (const directory of [unit.profile, join(unit.profile, "deps"), join(unit.profile, "examples")]) {
         for (const name of [unit.target, `lib${unit.target}`]) for (const extension of [".dll", ".so", ".dylib"]) {
