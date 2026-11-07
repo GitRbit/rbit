@@ -1,5 +1,6 @@
 //! Production catalog + native object adapters through the feature read application.
 mod fixture;
+mod incarnation;
 
 use fixture::Fixture;
 use rbit_core::{Permission, Timestamp};
@@ -16,7 +17,7 @@ async fn enabled_empty_and_denied_private_reads_skip_git_even_when_work_is_close
     let fixture = Fixture::new().await;
     let unselected = fixture.objects(1, "not published", None, 1).await;
     std::fs::write(
-        fixture.directory.path().join("wiki-objects").join(format!("{}.git/HEAD", fixture.repo.repo.repo.id.0)),
+        fixture.directory.path().join("wiki-objects").join(format!("{}/{}.git/HEAD", fixture.repo.repo.repo.id.0, fixture.wiki.get())),
         format!("{unselected}\n"),
     )
     .unwrap();

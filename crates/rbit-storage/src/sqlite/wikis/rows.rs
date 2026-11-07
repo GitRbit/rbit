@@ -1,7 +1,7 @@
 //! Checked decoding: corrupt catalog strings cannot silently normalize to new keys.
 use crate::StorageError;
 use rbit_core::{RepoId, Timestamp};
-use rbit_wikis::{WikiGeneration, WikiPage, WikiPageId, WikiPath, WikiRevisionId, WikiStoreId, WikiTitle, policy::WikiHead};
+use rbit_wikis::{WikiGeneration, WikiId, WikiPage, WikiPageId, WikiPath, WikiRevisionId, WikiStoreId, WikiTitle, policy::WikiHead};
 
 pub(super) fn corrupt() -> StorageError {
     StorageError::Corrupt("wiki catalog format".into())
@@ -24,18 +24,19 @@ pub(super) fn names(path: String, title: String) -> Result<(WikiPath, WikiTitle)
 
 #[derive(sqlx::FromRow)]
 pub(super) struct MetaRow {
+    wiki_id: i64,
     generation: Option<i64>,
     revision: Option<String>,
     identity: Option<Vec<u8>>,
 }
 impl MetaRow {
-    pub fn decode(self) -> Result<(WikiStoreId, Option<WikiHead>), StorageError> {
+    pub fn decode(self) -> Result<(WikiStoreId, WikiId, Option<WikiHead>), StorageError> {
         let head = match (self.generation, self.revision) {
             (None, None) => None,
             (Some(generation), Some(revision)) => Some(super::rows::head(generation, &revision)?),
             _ => return Err(corrupt()),
         };
-        Ok((identity(self.identity.ok_or_else(corrupt)?)?, head))
+        Ok((identity(self.identity.ok_or_else(corrupt)?)?, WikiId::new(self.wiki_id).ok_or_else(corrupt)?, head))
     }
 }
 
@@ -48,10 +49,11 @@ pub(super) struct PageRow {
     pub updated_at: i64,
 }
 impl PageRow {
-    pub fn decode(self, repository: RepoId, head: WikiHead) -> Result<WikiPage, StorageError> {
+    pub fn decode(self, repository: RepoId, wiki: WikiId, head: WikiHead) -> Result<WikiPage, StorageError> {
         let (path, title) = names(self.path, self.title)?;
         Ok(WikiPage {
             repository,
+            wiki,
             id: WikiPageId::new(self.id).ok_or_else(corrupt)?,
             path,
             title,

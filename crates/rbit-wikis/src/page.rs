@@ -2,7 +2,7 @@
 use rbit_contracts::{RepoId, Timestamp};
 
 use crate::{
-    WikiPageId, WikiPath, WikiTitle,
+    WikiId, WikiPageId, WikiPath, WikiTitle,
     policy::{WikiExpected, WikiHead},
 };
 
@@ -11,6 +11,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct WikiPage {
     pub repository: RepoId,
+    pub wiki: WikiId,
     pub id: WikiPageId,
     pub path: WikiPath,
     pub title: WikiTitle,
@@ -24,6 +25,6 @@ impl WikiPage {
     /// preserve the client's original expectation, never regenerate it from a fresh
     /// page read to make stale input appear current.
     pub const fn expected_change(&self) -> WikiExpected {
-        WikiExpected::Change { repository: self.repository, page: self.id, head: self.head }
+        WikiExpected::Change { repository: self.repository, wiki: self.wiki, page: self.id, head: self.head }
     }
 }

@@ -13,6 +13,7 @@ fn store(byte: u8) -> WikiStoreId {
 }
 fn request(text: &str, parent: Option<rbit_wikis::WikiRevisionId>) -> PrepareWikiPage {
     PrepareWikiPage {
+        wiki: rbit_wikis::WikiId::new(1).unwrap(),
         repository: RepoId(7),
         page: WikiPageId::new(11).unwrap(),
         parent,
@@ -23,6 +24,7 @@ fn request(text: &str, parent: Option<rbit_wikis::WikiRevisionId>) -> PrepareWik
 }
 fn page(revision: rbit_wikis::WikiRevisionId) -> WikiPage {
     WikiPage {
+        wiki: rbit_wikis::WikiId::new(1).unwrap(),
         repository: RepoId(7),
         id: WikiPageId::new(11).unwrap(),
         path: "Guide".parse().unwrap(),
@@ -42,7 +44,7 @@ async fn preparation_is_unpublished_and_exact_old_revision_remains_readable() {
     assert_ne!(first, second);
     assert_eq!(objects.read_page(store(1), &page(first)).await.unwrap().as_str(), "first <script>text</script>");
     assert_eq!(objects.read_page(store(1), &page(second)).await.unwrap().as_str(), "second");
-    let raw = gix::open_opts(directory.path().join("7.git"), gix::open::Options::isolated()).unwrap();
+    let raw = gix::open_opts(directory.path().join("7/1.git"), gix::open::Options::isolated()).unwrap();
     assert!(raw.head_id().is_err(), "immutable preparation must never select/publish HEAD");
 }
 
@@ -53,13 +55,13 @@ async fn admission_and_store_mismatch_precede_object_filesystem_effects() {
     let objects = WikiObjects::open(directory.path(), store(1), work.clone()).unwrap();
     let held = work.try_reserve().unwrap();
     assert!(matches!(objects.prepare(request("body", None)).await, Err(WikiObjectError::Admission(AdmissionError::Busy))));
-    assert!(!directory.path().join("7.git").exists());
+    assert!(!directory.path().join("7/1.git").exists());
     let revision = "a".repeat(40).parse().unwrap();
     assert!(matches!(objects.read_page(store(2), &page(revision)).await, Err(WikiObjectError::Binding)));
     drop(held);
     work.close();
     assert!(matches!(objects.prepare(request("body", None)).await, Err(WikiObjectError::Admission(AdmissionError::Closed))));
-    assert!(!directory.path().join("7.git").exists());
+    assert!(!directory.path().join("7/1.git").exists());
 }
 
 #[test]
@@ -128,7 +130,7 @@ async fn duplicate_page_names_and_unsorted_trees_are_rejected_on_read_and_prepar
     let directory = tempfile::tempdir().unwrap();
     let objects = WikiObjects::open(directory.path(), store(1), budget()).unwrap();
     objects.prepare(request("initial", None)).await.unwrap();
-    let raw = gix::open_opts(directory.path().join("7.git"), gix::open::Options::isolated()).unwrap();
+    let raw = gix::open_opts(directory.path().join("7/1.git"), gix::open::Options::isolated()).unwrap();
     let cases: [[(&str, &[u8]); 2]; 2] = [[("11.md", b"one"), ("11.md", b"two")], [("2.md", b"one"), ("11.md", b"two")]];
     for entries in cases {
         let malformed = raw_tree(&raw, &entries);
@@ -142,7 +144,7 @@ async fn oversized_binary_and_nul_blob_objects_fail_before_returning_content() {
     let directory = tempfile::tempdir().unwrap();
     let objects = WikiObjects::open(directory.path(), store(1), budget()).unwrap();
     objects.prepare(request("initial", None)).await.unwrap();
-    let raw = gix::open_opts(directory.path().join("7.git"), gix::open::Options::isolated()).unwrap();
+    let raw = gix::open_opts(directory.path().join("7/1.git"), gix::open::Options::isolated()).unwrap();
     let large = vec![b'x'; rbit_wikis::MAX_WIKI_CONTENT_BYTES + 1];
     for content in [large.as_slice(), b"binary\xff".as_slice(), b"nul\0text".as_slice()] {
         let revision = raw_tree(&raw, &[("11.md", content)]);
@@ -159,4 +161,26 @@ fn linked_object_root_is_rejected_without_creating_a_marker_outside_root() {
     std::os::unix::fs::symlink(outside.path(), &link).unwrap();
     assert!(matches!(WikiObjects::open(&link, store(1), budget()), Err(WikiObjectError::Binding)));
     assert!(!outside.path().join("wiki-store-v1").exists());
+}
+
+#[tokio::test]
+async fn incarnation_marker_refuses_copied_foreign_scope_and_unmarked_legacy_layout() {
+    let directory = tempfile::tempdir().unwrap();
+    let objects = WikiObjects::open(directory.path(), store(1), budget()).unwrap();
+    let revision = objects.prepare(request("old private page", None)).await.unwrap();
+    let old = directory.path().join("7/1.git");
+    let new = directory.path().join("7/2.git");
+    std::fs::rename(&old, &new).unwrap();
+    let mut selected = page(revision);
+    selected.wiki = rbit_wikis::WikiId::new(2).unwrap();
+    assert!(matches!(objects.read_page(store(1), &selected).await, Err(WikiObjectError::Binding)));
+    let mut preparation = request("new", None);
+    preparation.wiki = selected.wiki;
+    assert!(matches!(objects.prepare(preparation).await, Err(WikiObjectError::Binding)));
+    std::fs::rename(&new, directory.path().join("7.git")).unwrap();
+    // A repository-ID-only namespace remains untouched; it is never adopted.
+    assert!(objects.read_page(store(1), &page(revision)).await.is_err());
+    let fresh = objects.prepare(request("new scope", None)).await.unwrap();
+    assert_eq!(objects.read_page(store(1), &page(fresh)).await.unwrap().as_str(), "new scope");
+    assert!(directory.path().join("7.git/wiki-incarnation-v1").exists());
 }

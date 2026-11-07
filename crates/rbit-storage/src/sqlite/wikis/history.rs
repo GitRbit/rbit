@@ -17,7 +17,7 @@ impl WikiCatalogStore {
     pub(super) async fn read_history(&self, request: WikiHistoryRequest) -> Result<Option<WikiHistory>, StorageError> {
         let mut tx = self.pool.begin().await?;
         let Some(meta) = Self::authorized(&mut tx, request.repository, request.viewer).await? else { return Ok(None) };
-        let (_, head) = meta.decode()?;
+        let (_, _, head) = meta.decode()?;
         let Some(head) = head else { return Ok(None) };
         let exists: Option<i64> = sqlx::query_scalar("SELECT 1 FROM wiki_pages WHERE repo_id=?1 AND id=?2")
             .bind(request.repository.0)

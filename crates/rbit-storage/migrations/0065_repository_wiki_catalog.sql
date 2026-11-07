@@ -15,7 +15,10 @@ CREATE TABLE wiki_store_identity (
 INSERT INTO wiki_store_identity VALUES (1, randomblob(16));
 
 CREATE TABLE wiki_repositories (
-    repo_id INTEGER PRIMARY KEY REFERENCES repositories(id) ON DELETE CASCADE,
+    -- Official allocation omits id. sqlite_sequence survives catalog/repository
+    -- deletion, so reused repositories.id values cannot reopen an old wiki scope.
+    id INTEGER PRIMARY KEY AUTOINCREMENT CHECK (id > 0),
+    repo_id INTEGER NOT NULL UNIQUE REFERENCES repositories(id) ON DELETE CASCADE,
     enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
     generation INTEGER CHECK (generation > 0),
     FOREIGN KEY (repo_id, generation) REFERENCES wiki_revisions(repo_id, generation)

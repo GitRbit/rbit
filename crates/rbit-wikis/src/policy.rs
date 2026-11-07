@@ -2,7 +2,7 @@
 use rbit_access::RepoAccess;
 use rbit_contracts::{AccountId, RepoId};
 
-use crate::{WikiGeneration, WikiPageId, WikiRevisionId};
+use crate::{WikiGeneration, WikiId, WikiPageId, WikiRevisionId};
 
 /// Trusted composition supplies CURRENT repository facts, not user-submitted grants.
 /// A cached value alone is insufficient for a later write or conditional response.
@@ -27,14 +27,15 @@ pub struct WikiHead {
 /// Page creation also requires the target path/alias slot to remain unoccupied.
 #[derive(Debug, Clone, Copy)]
 pub enum WikiExpected {
-    Create { repository: RepoId, head: Option<WikiHead> },
-    Change { repository: RepoId, page: WikiPageId, head: WikiHead },
+    Create { repository: RepoId, wiki: WikiId, head: Option<WikiHead> },
+    Change { repository: RepoId, wiki: WikiId, page: WikiPageId, head: WikiHead },
 }
 
 /// Authoritative projection of the addressed page/namespace slot at the current wiki
 /// head. The SQL adapter must enforce matching facts and uniqueness in its write TX.
 #[derive(Debug, Clone, Copy)]
 pub struct WikiMutationState {
+    pub wiki: WikiId,
     pub repository: RepoId,
     pub head: Option<WikiHead>,
     pub page: Option<WikiPageId>,
@@ -73,10 +74,10 @@ pub fn check_write(access: &WikiAccess, expected: WikiExpected, current: &WikiMu
     if access.archived {
         return Err(WikiPolicyError::Archived);
     }
-    let expected_repository = match expected {
-        WikiExpected::Create { repository, .. } | WikiExpected::Change { repository, .. } => repository,
+    let (expected_repository, expected_wiki) = match expected {
+        WikiExpected::Create { repository, wiki, .. } | WikiExpected::Change { repository, wiki, .. } => (repository, wiki),
     };
-    if access.repository != current.repository || access.repository != expected_repository {
+    if access.repository != current.repository || access.repository != expected_repository || current.wiki != expected_wiki {
         return Err(WikiPolicyError::Conflict);
     }
     if current.pending {

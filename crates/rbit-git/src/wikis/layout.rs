@@ -1,7 +1,7 @@
 //! Numeric object layout and bounded catalog marker; never a user page path.
 use super::WikiObjectError;
 use rbit_core::RepoId;
-use rbit_wikis::WikiStoreId;
+use rbit_wikis::{WikiId, WikiStoreId};
 use std::{
     fs::{self, OpenOptions},
     io::{Read, Write},
@@ -76,21 +76,35 @@ pub(super) fn verify_root(root: &Path, identity: WikiStoreId) -> Result<(), Wiki
     Ok(())
 }
 
-pub(super) fn repository(root: &Path, repository: RepoId, create: bool) -> Result<gix::Repository, WikiObjectError> {
+/// Exact catalog/store incarnation binding. A preexisting unmarked directory is
+/// refused, including a partially initialized scope; recovery is an explicit future
+/// operation, never adoption of a repository-ID-only or foreign object namespace.
+pub(super) fn repository(
+    root: &Path,
+    identity: WikiStoreId,
+    repository: RepoId,
+    wiki: WikiId,
+    create: bool,
+) -> Result<gix::Repository, WikiObjectError> {
     if repository.0 <= 0 {
         return Err(WikiObjectError::Binding);
     }
-    let path = root.join(format!("{}.git", repository.0));
+    let parent = root.join(repository.0.to_string());
+    let path = parent.join(format!("{}.git", wiki.get()));
     no_links(&path)?;
     if create {
+        fs::create_dir_all(&parent).map_err(io)?;
+        no_links(&parent)?;
         match fs::create_dir(&path) {
             Ok(()) => {
                 gix::init_bare(&path).map_err(crate::GitError::backend)?;
+                write_scope(&path, identity, repository, wiki)?;
             }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
             Err(error) => return Err(io(error)),
         }
     }
+    verify_scope(&path, identity, repository, wiki)?;
     for component in ["HEAD", "config", "objects", "objects/pack", "objects/info", "refs"] {
         no_links(&path.join(component))?;
     }
@@ -102,4 +116,37 @@ pub(super) fn repository(root: &Path, repository: RepoId, create: bool) -> Resul
         return Err(WikiObjectError::Binding);
     }
     Ok(repo)
+}
+
+const SCOPE: &str = "wiki-incarnation-v1";
+
+fn scope(identity: WikiStoreId, repository: RepoId, wiki: WikiId) -> [u8; 32] {
+    let mut bytes = [0; 32];
+    bytes[..16].copy_from_slice(identity.as_bytes());
+    bytes[16..24].copy_from_slice(&repository.0.to_be_bytes());
+    bytes[24..].copy_from_slice(&wiki.get().to_be_bytes());
+    bytes
+}
+
+fn write_scope(path: &Path, identity: WikiStoreId, repository: RepoId, wiki: WikiId) -> Result<(), WikiObjectError> {
+    let mut file = OpenOptions::new().write(true).create_new(true).open(path.join(SCOPE)).map_err(io)?;
+    file.write_all(&scope(identity, repository, wiki)).map_err(io)?;
+    file.sync_all().map_err(io)
+}
+
+fn verify_scope(path: &Path, identity: WikiStoreId, repository: RepoId, wiki: WikiId) -> Result<(), WikiObjectError> {
+    let marker = path.join(SCOPE);
+    no_links(&marker)?;
+    let mut file = OpenOptions::new().read(true).open(marker).map_err(io)?;
+    let metadata = file.metadata().map_err(io)?;
+    if !metadata.is_file() || metadata.len() != 32 {
+        return Err(WikiObjectError::Binding);
+    }
+    let mut bytes = [0; 32];
+    file.read_exact(&mut bytes).map_err(io)?;
+    let mut extra = [0; 1];
+    if bytes != scope(identity, repository, wiki) || file.read(&mut extra).map_err(io)? != 0 {
+        return Err(WikiObjectError::Binding);
+    }
+    Ok(())
 }

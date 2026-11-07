@@ -1,7 +1,7 @@
 //! Native Git object preparation/read with bounded headers and a flat stable-ID tree.
 use super::{PrepareWikiPage, WikiObjectError, layout};
 use rbit_core::RepoId;
-use rbit_wikis::{MAX_WIKI_CONTENT_BYTES, WikiContent, WikiPageId, WikiRevisionId};
+use rbit_wikis::{MAX_WIKI_CONTENT_BYTES, WikiContent, WikiId, WikiPageId, WikiRevisionId, WikiStoreId};
 use std::path::Path;
 
 const MAX_COMMIT_BYTES: u64 = 64 * 1024;
@@ -56,8 +56,15 @@ fn visit_tree<'a>(tree: &'a gix::Tree<'_>, mut visit: impl FnMut(gix::objs::tree
     Ok(())
 }
 
-pub(super) fn read(root: &Path, repository: RepoId, page: WikiPageId, revision: WikiRevisionId) -> Result<WikiContent, WikiObjectError> {
-    let repo = layout::repository(root, repository, false)?;
+pub(super) fn read(
+    root: &Path,
+    identity: WikiStoreId,
+    repository: RepoId,
+    wiki: WikiId,
+    page: WikiPageId,
+    revision: WikiRevisionId,
+) -> Result<WikiContent, WikiObjectError> {
+    let repo = layout::repository(root, identity, repository, wiki, false)?;
     let tree = tree(&repo, revision)?;
     let filename = format!("{}.md", page.get());
     let mut blob = None;
@@ -74,11 +81,11 @@ pub(super) fn read(root: &Path, repository: RepoId, page: WikiPageId, revision: 
     WikiContent::try_from(text).map_err(|_| WikiObjectError::Format)
 }
 
-pub(super) fn prepare(root: &Path, request: PrepareWikiPage) -> Result<WikiRevisionId, WikiObjectError> {
+pub(super) fn prepare(root: &Path, identity: WikiStoreId, request: PrepareWikiPage) -> Result<WikiRevisionId, WikiObjectError> {
     if request.actor.0 <= 0 {
         return Err(WikiObjectError::Format);
     }
-    let repo = layout::repository(root, request.repository, true)?;
+    let repo = layout::repository(root, identity, request.repository, request.wiki, true)?;
     let mut entries = if let Some(parent) = request.parent {
         let tree = tree(&repo, parent)?;
         let mut entries = Vec::with_capacity((tree.data.len() / 32).min(MAX_PAGES));

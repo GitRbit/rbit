@@ -18,8 +18,14 @@ fn existing() -> (WikiExpected, WikiMutationState) {
     let page = WikiPageId::new(11).unwrap();
     let head = head(3, 'a');
     (
-        WikiExpected::Change { repository: RepoId(7), page, head },
-        WikiMutationState { repository: RepoId(7), head: Some(head), page: Some(page), pending: false },
+        WikiExpected::Change { repository: RepoId(7), wiki: rbit_wikis::WikiId::new(1).unwrap(), page, head },
+        WikiMutationState {
+            wiki: rbit_wikis::WikiId::new(1).unwrap(),
+            repository: RepoId(7),
+            head: Some(head),
+            page: Some(page),
+            pending: false,
+        },
     )
 }
 
@@ -59,14 +65,47 @@ fn hidden_then_writer_then_archive_precede_pending_and_stale_state() {
 #[test]
 fn creation_requires_exact_whole_wiki_head_and_unoccupied_path_slot() {
     let facts = access(RepoAccess::Write);
-    let mut current = WikiMutationState { repository: facts.repository, head: None, page: None, pending: false };
-    assert_eq!(check_write(&facts, WikiExpected::Create { repository: RepoId(7), head: None }, &current), Ok(WikiGeneration::INITIAL));
+    let mut current = WikiMutationState {
+        wiki: rbit_wikis::WikiId::new(1).unwrap(),
+        repository: facts.repository,
+        head: None,
+        page: None,
+        pending: false,
+    };
+    assert_eq!(
+        check_write(
+            &facts,
+            WikiExpected::Create { repository: RepoId(7), wiki: rbit_wikis::WikiId::new(1).unwrap(), head: None },
+            &current
+        ),
+        Ok(WikiGeneration::INITIAL)
+    );
     current.head = Some(head(3, 'a'));
-    assert_eq!(check_write(&facts, WikiExpected::Create { repository: RepoId(7), head: None }, &current), Err(WikiPolicyError::Conflict));
-    assert_eq!(check_write(&facts, WikiExpected::Create { repository: RepoId(7), head: current.head }, &current).unwrap().get(), 4);
+    assert_eq!(
+        check_write(
+            &facts,
+            WikiExpected::Create { repository: RepoId(7), wiki: rbit_wikis::WikiId::new(1).unwrap(), head: None },
+            &current
+        ),
+        Err(WikiPolicyError::Conflict)
+    );
+    assert_eq!(
+        check_write(
+            &facts,
+            WikiExpected::Create { repository: RepoId(7), wiki: rbit_wikis::WikiId::new(1).unwrap(), head: current.head },
+            &current
+        )
+        .unwrap()
+        .get(),
+        4
+    );
     current.page = WikiPageId::new(8);
     assert_eq!(
-        check_write(&facts, WikiExpected::Create { repository: RepoId(7), head: current.head }, &current),
+        check_write(
+            &facts,
+            WikiExpected::Create { repository: RepoId(7), wiki: rbit_wikis::WikiId::new(1).unwrap(), head: current.head },
+            &current
+        ),
         Err(WikiPolicyError::Conflict)
     );
 }
@@ -77,11 +116,15 @@ fn changed_generation_oid_repository_page_or_missing_target_never_matches() {
     let (expected, current) = existing();
     assert_eq!(check_write(&facts, expected, &current).unwrap().get(), 4);
     assert_eq!(
-        check_write(&facts, WikiExpected::Create { repository: RepoId(8), head: current.head }, &current),
+        check_write(
+            &facts,
+            WikiExpected::Create { repository: RepoId(8), wiki: rbit_wikis::WikiId::new(1).unwrap(), head: current.head },
+            &current
+        ),
         Err(WikiPolicyError::Conflict)
     );
     for variant in [
-        WikiMutationState { repository: RepoId(8), ..current },
+        WikiMutationState { wiki: rbit_wikis::WikiId::new(1).unwrap(), repository: RepoId(8), ..current },
         WikiMutationState { page: WikiPageId::new(12), ..current },
         WikiMutationState { page: None, ..current },
         WikiMutationState { head: None, ..current },
@@ -97,18 +140,36 @@ fn rename_or_restore_does_not_reset_generation_and_exhaustion_never_wraps() {
     let facts = access(RepoAccess::Admin);
     let page = WikiPageId::new(11).unwrap();
     let head = head(i64::MAX, 'a');
-    let current = WikiMutationState { repository: facts.repository, head: Some(head), page: Some(page), pending: false };
+    let current = WikiMutationState {
+        wiki: rbit_wikis::WikiId::new(1).unwrap(),
+        repository: facts.repository,
+        head: Some(head),
+        page: Some(page),
+        pending: false,
+    };
     assert_eq!(
-        check_write(&facts, WikiExpected::Change { repository: RepoId(7), page, head }, &current),
+        check_write(
+            &facts,
+            WikiExpected::Change { repository: RepoId(7), wiki: rbit_wikis::WikiId::new(1).unwrap(), page, head },
+            &current
+        ),
         Err(WikiPolicyError::VersionExhausted)
     );
     let unoccupied = WikiMutationState { page: None, ..current };
     assert_eq!(
-        check_write(&facts, WikiExpected::Create { repository: RepoId(7), head: Some(head) }, &unoccupied),
+        check_write(
+            &facts,
+            WikiExpected::Create { repository: RepoId(7), wiki: rbit_wikis::WikiId::new(1).unwrap(), head: Some(head) },
+            &unoccupied
+        ),
         Err(WikiPolicyError::VersionExhausted)
     );
     assert_eq!(
-        check_write(&facts, WikiExpected::Create { repository: RepoId(7), head: None }, &unoccupied),
+        check_write(
+            &facts,
+            WikiExpected::Create { repository: RepoId(7), wiki: rbit_wikis::WikiId::new(1).unwrap(), head: None },
+            &unoccupied
+        ),
         Err(WikiPolicyError::Conflict)
     );
 }
@@ -118,6 +179,7 @@ fn renamed_projection_retains_page_identity_and_its_original_expected_head() {
     use rbit_contracts::Timestamp;
     use rbit_wikis::WikiPage;
     let page = WikiPage {
+        wiki: rbit_wikis::WikiId::new(1).unwrap(),
         repository: RepoId(7),
         id: WikiPageId::new(11).unwrap(),
         path: "Old".parse().unwrap(),
@@ -133,4 +195,23 @@ fn renamed_projection_retains_page_identity_and_its_original_expected_head() {
     let (_, mut current) = existing();
     current.head = Some(head(4, 'b'));
     assert_eq!(check_write(&access(RepoAccess::Write), renamed.expected_change(), &current), Err(WikiPolicyError::Conflict));
+}
+
+#[test]
+fn recreated_empty_wiki_does_not_accept_an_old_empty_create_expectation() {
+    let facts = access(RepoAccess::Write);
+    let old = rbit_wikis::WikiId::new(1).unwrap();
+    let new = rbit_wikis::WikiId::new(2).unwrap();
+    let current = WikiMutationState { repository: facts.repository, wiki: new, head: None, page: None, pending: false };
+    assert_eq!(
+        check_write(&facts, WikiExpected::Create { repository: facts.repository, wiki: old, head: None }, &current),
+        Err(WikiPolicyError::Conflict)
+    );
+    assert_eq!(
+        check_write(&facts, WikiExpected::Create { repository: facts.repository, wiki: new, head: None }, &current),
+        Ok(WikiGeneration::INITIAL)
+    );
+    let (expected, mut current) = existing();
+    current.wiki = new;
+    assert_eq!(check_write(&facts, expected, &current), Err(WikiPolicyError::Conflict));
 }

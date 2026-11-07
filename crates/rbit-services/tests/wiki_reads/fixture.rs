@@ -4,7 +4,7 @@ use rbit_git::wikis::{PrepareWikiPage, WikiObjects};
 use rbit_kernel::BlockingBudget;
 use rbit_services::{CreateRepository, RepoContext, Services};
 use rbit_storage::{Database, KvStore, NewUser, sqlite::writer_compatibility::register};
-use rbit_wikis::{WikiContent, WikiPageId, WikiRevisionId};
+use rbit_wikis::{WikiContent, WikiId, WikiPageId, WikiRevisionId};
 use sqlx::{SqlitePool, sqlite::SqliteConnectOptions};
 use std::{num::NonZeroUsize, sync::Arc};
 
@@ -18,6 +18,7 @@ pub(super) struct Fixture {
     pub repo: RepoContext,
     pub objects: WikiObjects,
     pub work: BlockingBudget,
+    pub wiki: WikiId,
 }
 
 impl Fixture {
@@ -39,10 +40,13 @@ impl Fixture {
             .unwrap();
         let repo = services.repositories.open(Some(&owner), "owner", "wiki-project").await.unwrap();
         sqlx::query("INSERT INTO wiki_repositories(repo_id,enabled) VALUES(?,1)").bind(repo.repo.repo.id.0).execute(&raw).await.unwrap();
+        let id: i64 =
+            sqlx::query_scalar("SELECT id FROM wiki_repositories WHERE repo_id=?").bind(repo.repo.repo.id.0).fetch_one(&raw).await.unwrap();
+        let wiki = WikiId::new(id).unwrap();
         let identity = database.wikis().identity().await.unwrap();
         let work = BlockingBudget::new(NonZeroUsize::new(1).unwrap());
         let objects = WikiObjects::open(&directory.path().join("wiki-objects"), identity, work.clone()).unwrap();
-        Self { directory, database, raw, services, owner, outsider, repo, objects, work }
+        Self { directory, database, raw, services, owner, outsider, repo, objects, work, wiki }
     }
 
     async fn user(database: &Database, name: &str) -> User {
@@ -63,6 +67,7 @@ impl Fixture {
         self.objects
             .prepare(PrepareWikiPage {
                 repository: self.repo.repo.repo.id,
+                wiki: self.wiki,
                 page: WikiPageId::new(page).unwrap(),
                 parent,
                 content: WikiContent::try_from(text.to_owned()).unwrap(),

@@ -4,7 +4,7 @@ use std::fmt;
 use rbit_contracts::RepoId;
 
 use super::{WikiCatalog, WikiCatalogPage, WikiHistory, WikiHistoryRequest, WikiPageRequest, WikiRevisionRequest, WikiRevisionStore};
-use crate::{WikiContent, WikiPage};
+use crate::{WikiContent, WikiId, WikiPage};
 
 pub enum WikiReadError<C, R> {
     NotFound,
@@ -25,7 +25,7 @@ impl<C, R> fmt::Debug for WikiReadError<C, R> {
 
 #[derive(Debug)]
 pub enum WikiReadView {
-    Empty { repository: RepoId },
+    Empty { repository: RepoId, wiki: WikiId },
     Page { page: WikiPage, content: WikiContent },
 }
 
@@ -78,10 +78,14 @@ impl WikiReader {
             return Err(WikiReadError::Inconsistent);
         }
         let Some(head) = selection.head else {
-            return if selection.page.is_none() { Ok(WikiReadView::Empty { repository }) } else { Err(WikiReadError::Inconsistent) };
+            return if selection.page.is_none() {
+                Ok(WikiReadView::Empty { repository, wiki: selection.wiki })
+            } else {
+                Err(WikiReadError::Inconsistent)
+            };
         };
         let page = selection.page.ok_or(WikiReadError::NotFound)?;
-        if page.repository != repository || page.head != head {
+        if page.repository != repository || page.wiki != selection.wiki || page.head != head {
             return Err(WikiReadError::Inconsistent);
         }
         let content = revisions.read_page(selection.store, &page).await.map_err(WikiReadError::Revision)?;

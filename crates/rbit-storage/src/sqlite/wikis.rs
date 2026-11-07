@@ -18,7 +18,7 @@ use rows::{MetaRow, PageRow, RevisionPageRow};
 // Same shared repository read predicate as ordinary lists, but administrator and
 // suspension flags are resolved from the current SQL snapshot, never a caller bool.
 const AUTHORIZED: &str = concat!(
-    "SELECT w.generation, v.revision, ",
+    "SELECT w.id AS wiki_id, w.generation, v.revision, ",
     "(SELECT CASE WHEN length(identity)=16 THEN identity END FROM wiki_store_identity WHERE singleton=1) AS identity ",
     "FROM repositories r JOIN wiki_repositories w ON w.repo_id=r.id ",
     "LEFT JOIN wiki_revisions v ON v.repo_id=w.repo_id AND v.generation=w.generation ",
@@ -66,10 +66,10 @@ impl WikiCatalogStore {
     ) -> Result<Option<WikiCatalogPage>, StorageError> {
         let mut tx = self.pool.begin().await?;
         let Some(meta) = Self::authorized(&mut tx, repository, viewer).await? else { return Ok(None) };
-        let (store, head) = meta.decode()?;
+        let (store, wiki, head) = meta.decode()?;
         let Some(head) = head else {
             return match selection {
-                Selection::Path(_) => Ok(Some(WikiCatalogPage { repository, store, head: None, page: None })),
+                Selection::Path(_) => Ok(Some(WikiCatalogPage { wiki, repository, store, head: None, page: None })),
                 Selection::Revision(_, _) => Ok(None),
             };
         };
@@ -82,7 +82,7 @@ impl WikiCatalogStore {
                 .bind(path.as_str())
                 .fetch_optional(&mut *tx)
                 .await?;
-                (head, page.map(|page| page.decode(repository, head)).transpose()?)
+                (head, page.map(|page| page.decode(repository, wiki, head)).transpose()?)
             }
             Selection::Revision(page, generation) => {
                 if generation > head.generation {
@@ -101,10 +101,10 @@ impl WikiCatalogStore {
                 .await?;
                 let Some(selected) = selected else { return Ok(None) };
                 let head = rows::head(selected.generation, &selected.revision)?;
-                (head, Some(selected.page.decode(repository, head)?))
+                (head, Some(selected.page.decode(repository, wiki, head)?))
             }
         };
-        Ok(Some(WikiCatalogPage { repository, store, head: Some(head), page }))
+        Ok(Some(WikiCatalogPage { wiki, repository, store, head: Some(head), page }))
     }
 }
 

@@ -1,12 +1,14 @@
-use rbit_wikis::{WikiGeneration, WikiObjectFormat, WikiPageId, WikiRevisionId};
+use rbit_wikis::{WikiGeneration, WikiId, WikiObjectFormat, WikiPageId, WikiRevisionId};
 
 #[test]
 fn page_identity_and_generation_have_explicit_positive_bounds() {
     for invalid in [i64::MIN, -1, 0] {
         assert_eq!(WikiPageId::new(invalid), None);
+        assert_eq!(WikiId::new(invalid), None);
         assert_eq!(WikiGeneration::new(invalid), None);
     }
     assert_eq!(WikiPageId::new(9).unwrap().get(), 9);
+    assert_eq!(WikiId::new(i64::MAX).unwrap().get(), i64::MAX);
     assert_eq!(WikiGeneration::INITIAL.get(), 1);
     assert_eq!(WikiGeneration::INITIAL.checked_next().unwrap().get(), 2);
     assert!(WikiGeneration::new(i64::MAX).unwrap().checked_next().is_none());

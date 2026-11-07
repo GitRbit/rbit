@@ -5,7 +5,7 @@ use std::future::Future;
 
 use rbit_contracts::{AccountId, RepoId, Timestamp};
 
-use crate::{WikiContent, WikiGeneration, WikiPage, WikiPageId, WikiPath, WikiStoreId, policy::WikiHead};
+use crate::{WikiContent, WikiGeneration, WikiId, WikiPage, WikiPageId, WikiPath, WikiStoreId, policy::WikiHead};
 
 pub use application::{WikiReadError, WikiReadView, WikiReader};
 
@@ -28,6 +28,7 @@ pub struct WikiRevisionRequest {
 /// with a nonempty head is a missing target, never permission to read raw Git HEAD.
 #[derive(Debug)]
 pub struct WikiCatalogPage {
+    pub wiki: WikiId,
     pub repository: RepoId,
     pub store: WikiStoreId,
     pub head: Option<WikiHead>,

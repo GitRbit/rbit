@@ -15,7 +15,7 @@ mod revision;
 mod store;
 
 pub use content::{MAX_WIKI_CONTENT_BYTES, WikiContent, WikiContentError};
-pub use identity::{WikiGeneration, WikiPageId};
+pub use identity::{WikiGeneration, WikiId, WikiPageId};
 pub use names::{WikiNameError, WikiPath, WikiTitle};
 pub use page::WikiPage;
 pub use revision::{WikiObjectFormat, WikiRevisionError, WikiRevisionId};

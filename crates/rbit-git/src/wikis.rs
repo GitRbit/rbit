@@ -4,7 +4,7 @@ mod objects;
 
 use rbit_core::{AccountId, RepoId, Timestamp};
 use rbit_kernel::{AdmissionError, BlockingBudget};
-use rbit_wikis::{WikiContent, WikiPage, WikiPageId, WikiRevisionId, WikiStoreId, reading::WikiRevisionStore};
+use rbit_wikis::{WikiContent, WikiId, WikiPage, WikiPageId, WikiRevisionId, WikiStoreId, reading::WikiRevisionStore};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -39,6 +39,7 @@ pub struct WikiObjects {
 #[derive(Debug)]
 pub struct PrepareWikiPage {
     pub repository: RepoId,
+    pub wiki: WikiId,
     pub page: WikiPageId,
     pub parent: Option<WikiRevisionId>,
     pub content: WikiContent,
@@ -62,7 +63,7 @@ impl WikiObjects {
         reservation
             .spawn(move || {
                 layout::verify_root(&root, identity)?;
-                objects::prepare(&root, request)
+                objects::prepare(&root, identity, request)
             })
             .await?
     }
@@ -78,11 +79,12 @@ impl WikiRevisionStore for WikiObjects {
         let root = Arc::clone(&self.root);
         let repository = page.repository;
         let page_id = page.id;
+        let wiki = page.wiki;
         let revision = page.head.revision;
         reservation
             .spawn(move || {
                 layout::verify_root(&root, identity)?;
-                objects::read(&root, repository, page_id, revision)
+                objects::read(&root, identity, repository, wiki, page_id, revision)
             })
             .await?
     }

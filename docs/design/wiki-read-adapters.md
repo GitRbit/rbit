@@ -16,7 +16,7 @@ is changed. No live user data was opened or migrated during this source preparat
 
 SQLite owns one persistent random 16-byte WikiStoreId, enabled repository catalogs,
 nullable never-initialized head, positive global generation/full object ID, stable
-AUTOINCREMENT page IDs, canonical case-sensitive paths/titles and bounded-query revision
+AUTOINCREMENT wiki incarnation/page IDs, canonical case-sensitive paths/titles and bounded-query revision
 history. Composite keys/FKs bind page history to its own repository and revision.
 Revision/history composite tables use WITHOUT ROWID; page allocation retains row IDs.
 
@@ -24,6 +24,26 @@ The native object root's fixed 16-byte marker must match that catalog identity. 
 a namespace/configuration binding, not an authenticated realm, ACL, secret or publication
 receipt. Paired backups intentionally preserve it. No user may supply a store root,
 marker, selected page record or admin flag over a network to bypass composition.
+
+Repository IDs can be reused after deletion. Each new catalog therefore allocates a
+separate positive WikiId by omitting the AUTOINCREMENT column. Its sequence is never
+reset or populated from a caller. Allocation MUST commit before object preparation:
+SQLite may reuse rolled-back IDs. The future enable/initialization transaction must
+establish this boundary before admitting a worker; this slice has no such producer.
+Native layout is `<root>/<repo_id>/<wiki_id>.git`;
+an exact 32-byte per-incarnation marker binds store identity, repository ID and wiki
+ID (16-byte identity followed by two big-endian signed i64 values). Every read and
+preparation verifies it. Missing/foreign markers are refused; old repository-only
+directories are never adopted. No persistent wiki format has been released.
+This does not prove object durability, safe unpaired restore or hostile-filesystem
+isolation. Resetting sequences or mixing snapshots requires explicit recovery, not
+automatic adoption. Orphan cleanup remains required.
+
+The same authorized SQL statement selects WikiId; page/empty projections retain it.
+Mutation expectations include it even for an empty wiki, preventing a prior empty
+form from matching a newly allocated empty incarnation. The whole-wiki head CAS is
+unchanged: an accepted unrelated page write makes the earlier expectation Conflict.
+The future publisher must enforce both incarnation and head in its actual SQL CAS.
 
 Catalog heads reference immutable finalized revision rows. Page reads use only that
 SQLite-visible generation/OID, never raw Git HEAD. Historical reads select a recorded
@@ -53,7 +73,7 @@ SQL. Cursor bounds become an indexed inclusive generation range, avoiding deep n
 OR scans and preserving i64::MAX. Missing/future targets do not admit a Git reader.
 These are prepared count_work assertions, not executed results or latency measurements.
 
-WikiReader checks returned repository/page/head consistency before invoking the native
+WikiReader checks returned repository/wiki/page/head consistency before invoking the native
 port. Only finalized selected content is returned. Empty catalogs and denied access
 skip object admission even if a prepared commit exists or raw HEAD points at it.
 
@@ -94,7 +114,7 @@ roots. Orphan cleanup and disk quotas remain required before accepting network w
 ## Exact remaining runtime gap
 
 The NEXT publisher must jointly implement current write/archive/namespace authority,
-stable ID allocation/tombstone/incarnation rules, finite preparation/storage quotas,
+official allocation/tombstone lifecycle rules, finite preparation/storage quotas,
 fixed durable intents, expected-to-target Git ref CAS, object/ref durability and pinning,
 exact same-intent SQL finalization, lost-acknowledgment/crash/cancellation recovery and
 owned shutdown. A bare returned OID or caller assertion is not a receipt to publish.
