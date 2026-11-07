@@ -38,13 +38,17 @@ fn run<T>(future: impl Future<Output = T>) -> T {
         Poll::Pending => panic!("unexpected suspension"),
     }
 }
+#[derive(Debug, Default)]
+struct TransferFailures {
+    conflict: bool,
+    rollback: bool,
+}
 #[derive(Debug)]
 struct Port {
     calls: Mutex<Vec<&'static str>>,
     target: Account,
     suspended: bool,
-    conflict: bool,
-    rollback_fails: bool,
+    failures: TransferFailures,
     denied: bool,
 }
 impl Port {
@@ -53,8 +57,7 @@ impl Port {
             calls: Mutex::new(Vec::new()),
             target: account(2, "bob", AccountKind::User),
             suspended: false,
-            conflict: false,
-            rollback_fails: false,
+            failures: TransferFailures::default(),
             denied: false,
         }
     }
@@ -85,14 +88,14 @@ impl TransferPort for Port {
     }
     fn relocate(&self, _: RepoId, from: AccountId, _: AccountId) -> impl Future<Output = Result<(), Self::Error>> + Send {
         self.record(if from == AccountId(1) { "move" } else { "restore" });
-        ready(if from != AccountId(1) && self.rollback_fails { Err("rollback") } else { Ok(()) })
+        ready(if from != AccountId(1) && self.failures.rollback { Err("rollback") } else { Ok(()) })
     }
     fn move_error(&self, error: Self::MoveError) -> Self::Error {
         error
     }
     fn transfer(&self, _: RepoId, _: AccountId) -> impl Future<Output = Result<(), TransferWriteError<Self::Error>>> + Send {
         self.record("sql");
-        ready(if self.conflict { Err(TransferWriteError::Conflict) } else { Ok(()) })
+        ready(if self.failures.conflict { Err(TransferWriteError::Conflict) } else { Ok(()) })
     }
     fn restore_failed(&self, _: &Self::Error, _: &str) {
         self.record("restore_failed");
@@ -155,8 +158,8 @@ fn site_admin_lookup_and_organization_skip_are_distinct_fast_paths() {
 fn conflict_is_preserved_when_compensating_move_also_fails() {
     let (actor, repo) = inputs();
     let mut port = Port::new();
-    port.conflict = true;
-    port.rollback_fails = true;
+    port.failures.conflict = true;
+    port.failures.rollback = true;
     assert!(
         matches!(run(RepositoryTransfer::execute(&port, &actor, &repo, true, "bob", "alice/project")), Err(TransferError::Invalid(message)) if message == "bob/project already exists; rename one of them first")
     );

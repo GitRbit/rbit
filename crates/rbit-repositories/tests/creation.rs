@@ -1,7 +1,7 @@
 //! Owner authority and exact metadata/disk/grant/publication ordering without infrastructure.
 #[path = "support/creation.rs"]
 mod fixture;
-use fixture::{Bridge, input, run, user};
+use fixture::{Bridge, CreationFailures, input, run, user};
 use rbit_repositories::{
     Visibility,
     creation::{RepositoryCreation, RepositoryCreationError, RepositoryMembership, RepositoryOwnerError, RepositoryOwnership},
@@ -69,7 +69,10 @@ fn member_permission_is_reloaded_after_disk_and_only_current_member_gets_admin_g
 fn disk_failure_logs_then_rolls_back_and_rollback_error_keeps_original_precedence() {
     for fail_rollback in [false, true] {
         let actor = user();
-        let port = Bridge { fail_disk: true, fail_rollback, ..Bridge::default() };
+        let port = Bridge {
+            failures: CreationFailures { disk: true, rollback: fail_rollback, ..CreationFailures::default() },
+            ..Bridge::default()
+        };
         let result = run(RepositoryCreation::new(&port).create_in(&actor, "", input("demo")));
         assert!(if fail_rollback {
             matches!(result, Err(RepositoryCreationError::Store("rollback")))
@@ -82,7 +85,7 @@ fn disk_failure_logs_then_rolls_back_and_rollback_error_keeps_original_precedenc
 #[test]
 fn creator_grant_error_leaves_original_row_disk_gap_without_publication() {
     let actor = user();
-    let port = Bridge { fail_grant: true, ..Bridge::default() };
+    let port = Bridge { failures: CreationFailures { grant: true, ..CreationFailures::default() }, ..Bridge::default() };
     assert!(matches!(
         run(RepositoryCreation::new(&port).create_in(&actor, "acme", input("demo"))),
         Err(RepositoryCreationError::Store("grant"))

@@ -37,15 +37,19 @@ pub fn user() -> User {
 pub fn input(name: &str) -> CreateRepository {
     CreateRepository { name: name.to_owned(), ..CreateRepository::default() }
 }
+#[derive(Default)]
+pub struct CreationFailures {
+    pub disk: bool,
+    pub rollback: bool,
+    pub grant: bool,
+}
 pub struct Bridge {
     pub owner: Option<Account>,
     pub roles: Mutex<VecDeque<Option<RepositoryMembership>>>,
     pub row: Mutex<Option<Repository>>,
     pub disk: Mutex<bool>,
     pub calls: Mutex<Vec<String>>,
-    pub fail_disk: bool,
-    pub fail_rollback: bool,
-    pub fail_grant: bool,
+    pub failures: CreationFailures,
     pub pause_disk: bool,
 }
 impl Default for Bridge {
@@ -56,9 +60,7 @@ impl Default for Bridge {
             row: Mutex::new(None),
             disk: Mutex::new(false),
             calls: Mutex::new(Vec::new()),
-            fail_disk: false,
-            fail_rollback: false,
-            fail_grant: false,
+            failures: CreationFailures::default(),
             pause_disk: false,
         }
     }
@@ -102,14 +104,14 @@ impl RepositoryCreationRepository for Bridge {
     }
     fn delete(&self, _: RepoId) -> impl Future<Output = Result<(), Self::Error>> + Send {
         self.log("rollback");
-        if !self.fail_rollback {
+        if !self.failures.rollback {
             self.row.lock().unwrap().take();
         }
-        ready(if self.fail_rollback { Err("rollback") } else { Ok(()) })
+        ready(if self.failures.rollback { Err("rollback") } else { Ok(()) })
     }
     fn grant_creator_admin(&self, _: RepoId, _: AccountId) -> impl Future<Output = Result<(), Self::Error>> + Send {
         self.log("grant_admin");
-        ready(if self.fail_grant { Err("grant") } else { Ok(()) })
+        ready(if self.failures.grant { Err("grant") } else { Ok(()) })
     }
 }
 impl RepositoryCreationPort for Bridge {
@@ -118,7 +120,7 @@ impl RepositoryCreationPort for Bridge {
     fn repository(&self) -> &Self::Store {
         self
     }
-    fn default_branch(&self) -> &str {
+    fn default_branch(&self) -> &'static str {
         self.log("default_branch");
         "main"
     }
@@ -127,7 +129,7 @@ impl RepositoryCreationPort for Bridge {
         poll_fn(move |_| {
             if self.pause_disk {
                 Poll::Pending
-            } else if self.fail_disk {
+            } else if self.failures.disk {
                 Poll::Ready(Err("disk"))
             } else {
                 *self.disk.lock().unwrap() = true;
