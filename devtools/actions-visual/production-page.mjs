@@ -21,10 +21,17 @@ async function context(browser, fixture, { width, rtl = false, dark = false, jav
     throw error;
   }
 }
-export async function checkPage(page, faults, javascript = true) {
-  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1), false);
+export async function checkPage(page, faults, javascript = true, observe = () => {}) {
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  observe("overflow", overflow);
+  assert.equal(overflow, false);
   // Init scripts cannot observe events when document JavaScript is disabled.
-  if (javascript) assert.equal(await page.evaluate(() => window.__visualCspViolations), 0);
+  if (javascript) {
+    const violations = await page.evaluate(() => window.__visualCspViolations);
+    observe("csp", violations);
+    assert.equal(violations, 0);
+  }
+  observe("browser-faults", faults);
   assert.deepEqual(faults, []);
 }
 export async function session(browser, fixture, options, operation) {

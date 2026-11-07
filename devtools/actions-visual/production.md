@@ -214,3 +214,22 @@ Native no-script links still target Appearance settings. Preview example code re
 explicitly English; catalog theme names and machine filter values are unchanged.
 This candidate requires actual hosted browser/Rust acceptance; Node fixtures alone
 are not browser proof or a claim that all settings content has been translated.
+
+
+### Late page-check diagnostics
+
+The independent production run at `b280b4fc` reached positive sandbox proof and
+14 verified screenshots. Every retained refreshed-navigation member passed,
+including the in-document marker, but the following shared page check failed.
+The old stage still named that preceding marker; it did not identify which page
+assertion failed. This does not establish a locale-navigation regression.
+
+The existing overflow, CSP-counter and retained-browser-fault assertions now each
+set their own late-page stage immediately before asserting. The report retains at
+most three records: a boolean overflow result, bounded/missing CSP count, and
+bounded fault count plus fixed categories. At most 128 fault entries contribute
+categories; truncation is explicit and unknown values become `other`. No URLs,
+errors, cookies, response bodies or raw headers enter these records. Assertions,
+requests, renderer behavior, routes and security controls are unchanged. A fresh
+hosted result must identify the actual failing member before a behavior fix or
+production language/theme acceptance can be claimed.

@@ -1,5 +1,6 @@
 // Native synthetic account language saves plus actual HTMX/history boundaries.
 import assert from "node:assert/strict";
+import { refreshedPageProbe } from "./production-page-evidence.mjs";
 import { languageProbe } from "./production-language-evidence.mjs";
 import { productionOrigin, productionLanguage, productionExplore } from "./production-policy.mjs";
 import { session, openPage, checkPage } from "./production-page.mjs";
@@ -62,7 +63,7 @@ async function explore(page, expected, phase, stage, record) {
   assert.equal(marker, true, "ordinary same-catalog navigation stays in-document");
 }
 
-export async function languageChecks(browser, fixture, capture, stage, record = () => {}) {
+export async function languageChecks(browser, fixture, capture, stage, record = () => {}, recordPage = () => {}) {
   stage("language-native-spanish-save");
   await session(browser, fixture, { width: 1440 }, async (page, faults) => {
     await openPage(page, productionLanguage);
@@ -103,6 +104,6 @@ export async function languageChecks(browser, fixture, capture, stage, record = 
     await page.evaluate(() => { window.__visualLocaleDocument = true; });
     stage("language-refreshed-navigation-no-loop");
     await explore(page, "en", "refreshed", stage, record);
-    await checkPage(page, faults); fixture.healthy();
+    await checkPage(page, faults, true, refreshedPageProbe(stage, recordPage)); fixture.healthy();
   });
 }

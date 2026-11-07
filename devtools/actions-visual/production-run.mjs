@@ -17,6 +17,7 @@ import { ProductionFixture } from "./production-process.mjs";
 import { productionChecks } from "./production-checks.mjs";
 import { overviewChecks } from "./production-overview.mjs";
 import { languageChecks } from "./production-language.mjs";
+import { pageRecord } from "./production-page-evidence.mjs";
 import { languageRecord } from "./production-language-evidence.mjs";
 import { jobChecks } from "./production-job.mjs";
 
@@ -85,7 +86,8 @@ try {
   await jobChecks(browser, fixture, capture, value => { stage = value; }, value => { report.logChecks = value; });
   await productionChecks(browser, fixture, capture, value => { stage = value; });
   await languageChecks(browser, fixture, capture, value => { stage = value; },
-    value => { report.languageChecks = languageRecord(report.languageChecks, value); });
+    value => { report.languageChecks = languageRecord(report.languageChecks, value); },
+    value => { report.pageChecks = pageRecord(report.pageChecks, value); });
   await themeChecks(browser, fixture, capture, value => { stage = value; });
   report.status = "candidate-review-required";
 } catch (error) {

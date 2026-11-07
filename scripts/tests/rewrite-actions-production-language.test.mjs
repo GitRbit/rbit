@@ -55,15 +55,18 @@ test("request interception reads only form body and two validation headers, reta
   assert.deepEqual(faults, ["unexpected-request"]);
 });
 
-function browserModel({ wrongSave = false, staleSwap = false, noJsFailure = false, wrongFinalRoot = false } = {}) {
+function browserModel({ wrongSave = false, staleSwap = false, noJsFailure = false, wrongFinalRoot = false, finalPageFailure = "" } = {}) {
   let account = null;
-  const contexts = [], captures = [], stages = [], evidence = [];
+  const contexts = [], captures = [], stages = [], evidence = [], pageEvidence = [];
   const browser = { newContext: async options => {
     const browserLanguage = options.extraHTTPHeaders["Accept-Language"];
+    const contextEvents = new Map();
     const context = { options, closed: false, setDefaultTimeout: () => {}, setDefaultNavigationTimeout: () => {},
-      addCookies: async () => {}, route: async () => {}, routeWebSocket: async () => {}, on: () => {}, addInitScript: async () => {},
+      addCookies: async () => {}, route: async () => {}, routeWebSocket: async () => {}, on: (name, handler) => contextEvents.set(name, handler), addInitScript: async () => {},
       close: async () => { context.closed = true; }, newPage: async () => {
         let url, locale, selected, marker = false, navigate, responseWait;
+        const pageEvents = new Map();
+        const finalExplore = () => locale === "en" && url === productionOrigin + productionExplore;
         const response = (path, language, refresh = false) => ({ status: () => 200, url: () => productionOrigin + path,
           allHeaders: async () => ({ "content-language": language, "content-security-policy": "default-src 'self'" }),
           headerValue: async name => ({ "content-language": language, "content-security-policy": "default-src 'self'", ...(refresh ? { "hx-refresh": "true" } : {}) })[name] ?? null,
@@ -72,15 +75,15 @@ function browserModel({ wrongSave = false, staleSwap = false, noJsFailure = fals
           url = productionOrigin + path; locale = account ?? browserLanguage; selected = account ?? ""; marker = false;
           return response(path, locale);
         };
-        const page = { goto: async value => full(new URL(value).pathname), url: () => url,
+        const page = { on: (name, handler) => pageEvents.set(name, handler), goto: async value => full(new URL(value).pathname), url: () => url,
           waitForNavigation: () => new Promise(resolve => { navigate = resolve; }),
           waitForResponse: predicate => new Promise(resolve => { responseWait = { predicate, resolve }; }),
           waitForURL: async expected => assert.equal(url, expected),
           goBack: async () => { url = productionOrigin + productionLanguage + "?saved=1"; selected = account ?? ""; },
           evaluate: async operation => {
             const source = operation.toString();
-            if (source.includes("scrollWidth")) return false;
-            if (source.includes("__visualCspViolations")) return 0;
+            if (source.includes("scrollWidth")) return finalExplore() && finalPageFailure === "overflow";
+            if (source.includes("__visualCspViolations")) return finalExplore() && finalPageFailure === "csp" ? 1 : 0;
             if (source.includes("__visualLocaleDocument = true")) { marker = true; return; }
             assert.ok(source.includes("__visualLocaleDocument === true")); return marker;
           },
@@ -111,16 +114,18 @@ function browserModel({ wrongSave = false, staleSwap = false, noJsFailure = fals
                 if (!staleSwap) navigate(full(productionLanguage + "?saved=1"));
                 else navigate(response(productionLanguage, locale));
               } else url = productionOrigin + productionExplore;
+              if (finalExplore() && finalPageFailure === "browser-faults") pageEvents.get("pageerror")?.(Error("PRIVATE_RAW_ERROR"));
               responseWait.resolve(value);
             },
           };
         }
-        page.locator = locator; return page;
+        page.locator = locator; contextEvents.get("page")?.(page); return page;
       } };
     contexts.push(context); return context;
   } };
-  return { contexts, captures, stages, evidence,
-    run: () => languageChecks(browser, { authenticate: async () => {}, healthy: () => {} }, async (_page, id) => captures.push(id), value => stages.push(value), value => evidence.push(value)) };
+  return { contexts, captures, stages, evidence, pageEvidence,
+    run: () => languageChecks(browser, { authenticate: async () => {}, healthy: () => {} }, async (_page, id) => captures.push(id),
+      value => stages.push(value), value => evidence.push(value), value => pageEvidence.push(value)) };
 }
 
 test("native language saves, no-JS reset and stale-document navigation use the real acceptance assertions", async () => {
@@ -148,4 +153,16 @@ test("late selected-root language failure identifies its exact member without we
   assert.equal(model.stages.at(-1), "language-refreshed-explore-selected-language");
   assert.deepEqual(model.evidence.at(-1), { phase: "refreshed", member: "selected-language", observed: "es", expected: "en" });
   assert.ok(model.contexts.every(context => context.closed));
+});
+
+test("passing navigation members cannot hide the exact subsequent page assertion failure", async () => {
+  for (const member of ["overflow", "csp", "browser-faults"]) {
+    const model = browserModel({ finalPageFailure: member });
+    await assert.rejects(model.run(), assert.AssertionError);
+    assert.equal(model.stages.at(-1), `language-refreshed-page-${member}`);
+    assert.equal(model.pageEvidence.at(-1).member, member);
+    assert.deepEqual(model.evidence.at(-1), { phase: "refreshed", member: "document-marker", observed: true, expected: true });
+    assert.ok(model.contexts.every(context => context.closed));
+    assert.doesNotMatch(JSON.stringify(model.pageEvidence), /PRIVATE_RAW_ERROR/);
+  }
 });
