@@ -9,7 +9,8 @@ Git durability, a validated prior head, visible publication or W2 completion.
 `FullWikiWriter::open` consumes the noncloneable actual catalog lease. It clones the
 real pool's connection options, preserves writer compatibility and existing tuning,
 disables creating a missing database and changes only synchronization to FULL. Its
-dedicated pool has one connection. Every physical connection, including replacements,
+dedicated pool has at most one connection (no minimum, idle expiry or lifetime expiry).
+Every physical connection, including accounted replacements,
 must read `PRAGMA synchronous` as 2 during setup before it enters the pool. Setup
 is not a per-read/request query and does not mutate general NORMAL-pool settings.
 
@@ -27,12 +28,31 @@ it does not retain its controller/tracker. Dropping even an unpolled response fu
 does not cancel that task. The exact command identity must be retained by callers
 after a cancelled/uncertain response. No mutex guard spans an await.
 
-Embedders explicitly call `close` with a live runtime: close admission, wait for
-actual command-future destruction, then await dedicated pool closure. Cancelling a
-drain waiter does not relinquish task ownership. Escaped accepted/native values can
-still intentionally retain catalog exclusion. Runtime teardown/abort, panic and
-commit I/O failures are not successful receipt paths; they require reconciliation,
-not a claim that all possible SQLite worker cleanup was proved by a dropped future.
+One supervisor is installed before the first async physical connection setup. Losing
+an opening result or the last controller signals this same supervisor; it holds the
+actual catalog, not another controller. Embedders explicitly call `close` with a live
+runtime: close admission, wait for actual command-future destruction, explicitly
+detach/close the sole physical connection and await its result, then close the pool.
+Optimize-on-close is disabled so unrelated maintenance cannot precede native shutdown.
+Cancelling a drain waiter does not relinquish cleanup ownership. Escaped accepted/native
+values can still intentionally retain catalog exclusion after a verified close.
+
+`SqlitePool::close` alone is NOT native shutdown proof: pinned SQLx 0.9 ignores raw
+close errors and has discard paths using `close_hard`. The adapter counts physical
+setup generations and only accounts a generation after explicit native close succeeds.
+An initialization guard marks cancellation/error before after_connect as unknown.
+Unexpected replacement, failed setup/close, overflow, runtime/supervisor abort or
+unaccounted generation cannot release the retention guard or mint a positive receipt.
+Ordinary policy/constraint rejection does not poison a healthy writer.
+
+On unproved Drop, the private guard intentionally retains exactly one actual catalog
+lease with `mem::forget`; it does not run a reaper loop or enter a global registry.
+`Quarantined` is distinct from successful close. Process restart is required to recover
+this retained resource. The exclusive subject/adjacent lock prevents repeated owners
+for the same physical catalog; host composition must bound configured catalogs. This
+conservative failure boundary also survives runtime abortion, rather than depending on
+a runtime task remaining scheduled forever. No automatic repair or all-error release
+is claimed. Commit I/O failures remain uncertain SQL outcomes to reconcile.
 
 ## One SQL worker, provenance-aware result
 
@@ -74,12 +94,18 @@ No global SQLite performance setting changes in this atom.
 
 ## Prepared acceptance evidence
 
-Seven closed temporary-store fixtures cover FULL on initial/replacement connections
+Closed temporary-store fixtures cover FULL on initial/accounted-replacement connections
 while the general pool remains NORMAL; committed but invisible acceptance; receipt
 lifetime; deferred-FK final-COMMIT failure with all allocations rolled back;
 unpolled response cancellation plus cancelled/retried drain; busy/closed admission
 without a job; unknown-origin replay refusal without restamping; and exact new-command
-SQL work parity with the legacy worker. These are source-prepared tests, not actual
+SQL work parity with the legacy worker. Additional ownership cases cancel setup at an
+actual established-connection boundary and discard a successful opening result while
+a real connection is borrowed. Controlled subprocess faults abort a runtime or cause
+an unaccounted replacement; repeated acquisition must remain Busy. Parent-owned temp
+directories are removed only after each child exits, avoiding leaked test-process
+handles. The 30-second child safety deadline is not a native-termination inference.
+These are source-prepared tests, not actual
 power-loss simulations. Run storage `--lib wiki_mutations::full`, then prior Wiki
 acceptance/ownership suites and strict Clippy/AST through the shared build helper.
 

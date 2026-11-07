@@ -38,9 +38,9 @@ async fn full_configuration_is_verified_on_replacement_without_changing_general_
         let mut connection = writer.0.pool.acquire().await.unwrap();
         let full: i64 = sqlx::query_scalar("PRAGMA synchronous").fetch_one(&mut *connection).await.unwrap();
         assert_eq!(full, 2);
-        connection.close().await.unwrap();
+        writer.0.state.close_physical(connection).await.unwrap();
     }
-    writer.close().await;
+    writer.close().await.unwrap();
 }
 
 #[tokio::test]
@@ -54,7 +54,7 @@ async fn successful_receipt_requires_committed_invisible_intent_and_retains_cata
     assert_eq!(visible, 0);
     assert_eq!(receipt.intent().accepted_at, Timestamp(7));
     assert_eq!(format!("{receipt:?}"), "CommittedWikiAcceptance(..)");
-    writer.close().await;
+    writer.close().await.unwrap();
     drop(writer);
     assert!(matches!(database.wiki_catalog_lease().await, Err(WikiCatalogLeaseError::Busy)));
     drop(receipt);
@@ -81,7 +81,7 @@ async fn final_commit_failure_produces_no_receipt_and_rolls_back_all_acceptance_
         writer.accept(command, Timestamp(7), capacity()).await,
         Err(WikiWriteError::Acceptance(WikiMutationError::Storage(_)))
     ));
-    writer.close().await;
+    writer.close().await.unwrap();
     for table in ["wiki_mutation_intents", "wiki_actor_incarnations", "wiki_page_allocations"] {
         let query = sqlx::AssertSqlSafe(format!("SELECT COUNT(*) FROM {table}"));
         let rows: i64 = sqlx::query_scalar(query).fetch_one(&database.pool).await.unwrap();
@@ -104,14 +104,14 @@ async fn cancellation_and_close_waiter_drop_do_not_abandon_admitted_sql_work() {
     let mut drain = Box::pin(writer.close());
     std::future::poll_fn(|cx| match drain.as_mut().poll(cx) {
         Poll::Pending => Poll::Ready(()),
-        Poll::Ready(()) => panic!("admitted command is still blocked"),
+        Poll::Ready(_) => panic!("admitted command is still blocked"),
     })
     .await;
     drop(drain);
     assert!(writer.0.tasks.is_closed());
     sqlx::query("ROLLBACK").execute(&mut *blocker).await.unwrap();
     drop(blocker);
-    tokio::time::timeout(Duration::from_secs(5), writer.close()).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(5), writer.close()).await.unwrap().unwrap();
     let accepted: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM wiki_mutation_intents").fetch_one(&database.pool).await.unwrap();
     assert_eq!(accepted, 1);
     let retained = writer.catalog();
@@ -130,13 +130,13 @@ async fn saturated_and_closed_admission_do_not_acquire_sql_connections() {
     assert_eq!(work, crate::Work::default());
     assert_eq!(writer.0.tasks.len(), 0);
     drop(held);
-    writer.close().await;
+    writer.close().await.unwrap();
     let (_dir, _db, other, command) = fixture().await;
     let (closed, work) = crate::count_work(writer.accept(command, Timestamp(7), capacity())).await;
     assert!(matches!(closed, Err(WikiWriteError::Closed)));
     assert_eq!(work, crate::Work::default());
     assert_eq!(writer.0.tasks.len(), 0);
-    other.close().await;
+    other.close().await.unwrap();
 }
 
 #[tokio::test]
@@ -146,7 +146,7 @@ async fn read_only_replay_never_restamps_or_claims_full_durability_for_normal_or
     let page = intent.page;
     let generation = intent.generation;
     assert!(matches!(writer.accept(intent.command, Timestamp(99), capacity()).await, Err(WikiWriteError::ReplayRequiresFence)));
-    writer.close().await;
+    writer.close().await.unwrap();
     let row: (i64, i64, i64, String) =
         sqlx::query_as("SELECT page_id,generation,accepted_at,content FROM wiki_mutation_intents").fetch_one(&database.pool).await.unwrap();
     assert_eq!(row, (page.get(), generation.get(), 7, "Exact body".to_owned()));
@@ -164,6 +164,6 @@ async fn full_new_acceptance_keeps_the_original_statement_and_acquisition_budget
     assert!(b.unwrap().inserted);
     assert_eq!(full_work, normal_work);
     assert_eq!(full_work.acquisitions, 1);
-    first.close().await;
-    full.close().await;
+    first.close().await.unwrap();
+    full.close().await.unwrap();
 }

@@ -129,7 +129,11 @@
         "lib::sqlite::wiki_mutations::full::WikiWriteError",
         "lib::sqlite::wiki_mutations::full::CommittedWikiAcceptance",
         "lib::sqlite::wiki_mutations::full::Writer",
-        "lib::sqlite::wiki_mutations::full::FullWikiWriter"
+        "lib::sqlite::wiki_mutations::full::FullWikiWriter",
+        "lib::sqlite::wiki_mutations::full::retention::NativeState",
+        "lib::sqlite::wiki_mutations::full::retention::InitializationAttempt",
+        "lib::sqlite::wiki_mutations::full::retention::NativeRetention",
+        "lib::sqlite::wiki_mutations::full::shutdown::Completion"
       ]
     },
     {

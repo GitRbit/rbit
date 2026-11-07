@@ -1,7 +1,13 @@
 //! One owned FULL-synchronous writer; successful results acknowledge SQL only.
 mod opening;
+mod retention;
+mod shutdown;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_quarantine;
+#[cfg(test)]
+mod tests_shutdown;
 
 use super::{
     WikiMutationError, accept_on,
@@ -21,7 +27,7 @@ use std::{
     path::Path,
     sync::{Arc, Mutex},
 };
-use tokio::sync::Semaphore;
+use tokio::sync::{Semaphore, watch};
 use tokio_util::task::TaskTracker;
 
 /// A narrow clone retains the actual catalog lease, not a writer controller.
@@ -51,6 +57,8 @@ pub enum WikiWriteError {
     Busy,
     #[error("wiki writer is closed")]
     Closed,
+    #[error("wiki writer shutdown is unproved; process restart is required")]
+    Quarantined,
     #[error("wiki catalog ownership failed")]
     Catalog(#[from] WikiCatalogLeaseError),
     #[error("wiki SQL connection failed")]
@@ -91,6 +99,10 @@ struct Writer {
     admission: Arc<Semaphore>,
     tasks: TaskTracker,
     catalog: WikiCatalogHandle,
+    state: Arc<retention::NativeState>,
+    completion: watch::Receiver<shutdown::Completion>,
+    // Last: losing the last controller wakes the real pool-close supervisor.
+    shutdown: watch::Sender<bool>,
 }
 
 /// Explicitly close/drain before stopping the runtime. Dropped callers do not abort
@@ -132,18 +144,28 @@ impl FullWikiWriter {
         max_pending: NonZeroU32,
     ) -> Result<tokio::task::JoinHandle<Result<CommittedWikiAcceptance, WikiWriteError>>, WikiWriteError> {
         let closed = self.0.gate.lock().map_err(|_| WikiWriteError::Closed)?;
+        if self.0.state.is_uncertain() {
+            return Err(WikiWriteError::Quarantined);
+        }
         if *closed {
             return Err(WikiWriteError::Closed);
         }
         let permit = Arc::clone(&self.0.admission).try_acquire_owned().map_err(|_| WikiWriteError::Busy)?;
         let pool = self.0.commands.clone();
         let catalog = self.0.catalog.clone();
+        let state = Arc::clone(&self.0.state);
         // The worker owns only narrow resources, not this controller/tracker.
         Ok(self.0.tasks.spawn(async move {
             let _permit = permit;
             let check = catalog.clone();
             tokio::task::spawn_blocking(move || check.check_bound()).await.map_err(|_| WikiWriteError::Uncertain)??;
-            let accepted = accept_on(&pool, command, at, max_pending).await.map_err(WikiWriteError::Acceptance)?;
+            let accepted = tokio::select! {
+                accepted = accept_on(&pool, command, at, max_pending) => accepted.map_err(WikiWriteError::Acceptance)?,
+                () = state.unproved() => return Err(WikiWriteError::Quarantined),
+            };
+            if state.is_uncertain() {
+                return Err(WikiWriteError::Quarantined);
+            }
             if !accepted.inserted {
                 return Err(WikiWriteError::ReplayRequiresFence);
             }
@@ -154,13 +176,21 @@ impl FullWikiWriter {
     /// Close admission and wait for actual worker-future destruction, then for the
     /// dedicated pool to close. Cancellation of this waiter leaves ownership intact.
     /// Returned receipts/native resources can intentionally still retain the lease.
-    pub async fn close(&self) {
+    pub async fn close(&self) -> Result<(), WikiWriteError> {
         {
             let mut closed = self.0.gate.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             *closed = true;
             self.0.tasks.close();
+            self.0.shutdown.send_replace(true);
         }
-        self.0.tasks.wait().await;
-        self.0.pool.close().await;
+        let mut completion = self.0.completion.clone();
+        loop {
+            match *completion.borrow_and_update() {
+                shutdown::Completion::Closed => return Ok(()),
+                shutdown::Completion::Unproved => return Err(WikiWriteError::Quarantined),
+                shutdown::Completion::Waiting => {}
+            }
+            completion.changed().await.map_err(|_| WikiWriteError::Uncertain)?;
+        }
     }
 }
