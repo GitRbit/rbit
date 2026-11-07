@@ -8,7 +8,7 @@ import { relevance } from "./relevance.mjs";
 const execute = promisify(execFile);
 
 export function productionRelevantPath(path) {
-  return [".github/workflows/ci.yml", "Cargo.toml", "Cargo.lock", "package.json", "package-lock.json",
+  return [".github/workflows/ci.yml", ".github/workflows/actions-production-visual.yml", "Cargo.toml", "Cargo.lock", "package.json", "package-lock.json",
     "crates/rbit-web/Cargo.toml", "crates/rbit-web/tests/actions_pages.rs"].includes(path)
     // Shared middleware, persistence and dependency changes can affect these real
     // pages. Deliberately cover all crates instead of guessing a transitive graph.

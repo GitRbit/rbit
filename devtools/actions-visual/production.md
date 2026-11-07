@@ -1,6 +1,6 @@
 # Actual production Actions run fixture
 
-This development-only contained mode uses the existing compiled `rbit-web`
+This development-only contained mode uses the compiled `rbit-web`
 integration test binary, not a second release/LTO build or a mock HTML renderer.
 One ignored test seeds synthetic users, one public repository and 26 bounded runs
 through existing fixture services/stores. Fork runs await approval; one valid
@@ -19,14 +19,23 @@ the actual process exit before acceptance. Unexpected exits/cleanup failures fai
 
 ## Binary and public asset handoff
 
-After the existing Linux workspace test build, the exporter uses nextest's
-[binary-only JSON](https://nexte.st/docs/machine-readable/list/) and Cargo package IDs
-to select exactly the web integration target. It neither searches by basename nor
-builds a new release variant. Revision, binary hash, lock hash and every copied
-public asset hash are recorded. Bounds are one 512 MiB binary, 2048 asset files /
-64 MiB and a 1 MiB input manifest. Links, private/runtime file types, unexpected
-top-level files, untracked assets and copy/hash drift are refused. `app.css` is the
-only explicitly permitted untracked asset, built before the test binary.
+The dedicated `.github/workflows/actions-production-visual.yml` workflow uses
+nextest's [binary-only JSON](https://nexte.st/docs/machine-readable/list/) with
+fixed `--package rbit-web --test integration --locked` selection. Listing builds
+that integration binary without running its tests; it reuses a matching binary if
+already available. There is no whole-workspace or Windows build dependency and no
+second release/LTO build. Normal required CI still runs its full platform matrix.
+The fixture then invokes only its exact ignored synthetic-server test.
+
+The exporter selects by Cargo package ID and target identity, never basename.
+Revision, binary hash, lock hash and every copied public asset hash are recorded.
+Bounds remain one 512 MiB binary, 2048 asset files / 64 MiB and a 1 MiB input
+manifest. Links, private/runtime file types, unexpected top-level files, untracked
+assets and copy/hash drift are refused. `app.css` is the only explicitly permitted
+untracked asset, freshly built before the binary. The tracked asset build must
+leave no changes. Profile debug levels, single build job, incremental setting and
+SQLite compile flags match the existing Linux CI environment. The exporter bounds
+its focused compilation to 40 minutes inside the 60-minute job.
 
 Debug rust-embed reads runtime files at its compiled manifest directory. The
 exporter therefore refuses any build root other than the fixed hosted CI checkout.
@@ -36,20 +45,40 @@ no source checkout, Git directory, database, profile or host socket. This preser
 the actual same-revision debug CSS/JS behavior without another web compilation.
 This is a functional debug fixture, not release performance evidence.
 
-The existing Linux test job exports this input only for relevant source events.
-The optional consuming job downloads only that named artifact from its own workflow
-run and verifies revision, ELF identity and all hashes before restoring execute mode
-on the exact single-link binary. Artifact upload/download does not preserve its
-executable mode. No raw Cargo output directory is mounted or searched by basename.
+Build, export, verification and contained capture run in **one Linux job** on the
+same checkout. No fixture artifact is downloaded from another job or run. The
+container still verifies revision, ELF identity and all hashes before restoring
+execute mode on the exact single-link binary. No raw Cargo directory is mounted.
+Only screenshots and sanitized evidence are uploaded for three days.
 
-The consuming job waits for **both** existing test platforms. It does not change
-the seven branch-protection aggregate dependencies; its own failure still fails
-the overall workflow. It inherits the CI workflow's PR supersession cancellation.
-On synchronize events, both producer and consumer compare exact validated
-before/after commits; unknown comparisons run conservatively. All crate changes
-are relevant because real shared middleware and persistence can affect the page.
-Documentation-only deltas skip export and the image pull. Initial/manual/main runs
-remain conservative. This is a bounded reuse gate, not a latency optimization claim.
+The production workflow is optional and separate from the seven unchanged
+branch-protection dependencies. A production failure fails its own workflow;
+a green required aggregate does not certify browser acceptance. It has no
+workflow-wide concurrency or dependency on the ordinary CI test matrix. A cheap
+relevance job runs before heavy-job admission. A documentation-only synchronize
+therefore cannot cancel an already running production capture. Only the heavy
+job owns the distinct `actions-production-capture` concurrency group with
+`cancel-in-progress: false`. GitHub's default single pending slot can still
+replace an older **pending relevant** job; manual cancellation, worker loss and
+job timeouts remain possible. This does not promise images for every commit.
+See [GitHub's job concurrency semantics](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
+
+PR path filters are coarse three-dot comparisons. For synchronize events, the
+cheap gate compares exact validated before/after commits; missing endpoints or
+comparison failures conservatively run. All crate changes are relevant because
+shared middleware and persistence affect the real page. Initial PR events and
+manual/main events reaching the workflow remain conservative. The new workflow
+file itself is a relevant path, allowing its introducing PR to run. Manual
+dispatch requires the workflow on the default branch; PR triggering provides
+initial validation before that. See [GitHub's path filters](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#git-diff-comparisons)
+and [manual event requirement](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_dispatch).
+
+Tokens remain contents-read only with persisted checkout credentials disabled.
+Dependency-only cache restore/save retains the existing branch-scoped policy;
+workspace codegen and binaries are not saved. There are no privileged event
+contexts, secret inputs, cross-run artifacts or changed sandbox controls.
+Scheduling/build changes require a real hosted run, provenance checks and human
+image review before acceptance; no speedup is claimed from source changes alone.
 
 ```text
 node devtools/actions-visual/export-production.mjs
@@ -61,8 +90,9 @@ node devtools/actions-visual/artifacts.mjs actions-production-artifacts
 Export is refused outside the fixed Linux GitHub CI context. There is no arbitrary
 binary, command, URL, port, mount destination, live-data or browser-profile option.
 The input directory is separate from the screenshot artifact directory and must
-never be uploaded as visual evidence. Only the bounded public build-input artifact
-contains the binary/public assets; it contains no seeded runtime state or cookie.
+never be uploaded as visual evidence. The bounded local build-input directory
+contains the binary/public assets and is never uploaded; it contains no seeded
+runtime state or cookie.
 
 ## Browser gates
 

@@ -1,4 +1,4 @@
-// CI-only export of one existing nextest binary plus public runtime assets.
+// CI-only focused nextest build/export plus public runtime assets.
 import { execFile } from "node:child_process";
 import { constants } from "node:fs";
 import { promisify } from "node:util";
@@ -11,6 +11,11 @@ import { checkedMount } from "./mounts.mjs";
 import { fileEvidence, publicAssets } from "./production-files.mjs";
 import { revision } from "./provenance.mjs";
 const execute = promisify(execFile);
+// Closed target selection: list builds this integration binary without running it.
+export const productionBuildArgs = Object.freeze([
+  "nextest", "list", "--package", "rbit-web", "--test", "integration", "--locked",
+  "--list-type", "binaries-only", "--message-format", "json",
+]);
 
 export function assertSourceAssets(assets, tracked) {
   const expected = [...new Set([...tracked, "app.css"])].sort();
@@ -22,14 +27,14 @@ async function main() {
     || process.env.GITHUB_REPOSITORY !== "GitRbit/rbit") throw Error("FIXTURE_EXPORT_CONTEXT_REFUSED");
   const workspace = await realpath(fileURLToPath(new URL("../..", import.meta.url)));
   if (workspace !== productionWorkspace) throw Error("FIXTURE_BUILD_ROOT_REFUSED");
-  const run = async (program, args) => (await execute(program, args, {
-    cwd: workspace, encoding: "utf8", timeout: 900000, maxBuffer: 32 * 1024 * 1024, windowsHide: true,
+  const run = async (program, args, timeout = 900000) => (await execute(program, args, {
+    cwd: workspace, encoding: "utf8", timeout, maxBuffer: 32 * 1024 * 1024, windowsHide: true,
   })).stdout;
   const commit = revision((await run("git", ["rev-parse", "HEAD"])).trim());
   if (commit !== process.env.GITHUB_SHA) throw Error("FIXTURE_REVISION_REFUSED");
   const metadata = JSON.parse(await run("cargo", ["metadata", "--no-deps", "--locked", "--format-version=1"]));
-  // Same workspace selection as the preceding nextest run; no release/LTO build.
-  const listing = JSON.parse(await run("cargo", ["nextest", "list", "--workspace", "--locked", "--list-type", "binaries-only", "--message-format", "json"]));
+  // Build/reuse only this target in the fixed debug-functional CI environment.
+  const listing = JSON.parse(await run("cargo", productionBuildArgs, 2400000));
   const source = await checkedMount(workspace, relative(workspace, selectProductionBinary(metadata, listing)));
   const assetRoot = await checkedMount(workspace, "crates/rbit-web/assets");
   if (assetRoot !== productionAssetRoot) throw Error("FIXTURE_BUILD_ROOT_REFUSED");
