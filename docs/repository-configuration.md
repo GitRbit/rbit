@@ -26,7 +26,7 @@ Expected live settings:
 | Area | Required configuration |
 | --- | --- |
 | Visibility | Public; default branch `main`; Issues and Discussions enabled |
-| About | Description and topics for rbit; homepage `https://rbit.ori.click` |
+| About | Description and topics for rbit; homepage `https://rbit.sh` |
 | Security reports | Private vulnerability reporting enabled; policy and issue chooser link to `/security/advisories/new` |
 | Main branch | Active rules prevent deletion and force pushes, require linear history, a pull request and resolved review threads |
 | Required checks | All six CI jobs, produced by GitHub Actions; branch must be up to date |

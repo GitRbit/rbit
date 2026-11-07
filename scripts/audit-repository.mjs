@@ -13,7 +13,7 @@ export function validateConfiguration({ repository, reporting, rules, labels }) 
   assert.equal(repository.default_branch, 'main', 'Documentation assumes main');
   assert.equal(repository.has_issues, true, 'Issue forms require Issues');
   assert.equal(repository.has_discussions, true, 'Community links require Discussions');
-  assert.equal(repository.homepage, 'https://rbit.ori.click', 'Homepage needs its HTTPS URL');
+  assert.equal(repository.homepage, 'https://rbit.sh', 'Homepage needs its HTTPS URL');
   assert.equal(reporting.enabled, true, 'Private vulnerability reporting is disabled');
   for (const name of ['bug', 'enhancement']) {
     assert.ok(labels.some(label => label.name === name), `Missing issue-form label: ${name}`);

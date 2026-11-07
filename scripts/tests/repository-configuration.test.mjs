@@ -5,7 +5,7 @@ import { requiredChecks, validateConfiguration, validateRelease } from '../audit
 function configuration() {
   return {
     repository: { private: false, archived: false, default_branch: 'main', has_issues: true,
-      has_discussions: true, homepage: 'https://rbit.ori.click', allow_merge_commit: false },
+      has_discussions: true, homepage: 'https://rbit.sh', allow_merge_commit: false },
     reporting: { enabled: true }, labels: [{ name: 'bug' }, { name: 'enhancement' }],
     rules: [
       ...['deletion', 'non_fast_forward', 'required_linear_history'].map(type => ({ type })),
@@ -34,7 +34,7 @@ test('rejects missing issue labels and broken homepage presentation', () => {
   const input = configuration();
   input.labels = [];
   assert.throws(() => validateConfiguration(input), /Missing issue-form label/);
-  input.repository.homepage = 'rbit.ori.click';
+  input.repository.homepage = 'rbit.sh';
   assert.throws(() => validateConfiguration(input), /Homepage needs its HTTPS URL/);
 });
 test('requires every documented release target and checksums', () => {
