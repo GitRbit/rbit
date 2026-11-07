@@ -26,5 +26,26 @@ async fn principal_login_read_ignores_reclaimed_names_and_uses_one_pk_query() {
     assert!(!found.suspended);
     assert_eq!(work, Work { acquisitions: 1, statements: 1, cache_writes: 0 });
     assert!(store.find_login_by_id(AccountId(999)).await.unwrap().is_none());
-    plans::assert_no_scans(&database, LOGIN_BY_ID, &[]).await;
+    for stats in [plans::Stats::None, plans::Stats::Large] {
+        let plan = plans::query_plan_with(&database, stats, LOGIN_BY_ID).await;
+        for table in ["a", "l"] {
+            assert!(
+                plan.iter().any(|detail| detail.starts_with(&format!("SEARCH {table} USING INTEGER PRIMARY KEY"))),
+                "{stats:?}: {plan:?}"
+            );
+        }
+        assert!(!plan.iter().any(|detail| detail.starts_with("SCAN")), "{stats:?}: {plan:?}");
+    }
+    // As the existing planner-scenario contract documents, one-row statistics can
+    // make a join cheaper as two scans. Do not pretend this is a large-table scan
+    // regression or force a production index solely to override that estimate.
+    let tiny = plans::query_plan_with(&database, plans::Stats::Tiny, LOGIN_BY_ID).await;
+    assert_eq!(tiny.len(), 2, "{tiny:?}");
+    for detail in &tiny {
+        assert!(
+            ["a", "l"].iter().any(|table| detail == &format!("SCAN {table}")
+                || detail.starts_with(&format!("SEARCH {table} USING INTEGER PRIMARY KEY"))),
+            "unexpected Tiny-statistics access: {tiny:?}"
+        );
+    }
 }
