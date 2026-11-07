@@ -115,7 +115,7 @@ fn raw_tree(repo: &gix::Repository, entries: &[(&str, &[u8])]) -> rbit_wikis::Wi
     };
     let commit = gix::objs::Commit {
         tree,
-        parents: Default::default(),
+        parents: std::iter::empty().collect(),
         author: signature.clone(),
         committer: signature,
         encoding: None,
