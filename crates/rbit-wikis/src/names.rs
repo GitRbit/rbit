@@ -17,6 +17,7 @@ pub enum WikiNameError {
     InvalidCharacter,
     InvalidBoundary,
     ReservedPath,
+    NonCanonical,
 }
 
 impl fmt::Display for WikiNameError {
@@ -29,6 +30,7 @@ impl fmt::Display for WikiNameError {
             Self::InvalidCharacter => "wiki name contains an unsupported character",
             Self::InvalidBoundary => "wiki path has an invalid component boundary",
             Self::ReservedPath => "wiki path contains a reserved component",
+            Self::NonCanonical => "stored wiki name is not canonical",
         })
     }
 }

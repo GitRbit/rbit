@@ -55,6 +55,7 @@ flate2.workspace = true
 tar.workspace = true
 
 [dev-dependencies]
+rbit-wikis = { workspace = true, default-features = false }
 tokio.workspace = true
 tempfile.workspace = true
 sqlx.workspace = true

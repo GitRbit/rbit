@@ -9,6 +9,8 @@ license.workspace = true
 autotests = false
 
 [dependencies]
+rbit-wikis = { workspace = true, default-features = false }
+rbit-kernel.workspace = true
 rbit-core.workspace = true
 gix = { workspace = true, features = ["blame"] }
 similar.workspace = true

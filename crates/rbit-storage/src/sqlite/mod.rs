@@ -60,6 +60,7 @@ pub mod teams;
 pub mod two_factor;
 pub mod webhooks;
 pub mod writer_compatibility;
+pub mod wikis;
 
 use std::path::Path;
 
@@ -133,6 +134,10 @@ impl Database {
 
     pub fn repositories(&self) -> RepositoryStore {
         RepositoryStore::new(self.store("repositories"))
+    }
+
+    pub fn wikis(&self) -> wikis::WikiCatalogStore {
+        wikis::WikiCatalogStore::new(self.store("wikis"))
     }
 
     pub fn access_tokens(&self) -> AccessTokenStore {

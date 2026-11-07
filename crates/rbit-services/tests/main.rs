@@ -2,6 +2,7 @@
 //! costs far more than compiling the tests themselves.
 
 mod access;
+mod wiki_reads;
 // Actions: foundation (F).
 mod actions;
 mod actions_claims;

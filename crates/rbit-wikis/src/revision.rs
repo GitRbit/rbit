@@ -44,6 +44,20 @@ impl WikiRevisionId {
     }
 }
 
+impl TryFrom<&[u8]> for WikiRevisionId {
+    type Error = WikiRevisionError;
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        if !matches!(bytes.len(), 20 | 32) || bytes.iter().all(|byte| *byte == 0) {
+            return Err(WikiRevisionError);
+        }
+        match bytes.len() {
+            20 => Ok(Self(ObjectBytes::Sha1(bytes.try_into().map_err(|_| WikiRevisionError)?))),
+            32 => Ok(Self(ObjectBytes::Sha256(bytes.try_into().map_err(|_| WikiRevisionError)?))),
+            _ => Err(WikiRevisionError),
+        }
+    }
+}
+
 impl FromStr for WikiRevisionId {
     type Err = WikiRevisionError;
 

@@ -19,6 +19,7 @@ fn full_revision_roundtrips_both_algorithms_without_truncation_or_null_identity(
         let revision: WikiRevisionId = text.parse().unwrap();
         assert_eq!(revision.format(), algorithm);
         assert_eq!(revision.as_bytes().len(), bytes);
+        assert_eq!(WikiRevisionId::try_from(revision.as_bytes()).unwrap(), revision);
         assert_eq!(revision.to_string(), text);
         assert!("0".repeat(length).parse::<WikiRevisionId>().is_err());
     }

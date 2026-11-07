@@ -14,3 +14,4 @@ mod properties;
 mod push;
 mod remote;
 mod storage;
+mod wiki_objects;

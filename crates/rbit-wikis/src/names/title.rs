@@ -16,6 +16,17 @@ impl WikiTitle {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// Decode catalog bytes without trimming or normalizing persisted metadata.
+    pub fn from_canonical(value: String) -> Result<Self, WikiNameError> {
+        if value.len() > Self::MAX_RAW_BYTES {
+            return Err(WikiNameError::RawLimit);
+        }
+        if !is_nfc(&value) || value.trim().len() != value.len() {
+            return Err(WikiNameError::NonCanonical);
+        }
+        Self::try_from(value)
+    }
 }
 
 impl TryFrom<String> for WikiTitle {

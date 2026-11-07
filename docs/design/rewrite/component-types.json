@@ -40,6 +40,12 @@
         "lib::sqlite::credential_revocations::RevocationIntent",
         "lib::sqlite::credential_revocations::RevocationOutcome",
         "lib::sqlite::credential_revocations::Completion",
+        "lib::sqlite::wikis::WikiCatalogStore",
+        "lib::sqlite::wikis::Selection",
+        "lib::sqlite::wikis::rows::MetaRow",
+        "lib::sqlite::wikis::rows::PageRow",
+        "lib::sqlite::wikis::rows::RevisionPageRow",
+        "lib::sqlite::wikis::history::HistoryRow",
         "lib::kv::sessions::epoch::identity::PairIdentityStore",
         "lib::kv::sessions::epoch::revocation::AppliedSessionRevocation",
         "lib::sqlite::credential_revocations::recovery::CredentialRevocationStore",
@@ -49,6 +55,14 @@
         "lib::work::CapturedWork",
         "lib::kv::recovery::CredentialRecoveryGate",
         "lib::kv::recovery::CredentialRecoveryPermit"
+      ]
+    },
+    {
+      "crate": "crates/rbit-git",
+      "types": [
+        "lib::wikis::WikiObjects",
+        "lib::wikis::PrepareWikiPage",
+        "lib::wikis::WikiObjectError"
       ]
     }
   ]

@@ -20,6 +20,17 @@ impl WikiPath {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// Decode catalog bytes without silently changing their unique namespace key.
+    pub fn from_canonical(value: String) -> Result<Self, WikiNameError> {
+        if value.len() > Self::MAX_RAW_BYTES {
+            return Err(WikiNameError::RawLimit);
+        }
+        if !is_nfc(&value) {
+            return Err(WikiNameError::NonCanonical);
+        }
+        Self::try_from(value)
+    }
 }
 
 impl TryFrom<String> for WikiPath {
