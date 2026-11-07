@@ -28,6 +28,7 @@ pub struct ExploreResults {
     pub archived_filters: Vec<ExploreLink>,
     pub pagination: Pagination,
     pub query_is_empty: bool,
+    pub total: u64,
     pub labels: ExploreText,
 }
 
@@ -47,6 +48,7 @@ pub struct ExplorePage {
 #[derive(Debug, Template, WebTemplate)]
 #[template(path = "home/explore_fragment.html")]
 pub struct ExploreFragment<'a> {
+    pub query: &'a str,
     pub page: &'a Page,
     pub results: &'a ExploreResults,
 }
@@ -60,7 +62,6 @@ pub struct ExploreText {
     pub search_button: LocalizedText,
     pub archive_filter: LocalizedText,
     pub sort_by: LocalizedText,
-    pub count: LocalizedText,
     pub empty_title: LocalizedText,
     pub empty_description: LocalizedText,
     pub no_match_title: LocalizedText,
@@ -72,7 +73,7 @@ pub struct ExploreText {
 }
 
 impl ExploreText {
-    pub fn new(catalog: Catalog, total: u64, query: &str) -> Self {
+    pub fn new(catalog: Catalog) -> Self {
         Self {
             title: catalog.text(Message::ExploreTitle),
             search_placeholder: catalog.text(Message::ExploreSearchPlaceholder),
@@ -80,7 +81,6 @@ impl ExploreText {
             search_button: catalog.text(Message::SearchLabel),
             archive_filter: catalog.text(Message::ArchiveFilterLabel),
             sort_by: catalog.text(Message::SortBy),
-            count: catalog.text(Message::CountForQuery { count: total, query }),
             empty_title: catalog.text(Message::NothingHereYet),
             empty_description: catalog.text(Message::PublicRepositoriesEmpty),
             no_match_title: catalog.text(Message::NoMatchingRepositories),
@@ -94,6 +94,10 @@ impl ExploreText {
 }
 
 impl ExploreResults {
+    pub fn count<'a>(&self, query: &'a str) -> LocalizedDisplay<'a> {
+        Catalog::new(self.locale).display(Message::CountForQuery { count: self.total, query })
+    }
+
     pub fn star_label(&self, count: &i64) -> LocalizedDisplay<'static> {
         Catalog::new(self.locale).display(Message::Stars { count: *count })
     }

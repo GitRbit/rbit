@@ -64,7 +64,7 @@ pub(super) fn explore(actor: Actor, theme: Theme, locale: Locale, empty: bool) -
         next_url: Some(explore_url(UNTRUSTED, RepoSort::Name, ArchivedFilter::Only, 3)),
     };
     let page = page("/explore", actor, theme, locale);
-    let labels = ExploreText::new(catalog, 61, UNTRUSTED);
+    let labels = ExploreText::new(catalog);
     let link = |message, sort, archived| ExploreLink {
         label: catalog.text(message),
         url: explore_url(UNTRUSTED, sort, archived, 1),
@@ -101,6 +101,7 @@ pub(super) fn explore(actor: Actor, theme: Theme, locale: Locale, empty: bool) -
             archived_filters: vec![link(Message::ArchiveAll, RepoSort::Name, ArchivedFilter::Only)],
             pagination,
             query_is_empty: false,
+            total: 61,
             labels,
         },
     }

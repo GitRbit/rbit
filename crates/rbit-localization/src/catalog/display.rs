@@ -18,8 +18,8 @@ pub struct LocalizedDisplay<'a> {
     message: Message<'a>,
 }
 impl Catalog {
-    /// Defers formatting until consumed. The three English Explore dynamic labels
-    /// write straight to the destination; all other cases retain `text()` semantics.
+    /// Defers formatting until consumed. Real-catalog Explore dynamic labels
+    /// write straight to the destination; diagnostic catalogs retain `text()` semantics.
     pub const fn display(self, message: Message<'_>) -> LocalizedDisplay<'_> {
         LocalizedDisplay { catalog: self, message }
     }
@@ -31,6 +31,10 @@ impl fmt::Display for LocalizedDisplay<'_> {
                 Message::Stars { count } => return write!(output, "{count}{STARS_SUFFIX}"),
                 Message::PageOf { page, pages } => return write!(output, "{PAGE_PREFIX}{page}{PAGE_OF_SEPARATOR}{pages}"),
                 Message::ExploreSubtitle { site } => return write!(output, "{SUBTITLE_PREFIX}{site}{SUBTITLE_SUFFIX}"),
+                Message::CountForQuery { count, query } => {
+                    write!(output, "{count} {}", if count == 1 { "repository" } else { "repositories" })?;
+                    return if query.is_empty() { Ok(()) } else { write!(output, " for “{query}”") };
+                }
                 _ => {}
             }
         }
@@ -42,6 +46,10 @@ impl fmt::Display for LocalizedDisplay<'_> {
                 }
                 Message::PageOf { page, pages } => return write!(output, "{PAGE_PREFIX}{page}{PAGE_OF}{pages}"),
                 Message::ExploreSubtitle { site } => return write!(output, "{SUBTITLE_PREFIX}{site}."),
+                Message::CountForQuery { count, query } => {
+                    write!(output, "{count} {}", if count == 1 { "repositorio" } else { "repositorios" })?;
+                    return if query.is_empty() { Ok(()) } else { write!(output, " para «{query}»") };
+                }
                 _ => {}
             }
         }

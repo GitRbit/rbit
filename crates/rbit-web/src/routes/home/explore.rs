@@ -77,7 +77,7 @@ pub async fn explore(
             is_active: option == archived,
         })
         .collect();
-    let labels = ExploreText::new(catalog, found.total, &query);
+    let labels = ExploreText::new(catalog);
     let title = if query.is_empty() { labels.title.to_string() } else { format!("{query} · {}", labels.title) };
     let view = ExplorePage {
         page: page.with_locale(locale.0.locale).titled(title),
@@ -88,6 +88,7 @@ pub async fn explore(
             archived_filters,
             pagination,
             query_is_empty: query.is_empty(),
+            total: found.total,
             labels,
         },
         query,
@@ -95,7 +96,7 @@ pub async fn explore(
         archived: archived.query_value(),
     };
     let response = if shape.results_only() {
-        ExploreFragment { page: &view.page, results: &view.results }.into_response()
+        ExploreFragment { page: &view.page, query: &view.query, results: &view.results }.into_response()
     } else {
         view.into_response()
     };

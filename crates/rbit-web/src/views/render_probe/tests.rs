@@ -137,7 +137,7 @@ fn empty_results_and_direct_fragment_keep_the_same_feature_component() {
             explore_into(mode, &view, &mut output).unwrap();
             assert_eq!(output, reference);
         }
-        let fragment = ExploreFragment { page: &view.page, results: &view.results }.render().unwrap();
+        let fragment = ExploreFragment { page: &view.page, query: &view.query, results: &view.results }.render().unwrap();
         let marker = "<div id=\"explore-results\"";
         let component = fragment.split_once(marker).unwrap().1.trim();
         let full_component = reference.split_once(marker).unwrap().1.split_once("</main>").unwrap().0.trim();

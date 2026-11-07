@@ -162,3 +162,18 @@ locales delegate to the existing owned Actions catalog without changing its outp
 RunPage methods return borrowed labels only at render time; templates introduce no
 English literals or HTML-safety bypass. This removes introduced per-label owned
 formatting buffers at the source level; no allocator-count or latency claim is made.
+
+
+### Borrowed Explore count labels
+
+Explore now retains the integer total and borrows its existing query only while the
+shared results template formats the count. English and Spanish `CountForQuery`
+display writes directly to the destination, including the empty-query case; it no
+longer builds an intermediate count String containing a second copy of the query.
+The existing owned `Catalog::text` API remains the parity oracle and remains available.
+Diagnostic catalogs retain that original transformation path. Ordinary Askama text
+and attribute escaping applies to the entire borrowed display value.
+
+This is a source-level removed copy/intermediate-buffer claim, not measured latency,
+CPU, allocation-count or whole-request performance acceptance. Real Rust/HTTP parity
+and current optimized paired page measurements remain necessary.

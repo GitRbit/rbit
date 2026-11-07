@@ -15,6 +15,7 @@ struct Owned<'a> {
 fn messages(site: &str) -> Vec<Message<'_>> {
     let mut messages =
         vec![Message::ExploreSubtitle { site }, Message::SearchLabel, Message::CountForQuery { count: u64::MAX, query: site }];
+    messages.extend([0, 1, 2, 21, u64::MAX].map(|count| Message::CountForQuery { count, query: site }));
     messages.extend([i64::MIN, -1, 0, 1, 2, i64::MAX].map(|count| Message::Stars { count }));
     messages.extend([(0, 0), (1, 1), (1, 2), (u32::MAX, u32::MAX)].map(|(page, pages)| Message::PageOf { page, pages }));
     messages
@@ -48,16 +49,21 @@ impl std::fmt::Write for Fixed {
     }
 }
 #[test]
-fn english_dynamic_labels_write_into_a_caller_owned_fixed_destination() {
-    let catalog = Catalog::new(Locale::English);
-    for message in [
-        Message::ExploreSubtitle { site: "<untrusted>&雪" },
-        Message::Stars { count: i64::MAX },
-        Message::PageOf { page: u32::MAX, pages: u32::MAX },
-    ] {
-        let mut output = Fixed { bytes: [0; 256], used: 0 };
-        write!(&mut output, "{}", catalog.display(message)).unwrap();
-        assert_eq!(&output.bytes[..output.used], catalog.text(message).as_str().as_bytes());
+fn real_catalog_dynamic_labels_write_into_a_caller_owned_fixed_destination() {
+    for locale in [Locale::English, Locale::Spanish] {
+        let catalog = Catalog::new(locale);
+        for message in [
+            Message::ExploreSubtitle { site: "<untrusted>&雪" },
+            Message::CountForQuery { count: 0, query: "" },
+            Message::CountForQuery { count: 1, query: "" },
+            Message::CountForQuery { count: u64::MAX, query: "<untrusted>&雪" },
+            Message::Stars { count: i64::MAX },
+            Message::PageOf { page: u32::MAX, pages: u32::MAX },
+        ] {
+            let mut output = Fixed { bytes: [0; 256], used: 0 };
+            write!(&mut output, "{}", catalog.display(message)).unwrap();
+            assert_eq!(&output.bytes[..output.used], catalog.text(message).as_str().as_bytes());
+        }
     }
 }
 
@@ -70,7 +76,13 @@ fn lazy_messages_propagate_destination_failure() {
         }
     }
     for locale in [Locale::English, Locale::Spanish, Locale::PseudoExpanded, Locale::PseudoRtl] {
-        let message = Catalog::new(locale).display(Message::ExploreSubtitle { site: "untrusted" });
-        assert!(write!(&mut Refuse, "{message}").is_err());
+        for message in [
+            Message::ExploreSubtitle { site: "untrusted" },
+            Message::CountForQuery { count: 1, query: "" },
+            Message::CountForQuery { count: u64::MAX, query: "untrusted" },
+        ] {
+            let message = Catalog::new(locale).display(message);
+            assert!(write!(&mut Refuse, "{message}").is_err());
+        }
     }
 }
