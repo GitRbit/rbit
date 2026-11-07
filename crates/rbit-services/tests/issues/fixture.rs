@@ -26,7 +26,7 @@ impl Fixture {
         Self::configured(|_| {}, Some(schema)).await
     }
 
-    async fn configured(configure: impl FnOnce(&mut Config), schema: Option<&str>) -> Self {
+    async fn configured(configure: impl FnOnce(&mut Config), schema: Option<&'static str>) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let database = crate::fault_schema::open(&dir.path().join("rbit.db"), schema).await;
         let kv = KvStore::open(&dir.path().join("rbit.redb")).unwrap();

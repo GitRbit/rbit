@@ -3,7 +3,7 @@ use rbit_storage::Database;
 use sqlx::{Connection as _, SqliteConnection, sqlite::SqliteConnectOptions};
 use std::path::Path;
 
-pub(crate) async fn open(path: &Path, schema: Option<&str>) -> Database {
+pub(crate) async fn open(path: &Path, schema: Option<&'static str>) -> Database {
     let database = Database::open(path).await.unwrap();
     let Some(schema) = schema else {
         return database;
