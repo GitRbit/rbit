@@ -347,3 +347,42 @@ async fn deleting_a_repository_leaves_orphans_that_maintenance_removes() {
     assert!(fixture.object_path(&oid_of(b"shared")).is_file(), "still used by another repository");
     lfs.verify(&kept, &oid_of(b"shared"), 6).await.unwrap();
 }
+
+/// An upload cancelled while its body streams (the client went away mid-transfer) leaves
+/// no temporary file, no object bytes, no row and nothing locked: the same object then
+/// uploads normally.
+#[tokio::test]
+async fn a_cancelled_upload_leaves_no_partial_object_or_lock() {
+    use tokio::io::AsyncWriteExt;
+    let fixture = Fixture::new(|_| {}).await;
+    let alice = fixture.user("alice", false).await;
+    let repo = fixture.repo(&alice, "assets", Visibility::Private).await;
+    let content = b"an object whose upload is cut off".as_slice();
+    let tmp = fixture.config.storage.tmp_dir().join("lfs");
+    let (mut client, body) = tokio::io::duplex(16);
+    let (services, upload_repo) = (fixture.services.clone(), repo.clone());
+    let upload = tokio::spawn(async move { services.lfs.store(&upload_repo, &oid_of(content), content.len() as u64, body).await });
+    client.write_all(&content[..10]).await.unwrap();
+    let partial = |min: u64| std::fs::read_dir(&tmp).is_ok_and(|mut e| e.any(|e| e.unwrap().metadata().unwrap().len() >= min));
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while !partial(10) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the partial upload is on disk");
+    upload.abort();
+    assert!(upload.await.unwrap_err().is_cancelled());
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while partial(0) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the cancelled upload's temporary file is removed");
+    assert_eq!(fixture.object_files(), 0);
+    assert!(matches!(fixture.services.lfs.verify(&repo, &oid_of(content), content.len() as u64).await, Err(ServiceError::NotFound)));
+    drop(client);
+    tokio::time::timeout(Duration::from_secs(10), store(&fixture.services, &repo, content)).await.expect("nothing is locked").unwrap();
+    assert_eq!(fixture.object_files(), 1);
+}
