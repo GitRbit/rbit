@@ -14,8 +14,6 @@ issues/new.html
 issues/rows.html
 issues/show.html
 issues/sidebar.html
-protection/form.html
-protection/list.html
 pulls/commits.html
 pulls/files.html
 pulls/header.html

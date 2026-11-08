@@ -108,5 +108,6 @@ pub mod keys;
 pub mod org;
 pub mod org_teams;
 pub mod profile;
+pub mod protection;
 pub mod security;
 pub mod tokens;

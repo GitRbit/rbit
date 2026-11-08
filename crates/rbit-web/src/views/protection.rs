@@ -14,6 +14,10 @@ use rbit_core::{
     protection::{BranchPattern, BranchProtection, MAX_REQUIRED_APPROVALS, MAX_RULES, RuleSettings},
     status::MAX_REQUIRED_CONTEXTS,
 };
+use rbit_localization::{
+    Locale, Localized,
+    settings::protection::{ProtectionMessage, ProtectionText, RuleBadge},
+};
 use rbit_services::protection::ProtectionInput;
 
 use crate::views::{components::FormError, components::SettingsCard, layout::Page, repo::RepoHeader};
@@ -32,37 +36,33 @@ pub fn repo_settings_cards(header: &RepoHeader) -> Vec<SettingsCard> {
     }]
 }
 
+/// `owner/name`.
+fn full_name(header: &RepoHeader) -> String {
+    format!("{}/{}", header.owner, header.name)
+}
+
 /// `/{owner}/{repo}/settings/branches`.
 pub fn rules_url(header: &RepoHeader) -> String {
     format!("{}/branches", header.settings_url)
 }
 
 /// The summary badges of a rule, as on the list.
-pub fn badges(settings: &RuleSettings) -> Vec<String> {
-    let mut badges = Vec::new();
-    if settings.deny_force_push {
-        badges.push("No force pushes".to_owned());
-    }
-    if settings.deny_deletion {
-        badges.push("No deletion".to_owned());
-    }
-    if settings.require_pull_request {
-        badges.push(match settings.required_approvals {
-            0 => "Pull request".to_owned(),
-            1 => "1 approval".to_owned(),
-            n => format!("{n} approvals"),
-        });
-    }
-    if settings.require_status_checks {
-        badges.push("Status checks".to_owned());
-    }
-    if settings.restrict_pushers {
-        badges.push("Restricted".to_owned());
-    }
-    if settings.allow_admin_bypass {
-        badges.push("Admins bypass".to_owned());
-    }
-    badges
+pub fn badges(settings: &RuleSettings) -> Vec<RuleBadge> {
+    let approvals = match settings.required_approvals {
+        0 => RuleBadge::PullRequest,
+        n => RuleBadge::Approvals(n.into()),
+    };
+    [
+        (settings.deny_force_push, RuleBadge::NoForcePushes),
+        (settings.deny_deletion, RuleBadge::NoDeletion),
+        (settings.require_pull_request, approvals),
+        (settings.require_status_checks, RuleBadge::StatusChecks),
+        (settings.restrict_pushers, RuleBadge::Restricted),
+        (settings.allow_admin_bypass, RuleBadge::AdminsBypass),
+    ]
+    .into_iter()
+    .filter_map(|(on, badge)| on.then_some(badge))
+    .collect()
 }
 
 /// The existing branches `pattern` matches, in the given order.
@@ -70,12 +70,13 @@ pub fn matching<'a>(pattern: &BranchPattern, branches: &'a [String]) -> Vec<&'a 
     branches.iter().filter(|branch| pattern.matches(branch)).map(String::as_str).collect()
 }
 
-/// "main, release/1.0" (the first few names, then "and N more"); empty without matches.
-fn matches_text(matches: &[&str]) -> String {
+/// "Matches main, release/1.0" (the first few names, then "and N more").
+fn matches_text(matches: &[&str], locale: Locale) -> Localized {
     let shown = matches.iter().take(MATCHES_SHOWN).copied().collect::<Vec<_>>().join(", ");
     match matches.len().saturating_sub(MATCHES_SHOWN) {
-        0 => shown,
-        more => format!("{shown} and {more} more"),
+        _ if matches.is_empty() => ProtectionMessage::NoMatches.text(&locale),
+        0 => ProtectionText::Matches(&shown).text(&locale),
+        more => ProtectionText::MatchesMore(&shown, u64::try_from(more).unwrap_or(u64::MAX)).text(&locale),
     }
 }
 
@@ -84,9 +85,9 @@ fn matches_text(matches: &[&str]) -> String {
 pub struct RuleRow {
     pub pattern: String,
     pub edit_url: String,
-    pub badges: Vec<String>,
+    pub badges: Vec<RuleBadge>,
     /// "Matches main, release/1.0" or "Matches no branch yet".
-    pub matches: String,
+    pub matches: Localized,
 }
 
 /// `/{owner}/{repo}/settings/branches`.
@@ -100,14 +101,14 @@ pub struct RulesPage {
     pub new_url: String,
     pub rows: Vec<RuleRow>,
     pub can_add: bool,
-    pub max_rules: usize,
+    pub max_rules: ProtectionText<'static>,
     /// "Rule deleted." after a deletion.
     pub deleted: bool,
 }
 
 impl RulesPage {
     pub fn new(page: Page, header: RepoHeader, rules: &[BranchProtection], branches: &[String]) -> Self {
-        let list_url = rules_url(&header);
+        let (list_url, locale) = (rules_url(&header), page.locale);
         let rows = rules
             .iter()
             .map(|rule| {
@@ -116,21 +117,17 @@ impl RulesPage {
                     pattern: rule.rule.pattern.to_string(),
                     edit_url: format!("{list_url}/{}", rule.id.0),
                     badges: badges(&rule.rule.settings),
-                    matches: if matches.is_empty() {
-                        "Matches no branch yet".to_owned()
-                    } else {
-                        format!("Matches {}", matches_text(&matches))
-                    },
+                    matches: matches_text(&matches, locale),
                 }
             })
             .collect();
         Self {
-            page: page.titled(format!("Branch protection · {}/{}", header.owner, header.name)),
-            full_name: format!("{}/{}", header.owner, header.name),
+            page: page.titled(ProtectionText::ListTitle(&full_name(&header)).text(&locale).as_str()),
+            full_name: full_name(&header),
             settings_url: header.settings_url.clone(),
             new_url: format!("{list_url}/new"),
             can_add: rules.len() < MAX_RULES,
-            max_rules: MAX_RULES,
+            max_rules: ProtectionText::MaxRules(u64::try_from(MAX_RULES).unwrap_or(u64::MAX)),
             rows,
             header,
             deleted: false,
@@ -174,7 +171,7 @@ pub struct RuleForm {
     pub require_status_checks: bool,
     /// Required status check contexts, one per line.
     pub contexts: String,
-    pub max_contexts: usize,
+    pub checks_hint: ProtectionText<'static>,
     /// Allowed usernames, separated by spaces.
     pub users: String,
     pub teams: Vec<TeamChoice>,
@@ -199,7 +196,7 @@ impl RuleForm {
             allow_admin_bypass: settings.allow_admin_bypass,
             require_status_checks: settings.require_status_checks,
             contexts: input.contexts.join("\n"),
-            max_contexts: MAX_REQUIRED_CONTEXTS,
+            checks_hint: ProtectionText::ChecksHint(u64::try_from(MAX_REQUIRED_CONTEXTS).unwrap_or(u64::MAX)),
             users: input.users.join(" "),
             teams: teams.iter().map(|team| TeamChoice { name: team.name.to_string(), checked: picked(team.name.as_str()) }).collect(),
         }
@@ -236,9 +233,9 @@ pub struct RuleFormPage {
 impl RuleFormPage {
     /// The empty form for a new rule (the defaults of [`RuleSettings`]).
     pub fn new_rule(page: Page, header: RepoHeader, is_org: bool, teams: &[Team]) -> Self {
-        let list_url = rules_url(&header);
+        let (list_url, title) = (rules_url(&header), ProtectionText::NewTitle(&full_name(&header)).text(&page.locale));
         Self {
-            page: page.titled(format!("New branch protection rule · {}/{}", header.owner, header.name)),
+            page: page.titled(title.as_str()),
             settings_url: header.settings_url.clone(),
             action_url: list_url.clone(),
             list_url,
@@ -256,8 +253,9 @@ impl RuleFormPage {
     pub fn edit(page: Page, header: RepoHeader, is_org: bool, teams: &[Team], rule: &BranchProtection, branches: &[String]) -> Self {
         let list_url = rules_url(&header);
         let rule_url = format!("{list_url}/{}", rule.id.0);
+        let title = ProtectionText::EditTitle(&rule.rule.pattern.to_string(), &full_name(&header)).text(&page.locale);
         Self {
-            page: page.titled(format!("{} · Branch protection · {}/{}", rule.rule.pattern, header.owner, header.name)),
+            page: page.titled(title.as_str()),
             settings_url: header.settings_url.clone(),
             action_url: rule_url.clone(),
             list_url,
@@ -364,7 +362,8 @@ mod tests {
     fn settings_card_and_badges() {
         let cards = repo_settings_cards(&header());
         assert_eq!((cards[0].url.as_str(), cards[0].icon), ("/acme/rocket/settings/branches", "shield"));
-        assert_eq!(badges(&RuleSettings::default()), ["No force pushes", "No deletion"]);
+        let badges = |settings| badges(&settings).into_iter().map(|badge| badge.text(&Locale::English).to_string()).collect::<Vec<_>>();
+        assert_eq!(badges(RuleSettings::default()), ["No force pushes", "No deletion"]);
         let strict = RuleSettings {
             require_pull_request: true,
             required_approvals: 2,
@@ -372,10 +371,10 @@ mod tests {
             allow_admin_bypass: true,
             ..RuleSettings::default()
         };
-        assert_eq!(badges(&strict), ["No force pushes", "No deletion", "2 approvals", "Restricted", "Admins bypass"]);
-        assert_eq!(badges(&RuleSettings { require_pull_request: true, ..RuleSettings::default() })[2], "Pull request");
-        assert_eq!(badges(&RuleSettings { require_pull_request: true, required_approvals: 1, ..RuleSettings::default() })[2], "1 approval");
-        assert_eq!(badges(&RuleSettings { require_status_checks: true, ..RuleSettings::default() })[2], "Status checks");
+        assert_eq!(badges(strict), ["No force pushes", "No deletion", "2 approvals", "Restricted", "Admins bypass"]);
+        assert_eq!(badges(RuleSettings { require_pull_request: true, ..RuleSettings::default() })[2], "Pull request");
+        assert_eq!(badges(RuleSettings { require_pull_request: true, required_approvals: 1, ..RuleSettings::default() })[2], "1 approval");
+        assert_eq!(badges(RuleSettings { require_status_checks: true, ..RuleSettings::default() })[2], "Status checks");
     }
 
     #[test]
@@ -396,8 +395,9 @@ mod tests {
     fn matches_are_listed_briefly() {
         let names: Vec<String> = (0..8).map(|n| format!("b{n}")).collect();
         let all = matching(&"b*".parse().unwrap(), &names);
-        assert_eq!(matches_text(&all), "b0, b1, b2, b3, b4 and 3 more");
-        assert_eq!(matches_text(&all[..2]), "b0, b1");
+        assert_eq!(matches_text(&all, Locale::English).as_str(), "Matches b0, b1, b2, b3, b4 and 3 more");
+        assert_eq!(matches_text(&all[..2], Locale::English).as_str(), "Matches b0, b1");
+        assert!(matches_text(&[], Locale::Spanish).fallback());
     }
 
     #[test]
