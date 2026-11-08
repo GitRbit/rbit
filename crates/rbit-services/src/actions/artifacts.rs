@@ -21,7 +21,7 @@ use std::{
 
 use rbit_core::{
     Timestamp, User,
-    actions::{Artifact, ArtifactId, RunId, Task},
+    actions::{Artifact, ArtifactId, Job, RunId, Task},
 };
 use rbit_storage::sqlite::actions_artifacts::{NewArtifact, Recorded};
 use rbit_workflow::protocol::valid_artifact_name;
@@ -89,6 +89,19 @@ impl ActionsService {
         Ok(task)
     }
 
+    /// Task `id` of `runner` while it holds its job's lease: running, and the job's current
+    /// attempt (a task left behind by a rerun would otherwise file under the new one).
+    /// Uploads check it before and again after their body.
+    pub(super) async fn leased_task(&self, runner: &CachedRunner, id: rbit_core::actions::TaskId) -> Result<(Task, Job), RunnerError> {
+        let task = self.running_task(runner, id).await?;
+        let job = self.ctx().database.actions_runs().job(task.job_id).await?;
+        let job = job.ok_or_else(|| RunnerError::not_found("there is no such job"))?;
+        if job.task_id != Some(task.id) {
+            return Err(RunnerError::conflict("the job has been rerun; this task no longer belongs to it"));
+        }
+        Ok((task, job))
+    }
+
     /// Stores what `body` uploads as artifact `upload.name` of task `task`'s run.
     pub async fn upload_artifact(
         &self,
@@ -102,13 +115,8 @@ impl ActionsService {
         }
         let expected =
             digest_from_hex(upload.sha256).ok_or_else(|| RunnerError::bad_request("the content digest must be 64 hex digits"))?;
-        let task = self.running_task(runner, task).await?;
+        let (task, job) = self.leased_task(runner, task).await?;
         let database = &self.ctx().database;
-        let job = database.actions_runs().job(task.job_id).await?.ok_or_else(|| RunnerError::not_found("there is no such job"))?;
-        // A task left behind by a rerun would otherwise file its artifact under the new attempt.
-        if job.task_id != Some(task.id) {
-            return Err(RunnerError::conflict("the job has been rerun; this task no longer belongs to it"));
-        }
         let run = database.actions_runs().run(job.run_id).await?.ok_or_else(|| RunnerError::not_found("there is no such run"))?;
         let config = self.config();
         let stored = database.actions_artifacts().stored_bytes(run.repo_id).await?;
@@ -140,6 +148,11 @@ impl ActionsService {
         if digest != expected {
             let _ = tokio::fs::remove_file(&temporary).await;
             return Err(RunnerError::bad_request("the artifact does not match its content digest"));
+        }
+        // The body may have taken an hour: the lease may have ended meanwhile.
+        if let Err(error) = self.leased_task(runner, task.id).await {
+            let _ = tokio::fs::remove_file(&temporary).await;
+            return Err(error);
         }
 
         let now = Timestamp::now();

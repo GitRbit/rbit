@@ -107,12 +107,8 @@ impl ActionsService {
 
     /// Task `id` of `runner`, running, its run and the cache scopes the run may use.
     async fn cache_task(&self, runner: &CachedRunner, id: TaskId) -> Result<(Task, Run, CacheScopes), RunnerError> {
-        let task = self.running_task(runner, id).await?;
+        let (task, job) = self.leased_task(runner, id).await?;
         let database = &self.ctx().database;
-        let job = database.actions_runs().job(task.job_id).await?.ok_or_else(|| RunnerError::not_found("there is no such job"))?;
-        if job.task_id != Some(task.id) {
-            return Err(RunnerError::conflict("the job has been rerun; this task no longer belongs to it"));
-        }
         let run = database.actions_runs().run(job.run_id).await?.ok_or_else(|| RunnerError::not_found("there is no such run"))?;
         let repo =
             database.admin().find_repository(run.repo_id).await?.ok_or_else(|| RunnerError::not_found("there is no such repository"))?;
@@ -214,6 +210,11 @@ impl ActionsService {
         if digest != expected {
             let _ = tokio::fs::remove_file(&temporary).await;
             return Err(RunnerError::bad_request("the cache entry does not match its content digest"));
+        }
+        // The lease may have ended while the body arrived.
+        if let Err(error) = self.leased_task(runner, task.id).await {
+            let _ = tokio::fs::remove_file(&temporary).await;
+            return Err(error);
         }
 
         let new = NewCacheEntry {
