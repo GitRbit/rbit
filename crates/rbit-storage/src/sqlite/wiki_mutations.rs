@@ -3,6 +3,7 @@ mod authorization;
 pub mod full;
 pub mod ownership;
 pub(crate) mod protocol;
+pub mod publish;
 mod rows;
 
 use std::num::NonZeroU32;

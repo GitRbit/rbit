@@ -1,5 +1,6 @@
 //! Finalized wiki catalog reads. There is deliberately no arbitrary-OID publisher.
 mod history;
+pub mod listing;
 mod rows;
 
 use super::{
@@ -37,6 +38,7 @@ pub struct WikiCatalogStore {
 
 enum Selection<'a> {
     Path(&'a WikiPath),
+    Id(WikiPageId),
     Revision(WikiPageId, WikiGeneration),
 }
 
@@ -69,7 +71,7 @@ impl WikiCatalogStore {
         let (store, wiki, head) = meta.decode()?;
         let Some(head) = head else {
             return match selection {
-                Selection::Path(_) => Ok(Some(WikiCatalogPage { wiki, repository, store, head: None, page: None })),
+                Selection::Path(_) | Selection::Id(_) => Ok(Some(WikiCatalogPage { wiki, repository, store, head: None, page: None })),
                 Selection::Revision(_, _) => Ok(None),
             };
         };
@@ -82,6 +84,15 @@ impl WikiCatalogStore {
                 .bind(path.as_str())
                 .fetch_optional(&mut *tx)
                 .await?;
+                (head, page.map(|page| page.decode(repository, wiki, head)).transpose()?)
+            }
+            Selection::Id(id) => {
+                let page: Option<PageRow> =
+                    sqlx::query_as("SELECT id,path,title,created_at,updated_at FROM wiki_pages WHERE repo_id=?1 AND id=?2")
+                        .bind(repository.0)
+                        .bind(id.get())
+                        .fetch_optional(&mut *tx)
+                        .await?;
                 (head, page.map(|page| page.decode(repository, wiki, head)).transpose()?)
             }
             Selection::Revision(page, generation) => {
@@ -105,6 +116,20 @@ impl WikiCatalogStore {
             }
         };
         Ok(Some(WikiCatalogPage { wiki, repository, store, head: Some(head), page }))
+    }
+}
+
+impl WikiCatalogStore {
+    /// The current page with a stable ID at the authorized visible head. `None` means
+    /// the repository, wiki or viewer access is missing; a missing page leaves `page`
+    /// empty, exactly like a path selection.
+    pub async fn page_by_id(
+        &self,
+        repository: RepoId,
+        viewer: Option<AccountId>,
+        page: WikiPageId,
+    ) -> Result<Option<WikiCatalogPage>, StorageError> {
+        self.select(repository, viewer, Selection::Id(page)).await
     }
 }
 

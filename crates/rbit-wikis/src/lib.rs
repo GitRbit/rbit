@@ -9,6 +9,7 @@ pub mod change;
 pub mod commands;
 mod content;
 mod identity;
+pub mod listing;
 mod names;
 pub mod ownership;
 mod page;
