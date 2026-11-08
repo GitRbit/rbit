@@ -15,7 +15,10 @@ use crate::{
     AppState,
     error::WebResult,
     extract::SiteAdmin,
-    views::{admin::AdminSection, layout::Page, security::AuditPage},
+    views::{
+        admin::{AdminSection, audit::AuditPage},
+        layout::Page,
+    },
 };
 
 pub fn routes() -> Router<AppState> {

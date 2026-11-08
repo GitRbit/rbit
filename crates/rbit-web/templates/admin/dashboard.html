@@ -2,30 +2,30 @@
 {% import "macros.html" as ui %}
 {% block admin_content %}
 <div class="mb-5 flex items-start justify-between gap-3">
-  <div><h2 class="text-xl font-semibold tracking-tight">Dashboard</h2><p class="mt-1 text-[13px] text-ink-muted">An overview of this instance.</p></div>
+  <div><h2 class="text-xl font-semibold tracking-tight">{% call ui::localized(AdminMessage::Dashboard.text(page.locale)) %}{% endcall %}</h2><p class="mt-1 text-[13px] text-ink-muted">{% call ui::localized(DashboardMessage::Intro.text(page.locale)) %}{% endcall %}</p></div>
   {% if restart_available %}
-  <a href="/admin/restart" class="btn shrink-0" hx-boost="false">{% call ui::icon("refresh", "size-3.5") %}{% endcall %}Restart server</a>
+  <a href="/admin/restart" class="btn shrink-0" hx-boost="false">{% call ui::icon("refresh", "size-3.5") %}{% endcall %}{% call ui::localized(DashboardMessage::RestartServer.text(page.locale)) %}{% endcall %}</a>
   {% else %}
-  <button type="button" class="btn shrink-0" disabled title="Restart is unavailable in this server host">{% call ui::icon("refresh", "size-3.5") %}{% endcall %}Restart server</button>
+  <button type="button" class="btn shrink-0" disabled title="{{ DashboardMessage::RestartUnavailableHint.text(page.locale) }}">{% call ui::icon("refresh", "size-3.5") %}{% endcall %}{% call ui::localized(DashboardMessage::RestartServer.text(page.locale)) %}{% endcall %}</button>
   {% endif %}
 </div>
 
 <section class="box mb-6 p-4" aria-labelledby="software-updates-title">
-  <h3 id="software-updates-title" class="text-[13px] font-medium">Software updates</h3>
+  <h3 id="software-updates-title" class="text-[13px] font-medium">{% call ui::localized(DashboardMessage::SoftwareUpdates.text(page.locale)) %}{% endcall %}</h3>
   <p class="mt-1 text-xs text-ink-muted">{{ page.updates.label() }}</p>
   {% if let Some(release) = page.updates.release %}
-  <a href="{{ release.url }}" class="link mt-2 inline-block text-[13px]" hx-boost="false" rel="noreferrer">View rbit {{ release.version }} release notes</a>
+  <a href="{{ release.url }}" class="link mt-2 inline-block text-[13px]" hx-boost="false" rel="noreferrer">{% call ui::localized(AdminText::ReleaseNotes(release.version).text(page.locale)) %}{% endcall %}</a>
   {% endif %}
-  <a href="/admin/configuration" class="link mt-2 block text-xs">Configure update checks and version privacy</a>
+  <a href="/admin/configuration" class="link mt-2 block text-xs">{% call ui::localized(DashboardMessage::ConfigureUpdates.text(page.locale)) %}{% endcall %}</a>
 </section>
 
 <ul class="grid grid-cols-2 gap-3 lg:grid-cols-4">
   {% for tile in tiles %}
   <li>
     <a href="{{ tile.url }}" class="box block h-full px-4 py-3 hover:border-line-strong">
-      <p class="text-xs text-ink-muted">{{ tile.label }}</p>
+      <p class="text-xs text-ink-muted">{% call ui::localized(tile.label.text(page.locale)) %}{% endcall %}</p>
       <p class="mt-1 text-2xl font-semibold tabular-nums tracking-tight">{{ tile.value }}</p>
-      <p class="mt-1 truncate text-xs text-ink-faint">{{ tile.detail }}</p>
+      <p class="mt-1 truncate text-xs text-ink-faint">{% call ui::localized(tile.detail) %}{% endcall %}</p>
     </a>
   </li>
   {% endfor %}
@@ -33,14 +33,14 @@
 
 <section class="box mt-6" data-admin-monitoring aria-labelledby="monitoring-title">
   <div class="monitor-header">
-    <div><h3 id="monitoring-title">Live monitoring</h3><p>Traffic, response times and Git activity over the last five minutes.</p></div>
+    <div><h3 id="monitoring-title">{% call ui::localized(DashboardMessage::LiveMonitoring.text(page.locale)) %}{% endcall %}</h3><p>{% call ui::localized(DashboardMessage::MonitoringIntro.text(page.locale)) %}{% endcall %}</p></div>
     <div class="monitor-controls">
-      <span class="monitor-status" data-monitoring-status role="status">Snapshot</span>
-      <button type="button" class="btn btn-sm" data-monitoring-toggle aria-pressed="false" disabled>Pause</button>
+      <span class="monitor-status" data-monitoring-status role="status">{% call ui::localized(DashboardMessage::Snapshot.text(page.locale)) %}{% endcall %}</span>
+      <button type="button" class="btn btn-sm" data-monitoring-toggle aria-pressed="false" disabled>{% call ui::localized(DashboardMessage::Pause.text(page.locale)) %}{% endcall %}</button>
     </div>
   </div>
   <div data-monitoring-content>{{ monitoring|safe }}</div>
-  <noscript><p class="monitor-footnote">Live updates require JavaScript. Reload this page for a fresh snapshot.</p></noscript>
+  <noscript><p class="monitor-footnote">{% call ui::localized(DashboardMessage::NeedsJavaScript.text(page.locale)) %}{% endcall %}</p></noscript>
 </section>
 <script src="{{ page.asset("admin-monitoring.js") }}" type="module"></script>
 
@@ -48,12 +48,12 @@
   <section class="box min-w-0" aria-labelledby="system-title">
     <div class="box-header">
       {% call ui::icon("server", "size-4 shrink-0 text-ink-muted") %}{% endcall %}
-      <h3 id="system-title" class="text-[13px] font-medium">System</h3>
+      <h3 id="system-title" class="text-[13px] font-medium">{% call ui::localized(DashboardMessage::System.text(page.locale)) %}{% endcall %}</h3>
     </div>
     <dl>
       {% for row in system %}
       <div class="row justify-between text-[13px]">
-        <dt class="shrink-0 text-ink-muted">{{ row.label }}</dt>
+        <dt class="shrink-0 text-ink-muted">{% call ui::localized(row.label) %}{% endcall %}</dt>
         <dd class="min-w-0 truncate text-end {% if row.mono %}font-mono text-xs{% endif %}" title="{{ row.value }}">{% if row.mono %}<bdi dir="ltr">{{ row.value }}</bdi>{% else %}{{ row.value }}{% endif %}</dd>
       </div>
       {% endfor %}
@@ -63,13 +63,13 @@
   <section class="box min-w-0" aria-labelledby="settings-title">
     <div class="box-header">
       {% call ui::icon("globe", "size-4 shrink-0 text-ink-muted") %}{% endcall %}
-      <h3 id="settings-title" class="text-[13px] font-medium">Instance settings</h3>
-      <a href="/admin/settings" class="link ms-auto text-xs">Edit</a>
+      <h3 id="settings-title" class="text-[13px] font-medium">{% call ui::localized(DashboardMessage::InstanceSettings.text(page.locale)) %}{% endcall %}</h3>
+      <a href="/admin/settings" class="link ms-auto text-xs">{% call ui::localized(DashboardMessage::Edit.text(page.locale)) %}{% endcall %}</a>
     </div>
     <dl>
       {% for row in settings %}
       <div class="row justify-between text-[13px]">
-        <dt class="shrink-0 text-ink-muted">{{ row.label }}</dt>
+        <dt class="shrink-0 text-ink-muted">{% call ui::localized(row.label) %}{% endcall %}</dt>
         <dd class="min-w-0 truncate text-end" title="{{ row.value }}">{{ row.value }}</dd>
       </div>
       {% endfor %}

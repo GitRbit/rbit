@@ -3,25 +3,25 @@
 {% import "macros.html" as ui %}
 {% block admin_content %}
 <div class="max-w-xl">
-<p class="mb-3 text-[13px]"><a href="/admin/repositories" class="inline-flex items-center gap-1 text-ink-muted hover:text-ink">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}Repositories</a></p>
-{% call admin::heading("Delete repository", "") %}{% endcall %}
+<p class="mb-3 text-[13px]"><a href="/admin/repositories" class="inline-flex items-center gap-1 text-ink-muted hover:text-ink">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}{% call ui::localized(AdminMessage::Repositories.text(page.locale)) %}{% endcall %}</a></p>
+{% call admin::heading(AdminPageMessage::DeleteRepository.text(page.locale), "") %}{% endcall %}
 
 <form method="post" action="{{ repo.delete_url }}" class="box border-danger/40" novalidate>
   <div class="flex min-w-0 items-center gap-2 border-b border-line px-4 py-3">
     {% call ui::icon("repo", "size-4 shrink-0 text-ink-faint") %}{% endcall %}
     <a href="{{ repo.url }}" class="min-w-0 truncate font-medium hover:underline"><span class="text-ink-muted">{{ repo.owner }}/</span>{{ repo.name }}</a>
-    {% if repo.is_private %}<span class="badge">Private</span>{% endif %}
+    {% if repo.is_private %}<span class="badge">{% call ui::localized(AdminMessage::Private.text(page.locale)) %}{% endcall %}</span>{% endif %}
   </div>
   <div class="p-4">
     {% call ui::form_error(error) %}{% endcall %}
-    <p class="text-[13px] text-ink-muted">This permanently deletes the repository, including all of its Git data. It cannot be undone.</p>
+    <p class="text-[13px] text-ink-muted">{% call ui::localized(AdminPageMessage::DeleteRepositoryText.text(page.locale)) %}{% endcall %}</p>
 
-    <label class="label mt-5" for="confirm">Type <span class="font-mono" dir="ltr">{{ repo.full_name }}</span> to confirm</label>
+    <label class="label mt-5" for="confirm">{% call ui::localized(AdminMessage::TypeToConfirmLead.text(page.locale)) %}{% endcall %} <span class="font-mono" dir="ltr">{{ repo.full_name }}</span> {% call ui::localized(AdminMessage::TypeToConfirmTail.text(page.locale)) %}{% endcall %}</label>
     <input class="input font-mono" dir="ltr" id="confirm" name="confirm" autocomplete="off" autocapitalize="none" spellcheck="false" required autofocus>
   </div>
   <div class="flex justify-end gap-2 border-t border-line px-4 py-3">
-    <a href="/admin/repositories" class="btn">Cancel</a>
-    <button class="btn btn-danger" type="submit">Delete repository</button>
+    <a href="/admin/repositories" class="btn">{% call ui::localized(AdminMessage::Cancel.text(page.locale)) %}{% endcall %}</a>
+    <button class="btn btn-danger" type="submit">{% call ui::localized(AdminPageMessage::DeleteRepository.text(page.locale)) %}{% endcall %}</button>
   </div>
 </form>
 </div>

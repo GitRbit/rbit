@@ -3,37 +3,37 @@
 {% import "macros.html" as ui %}
 {% block admin_content %}
 <div class="max-w-xl">
-<p class="mb-3 text-[13px]"><a href="/admin/users" class="inline-flex items-center gap-1 text-ink-muted hover:text-ink">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}Users</a></p>
-{% call admin::heading("New user", "Administrators can create accounts even while registration is closed.") %}{% endcall %}
+<p class="mb-3 text-[13px]"><a href="/admin/users" class="inline-flex items-center gap-1 text-ink-muted hover:text-ink">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}{% call ui::localized(AdminMessage::Users.text(page.locale)) %}{% endcall %}</a></p>
+{% call admin::heading(AdminPageMessage::NewUser.text(page.locale), AdminPageMessage::NewUserIntro.text(page.locale)) %}{% endcall %}
 
 <form method="post" action="/admin/users/new" class="box" novalidate>
   <div class="p-4">
     {% call ui::form_error(error) %}{% endcall %}
 
-    <label class="label" for="username">Username</label>
+    <label class="label" for="username">{% call ui::localized(AdminPageMessage::Username.text(page.locale)) %}{% endcall %}</label>
     <input class="input" id="username" name="username" value="{{ username }}" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="39" pattern="[A-Za-z0-9._\-]+" required autofocus>
-    <p class="hint">Letters, digits, '-', '_' and '.'</p>
+    <p class="hint">{% call ui::localized(AdminPageMessage::UsernameHint.text(page.locale)) %}{% endcall %}</p>
 
-    <label class="label mt-4" for="email">Email</label>
+    <label class="label mt-4" for="email">{% call ui::localized(AdminPageMessage::Email.text(page.locale)) %}{% endcall %}</label>
     <input class="input" id="email" name="email" type="email" value="{{ email }}" autocomplete="off" required>
 
-    <label class="label mt-4" for="password">Initial password</label>
+    <label class="label mt-4" for="password">{% call ui::localized(AdminPageMessage::InitialPassword.text(page.locale)) %}{% endcall %}</label>
     <input class="input" id="password" name="password" type="password" autocomplete="new-password" minlength="{{ min_password_length }}" required>
-    <p class="hint">At least {{ min_password_length }} characters. Share it with the user securely. They must replace it when they first sign in.</p>
+    <p class="hint">{% call ui::localized(self.password_hint()) %}{% endcall %}</p>
 
     <label class="mt-5 flex cursor-pointer items-start gap-3">
       <input type="checkbox" name="is_admin" value="1" class="mt-1 accent-(--ink)" {% if is_admin %}checked{% endif %}>
       <span>
-        <span class="block font-medium">Site administrator</span>
-        <span class="block text-[13px] text-ink-muted">Full access to every repository and to this panel.</span>
+        <span class="block font-medium">{% call ui::localized(AdminPageMessage::SiteAdministrator.text(page.locale)) %}{% endcall %}</span>
+        <span class="block text-[13px] text-ink-muted">{% call ui::localized(AdminPageMessage::SiteAdministratorText.text(page.locale)) %}{% endcall %}</span>
       </span>
     </label>
   </div>
   <div class="flex justify-end gap-2 border-t border-line px-4 py-3">
-    <a href="/admin/users" class="btn">Cancel</a>
-    <button class="btn btn-primary" type="submit">Create user</button>
+    <a href="/admin/users" class="btn">{% call ui::localized(AdminMessage::Cancel.text(page.locale)) %}{% endcall %}</a>
+    <button class="btn btn-primary" type="submit">{% call ui::localized(AdminPageMessage::CreateUser.text(page.locale)) %}{% endcall %}</button>
   </div>
 </form>
-{% if !registration_open %}<p class="hint">Public sign-up is currently closed; this is the only way to add users.</p>{% endif %}
+{% if !registration_open %}<p class="hint">{% call ui::localized(AdminPageMessage::RegistrationClosed.text(page.locale)) %}{% endcall %}</p>{% endif %}
 </div>
 {% endblock %}

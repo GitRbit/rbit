@@ -2,23 +2,23 @@
 {% import "admin/components.html" as admin %}
 {% import "macros.html" as ui %}
 {% block admin_content %}
-{% call admin::heading("Organizations", "Shared namespaces and their members.") %}{% endcall %}
+{% call admin::heading(AdminMessage::Organizations.text(page.locale), AdminPageMessage::OrganizationsIntro.text(page.locale)) %}{% endcall %}
 
 <div class="mb-3 flex flex-wrap items-center gap-2">
-  {% call admin::search(listing, "Search by name") %}{% endcall %}
+  {% call admin::search(listing, AdminPageMessage::SearchByName.text(page.locale), page.locale) %}{% endcall %}
 </div>
 
 <div class="box">
   {% if orgs.is_empty() %}
-  {% call ui::empty_state("globe", "No organizations found", "Organizations will be listed here once they exist.") %}{% endcall %}
+  {% call ui::empty_state("globe", AdminPageMessage::NoOrganizations.text(page.locale), AdminPageMessage::NoOrganizationsText.text(page.locale)) %}{% endcall %}
   {% else %}
   <table class="w-full text-start text-[13px]">
     <thead class="border-b border-line bg-subtle text-xs text-ink-muted">
       <tr>
-        <th scope="col" class="h-9 px-4 font-medium">Organization</th>
-        <th scope="col" class="px-4 text-end font-medium sm:text-start">Members</th>
-        <th scope="col" class="hidden px-4 font-medium sm:table-cell">Repositories</th>
-        <th scope="col" class="hidden px-4 font-medium lg:table-cell">Created</th>
+        <th scope="col" class="h-9 px-4 font-medium">{% call ui::localized(AdminPageMessage::Organization.text(page.locale)) %}{% endcall %}</th>
+        <th scope="col" class="px-4 text-end font-medium sm:text-start">{% call ui::localized(AdminPageMessage::Members.text(page.locale)) %}{% endcall %}</th>
+        <th scope="col" class="hidden px-4 font-medium sm:table-cell">{% call ui::localized(AdminMessage::Repositories.text(page.locale)) %}{% endcall %}</th>
+        <th scope="col" class="hidden px-4 font-medium lg:table-cell">{% call ui::localized(AdminPageMessage::Created.text(page.locale)) %}{% endcall %}</th>
       </tr>
     </thead>
     <tbody>
@@ -42,5 +42,5 @@
   </table>
   {% endif %}
 </div>
-{% call admin::pager(listing) %}{% endcall %}
+{% call admin::pager(listing, page.locale) %}{% endcall %}
 {% endblock %}

@@ -101,6 +101,8 @@ macro_rules! messages {
 }
 
 pub mod account;
+pub mod admin;
+pub mod admin_pages;
 pub mod keys;
 pub mod profile;
 pub mod security;

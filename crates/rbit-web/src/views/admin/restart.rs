@@ -1,6 +1,7 @@
 //! Confirmation and reconnect pages for an administrator-requested server restart.
 use askama::Template;
 use askama_web::WebTemplate;
+use rbit_localization::settings::admin::{AdminMessage, AdminText, DashboardMessage};
 
 use super::{AdminLink, AdminSection};
 use crate::views::layout::Page;
@@ -16,6 +17,8 @@ pub struct RestartPage {
 
 impl RestartPage {
     pub fn new(page: Page, restarting: bool, available: bool) -> Self {
-        Self { page: page.titled("Restart server · Administration"), admin_nav: AdminSection::Dashboard.nav(), restarting, available }
+        let section = DashboardMessage::RestartServer.text(&page.locale);
+        let title = AdminText::InAdministration(section.as_str()).text(&page.locale);
+        Self { page: page.titled(title.as_str()), admin_nav: AdminSection::Dashboard.nav(), restarting, available }
     }
 }

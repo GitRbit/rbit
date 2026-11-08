@@ -1,6 +1,8 @@
 //! Administration panel pages (`/admin/…`) and their view models.
 
+pub mod audit;
 pub mod configuration;
+pub mod dashboard;
 pub mod monitoring;
 pub mod restart;
 
@@ -11,7 +13,14 @@ use askama::Template;
 use askama_web::WebTemplate;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use rbit_core::{AccountId, InstanceSettings, OrgCreationPolicy, OwnedRepository, RegistrationMode, User, Visibility};
-use rbit_services::admin::{Dashboard, OrgRecord, Paged, UserRecord};
+use rbit_localization::{
+    Catalog, Locale, Localized, MessageFamily,
+    settings::{
+        admin::{AdminMessage, AdminText},
+        admin_pages::{AdminPageMessage, AdminPageText, InstanceSettingsMessage},
+    },
+};
+use rbit_services::admin::{OrgRecord, Paged, UserRecord};
 
 use crate::views::{
     components::{Avatar, FormError},
@@ -47,16 +56,16 @@ impl AdminSection {
         Self::Runners,
     ];
 
-    pub const fn label(self) -> &'static str {
+    pub const fn label(self) -> AdminMessage {
         match self {
-            Self::Dashboard => "Dashboard",
-            Self::Users => "Users",
-            Self::Organizations => "Organizations",
-            Self::Repositories => "Repositories",
-            Self::Settings => "Settings",
-            Self::AuditLog => "Audit log",
-            Self::Configuration => "Configuration",
-            Self::Runners => "Runners",
+            Self::Dashboard => AdminMessage::Dashboard,
+            Self::Users => AdminMessage::Users,
+            Self::Organizations => AdminMessage::Organizations,
+            Self::Repositories => AdminMessage::Repositories,
+            Self::Settings => AdminMessage::Settings,
+            Self::AuditLog => AdminMessage::AuditLog,
+            Self::Configuration => AdminMessage::Configuration,
+            Self::Runners => AdminMessage::Runners,
         }
     }
 
@@ -89,7 +98,7 @@ impl AdminSection {
 
 #[derive(Debug, Clone)]
 pub struct AdminLink {
-    pub label: &'static str,
+    pub label: AdminMessage,
     pub url: &'static str,
     pub is_active: bool,
     // Actions: interface and secrets (U).
@@ -117,8 +126,8 @@ pub struct Listing {
     pub action: &'static str,
     pub search: String,
     pub page: u32,
-    /// e.g. `1–30 of 112`, or `No results`.
-    pub summary: String,
+    /// e.g. `1–30 of 112`; empty when there are no results.
+    summary: [String; 3],
     pub previous_url: Option<String>,
     pub next_url: Option<String>,
 }
@@ -127,9 +136,9 @@ impl Listing {
     pub fn new<T>(section: AdminSection, search: &str, paged: &Paged<T>) -> Self {
         let base = section.url();
         let summary = if paged.total == 0 {
-            "No results".to_owned()
+            [String::new(), String::new(), String::new()]
         } else {
-            format!("{}–{} of {}", paged.first_index(), paged.last_index(), paged.total)
+            [paged.first_index().to_string(), paged.last_index().to_string(), paged.total.to_string()]
         };
         Self {
             action: base,
@@ -146,129 +155,16 @@ impl Listing {
         listing_url(self.action, &self.search, self.page)
     }
 
+    /// `1–30 of 112`, or `No results`.
+    #[allow(clippy::trivially_copy_pass_by_ref, reason = "Askama passes the page locale by reference")]
+    pub fn summary(&self, locale: &Locale) -> Localized {
+        let [first, last, total] = &self.summary;
+        if total.is_empty() { AdminMessage::NoResults.text(locale) } else { AdminText::Summary(first, last, total).text(locale) }
+    }
+
     pub fn has_pages(&self) -> bool {
         self.previous_url.is_some() || self.next_url.is_some()
     }
-}
-
-// ------------------------------------------------------------------ dashboard
-
-/// A number on the dashboard.
-#[derive(Debug, Clone)]
-pub struct StatTile {
-    pub label: &'static str,
-    pub value: String,
-    pub detail: String,
-    pub url: &'static str,
-}
-
-/// A label/value line in a definition list.
-#[derive(Debug, Clone)]
-pub struct InfoRow {
-    pub label: &'static str,
-    pub value: String,
-    /// Render the value in the monospace face (versions, paths).
-    pub mono: bool,
-}
-
-impl InfoRow {
-    fn text(label: &'static str, value: impl Into<String>) -> Self {
-        Self { label, value: value.into(), mono: false }
-    }
-
-    fn mono(label: &'static str, value: impl Into<String>) -> Self {
-        Self { label, value: value.into(), mono: true }
-    }
-}
-
-#[derive(Debug, Template, WebTemplate)]
-#[template(path = "admin/dashboard.html")]
-pub struct DashboardPage {
-    pub monitoring: monitoring::MonitoringPanel,
-    pub restart_available: bool,
-    pub page: Page,
-    pub admin_nav: Vec<AdminLink>,
-    pub tiles: Vec<StatTile>,
-    pub system: Vec<InfoRow>,
-    pub settings: Vec<InfoRow>,
-}
-
-impl DashboardPage {
-    pub fn new(page: Page, dashboard: &Dashboard, snapshot: &crate::monitoring::Snapshot, restart_available: bool) -> Self {
-        let counts = &dashboard.counts;
-        let system = &dashboard.system;
-        let tiles = vec![
-            StatTile {
-                label: "Users",
-                value: count(counts.users),
-                detail: format!("{} admin{} · {} suspended", count(counts.admins), plural(counts.admins), count(counts.suspended)),
-                url: AdminSection::Users.url(),
-            },
-            StatTile {
-                label: "Organizations",
-                value: count(counts.organizations),
-                detail: "Shared namespaces".to_owned(),
-                url: AdminSection::Organizations.url(),
-            },
-            StatTile {
-                label: "Repositories",
-                value: count(counts.public_repositories + counts.private_repositories),
-                detail: format!("{} public · {} private", count(counts.public_repositories), count(counts.private_repositories)),
-                url: AdminSection::Repositories.url(),
-            },
-            StatTile {
-                label: "Access tokens",
-                value: count(counts.access_tokens),
-                detail: "Across all users".to_owned(),
-                url: AdminSection::Users.url(),
-            },
-        ];
-        let system_rows = vec![
-            InfoRow::mono("rbit", system.rbit_version),
-            InfoRow::mono("SQLite", system.sqlite_version.clone()),
-            InfoRow::mono("Git", system.git_version.clone().unwrap_or_else(|| "unavailable".to_owned())),
-            InfoRow::text("Uptime", uptime(system.uptime)),
-            InfoRow::mono("Data directory", system.data_dir.display().to_string()),
-            InfoRow::text("Disk usage", system.data_dir_bytes.map_or_else(|| "unavailable".to_owned(), bytes)),
-        ];
-        Self {
-            page: page.titled("Site administration"),
-            admin_nav: AdminSection::Dashboard.nav(),
-            monitoring: monitoring::MonitoringPanel::new(snapshot),
-            restart_available,
-            tiles,
-            system: system_rows,
-            settings: settings_summary(&dashboard.settings),
-        }
-    }
-}
-
-fn settings_summary(settings: &InstanceSettings) -> Vec<InfoRow> {
-    vec![
-        InfoRow::text("Site name", settings.site_name.clone()),
-        InfoRow::text(
-            "Registration",
-            match settings.registration {
-                RegistrationMode::Open => "Open to everyone",
-                RegistrationMode::Closed => "Closed (administrators create accounts)",
-            },
-        ),
-        InfoRow::text(
-            "Organizations",
-            match settings.org_creation {
-                OrgCreationPolicy::AnyUser => "Any user can create",
-                OrgCreationPolicy::AdminsOnly => "Only administrators can create",
-            },
-        ),
-        InfoRow::text(
-            "New repositories",
-            match settings.default_visibility {
-                Visibility::Public => "Public by default",
-                Visibility::Private => "Private by default",
-            },
-        ),
-        InfoRow::text("Email digests", format!("Sent at {} unless users choose", hour_label(settings.digest_hour))),
-    ]
 }
 
 // ------------------------------------------------------------------ users
@@ -353,10 +249,10 @@ impl UsersNotice {
         [Self::ResetSent, Self::PasswordSet].into_iter().find(|notice| notice.key() == value)
     }
 
-    pub const fn message(self) -> &'static str {
+    pub const fn message(self) -> AdminPageMessage {
         match self {
-            Self::ResetSent => "Password reset email sent.",
-            Self::PasswordSet => "Password updated.",
+            Self::ResetSent => AdminPageMessage::ResetSent,
+            Self::PasswordSet => AdminPageMessage::PasswordSet,
         }
     }
 
@@ -383,7 +279,7 @@ pub struct UsersPage {
 impl UsersPage {
     pub fn new(page: Page, viewer: &User, search: &str, paged: &Paged<UserRecord>) -> Self {
         Self {
-            page: page.titled("Users · Administration"),
+            page: titled(page, AdminMessage::Users),
             admin_nav: AdminSection::Users.nav(),
             error: FormError::default(),
             notice: None,
@@ -432,7 +328,10 @@ impl SetPasswordPage {
     pub fn new(page: Page, viewer: &User, record: &UserRecord, min_password_length: usize, email_available: bool) -> Self {
         let user = UserRow::new(record, viewer.id());
         Self {
-            page: page.titled(format!("Set password for {} · Administration", user.name)),
+            page: {
+                let title = AdminText::SetPasswordFor(&user.name).text(&page.locale);
+                page.titled(title.as_str())
+            },
             admin_nav: AdminSection::Users.nav(),
             error: FormError::default(),
             user,
@@ -445,6 +344,11 @@ impl SetPasswordPage {
     pub fn with_error(mut self, error: FormError) -> Self {
         self.error = error;
         self
+    }
+
+    /// The new password's length hint.
+    pub fn password_length(&self) -> Localized {
+        AdminText::PasswordLength(u64::try_from(self.min_password_length).unwrap_or(u64::MAX)).text(&self.page.locale)
     }
 }
 
@@ -461,6 +365,13 @@ pub struct NewUserPage {
     pub registration_open: bool,
 }
 
+impl NewUserPage {
+    /// The initial password's length hint.
+    pub fn password_hint(&self) -> Localized {
+        AdminPageText::ShareSecurely(u64::try_from(self.min_password_length).unwrap_or(u64::MAX)).text(&self.page.locale)
+    }
+}
+
 #[derive(Debug, Template, WebTemplate)]
 #[template(path = "admin/delete_user.html")]
 pub struct DeleteUserPage {
@@ -473,7 +384,8 @@ pub struct DeleteUserPage {
 impl DeleteUserPage {
     pub fn new(page: Page, viewer: &User, record: &UserRecord, error: FormError) -> Self {
         let user = UserRow::new(record, viewer.id());
-        Self { page: page.titled(format!("Delete {} · Administration", user.name)), admin_nav: AdminSection::Users.nav(), error, user }
+        let title = AdminText::DeletePageTitle(&user.name).text(&page.locale);
+        Self { page: page.titled(title.as_str()), admin_nav: AdminSection::Users.nav(), error, user }
     }
 }
 
@@ -521,7 +433,7 @@ pub struct OrganizationsPage {
 impl OrganizationsPage {
     pub fn new(page: Page, search: &str, paged: &Paged<OrgRecord>) -> Self {
         Self {
-            page: page.titled("Organizations · Administration"),
+            page: titled(page, AdminMessage::Organizations),
             admin_nav: AdminSection::Organizations.nav(),
             listing: Listing::new(AdminSection::Organizations, search, paged),
             orgs: paged.items.iter().map(OrgRow::from).collect(),
@@ -576,7 +488,7 @@ pub struct RepositoriesPage {
 impl RepositoriesPage {
     pub fn new(page: Page, search: &str, paged: &Paged<OwnedRepository>) -> Self {
         Self {
-            page: page.titled("Repositories · Administration"),
+            page: titled(page, AdminMessage::Repositories),
             admin_nav: AdminSection::Repositories.nav(),
             listing: Listing::new(AdminSection::Repositories, search, paged),
             repos: paged.items.iter().map(RepoRow::from).collect(),
@@ -597,7 +509,10 @@ impl DeleteRepositoryPage {
     pub fn new(page: Page, repo: &OwnedRepository, error: FormError) -> Self {
         let repo = RepoRow::from(repo);
         Self {
-            page: page.titled(format!("Delete {} · Administration", repo.full_name)),
+            page: {
+                let title = AdminText::DeletePageTitle(&repo.full_name).text(&page.locale);
+                page.titled(title.as_str())
+            },
             admin_nav: AdminSection::Repositories.nav(),
             error,
             repo,
@@ -653,7 +568,7 @@ pub struct SettingsPage {
 impl SettingsPage {
     pub fn new(page: Page, form: SettingsForm, error: FormError, saved: bool) -> Self {
         Self {
-            page: page.titled("Settings · Administration"),
+            page: titled(page, AdminMessage::Settings),
             admin_nav: AdminSection::Settings.nav(),
             error,
             form,
@@ -664,6 +579,13 @@ impl SettingsPage {
 }
 
 // ------------------------------------------------------------------ formatting
+
+/// `Users · Administration`, in the page's language.
+pub fn titled<M: MessageFamily>(page: Page, section: M) -> Page {
+    let section = Catalog::new(page.locale).localized(section);
+    let title = AdminText::InAdministration(section.as_str()).text(&page.locale);
+    page.titled(title.as_str())
+}
 
 /// `1234567` → `1,234,567`.
 pub fn count(value: i64) -> String {
@@ -679,10 +601,6 @@ pub fn count(value: i64) -> String {
         grouped.push(digit);
     }
     grouped
-}
-
-const fn plural(value: i64) -> &'static str {
-    if value == 1 { "" } else { "s" }
 }
 
 /// Binary units with one decimal: `0 B`, `512 B`, `1.5 KiB`, `3.2 GiB`.
@@ -803,10 +721,11 @@ mod tests {
                 url: "https://github.com/GitRbit/rbit/releases/tag/v99.0.0".into(),
             }),
         };
-        let html = DashboardPage {
+        let snapshot = crate::monitoring::Snapshot { uptime: Duration::ZERO, samples: Vec::new() };
+        let html = dashboard::DashboardPage {
             page,
             admin_nav: AdminSection::Dashboard.nav(),
-            monitoring: monitoring::MonitoringPanel::new(&crate::monitoring::Snapshot { uptime: Duration::ZERO, samples: Vec::new() }),
+            monitoring: monitoring::MonitoringPanel::new(&snapshot, Locale::English),
             restart_available: false,
             tiles: Vec::new(),
             system: Vec::new(),
@@ -881,7 +800,7 @@ mod tests {
         assert!(html.contains(r#"name="digest_hour""#));
         assert!(html.contains(r#"<option value="6" selected>06:00 UTC</option>"#), "{html}");
         assert_eq!(html.matches(" selected>").count(), 1);
-        assert!(settings_summary(&settings).iter().any(|row| row.value.contains("06:00 UTC")));
+        assert!(dashboard::settings_summary(&settings, Locale::English).iter().any(|row| row.value.contains("06:00 UTC")));
     }
 
     #[test]

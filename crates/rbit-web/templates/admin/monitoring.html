@@ -1,43 +1,44 @@
+{%- import "macros.html" as ui -%}
 <div data-monitoring-snapshot>
   <div class="monitor-summary">
-    <div><p class="monitor-label">Requests in window</p><p class="monitor-number">{{ requests }}</p></div>
-    <div><p class="monitor-label">Server error rate</p><p class="monitor-number">{{ errors }}</p></div>
-    <div><p class="monitor-label">Process uptime</p><p class="monitor-uptime">{{ uptime }}</p></div>
+    <div><p class="monitor-label">{% call ui::localized(MonitoringMessage::Requests.text(locale)) %}{% endcall %}</p><p class="monitor-number">{{ requests }}</p></div>
+    <div><p class="monitor-label">{% call ui::localized(MonitoringMessage::ErrorRate.text(locale)) %}{% endcall %}</p><p class="monitor-number">{{ errors }}</p></div>
+    <div><p class="monitor-label">{% call ui::localized(MonitoringMessage::ProcessUptime.text(locale)) %}{% endcall %}</p><p class="monitor-uptime">{{ uptime }}</p></div>
   </div>
   <div class="monitor-charts">
     {% for chart in charts %}
     <figure class="monitor-chart">
-      <figcaption><span>{{ chart.title }}</span><span class="monitor-chart-value">{{ chart.value }} <small>{{ chart.unit }}</small></span></figcaption>
-      <div class="monitor-scale"><span>{{ chart.ceiling }} {{ chart.unit }}</span><span>5-second samples</span></div>
-      <svg viewBox="0 0 600 140" role="img" aria-label="{{ chart.title }} over the last five minutes. Latest: {{ chart.value }} {{ chart.unit }}. No requests leave gaps in response time.">
+      <figcaption><span>{% call ui::localized(chart.title) %}{% endcall %}</span><span class="monitor-chart-value">{{ chart.value }} <small>{% call ui::localized(chart.unit) %}{% endcall %}</small></span></figcaption>
+      <div class="monitor-scale"><span>{{ chart.ceiling }} {% call ui::localized(chart.unit) %}{% endcall %}</span><span>{% call ui::localized(MonitoringMessage::Samples.text(locale)) %}{% endcall %}</span></div>
+      <svg viewBox="0 0 600 140" role="img" aria-label="{{ AdminText::ChartLabel(chart.title.as_str(), chart.value, chart.unit.as_str()).text(locale) }}">
         <path class="monitor-grid" d="M10 15H590 M10 70H590 M10 125H590"/>
         <path class="monitor-line" d="{{ chart.path }}"/>
         {% if chart.has_point %}<circle class="monitor-point" cx="{{ chart.last_x }}" cy="{{ chart.last_y }}" r="3"/>{% endif %}
       </svg>
-      <div class="monitor-scale"><span>5 minutes ago</span><span>Latest sample</span></div>
+      <div class="monitor-scale"><span>{% call ui::localized(MonitoringMessage::FiveMinutesAgo.text(locale)) %}{% endcall %}</span><span>{% call ui::localized(MonitoringMessage::LatestSample.text(locale)) %}{% endcall %}</span></div>
     </figure>
     {% endfor %}
   </div>
-  {% if !ready %}<p class="monitor-note">Collecting the first sample. Charts begin after five seconds.</p>{% endif %}
+  {% if !ready %}<p class="monitor-note">{% call ui::localized(MonitoringMessage::Collecting.text(locale)) %}{% endcall %}</p>{% endif %}
   <div class="monitor-tables">
     <div class="min-w-0">
       <table class="monitor-table">
-        <caption>HTTP responses <span>Current window</span></caption>
-        <thead><tr><th scope="col">Status</th><th scope="col">Requests</th><th scope="col">Share</th></tr></thead>
+        <caption>{% call ui::localized(MonitoringMessage::HttpResponses.text(locale)) %}{% endcall %} <span>{% call ui::localized(MonitoringMessage::CurrentWindow.text(locale)) %}{% endcall %}</span></caption>
+        <thead><tr><th scope="col">{% call ui::localized(MonitoringMessage::Status.text(locale)) %}{% endcall %}</th><th scope="col">{% call ui::localized(MonitoringMessage::RequestsColumn.text(locale)) %}{% endcall %}</th><th scope="col">{% call ui::localized(MonitoringMessage::Share.text(locale)) %}{% endcall %}</th></tr></thead>
         <tbody>{% for row in responses %}<tr>
-          <th scope="row"><span class="font-mono" dir="ltr">{{ row.label }}</span> <span class="monitor-meaning">{{ row.meaning }}</span></th>
+          <th scope="row"><span class="font-mono" dir="ltr">{{ row.label }}</span> <span class="monitor-meaning">{% call ui::localized(row.meaning) %}{% endcall %}</span></th>
           <td>{{ row.count }}</td><td><span class="monitor-share"><svg viewBox="0 0 100 4" aria-hidden="true"><rect class="monitor-bar-track" width="100" height="4" rx="2"/><rect class="monitor-bar" width="{{ row.width }}" height="4" rx="2"/></svg>{{ row.share }}</span></td>
         </tr>{% endfor %}</tbody>
       </table>
     </div>
     <div class="min-w-0">
       <table class="monitor-table">
-        <caption>Git activity <span>Current window</span></caption>
-        <thead><tr><th scope="col">Operation</th><th scope="col">Exchanges</th></tr></thead>
-        <tbody><tr><th scope="row">Clone / fetch</th><td>{{ git[0] }}</td></tr><tr><th scope="row">Push</th><td>{{ git[1] }}</td></tr></tbody>
+        <caption>{% call ui::localized(MonitoringMessage::GitActivity.text(locale)) %}{% endcall %} <span>{% call ui::localized(MonitoringMessage::CurrentWindow.text(locale)) %}{% endcall %}</span></caption>
+        <thead><tr><th scope="col">{% call ui::localized(MonitoringMessage::Operation.text(locale)) %}{% endcall %}</th><th scope="col">{% call ui::localized(MonitoringMessage::Exchanges.text(locale)) %}{% endcall %}</th></tr></thead>
+        <tbody><tr><th scope="row">{% call ui::localized(MonitoringMessage::CloneFetch.text(locale)) %}{% endcall %}</th><td>{{ git[0] }}</td></tr><tr><th scope="row">{% call ui::localized(MonitoringMessage::Push.text(locale)) %}{% endcall %}</th><td>{{ git[1] }}</td></tr></tbody>
       </table>
-      <p class="monitor-note">Smart HTTP exchanges, including failures. SSH and reference advertisements are excluded. Response time measures time to headers; streamed transfers may continue.</p>
+      <p class="monitor-note">{% call ui::localized(MonitoringMessage::GitNote.text(locale)) %}{% endcall %}</p>
     </div>
   </div>
-  <p class="monitor-footnote">{{ updated }} · {{ coverage }} · This process only; history resets on restart. Monitoring requests are excluded.</p>
+  <p class="monitor-footnote">{{ updated }} · {{ coverage }} · {% call ui::localized(MonitoringMessage::Footnote.text(locale)) %}{% endcall %}</p>
 </div>

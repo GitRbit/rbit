@@ -2,28 +2,28 @@
 {% import "admin/components.html" as admin %}
 {% import "macros.html" as ui %}
 {% block admin_content %}
-{% call admin::heading("Users", "Everyone with an account on this instance.") %}{% endcall %}
+{% call admin::heading(AdminMessage::Users.text(page.locale), AdminPageMessage::UsersIntro.text(page.locale)) %}{% endcall %}
 {% call ui::form_error(error) %}{% endcall %}
 {% if let Some(notice) = notice %}
-<p role="status" class="mb-5 flex items-center gap-2 text-[13px]">{% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}{{ notice.message() }}</p>
+<p role="status" class="mb-5 flex items-center gap-2 text-[13px]">{% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}{% call ui::localized(notice.message().text(page.locale)) %}{% endcall %}</p>
 {% endif %}
 
 <div class="mb-3 flex flex-wrap items-center gap-2">
-  {% call admin::search(listing, "Search by username, name or email") %}{% endcall %}
-  <a href="/admin/users/new" class="btn btn-primary h-10 sm:h-9">{% call ui::icon("plus", "size-3.5") %}{% endcall %}New user</a>
+  {% call admin::search(listing, AdminPageMessage::UsersSearch.text(page.locale), page.locale) %}{% endcall %}
+  <a href="/admin/users/new" class="btn btn-primary h-10 sm:h-9">{% call ui::icon("plus", "size-3.5") %}{% endcall %}{% call ui::localized(AdminPageMessage::NewUser.text(page.locale)) %}{% endcall %}</a>
 </div>
 
 <div class="box">
   {% if users.is_empty() %}
-  {% call ui::empty_state("user", "No users found", "Try a different search.") %}{% endcall %}
+  {% call ui::empty_state("user", AdminPageMessage::NoUsers.text(page.locale), AdminPageMessage::NoUsersText.text(page.locale)) %}{% endcall %}
   {% else %}
   <table class="w-full text-start text-[13px]">
     <thead class="border-b border-line bg-subtle text-xs text-ink-muted">
       <tr>
-        <th scope="col" class="h-9 px-4 font-medium">User</th>
-        <th scope="col" class="hidden px-4 font-medium md:table-cell">Repositories</th>
-        <th scope="col" class="hidden px-4 font-medium lg:table-cell">Joined</th>
-        <th scope="col" class="w-px px-4"><span class="sr-only">Actions</span></th>
+        <th scope="col" class="h-9 px-4 font-medium">{% call ui::localized(AdminPageMessage::User.text(page.locale)) %}{% endcall %}</th>
+        <th scope="col" class="hidden px-4 font-medium md:table-cell">{% call ui::localized(AdminMessage::Repositories.text(page.locale)) %}{% endcall %}</th>
+        <th scope="col" class="hidden px-4 font-medium lg:table-cell">{% call ui::localized(AdminPageMessage::Joined.text(page.locale)) %}{% endcall %}</th>
+        <th scope="col" class="w-px px-4"><span class="sr-only">{% call ui::localized(AdminMessage::Actions.text(page.locale)) %}{% endcall %}</span></th>
       </tr>
     </thead>
     <tbody>
@@ -35,10 +35,10 @@
             <div class="min-w-0">
               <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                 <a href="{{ user.profile_url }}" class="truncate font-medium hover:underline">{{ user.name }}</a>
-                {% if user.is_admin %}<span class="badge">Admin</span>{% endif %}
-                {% if user.is_suspended %}<span class="badge border-danger/40 text-danger">Suspended</span>{% endif %}
-                {% if user.is_verified %}<span class="badge" title="Email address verified">Verified</span>{% endif %}
-                {% if user.is_self %}<span class="badge">You</span>{% endif %}
+                {% if user.is_admin %}<span class="badge">{% call ui::localized(AdminPageMessage::Admin.text(page.locale)) %}{% endcall %}</span>{% endif %}
+                {% if user.is_suspended %}<span class="badge border-danger/40 text-danger">{% call ui::localized(AdminPageMessage::Suspended.text(page.locale)) %}{% endcall %}</span>{% endif %}
+                {% if user.is_verified %}<span class="badge" title="{{ AdminPageMessage::EmailVerified.text(page.locale) }}">{% call ui::localized(AdminPageMessage::Verified.text(page.locale)) %}{% endcall %}</span>{% endif %}
+                {% if user.is_self %}<span class="badge">{% call ui::localized(AdminPageMessage::You.text(page.locale)) %}{% endcall %}</span>{% endif %}
               </div>
               <p class="truncate text-xs text-ink-muted">{% if user.has_display_name %}{{ user.label }} · {% endif %}{{ user.email }}</p>
             </div>
@@ -49,25 +49,25 @@
         <td class="px-4 py-2.5 text-end">
           {% if !user.is_self %}
           <details class="relative inline-block text-start" data-menu>
-            <summary class="btn btn-ghost btn-icon" aria-label="Actions for {{ user.name }}" title="Actions">{% call ui::icon("chevron-down", "size-4") %}{% endcall %}</summary>
+            <summary class="btn btn-ghost btn-icon" aria-label="{{ AdminText::ActionsFor(user.name).text(page.locale) }}" title="{{ AdminMessage::Actions.text(page.locale) }}">{% call ui::icon("chevron-down", "size-4") %}{% endcall %}</summary>
             <div class="menu inset-e-0 w-52">
               {% if user.is_admin %}
-              <form method="post" action="{{ user.demote_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item" type="submit">Remove administrator</button></form>
+              <form method="post" action="{{ user.demote_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item" type="submit">{% call ui::localized(AdminPageMessage::RemoveAdmin.text(page.locale)) %}{% endcall %}</button></form>
               {% else %}
-              <form method="post" action="{{ user.promote_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item" type="submit">Make administrator</button></form>
+              <form method="post" action="{{ user.promote_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item" type="submit">{% call ui::localized(AdminPageMessage::MakeAdmin.text(page.locale)) %}{% endcall %}</button></form>
               {% endif %}
               {% if user.is_suspended %}
-              <form method="post" action="{{ user.unsuspend_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item" type="submit">Lift suspension</button></form>
+              <form method="post" action="{{ user.unsuspend_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item" type="submit">{% call ui::localized(AdminPageMessage::LiftSuspension.text(page.locale)) %}{% endcall %}</button></form>
               {% else %}
-              <form method="post" action="{{ user.suspend_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item text-danger" type="submit">Suspend</button></form>
+              <form method="post" action="{{ user.suspend_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item text-danger" type="submit">{% call ui::localized(AdminPageMessage::Suspend.text(page.locale)) %}{% endcall %}</button></form>
               {% endif %}
               <div class="menu-divider"></div>
               {% if email_available && !user.is_suspended %}
-              <form method="post" action="{{ user.send_reset_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item" type="submit">Send password reset</button></form>
+              <form method="post" action="{{ user.send_reset_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item" type="submit">{% call ui::localized(AdminPageMessage::SendReset.text(page.locale)) %}{% endcall %}</button></form>
               {% endif %}
-              <a class="menu-item" href="{{ user.password_url }}">Set password…</a>
+              <a class="menu-item" href="{{ user.password_url }}">{% call ui::localized(AdminPageMessage::SetPasswordMenu.text(page.locale)) %}{% endcall %}</a>
               <div class="menu-divider"></div>
-              <a class="menu-item text-danger" href="{{ user.delete_url }}">Delete…</a>
+              <a class="menu-item text-danger" href="{{ user.delete_url }}">{% call ui::localized(AdminPageMessage::DeleteMenu.text(page.locale)) %}{% endcall %}</a>
             </div>
           </details>
           {% endif %}
@@ -78,5 +78,5 @@
   </table>
   {% endif %}
 </div>
-{% call admin::pager(listing) %}{% endcall %}
+{% call admin::pager(listing, page.locale) %}{% endcall %}
 {% endblock %}

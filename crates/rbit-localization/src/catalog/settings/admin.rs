@@ -1,0 +1,151 @@
+//! Site administration: navigation, dashboard, listings and moderation pages.
+
+labels! {
+    /// Labels shared by the administration pages.
+    AdminMessage, "admin" {
+        SiteAdministration = "title" => "Site administration",
+        Administration = "nav-label" => "Administration",
+        Dashboard = "nav.dashboard" => "Dashboard",
+        Users = "nav.users" => "Users",
+        Organizations = "nav.organizations" => "Organizations",
+        Repositories = "nav.repositories" => "Repositories",
+        Settings = "nav.settings" => "Settings",
+        AuditLog = "nav.audit-log" => "Audit log",
+        Configuration = "nav.configuration" => "Configuration",
+        Runners = "nav.runners" => "Runners",
+        Search = "search" => "Search",
+        Pagination = "pagination" => "Pagination",
+        Previous = "previous" => "Previous",
+        Next = "next" => "Next",
+        NoResults = "no-results" => "No results",
+        Cancel = "cancel" => "Cancel",
+        Actions = "actions" => "Actions",
+        Private = "private" => "Private",
+        Archived = "archived" => "Archived",
+        Delete = "delete" => "Delete",
+        TypeToConfirmLead = "type-to-confirm-lead" => "Type",
+        TypeToConfirmTail = "type-to-confirm-tail" => "to confirm",
+        NewPassword = "new-password" => "New password",
+        ConfirmPassword = "confirm-password" => "Confirm new password",
+        Unavailable = "unavailable" => "unavailable",
+    }
+}
+
+labels! {
+    /// The administration dashboard and restart pages.
+    DashboardMessage, "admin.dashboard" {
+        Intro = "intro" => "An overview of this instance.",
+        RestartServer = "restart-server" => "Restart server",
+        RestartUnavailableHint = "restart-unavailable-hint" => "Restart is unavailable in this server host",
+        SoftwareUpdates = "software-updates" => "Software updates",
+        ConfigureUpdates = "configure-updates" => "Configure update checks and version privacy",
+        LiveMonitoring = "live-monitoring" => "Live monitoring",
+        MonitoringIntro = "monitoring-intro" => "Traffic, response times and Git activity over the last five minutes.",
+        Snapshot = "snapshot" => "Snapshot",
+        Pause = "pause" => "Pause",
+        NeedsJavaScript = "needs-javascript" => "Live updates require JavaScript. Reload this page for a fresh snapshot.",
+        System = "system" => "System",
+        InstanceSettings = "instance-settings" => "Instance settings",
+        Edit = "edit" => "Edit",
+        Users = "tile.users" => "Users",
+        Organizations = "tile.organizations" => "Organizations",
+        SharedNamespaces = "tile.shared-namespaces" => "Shared namespaces",
+        Repositories = "tile.repositories" => "Repositories",
+        AccessTokens = "tile.access-tokens" => "Access tokens",
+        AcrossAllUsers = "tile.across-all-users" => "Across all users",
+        Uptime = "row.uptime" => "Uptime",
+        DataDirectory = "row.data-directory" => "Data directory",
+        DiskUsage = "row.disk-usage" => "Disk usage",
+        SiteName = "row.site-name" => "Site name",
+        Registration = "row.registration" => "Registration",
+        RegistrationOpen = "row.registration-open" => "Open to everyone",
+        RegistrationClosed = "row.registration-closed" => "Closed (administrators create accounts)",
+        OrgPolicy = "row.organizations" => "Organizations",
+        AnyUserCreates = "row.any-user-creates" => "Any user can create",
+        AdminsCreate = "row.admins-create" => "Only administrators can create",
+        NewRepositories = "row.new-repositories" => "New repositories",
+        PublicByDefault = "row.public-by-default" => "Public by default",
+        PrivateByDefault = "row.private-by-default" => "Private by default",
+        EmailDigests = "row.email-digests" => "Email digests",
+        Restarting = "restarting" => "Restarting server",
+        RestartRequested = "restart-requested" => "Restart requested",
+        RestartingText = "restarting-text" => "The server is finishing active HTTP requests, stopping SSH and background jobs, and closing storage before restarting. Long-running transfers can take a while to finish.",
+        Waiting = "waiting" => "Waiting for the server to return…",
+        ReturnToDashboard = "return-to-dashboard" => "Return to dashboard",
+        WaitNoScript = "wait-noscript" => "Wait a moment, then return to the dashboard to reconnect.",
+        RestartQuestion = "restart-question" => "Restart this rbit application?",
+        RestartText = "restart-text" => "The site will be briefly unavailable while the application shuts down and starts again with its saved configuration. HTTP requests are allowed to finish; SSH connections will close. Users will keep their saved sessions.",
+        RestartAudited = "restart-audited" => "This action is recorded in the administration audit log.",
+        RestartUnavailable = "restart-unavailable" => "Restart is unavailable",
+        RestartUnsupported = "restart-unsupported" => "This server host does not support application restarts. Restart rbit using your service manager.",
+        BackToDashboard = "back-to-dashboard" => "Back to dashboard",
+    }
+}
+
+labels! {
+    /// The live monitoring snapshot on the dashboard.
+    MonitoringMessage, "admin.monitoring" {
+        Requests = "requests" => "Requests in window",
+        ErrorRate = "error-rate" => "Server error rate",
+        ProcessUptime = "process-uptime" => "Process uptime",
+        Samples = "samples" => "5-second samples",
+        FiveMinutesAgo = "five-minutes-ago" => "5 minutes ago",
+        LatestSample = "latest-sample" => "Latest sample",
+        Collecting = "collecting" => "Collecting the first sample. Charts begin after five seconds.",
+        HttpResponses = "http-responses" => "HTTP responses",
+        CurrentWindow = "current-window" => "Current window",
+        Status = "status" => "Status",
+        RequestsColumn = "requests-column" => "Requests",
+        Share = "share" => "Share",
+        GitActivity = "git-activity" => "Git activity",
+        Operation = "operation" => "Operation",
+        Exchanges = "exchanges" => "Exchanges",
+        CloneFetch = "clone-fetch" => "Clone / fetch",
+        Push = "push" => "Push",
+        GitNote = "git-note" => "Smart HTTP exchanges, including failures. SSH and reference advertisements are excluded. Response time measures time to headers; streamed transfers may continue.",
+        Footnote = "footnote" => "This process only; history resets on restart. Monitoring requests are excluded.",
+        Informational = "informational" => "Informational",
+        Successful = "successful" => "Successful",
+        Redirects = "redirects" => "Redirects",
+        ClientErrors = "client-errors" => "Client errors",
+        ServerErrors = "server-errors" => "Server errors",
+        RequestTraffic = "request-traffic" => "Request traffic",
+        ResponseTime = "response-time" => "Response time",
+        RequestsPerSecond = "requests-per-second" => "req/s",
+        MillisecondsAverage = "milliseconds-average" => "ms avg",
+        WaitingFirst = "waiting-first" => "Waiting for first sample",
+    }
+}
+
+messages! {
+    /// Administration text with arguments.
+    AdminText<'a>, "admin" {
+        ReleaseNotes(version: &'a str) = "dashboard.release-notes" => ["View rbit ", {version}, " release notes"],
+        UsersDetail(admins: &'a str, suspended: &'a str) = "dashboard.users-detail" => [{admins}, " admins · ", {suspended}, " suspended"],
+        UsersDetailOne(suspended: &'a str) = "dashboard.users-detail-one" => ["1 admin · ", {suspended}, " suspended"],
+        RepositoriesDetail(public: &'a str, private: &'a str) = "dashboard.repositories-detail" => [
+            {public},
+            " public · ",
+            {private},
+            " private"
+        ],
+        Summary(first: &'a str, last: &'a str, total: &'a str) = "listing.summary" => [{first}, "–", {last}, " of ", {total}],
+        DigestsAt(hour: &'a str) = "dashboard.digests-at" => ["Sent at ", {hour}, " unless users choose"],
+        DeleteLabel(name: &'a str) = "delete-label" => ["Delete ", {name}],
+        ActionsFor(name: &'a str) = "users.actions-for" => ["Actions for ", {name}],
+        PasswordLength(length: u64) = "password-length" => ["At least ", (length), " characters."],
+        ChartLabel(title: &'a str, value: &'a str, unit: &'a str) = "monitoring.chart-label" => [
+            {title},
+            " over the last five minutes. Latest: ",
+            {value},
+            " ",
+            {unit},
+            ". No requests leave gaps in response time."
+        ],
+        UpdatedAt(time: &'a str) = "monitoring.updated-at" => ["Updated ", {time}, " UTC"],
+        Coverage(samples: u64, limit: u64) = "monitoring.coverage" => [(samples), " of ", (limit), " samples"],
+        InAdministration(page: &'a str) = "page-title" => [{page}, " · Administration"],
+        SetPasswordFor(name: &'a str) = "set-password.page-title" => ["Set password for ", {name}, " · Administration"],
+        DeletePageTitle(name: &'a str) = "delete.page-title" => ["Delete ", {name}, " · Administration"],
+    }
+}

@@ -2,22 +2,22 @@
 {% import "admin/components.html" as admin %}
 {% import "macros.html" as ui %}
 {% block admin_content %}
-{% call admin::heading("Repositories", "Every repository, public and private, most recently active first.") %}{% endcall %}
+{% call admin::heading(AdminMessage::Repositories.text(page.locale), AdminPageMessage::RepositoriesIntro.text(page.locale)) %}{% endcall %}
 
 <div class="mb-3 flex flex-wrap items-center gap-2">
-  {% call admin::search(listing, "Search by owner/name or description") %}{% endcall %}
+  {% call admin::search(listing, AdminPageMessage::RepositoriesSearch.text(page.locale), page.locale) %}{% endcall %}
 </div>
 
 <div class="box">
   {% if repos.is_empty() %}
-  {% call ui::empty_state("repo", "No repositories found", "Repositories will be listed here once they exist.") %}{% endcall %}
+  {% call ui::empty_state("repo", AdminPageMessage::NoRepositories.text(page.locale), AdminPageMessage::NoRepositoriesText.text(page.locale)) %}{% endcall %}
   {% else %}
   <table class="w-full text-start text-[13px]">
     <thead class="border-b border-line bg-subtle text-xs text-ink-muted">
       <tr>
-        <th scope="col" class="h-9 px-4 font-medium">Repository</th>
-        <th scope="col" class="hidden px-4 font-medium md:table-cell">Updated</th>
-        <th scope="col" class="w-px px-4"><span class="sr-only">Actions</span></th>
+        <th scope="col" class="h-9 px-4 font-medium">{% call ui::localized(AdminPageMessage::Repository.text(page.locale)) %}{% endcall %}</th>
+        <th scope="col" class="hidden px-4 font-medium md:table-cell">{% call ui::localized(AdminPageMessage::Updated.text(page.locale)) %}{% endcall %}</th>
+        <th scope="col" class="w-px px-4"><span class="sr-only">{% call ui::localized(AdminMessage::Actions.text(page.locale)) %}{% endcall %}</span></th>
       </tr>
     </thead>
     <tbody>
@@ -26,14 +26,14 @@
         <td class="max-w-0 px-4 py-2.5">
           <div class="flex min-w-0 items-center gap-2">
             <a href="{{ repo.url }}" class="truncate font-medium hover:underline"><span class="text-ink-muted">{{ repo.owner }}/</span>{{ repo.name }}</a>
-            {% if repo.is_private %}<span class="badge">Private</span>{% endif %}
-            {% if repo.is_archived %}<span class="badge">Archived</span>{% endif %}
+            {% if repo.is_private %}<span class="badge">{% call ui::localized(AdminMessage::Private.text(page.locale)) %}{% endcall %}</span>{% endif %}
+            {% if repo.is_archived %}<span class="badge">{% call ui::localized(AdminMessage::Archived.text(page.locale)) %}{% endcall %}</span>{% endif %}
           </div>
           {% if let Some(description) = repo.description %}<p class="truncate text-xs text-ink-muted">{{ description }}</p>{% endif %}
         </td>
         <td class="hidden whitespace-nowrap px-4 text-ink-muted md:table-cell"><time datetime="{{ repo.updated_iso }}">{{ repo.updated }}</time></td>
         <td class="px-4 py-2.5 text-end">
-          <a href="{{ repo.delete_url }}" class="btn btn-danger" aria-label="Delete {{ repo.full_name }}">Delete</a>
+          <a href="{{ repo.delete_url }}" class="btn btn-danger" aria-label="{{ AdminText::DeleteLabel(repo.full_name).text(page.locale) }}">{% call ui::localized(AdminMessage::Delete.text(page.locale)) %}{% endcall %}</a>
         </td>
       </tr>
       {% endfor %}
@@ -41,5 +41,5 @@
   </table>
   {% endif %}
 </div>
-{% call admin::pager(listing) %}{% endcall %}
+{% call admin::pager(listing, page.locale) %}{% endcall %}
 {% endblock %}

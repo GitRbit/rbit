@@ -29,10 +29,11 @@ use crate::{
     AppState,
     error::{WebError, WebResult},
     extract::SiteAdmin,
+    localization::RequestLocale,
     views::{
         admin::{
-            AdminSection, ConfigurationPage, DashboardPage, DeleteRepositoryPage, DeleteUserPage, NewUserPage, OrganizationsPage,
-            RepositoriesPage, SetPasswordPage, SettingsForm, SettingsPage, UsersNotice, UsersPage, listing_url,
+            AdminSection, ConfigurationPage, DeleteRepositoryPage, DeleteUserPage, NewUserPage, OrganizationsPage, RepositoriesPage,
+            SetPasswordPage, SettingsForm, SettingsPage, UsersNotice, UsersPage, dashboard::DashboardPage, listing_url,
         },
         components::FormError,
         layout::Page,
@@ -90,16 +91,15 @@ pub async fn dashboard(State(state): State<AppState>, SiteAdmin(admin): SiteAdmi
 }
 
 /// A lightweight, administrator-only fragment; never invokes the dashboard's disk scan.
-pub async fn monitoring(State(state): State<AppState>, SiteAdmin(_): SiteAdmin) -> impl IntoResponse {
-    ([(axum::http::header::CACHE_CONTROL, "no-store")], crate::views::admin::monitoring::MonitoringPanel::new(&state.monitoring.snapshot()))
+pub async fn monitoring(State(state): State<AppState>, SiteAdmin(_): SiteAdmin, locale: RequestLocale) -> impl IntoResponse {
+    let panel = crate::views::admin::monitoring::MonitoringPanel::new(&state.monitoring.snapshot(), locale.document_locale());
+    ([(axum::http::header::CACHE_CONTROL, "no-store")], panel)
 }
 
 /// Restart is always a confirmed POST, under the same administrator and Origin guards.
 pub async fn restart_form(State(state): State<AppState>, SiteAdmin(_): SiteAdmin, page: Page) -> impl IntoResponse {
-    (
-        [(axum::http::header::CACHE_CONTROL, "no-store")],
-        crate::views::admin::restart::RestartPage::new(page, false, state.restart.receiver_count() > 0),
-    )
+    let page = crate::views::admin::restart::RestartPage::new(page, false, state.restart.receiver_count() > 0);
+    ([(axum::http::header::CACHE_CONTROL, "no-store")], page)
 }
 
 #[derive(Debug, Deserialize)]
@@ -253,7 +253,7 @@ pub async fn new_user_form(State(state): State<AppState>, SiteAdmin(_admin): Sit
 
 fn new_user_page(state: &AppState, page: Page, error: FormError, username: String, email: String, is_admin: bool) -> NewUserPage {
     NewUserPage {
-        page: page.titled("New user · Administration"),
+        page: crate::views::admin::titled(page, rbit_localization::settings::admin_pages::AdminPageMessage::NewUser),
         admin_nav: AdminSection::Users.nav(),
         error,
         username,
@@ -519,7 +519,7 @@ fn configuration_page(
     saved: bool,
 ) -> WebResult<ConfigurationPage> {
     Ok(ConfigurationPage {
-        page: page.titled("Configuration · Administration"),
+        page: crate::views::admin::titled(page, rbit_localization::settings::admin::AdminMessage::Configuration),
         admin_nav: AdminSection::Configuration.nav(),
         form: crate::views::admin::configuration::ConfigurationForm::new(document, section)?,
         error,

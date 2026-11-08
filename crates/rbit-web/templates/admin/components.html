@@ -1,30 +1,31 @@
+{%- import "macros.html" as ui -%}
 {#- Administration-only fragments. Import with: {% import "admin/components.html" as admin %} -#}
 
 {#- Page heading with an optional action on the right. -#}
 {% macro heading(title, text) %}
 <div class="mb-5">
   <h2 class="text-xl font-semibold tracking-tight">{{ title }}</h2>
-  {% if !text.is_empty() %}<p class="mt-1 text-[13px] text-ink-muted">{{ text }}</p>{% endif %}
+  {% if !text.to_string().is_empty() %}<p class="mt-1 text-[13px] text-ink-muted">{{ text }}</p>{% endif %}
 </div>
 {% endmacro %}
 
 {#- Search form for a `Listing`. -#}
-{% macro search(listing, placeholder) %}
+{% macro search(listing, placeholder, locale) %}
 <form method="get" action="{{ listing.action }}" class="flex min-w-0 flex-1 basis-64 gap-2" role="search">
-  <label class="sr-only" for="admin-search">Search</label>
+  <label class="sr-only" for="admin-search">{% call ui::localized(rbit_localization::settings::admin::AdminMessage::Search.text(locale)) %}{% endcall %}</label>
   <input class="input min-w-0 sm:max-w-80" id="admin-search" type="search" name="q" value="{{ listing.search }}" placeholder="{{ placeholder }}" autocomplete="off" autocapitalize="none" spellcheck="false">
-  <button class="btn h-10 sm:h-9" type="submit">Search</button>
+  <button class="btn h-10 sm:h-9" type="submit">{% call ui::localized(rbit_localization::settings::admin::AdminMessage::Search.text(locale)) %}{% endcall %}</button>
 </form>
 {% endmacro %}
 
 {#- Result count and previous/next links for a `Listing`. -#}
-{% macro pager(listing) %}
+{% macro pager(listing, locale) %}
 <div class="mt-3 flex min-h-8 items-center justify-between gap-3 text-xs text-ink-muted">
-  <span>{{ listing.summary }}</span>
+  <span>{% call ui::localized(listing.summary(locale)) %}{% endcall %}</span>
   {% if listing.has_pages() %}
-  <nav class="flex gap-1" aria-label="Pagination">
-    {% if let Some(url) = listing.previous_url %}<a class="btn" href="{{ url }}" rel="prev">Previous</a>{% else %}<span class="btn pointer-events-none opacity-50" aria-disabled="true">Previous</span>{% endif %}
-    {% if let Some(url) = listing.next_url %}<a class="btn" href="{{ url }}" rel="next">Next</a>{% else %}<span class="btn pointer-events-none opacity-50" aria-disabled="true">Next</span>{% endif %}
+  <nav class="flex gap-1" aria-label="{{ rbit_localization::settings::admin::AdminMessage::Pagination.text(locale) }}">
+    {% if let Some(url) = listing.previous_url %}<a class="btn" href="{{ url }}" rel="prev">{% call ui::localized(rbit_localization::settings::admin::AdminMessage::Previous.text(locale)) %}{% endcall %}</a>{% else %}<span class="btn pointer-events-none opacity-50" aria-disabled="true">{% call ui::localized(rbit_localization::settings::admin::AdminMessage::Previous.text(locale)) %}{% endcall %}</span>{% endif %}
+    {% if let Some(url) = listing.next_url %}<a class="btn" href="{{ url }}" rel="next">{% call ui::localized(rbit_localization::settings::admin::AdminMessage::Next.text(locale)) %}{% endcall %}</a>{% else %}<span class="btn pointer-events-none opacity-50" aria-disabled="true">{% call ui::localized(rbit_localization::settings::admin::AdminMessage::Next.text(locale)) %}{% endcall %}</span>{% endif %}
   </nav>
   {% endif %}
 </div>
