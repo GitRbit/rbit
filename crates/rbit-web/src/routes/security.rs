@@ -217,7 +217,8 @@ async fn second_step_page(
         None => true,
     };
     let passkey_options = optional_options(two_factor.sign_in_options(pending).await)?;
-    Ok(TwoFactorLoginPage { page: page.titled("Two-factor authentication"), error, next, passkey_options, authenticator })
+    let title = page.text(rbit_localization::shell::auth::AuthMessage::TwoFactorTitle).to_string();
+    Ok(TwoFactorLoginPage { page: page.with_catalog_content().titled(title), error, next, passkey_options, authenticator })
 }
 
 /// `GET /login/two-factor`: only while a password has just been accepted.

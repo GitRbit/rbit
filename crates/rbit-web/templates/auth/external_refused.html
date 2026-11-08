@@ -4,7 +4,7 @@
 <section class="auth-shell">
   <header class="auth-head">
     {% call ui::brand_logo(page, "size-16", 64) %}{% endcall %}
-    <h1 class="auth-title">Sign-in didn't work</h1>
+    <h1 class="auth-title">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::SignInFailed) %}{% endcall %}</h1>
   </header>
 
   <div class="card">
@@ -12,7 +12,7 @@
       {% call ui::icon("alert", "mt-px size-4 shrink-0") %}{% endcall %}
       <p>{{ message }}</p>
     </div>
-    <a href="{{ back_url }}" class="btn btn-primary btn-lg mt-6 w-full">{{ back_label }}</a>
+    <a href="{{ back_url }}" class="btn btn-primary btn-lg mt-6 w-full">{% call ui::localized(back_label) %}{% endcall %}</a>
   </div>
 </section>
 {% endblock %}

@@ -3,8 +3,9 @@
 use super::{
     AppState, Client, CookieJar, Form, FormError, Https, IntoResponse, LoginForm, Page, Response, ServiceError, SignInOutcome, SignUp,
     SignupForm, State, StatusCode, ThrottleScope, WebResult, login_page, safe_redirect_target, second_factor_redirect, signup_page,
-    slow_down, start_session, too_many_requests,
+    start_session, throttled, too_many_requests,
 };
+use rbit_localization::shell::auth::{Attempt, AuthMessage};
 
 pub fn login(
     State(state): State<AppState>,
@@ -20,15 +21,17 @@ pub fn login(
         let message = match state.services.sign_in(&form.login, std::mem::take(&mut *password), &client.0).await {
             Ok(SignInOutcome::SignedIn(user)) => return start_session(&state, jar, https, &client, &user, &next).await,
             Ok(SignInOutcome::SecondFactorRequired(pending)) => return Ok(second_factor_redirect(jar, https, &pending, &next)),
-            Err(ServiceError::InvalidCredentials) => "Incorrect username or password.".to_owned(),
-            Err(ServiceError::Forbidden) => "This account has been suspended. Contact an administrator.".to_owned(),
+            Err(ServiceError::InvalidCredentials) => AuthMessage::IncorrectCredentials,
+            Err(ServiceError::Forbidden) => AuthMessage::Suspended,
             Err(ServiceError::RateLimited { retry_after_seconds }) => {
-                let page = login_page(&state, page, FormError::new(slow_down("sign-in", retry_after_seconds)), form.login, next).await?;
+                let error = throttled(&page, Attempt::SignIn, retry_after_seconds);
+                let page = login_page(&state, page, error, form.login, next).await?;
                 return Ok(too_many_requests(page, retry_after_seconds));
             }
             Err(other) => return Err(other.into()),
         };
-        let page = login_page(&state, page, FormError::new(message), form.login, next).await?;
+        let error = FormError::localized(&page.text(message));
+        let page = login_page(&state, page, error, form.login, next).await?;
         Ok((StatusCode::UNPROCESSABLE_ENTITY, page).into_response())
     }
 }
@@ -46,7 +49,7 @@ pub fn signup(
         let SignupForm { username, email, password: _, setup_token } = form;
         let ip = client.ip().map(|ip| ip.to_canonical().to_string()).unwrap_or_default();
         if let Err(ServiceError::RateLimited { retry_after_seconds }) = state.services.throttle.check(ThrottleScope::SignUp, &ip) {
-            let error = FormError::new(slow_down("sign-up", retry_after_seconds));
+            let error = throttled(&page, Attempt::SignUp, retry_after_seconds);
             let page = signup_page(&state, page, error, username, email, setup_token).await?;
             return Ok(too_many_requests(page, retry_after_seconds));
         }

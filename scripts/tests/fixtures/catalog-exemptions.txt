@@ -20,11 +20,6 @@ admin/restart.html
 admin/set_password.html
 admin/settings.html
 admin/users.html
-auth/external_refused.html
-auth/external_register.html
-auth/login.html
-auth/signup.html
-auth/two_factor.html
 contributions.html
 contributions_body.html
 email/unsubscribe.html
@@ -77,7 +72,6 @@ releases/card.html
 releases/form.html
 releases/list.html
 releases/show.html
-render_probe/login_body.html
 repo/activity.html
 repo/blame.html
 repo/blob.html

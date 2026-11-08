@@ -4,8 +4,8 @@
 <section class="auth-shell">
   <header class="auth-head">
     <span class="tile">{% if passkey_options.is_some() %}{% call ui::icon("key-round", "size-5") %}{% endcall %}{% else %}{% call ui::icon("smartphone", "size-5") %}{% endcall %}{% endif %}</span>
-    <h1 class="auth-title">Two-factor authentication</h1>
-    <p class="auth-lede">{% if passkey_options.is_some() && authenticator %}Use your passkey or enter the 6-digit code from your authenticator app.{% else if passkey_options.is_some() %}Use your passkey or security key to finish signing in.{% else %}Enter the 6-digit code from your authenticator app.{% endif %}</p>
+    <h1 class="auth-title">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::TwoFactorTitle) %}{% endcall %}</h1>
+    <p class="auth-lede">{% if passkey_options.is_some() && authenticator %}{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::PasskeyOrApp) %}{% endcall %}{% else if passkey_options.is_some() %}{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::PasskeyOnly) %}{% endcall %}{% else %}{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::AppOnly) %}{% endcall %}{% endif %}</p>
   </header>
 
   <div class="card">
@@ -17,26 +17,26 @@
       <input type="hidden" name="passkey" value="">
       <div data-passkey-only hidden>
         <p data-passkey-error role="alert" class="mb-4 text-[13px] text-danger" hidden></p>
-        <button class="btn btn-primary btn-lg w-full" type="button" data-passkey-get="{{ options }}">{% call ui::icon("key-round", "size-4") %}{% endcall %}Use a passkey</button>
-        <p class="my-5 flex items-center gap-3 text-xs text-ink-faint" aria-hidden="true"><span class="h-px flex-1 bg-line"></span>or<span class="h-px flex-1 bg-line"></span></p>
+        <button class="btn btn-primary btn-lg w-full" type="button" data-passkey-get="{{ options }}">{% call ui::icon("key-round", "size-4") %}{% endcall %}{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::UsePasskey) %}{% endcall %}</button>
+        <p class="my-5 flex items-center gap-3 text-xs text-ink-faint" aria-hidden="true"><span class="h-px flex-1 bg-line"></span>{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::Or) %}{% endcall %}<span class="h-px flex-1 bg-line"></span></p>
       </div>
-      <p data-passkey-unsupported class="mb-5 text-[13px] text-ink-muted">This browser can't use passkeys. Enter a code instead.</p>
+      <p data-passkey-unsupported class="mb-5 text-[13px] text-ink-muted">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::PasskeyUnsupported) %}{% endcall %}</p>
       {% endif %}
 
       {% if authenticator %}
-      <label class="label" for="code">Authentication code</label>
+      <label class="label" for="code">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::AuthenticationCode) %}{% endcall %}</label>
       <input class="input font-mono tracking-widest" dir="ltr" id="code" name="code" inputmode="numeric" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" maxlength="20" placeholder="123456" {% if passkey_options.is_none() %}required autofocus{% endif %}>
-      <p class="hint">Lost your device? Enter one of your recovery codes instead.</p>
+      <p class="hint">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::LostDevice) %}{% endcall %}</p>
       {% else %}
-      <label class="label" for="code">Recovery code</label>
+      <label class="label" for="code">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::RecoveryCode) %}{% endcall %}</label>
       <input class="input font-mono" dir="ltr" id="code" name="code" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" maxlength="20" placeholder="xxxx-xxxx-xxxx">
-      <p class="hint">Lost your passkey? Enter one of your recovery codes.</p>
+      <p class="hint">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::LostPasskey) %}{% endcall %}</p>
       {% endif %}
 
-      <button class="btn {% if passkey_options.is_none() %}btn-primary{% endif %} btn-lg mt-6 w-full" type="submit">Verify code</button>
+      <button class="btn {% if passkey_options.is_none() %}btn-primary{% endif %} btn-lg mt-6 w-full" type="submit">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::VerifyCode) %}{% endcall %}</button>
     </form>
   </div>
 
-  <p class="auth-aside">Not you? <a href="/login" class="link">Sign in with a different account</a></p>
+  <p class="auth-aside">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::NotYou) %}{% endcall %} <a href="/login" class="link">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::DifferentAccount) %}{% endcall %}</a></p>
 </section>
 {% endblock %}

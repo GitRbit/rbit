@@ -4,8 +4,8 @@
 <section class="auth-shell">
   <header class="auth-head">
     {% call ui::brand_logo(page, "size-16", 64) %}{% endcall %}
-    <h1 class="auth-title">Create your account</h1>
-    <p class="auth-lede">Host your code on {{ page.site_name }}.</p>
+    <h1 class="auth-title">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::CreateYourAccount) %}{% endcall %}</h1>
+    <p class="auth-lede">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::HostYourCode(page.site_name.as_str())) %}{% endcall %}</p>
   </header>
 
   <div class="card">
@@ -13,33 +13,33 @@
     <form method="post" action="/signup" novalidate>
       {% call ui::form_error(error) %}{% endcall %}
 
-      <label class="label" for="username">Username</label>
+      <label class="label" for="username">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::Username) %}{% endcall %}</label>
       <input class="input" id="username" name="username" value="{{ username }}" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="39" pattern="[A-Za-z0-9._\-]+" required autofocus>
-      <p class="hint">Letters, digits, '-', '_' and '.'</p>
+      <p class="hint">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::UsernameHint) %}{% endcall %}</p>
 
-      <label class="label mt-4" for="email">Email</label>
+      <label class="label mt-4" for="email">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::Email) %}{% endcall %}</label>
       <input class="input" id="email" name="email" type="email" value="{{ email }}" autocomplete="email" required>
 
-      <label class="label mt-4" for="password">Password</label>
+      <label class="label mt-4" for="password">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::Password) %}{% endcall %}</label>
       <input class="input" id="password" name="password" type="password" autocomplete="new-password" minlength="{{ min_password_length }}" required>
-      <p class="hint">At least {{ min_password_length }} characters.</p>
+      <p class="hint">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::MinimumLength(*min_password_length)) %}{% endcall %}</p>
 
       {% if setup_required %}
-      <label class="label mt-4" for="setup_token">Setup token</label>
+      <label class="label mt-4" for="setup_token">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::SetupToken) %}{% endcall %}</label>
       <input class="input font-mono" dir="ltr" id="setup_token" name="setup_token" value="{{ setup_token }}" autocomplete="off" autocapitalize="none" spellcheck="false" required>
-      <p class="hint">This first account administers the server. Find the token in the server log.</p>
+      <p class="hint">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::SetupTokenHint) %}{% endcall %}</p>
       {% endif %}
 
-      <button class="btn btn-primary btn-lg mt-6 w-full" type="submit">Create account</button>
+      <button class="btn btn-primary btn-lg mt-6 w-full" type="submit">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::CreateAccount) %}{% endcall %}</button>
     </form>
     {% else %}
     <div class="notice" role="status">
       {% call ui::icon("lock", "mt-px size-4 shrink-0") %}{% endcall %}
-      <p>Registration is closed on this server. Ask an administrator for an account.</p>
+      <p>{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::RegistrationClosed) %}{% endcall %}</p>
     </div>
     {% endif %}
   </div>
 
-  <p class="auth-aside">Already have an account? <a href="/login" class="link">Sign in</a></p>
+  <p class="auth-aside">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::HaveAccount) %}{% endcall %} <a href="/login" class="link">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::SignIn) %}{% endcall %}</a></p>
 </section>
 {% endblock %}

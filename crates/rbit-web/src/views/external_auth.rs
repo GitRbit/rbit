@@ -7,6 +7,7 @@
 use askama::Template;
 use askama_web::WebTemplate;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+use rbit_localization::{Localized, shell::auth::AuthMessage};
 use rbit_services::external_auth::{ProviderSummary, RegistrationDraft, SignInMethods};
 
 use crate::views::{components::FormError, layout::Page};
@@ -64,8 +65,9 @@ pub struct RegisterPage {
 
 impl RegisterPage {
     pub fn new(page: Page, draft: &RegistrationDraft, error: FormError) -> Self {
+        let title = page.text(AuthMessage::CreateYourAccount).to_string();
         Self {
-            page: page.titled("Create your account"),
+            page: page.with_catalog_content().titled(title),
             error,
             provider_name: draft.provider_name.clone(),
             action: register_url(&draft.provider_id),
@@ -83,17 +85,22 @@ pub struct RefusedPage {
     pub page: Page,
     pub message: String,
     pub back_url: &'static str,
-    pub back_label: &'static str,
+    pub back_label: Localized,
 }
 
 impl RefusedPage {
     /// `linking`: the flow started in settings, so that is where "back" goes.
     pub fn new(page: Page, message: &str, linking: bool) -> Self {
-        let (back_url, back_label) =
-            if linking { ("/settings/security", "Back to security settings") } else { ("/login", "Back to sign in") };
+        let (back_url, back_label) = if linking {
+            ("/settings/security", page.text(AuthMessage::BackToSecuritySettings))
+        } else {
+            ("/login", page.text(AuthMessage::BackToSignIn))
+        };
+        let title = page.text(AuthMessage::SignInFailed).to_string();
         Self {
-            page: page.titled("Sign-in didn't work"),
-            message: FormError::from_message(message).0.unwrap_or_default(),
+            page: page.with_catalog_content().titled(title),
+            // Catalog sentences are complete; service fragments become sentences.
+            message: if message.ends_with('.') { message.to_owned() } else { FormError::from_message(message).0.unwrap_or_default() },
             back_url,
             back_label,
         }

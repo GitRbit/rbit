@@ -23,6 +23,7 @@ use axum_extra::extract::{
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use rbit_auth::SessionToken;
 use rbit_core::User;
+use rbit_localization::shell::auth::{Attempt, AuthMessage};
 use rbit_services::{ServiceError, SignUp, ThrottleScope, two_factor::SignInOutcome};
 use serde::Deserialize;
 
@@ -79,7 +80,8 @@ pub(crate) async fn login_page(state: &AppState, page: Page, error: FormError, l
     let registration_open = state.services.accounts.registration_open().await?;
     // Milestone 3: external sign-in (O).
     let providers = ProviderButton::all(&state.services.external_auth.providers(), &next);
-    Ok(LoginPage { page: page.titled("Sign in"), error, login, next, registration_open, providers })
+    let title = page.text(AuthMessage::SignInTitle).to_string();
+    Ok(LoginPage { page: page.with_catalog_content().titled(title), error, login, next, registration_open, providers })
 }
 
 /// Continues a sign-in whose first step passed at the second step: the pending sign-in
@@ -104,8 +106,9 @@ async fn signup_page(
     setup_token: String,
 ) -> Result<SignupPage, WebError> {
     let accounts = &state.services.accounts;
+    let title = page.text(AuthMessage::SignUpTitle).to_string();
     Ok(SignupPage {
-        page: page.titled("Sign up"),
+        page: page.with_catalog_content().titled(title),
         error,
         username,
         email,
@@ -158,7 +161,13 @@ pub(crate) fn too_many_requests(page: impl IntoResponse, retry_after_seconds: u6
     response
 }
 
-/// e.g. "Too many sign-in attempts. Try again in 2 minutes."
+/// A throttled sign-in or sign-up, in the page's language: "Too many sign-in attempts.
+/// Try again in 2 minutes."
+pub(crate) fn throttled(page: &Page, attempt: Attempt, retry_after_seconds: u64) -> FormError {
+    FormError::localized(&page.text(AuthMessage::TooManyAttempts(attempt, retry_after_seconds)))
+}
+
+/// e.g. "Too many code attempts. Try again in 2 minutes."
 pub(crate) fn slow_down(what: &str, retry_after_seconds: u64) -> String {
     let wait = match retry_after_seconds {
         0..=59 => format!("{retry_after_seconds} second{}", if retry_after_seconds == 1 { "" } else { "s" }),

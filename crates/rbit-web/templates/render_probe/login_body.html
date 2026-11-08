@@ -2,8 +2,8 @@
 <section class="auth-shell">
   <header class="auth-head">
     {% call ui::brand_logo(page, "size-16", 64) %}{% endcall %}
-    <h1 class="auth-title">Sign in to {{ page.site_name }}</h1>
-    <p class="auth-lede">Use your username or email address.</p>
+    <h1 class="auth-title">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::SignInTo(page.site_name.as_str())) %}{% endcall %}</h1>
+    <p class="auth-lede">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::SignInLede) %}{% endcall %}</p>
   </header>
 
   <div class="card">
@@ -11,30 +11,30 @@
       {% call ui::form_error(error) %}{% endcall %}
       <input type="hidden" name="next" value="{{ next }}">
 
-      <label class="label" for="login">Username or email</label>
+      <label class="label" for="login">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::UsernameOrEmail) %}{% endcall %}</label>
       <input class="input" id="login" name="login" value="{{ login }}" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
 
       <div class="mt-4 mb-1.5 flex items-center justify-between gap-3">
-        <label class="label mb-0" for="password">Password</label>
-        <a href="/password/forgot" class="text-xs text-ink-muted hover:text-ink">Forgot password?</a>
+        <label class="label mb-0" for="password">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::Password) %}{% endcall %}</label>
+        <a href="/password/forgot" class="text-xs text-ink-muted hover:text-ink">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::ForgotPassword) %}{% endcall %}</a>
       </div>
       <input class="input" id="password" name="password" type="password" autocomplete="current-password" required>
 
-      <button class="btn btn-primary btn-lg mt-6 w-full" type="submit">Sign in</button>
+      <button class="btn btn-primary btn-lg mt-6 w-full" type="submit">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::SignIn) %}{% endcall %}</button>
     </form>
     {#- Milestone 3: external sign-in (O). Plain links: the provider is another site. -#}
     {% if !providers.is_empty() %}
-    <p class="my-4 text-center text-xs text-ink-faint">or</p>
+    <p class="my-4 text-center text-xs text-ink-faint">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::Or) %}{% endcall %}</p>
     <div class="flex flex-col gap-2">
       {% for provider in providers %}
-      <a href="{{ provider.url }}" class="btn btn-lg w-full" hx-boost="false">{% call ui::icon("key-round", "size-3.5") %}{% endcall %}Sign in with {{ provider.name }}</a>
+      <a href="{{ provider.url }}" class="btn btn-lg w-full" hx-boost="false">{% call ui::icon("key-round", "size-3.5") %}{% endcall %}{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::SignInWith(provider.name.as_str())) %}{% endcall %}</a>
       {% endfor %}
     </div>
     {% endif %}
   </div>
 
   {% if registration_open %}
-  <p class="auth-aside">Don't have an account? <a href="/signup" class="link">Sign up</a></p>
+  <p class="auth-aside">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::NoAccount) %}{% endcall %} <a href="/signup" class="link">{% call ui::text(page, rbit_localization::shell::auth::AuthMessage::SignUp) %}{% endcall %}</a></p>
   {% endif %}
 </section>
 {# probe-boundary: preserve source whitespace #}

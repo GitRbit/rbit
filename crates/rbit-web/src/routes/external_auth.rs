@@ -32,6 +32,7 @@ use axum_extra::extract::{
 };
 use rbit_auth::SessionToken;
 use rbit_core::User;
+use rbit_localization::shell::auth::{Attempt, AuthMessage};
 use rbit_services::{
     ServiceError,
     external_auth::{CallbackParams, ExternalSignIn, FLOW_TTL_SECONDS, REGISTRATION_TTL},
@@ -39,7 +40,7 @@ use rbit_services::{
 use serde::Deserialize;
 
 use super::{
-    auth::{login_page, second_factor_redirect, slow_down, start_session, too_many_requests},
+    auth::{login_page, second_factor_redirect, start_session, throttled, too_many_requests},
     security::{no_store, overview_model},
 };
 use crate::{
@@ -198,7 +199,8 @@ pub async fn callback(
         Ok(verified) => verified,
         Err(ServiceError::Invalid(message)) => return Ok(refused(jar, page, StatusCode::BAD_REQUEST, &message, false)),
         Err(ServiceError::RateLimited { retry_after_seconds }) => {
-            let page = RefusedPage::new(page, &slow_down("sign-in", retry_after_seconds), false);
+            let message = page.text(AuthMessage::TooManyAttempts(Attempt::SignIn, retry_after_seconds)).to_string();
+            let page = RefusedPage::new(page, &message, false);
             return Ok(too_many_requests((without(jar, FLOW_COOKIE), no_store(page)), retry_after_seconds));
         }
         Err(other) => return Err(other.into()),
@@ -258,7 +260,7 @@ pub async fn register(
         return Ok(Redirect::to("/login").into_response());
     };
     let Some(draft) = external.registration_draft(&provider, &token) else {
-        let error = FormError::new("Your sign-in expired. Sign in again.");
+        let error = FormError::localized(&page.text(AuthMessage::SignInExpired));
         let login = login_page(&state, page, error, String::new(), "/".to_owned()).await?;
         return Ok((without(jar, REGISTER_COOKIE), login).into_response());
     };
@@ -277,7 +279,7 @@ pub async fn register(
             Ok((StatusCode::UNPROCESSABLE_ENTITY, no_store(rerender(FormError::from_message(&error.to_string())))).into_response())
         }
         Err(ServiceError::RateLimited { retry_after_seconds }) => {
-            Ok(too_many_requests(no_store(rerender(FormError::new(slow_down("sign-up", retry_after_seconds)))), retry_after_seconds))
+            Ok(too_many_requests(no_store(rerender(throttled(&page, Attempt::SignUp, retry_after_seconds))), retry_after_seconds))
         }
         Err(ServiceError::NotFound) => Ok(Redirect::to("/login").into_response()),
         Err(other) => Err(other.into()),

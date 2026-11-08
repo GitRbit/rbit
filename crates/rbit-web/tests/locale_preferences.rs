@@ -84,7 +84,10 @@ async fn browser_spanish_translates_chrome_and_marks_legacy_content_honestly() {
     assert!(body.contains("<html lang=\"es\" dir=\"ltr\""));
     assert!(body.contains("Saltar al contenido") && body.contains("Iniciar sesión"));
     assert!(!body.contains("Forge <script>"), "dynamic translated chrome still uses ordinary template escaping");
-    assert!(body.contains("<main id=\"main\" lang=\"en\" dir=\"ltr\""));
+    // The sign-in page's text comes from the catalog: the page is Spanish, and each
+    // untranslated message is marked as its English fallback.
+    assert!(body.contains("<main id=\"main\" lang=\"es\" dir=\"ltr\""));
+    assert!(body.contains("<span lang=\"en\">Use your username or email address.</span>"));
     let default = fixture.get("/login", &[]).await;
     assert_eq!(default.headers()[header::CONTENT_LANGUAGE], "en");
     let pseudo = fixture.get("/login", &[("accept-language", "ar-XB"), ("rbit-locale", "ar-XB")]).await;
