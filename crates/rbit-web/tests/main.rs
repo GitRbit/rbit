@@ -14,6 +14,8 @@ mod actions_artifacts;
 mod actions_caches;
 mod actions_disabled;
 mod actions_environments;
+// The fork-run regression group (docs/design/rewrite/security-contracts.md).
+mod actions_fork_runs;
 // Actions: interface and secrets (U).
 mod actions_job_pages;
 mod actions_pages;
