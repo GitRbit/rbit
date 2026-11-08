@@ -1532,7 +1532,7 @@ rbit Actions ([docs/actions.md](actions.md), design contract
   claim query matches labels and scope in SQL, takes the oldest waiting job and respects
   `max-parallel` and job concurrency groups. A claim mints a short-lived task token that works
   for Git, LFS and an allowlist of API routes only while the task runs.
-- **Data.** Logs and artifacts live under `<data_dir>/actions` and are not backed up; secrets
+- **Data.** Logs and artifacts live under `<data_dir>/actions` and are backed up with the database; secrets
   are sealed with AES-256-GCM under a key file kept out of the database and its backups. The
   sweeper fails silent and endless tasks, cancels abandoned jobs, decides conditions a
   restart left undecided and expires logs, artifacts and runs.

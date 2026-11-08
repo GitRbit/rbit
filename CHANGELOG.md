@@ -78,6 +78,17 @@ This section remains unreleased until the complete rewrite and release gates pas
 
 ### Added
 
+- `rbit restore --from DIR` restores a backup into an empty data directory after checking
+  the manifest, the database digest and schema, the secret key, every repository (`git
+  fsck`) and every stored file's size and SHA-256. Interrupted, torn and newer backups and
+  non-empty directories are refused; an interrupted restore blocks other commands until
+  a restore finishes.
+
+- **Backups use format 5.** `rbit backup` also copies Actions artifacts, cache entries and
+  job logs, records the database's SHA-256, leaves out rows whose files were deleted
+  during the backup, and syncs every file before publishing the manifest. The Actions
+  secrets key is still never included.
+
 - Actions job pages group status, execution details and bounded step logs with typed
   localized labels, retaining log anchors, full downloads and native writer controls.
 

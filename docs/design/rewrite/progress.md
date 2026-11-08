@@ -47,14 +47,11 @@ failure diagnostics. The latter run exposed a stale exact-markup parity check.
 program hash after accounting for that attribute. Its full Node run passes
 581 tests with seven skips and no failures. Fresh hosted browser gates remain.
 
-Local dogfooding now runs the qualified optimized `525f1d92` executable. Before
-upgrade, all 63 stopped snapshot files matched their original hashes. The old
-executable accepted an independent restored copy at migration 60; a separate
-candidate copy reached migration 66 with SQLite integrity and the original sealing
-key preserved. Live migration and restart then succeeded. Authenticated mirror
-settings, anonymous repository reads and commit navigation work; the mirror includes
-`3aa41f3a` and pinned main. These checks cover this local installation, not
-production-scale backup, restore, durability or performance acceptance.
+Local dogfooding now runs the qualified optimized `525f1d92` executable. Before upgrade, all 63 stopped snapshot files matched their original hashes. The old executable accepted an independent restored copy at migration 60; a separate candidate copy reached migration 66 with SQLite integrity and the original sealing key preserved.
+Live migration and restart then succeeded. Authenticated mirror settings, anonymous repository reads and commit navigation work; the mirror includes `3aa41f3a` and pinned main. These checks cover this local installation, not production-scale backup, restore, durability or performance acceptance.
+
+Backup and restore (seventh mandatory group): `rbit backup` (format 5) now also copies Actions artifacts, caches and logs, leaves out rows whose files vanished during the backup, records the database digest and syncs everything before its manifest; the new `rbit restore` verifies manifest, digest, schema, key, `git fsck` and every stored file's SHA-256 and refuses interrupted, torn or newer backups and non-empty targets.
+`crates/rbit-server/tests/backup_restore/` proves round trips of a realistic instance, quiescent and during writes, with sealed credentials opening only under their key. RPO, RTO and power-loss durability are stated in `docs/deployment.md`. Not covered: real power cuts or killed processes, Git's own fsync policy, rows that name commits rather than refs, production-scale data and a measured recovery time (see the group status in `security-contracts.md`).
 
 At public `050c0951`, the 13-commit Workflow/Mail/Auth module cut is published.
 Its tree matches the reviewed merge of `56c8fd4f` and `70756491`

@@ -12,7 +12,7 @@ rbit is one binary plus the `git` executable. All state lives in one data direct
 | `tmp/` | Scratch space: merges, web edits, cross-fork overlays, LFS uploads in progress | No (swept at start-up) |
 | `rbit.redb` | Login sessions and rebuildable caches | No (see [Backups](#backups)) |
 | `actions/secrets.key` | The key that seals Actions secrets (only with Actions enabled) | **Separately**: not in `rbit backup` |
-| `actions/logs/`, `actions/artifacts/`, `actions/caches/` | Job logs, workflow artifacts and `actions/cache` entries (only with Actions enabled) | No (kept for a retention period) |
+| `actions/logs/`, `actions/artifacts/`, `actions/caches/` | Job logs, workflow artifacts and `actions/cache` entries (only with Actions enabled) | **Yes** (not `tmp/` inside them) |
 
 Run it behind a reverse proxy that terminates TLS. The sections below cover
 [Docker](#docker), [systemd](#systemd), [reverse proxies](#reverse-proxy-and-tls),
@@ -611,7 +611,7 @@ and pulls container images (its `busybox` helper included, `[container] helper_i
 their registries.
 
 **Storage.** Job logs (gzipped once a job ends) and artifacts live under `actions/` in the data
-directory and are not backed up; the sweeper deletes them after their retention and keeps the
+directory and are included in backups (format 5 and later); the sweeper deletes them after their retention and keeps the
 instance within `max_log_storage_bytes` by expiring the oldest finished runs' logs first.
 
 ## Backups
@@ -625,33 +625,38 @@ DIR/
 ├── repositories/<owner-id>/<repo-id>.git   bare mirror of every repository in that snapshot
 ├── attachments/<repo-id>/<asset-id>   every release file listed in that snapshot
 ├── lfs/<aa>/<bb>/<oid>                every Git LFS object listed in that snapshot
+├── actions/artifacts/, caches/, logs/ every workflow artifact, cache entry and job log listed in it
 ├── secret.key                         the secret key, when it lives in the data directory
-└── manifest.json                      format (4), version, time, counts; written last
+└── manifest.json                      format (5), version, time, counts, database digest; written last
 ```
 
 The backup directory is created `0700` and the database, key and manifest `0600`: the
 backup holds password hashes and the key to every stored credential. Keep it as private as
 the data directory. With `storage.secret_key_file` set, the key is deliberately **not**
 copied (the manifest says where it is): back it up separately, ideally not next to the
-database backups.
+database backups. The Actions secrets key (`actions/secrets.key`) is never copied either.
 
 The repositories are mirrored through Git's pack protocol, which copies each repository's
 refs and every object they reach consistently even during a push or `git gc`. A
 repository created after the database snapshot is not included (it would be orphaned on
-restore anyway); one deleted in between is listed under `missing_repositories`.
+restore anyway).
 
-Release files are copied as they are: a file is renamed into place only once its upload
-is complete and never changes afterwards. Uploads still in progress (`attachments/tmp`)
-are skipped, and a file whose release was deleted after the snapshot is listed under
-`missing_attachments`. Git LFS objects are content-addressed and never change either;
-one removed after the snapshot (no repository used it any more) is listed under
-`missing_lfs_objects`.
+Stored files are copied as they are: release files, LFS objects, artifacts and cache
+entries are renamed into place only once complete and never change afterwards, a finished
+job's log is compressed once, and a running job's log only grows past what the snapshot
+records. Uploads in progress are skipped. Anything listed in the snapshot but deleted
+before it could be copied (a repository or release deleted, an artifact expired, an
+object pruned) is reported under the manifest's `missing_*` lists **and its row is
+removed from the backup's database**, so the restored instance never refers to something
+the backup lacks. The manifest records the SHA-256 of the final database file.
 
 **The redb store (`rbit.redb`) is not backed up.** It holds only login sessions and
 caches. After a restore everyone signs in again and caches refill on demand.
 
-A backup is complete when `manifest.json` exists. The command exits non-zero, without a
-manifest, if any repository could not be copied.
+Every file is synced to disk before `manifest.json` is written, and the manifest itself is
+written to a temporary file, synced and renamed: a backup is complete when `manifest.json`
+exists, even after a power loss. The command exits non-zero, without a manifest, if any
+repository could not be copied.
 
 Schedule it with a systemd timer or cron, as the service user, and copy the result off the
 machine (restic, borg, rsync, object storage):
@@ -664,27 +669,53 @@ sudo -u rbit rbit --config /etc/rbit/rbit.toml backup \
 
 ### Restore
 
-The backup directory mirrors the data directory, so restoring is a copy:
+`rbit restore --from DIR` puts a backup into service as the configured data directory:
 
 1. Stop rbit: `sudo systemctl stop rbit` (or `docker stop rbit`).
 2. Move the current data directory aside: `sudo mv /var/lib/rbit /var/lib/rbit.old`.
-3. Copy the backup into place, excluding the manifest, and fix ownership:
+   `rbit restore` refuses a data directory that is not empty.
+3. Restore as the service user, with the same configuration:
    ```bash
-   sudo mkdir -m 0750 /var/lib/rbit
-   sudo cp -a DIR/rbit.db DIR/secret.key DIR/repositories DIR/attachments DIR/lfs /var/lib/rbit/
-   sudo chown -R rbit:rbit /var/lib/rbit
+   sudo install -d -o rbit -g rbit -m 0750 /var/lib/rbit
+   sudo -u rbit rbit --config /etc/rbit/rbit.toml restore --from DIR
    ```
-   For Docker, copy into the volume, e.g.
-   `docker run --rm -v rbit-data:/data -v "$PWD/DIR":/backup:ro debian:bookworm-slim sh -c 'cp -a /backup/rbit.db /backup/secret.key /backup/repositories /backup/attachments /backup/lfs /data/ && chown -R 10001:10001 /data'`.
-   Backups in format 3 have no `secret.key`, format 2 no `lfs/` (and format 1 no
-   `attachments/`): leave out what is not there. With `storage.secret_key_file` set,
-   restore the key from where you keep it instead.
+   For Docker, restore into an empty volume:
+   `docker run --rm -v rbit-data:/data -v "$PWD/DIR":/backup:ro ghcr.io/gitrbit/rbit:0.1 restore --from /backup`.
+   With `storage.secret_key_file` set, put the key there first. With Actions secrets,
+   copy `actions/secrets.key` (or your `actions.secrets_key_file`) back after the restore;
+   the command warns when secrets need it.
 4. Start rbit. Pending migrations (if the backup came from an older version) run on
    start-up; a fresh `rbit.redb` is created.
 5. Check `/healthz`, sign in, browse and clone a repository, then delete the old directory.
 
-Restore onto the **same or a newer** rbit version. Restoring a backup into an older
-version is not supported (its database may have migrations the older binary does not know).
+`rbit restore` checks everything before the directory is usable: the manifest must exist
+and be of a format it knows, the database must match the manifest's digest, pass
+`PRAGMA quick_check` and record no migration newer than the binary, the secret key must
+open every sealed credential, every repository must pass `git fsck`, and every stored file
+must match the size and SHA-256 its row records. Anything missing or damaged fails the
+restore. While it runs, the data directory holds `.rbit-restore-incomplete`; every other
+command refuses a directory with that marker, and running `rbit restore` again starts over.
+
+Restore onto the **same or a newer** rbit version. A backup in a newer format, or whose
+database has migrations the binary does not know, is refused; an older binary also refuses
+to start on such a database. Backups in formats 1 to 4 restore with the same command
+(release files from format 2, LFS objects from 3, the key from 4; Actions files are only
+in format 5), or by copying the directories as described in the older documentation.
+
+### Recovery objectives and durability
+
+These are the guarantees rbit makes; size the backup schedule and storage to them.
+
+| Question | Answer |
+|---|---|
+| Recovery point (RPO) | The moment of the last completed backup's database snapshot. Repositories and stored files are at least that recent; anything newer is left out. Writes after it are lost. Sessions are never restored. |
+| Recovery time (RTO) | One pass over the backup: `rbit restore` copies every byte once, hashes every stored file, runs `git fsck` on every repository and syncs the result. It is bounded by disk throughput and repository size; rbit publishes no fixed figure. Start-up afterwards runs pending migrations only. |
+| SQLite (`rbit.db`) | WAL journal with `synchronous = NORMAL`. A process crash loses no committed transaction. An operating-system crash or power loss never corrupts the database but may roll back the most recent transactions, back to the last WAL sync (at each checkpoint). |
+| redb (`rbit.redb`) | Every commit uses `Durability::Immediate` (redb's default): synced before the call returns. Its contents are sessions and caches only. |
+| Git repositories | rbit does not set `core.fsync`; Git's default applies (Git 2.36 and later sync pack files and their indexes, not loose objects or refs). A power loss right after a push can lose that push or leave a loose object empty; `git fsck` finds the latter. Set `core.fsync` in the system Git configuration to change this. |
+| Stored files | The contents of release files, LFS objects, artifacts, cache entries and log segments are synced before their row is committed, and a finished log before it is marked final. The rename into place is not followed by a directory sync, so after a power loss a recent file can be missing while its row survives; the next backup lists it as missing and leaves the row out. |
+| Keys | `secret.key` and `actions/secrets.key` are synced when created and never rewritten. |
+| Backups | Synced completely before the manifest is published; see above. |
 
 ## Upgrades and migrations
 
