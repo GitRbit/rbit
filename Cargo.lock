@@ -4652,6 +4652,7 @@ dependencies = [
  "rbit-services",
  "rbit-storage",
  "rbit-transport",
+ "rbit-wikis",
  "rbit-workflow",
  "rust-embed",
  "serde",

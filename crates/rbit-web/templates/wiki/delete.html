@@ -1,0 +1,14 @@
+{% extends "wiki/layout.html" %}
+{% import "macros.html" as ui %}
+{#- Confirm deleting a page; expects `WikiDeleteTemplate`. -#}
+{% block wiki %}
+<section class="box border-danger/40" aria-labelledby="wiki-delete-title">
+  <h1 id="wiki-delete-title" class="box-header text-[13px] font-medium text-danger" dir="auto">{% call ui::localized(heading) %}{% endcall %}</h1>
+  <form method="post" action="{{ action_url }}" class="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center">
+    <input type="hidden" name="base" value="{{ base }}">
+    <p class="flex-1 text-[13px] text-ink-muted">{% call ui::localized(wiki.t.text(WikiMessage::DeleteWarning)) %}{% endcall %}</p>
+    <a href="{{ cancel_url }}" class="btn btn-ghost">{% call ui::localized(wiki.t.text(WikiMessage::Cancel)) %}{% endcall %}</a>
+    <button type="submit" class="btn btn-danger">{% call ui::icon("trash", "size-3.5") %}{% endcall %}{% call ui::localized(wiki.t.text(WikiMessage::DeletePage)) %}{% endcall %}</button>
+  </form>
+</section>
+{% endblock %}

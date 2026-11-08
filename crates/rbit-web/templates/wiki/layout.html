@@ -1,0 +1,16 @@
+{#- Wiki page frame: the page list beside the content on wide screens, in a drawer above it on narrow ones.
+    Pages extend this and fill `wiki`; they expect `page: Page`, `header: RepoHeader` and `wiki: WikiChrome`. -#}
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+<div class="grid gap-6 lg:grid-cols-[15rem_minmax(0,1fr)]">
+  <details class="box lg:hidden">
+    <summary class="flex min-h-10 cursor-pointer items-center gap-2 px-4 text-[13px] font-medium">{% call ui::icon("menu", "size-4 text-ink-muted") %}{% endcall %}{% call ui::localized(wiki.t.text(WikiMessage::Pages)) %}{% endcall %}</summary>
+    <div class="border-t border-line p-3">{% let prefix = "drawer" %}{% include "wiki/sidebar.html" %}</div>
+  </details>
+  <aside class="hidden lg:block">{% let prefix = "aside" %}{% include "wiki/sidebar.html" %}</aside>
+  <div class="min-w-0">{% block wiki %}{% endblock %}</div>
+</div>
+{% endblock %}

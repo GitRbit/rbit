@@ -1,0 +1,47 @@
+{% extends "wiki/layout.html" %}
+{% import "macros.html" as ui %}
+{#- One page, current or at an older revision; expects `WikiPageTemplate`. -#}
+{% block wiki %}
+{% if let Some(old) = revision %}
+<div class="notice mb-4" role="note">
+  {% call ui::icon("history", "mt-0.5 size-3.5 shrink-0") %}{% endcall %}
+  <div class="min-w-0 flex-1">
+    <p><span class="font-medium text-ink">{% call ui::localized(old.label) %}{% endcall %}</span> · {% call ui::localized(wiki.t.text(WikiMessage::OldRevisionNotice)) %}{% endcall %}</p>
+    <p class="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+      <a class="link" href="{{ old.current_url }}">{% call ui::localized(wiki.t.text(WikiMessage::ViewCurrent)) %}{% endcall %}</a>
+      {% if let Some(compare_url) = old.compare_url %}<a class="link" href="{{ compare_url }}">{% call ui::localized(wiki.t.text(WikiMessage::CompareWithPrevious)) %}{% endcall %}</a>{% endif %}
+    </p>
+  </div>
+  {% if wiki.can_write %}
+  <form method="post" action="{{ old.restore_url }}" class="shrink-0">
+    <input type="hidden" name="base" value="{{ old.base }}">
+    <button type="submit" class="btn">{% call ui::localized(wiki.t.text(WikiMessage::Restore)) %}{% endcall %}</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+<div class="flex flex-wrap items-start gap-3">
+  <div class="min-w-0 flex-1">
+    <nav aria-label="{{ wiki.t.text(WikiMessage::BreadcrumbLabel) }}" class="text-xs text-ink-muted">
+      <ol class="flex flex-wrap items-center gap-1">
+        <li><a href="{{ wiki.urls.home }}" class="hover:text-ink">{% call ui::localized(wiki.t.text(WikiMessage::Tab)) %}{% endcall %}</a></li>
+        {% for crumb in crumbs %}
+        <li class="flex items-center gap-1" dir="auto">{% call ui::icon("chevron-right", "size-3 text-ink-faint") %}{% endcall %}{% if crumb.is_last %}<span aria-current="page" class="text-ink">{{ crumb.name }}</span>{% else %}<span>{{ crumb.name }}</span>{% endif %}</li>
+        {% endfor %}
+      </ol>
+    </nav>
+    <h1 class="mt-1 text-2xl font-semibold tracking-tight break-words" dir="auto">{{ title }}</h1>
+    <p class="mt-1 text-xs text-ink-muted">{% call ui::localized(wiki.t.text(WikiMessage::LastEdited)) %}{% endcall %} <time datetime="{{ updated_iso }}">{{ updated }}</time></p>
+  </div>
+  <div class="flex shrink-0 flex-wrap items-center gap-2">
+    {% if wiki.can_write && revision.is_none() %}
+    <a href="{{ edit_url }}" class="btn">{% call ui::icon("pencil", "size-3.5") %}{% endcall %}{% call ui::localized(wiki.t.text(WikiMessage::Edit)) %}{% endcall %}</a>
+    {% endif %}
+    <a href="{{ history_url }}" class="btn btn-ghost">{% call ui::icon("history", "size-3.5") %}{% endcall %}{% call ui::localized(wiki.t.text(WikiMessage::History)) %}{% endcall %}</a>
+    {% if wiki.can_write && revision.is_none() %}
+    <a href="{{ delete_url }}" class="btn btn-ghost" aria-label="{{ wiki.t.text(WikiMessage::Delete) }}" title="{{ wiki.t.text(WikiMessage::Delete) }}">{% call ui::icon("trash", "size-3.5") %}{% endcall %}</a>
+    {% endif %}
+  </div>
+</div>
+<article class="prose-rbit box mt-5 overflow-x-auto px-5 py-6 sm:px-8" dir="auto">{{ html|safe }}</article>
+{% endblock %}

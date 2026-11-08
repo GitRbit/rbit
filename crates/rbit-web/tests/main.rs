@@ -45,4 +45,5 @@ mod permission_world;
 mod properties;
 mod repository_documents;
 mod security;
+mod wiki_pages;
 mod work_counts;

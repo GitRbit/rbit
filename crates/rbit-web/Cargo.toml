@@ -21,6 +21,8 @@ rbit-auth.workspace = true
 rbit-git.workspace = true
 rbit-services.workspace = true
 rbit-transport.workspace = true
+# Repository wikis: validated page names and IDs parsed from URLs and forms.
+rbit-wikis = { workspace = true, default-features = false }
 
 axum = { workspace = true, features = ["multipart"] }
 axum-extra.workspace = true

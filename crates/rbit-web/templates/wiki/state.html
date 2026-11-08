@@ -1,0 +1,19 @@
+{% extends "wiki/layout.html" %}
+{% import "macros.html" as ui %}
+{#- An empty, missing or turned-off wiki; expects `WikiStateTemplate`. -#}
+{% block wiki %}
+<div class="box flex flex-col items-center px-6 py-14 text-center">
+  <div class="tile text-ink-muted">{% call ui::icon("book", "size-5") %}{% endcall %}</div>
+  <h1 class="mt-4 font-medium">{% call ui::localized(message) %}{% endcall %}</h1>
+  {% if let Some(about) = about %}<p class="mt-1 max-w-sm text-[13px] text-ink-muted">{% call ui::localized(about) %}{% endcall %}</p>{% endif %}
+  {% if let Some(create) = create %}
+  <a href="{{ create.url }}" class="btn btn-primary mt-5">{% call ui::icon("plus", "size-3.5") %}{% endcall %}<span dir="auto">{% call ui::localized(create.label) %}{% endcall %}</span></a>
+  {% endif %}
+  {% if let Some(settings_url) = enable_url %}
+  <form method="post" action="{{ settings_url }}" class="mt-5">
+    <input type="hidden" name="enabled" value="on">
+    <button type="submit" class="btn btn-primary">{% call ui::localized(wiki.t.text(WikiMessage::TurnOn)) %}{% endcall %}</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

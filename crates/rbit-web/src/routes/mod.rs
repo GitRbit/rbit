@@ -51,6 +51,7 @@ mod themes;
 mod timeline;
 mod transfer;
 mod webhooks;
+mod wiki;
 
 use std::time::Duration;
 
@@ -166,6 +167,8 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         // Milestone 3: importing and push mirrors (M).
         .merge(imports::routes())
         .merge(push_mirrors::routes())
+        // Repository wikis.
+        .merge(wiki::routes())
         // Actions: foundation (F). The pages exist only when Actions is enabled.
         .merge(if state.services.actions.is_some() { actions::routes() } else { Router::new() })
         .fallback(|| async { WebError::NotFound })

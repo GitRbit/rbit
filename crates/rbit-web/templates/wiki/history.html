@@ -1,0 +1,40 @@
+{% extends "wiki/layout.html" %}
+{% import "macros.html" as ui %}
+{#- A page's revisions, newest first; expects `WikiHistoryTemplate`. -#}
+{% block wiki %}
+<div class="mb-3 flex min-h-8 flex-wrap items-center gap-3">
+  <h1 class="min-w-0 flex-1 truncate text-base font-semibold tracking-tight" dir="auto">{% call ui::localized(heading) %}{% endcall %}</h1>
+  <a href="{{ page_url }}" class="btn btn-ghost">{% call ui::icon("file-text", "size-3.5") %}{% endcall %}{% call ui::localized(wiki.t.text(WikiMessage::ViewCurrent)) %}{% endcall %}</a>
+</div>
+<div class="box overflow-x-auto">
+  <table class="w-full text-[13px]">
+    <thead class="bg-subtle text-xs text-ink-muted">
+      <tr class="border-b border-line">
+        <th scope="col" class="px-4 py-2 text-start font-medium">{% call ui::localized(wiki.t.text(WikiMessage::RevisionColumn)) %}{% endcall %}</th>
+        <th scope="col" class="px-4 py-2 text-start font-medium">{% call ui::localized(wiki.t.text(WikiMessage::Author)) %}{% endcall %}</th>
+        <th scope="col" class="px-4 py-2 text-start font-medium">{% call ui::localized(wiki.t.text(WikiMessage::Date)) %}{% endcall %}</th>
+        <th scope="col" class="px-4 py-2 text-end font-medium"><span class="sr-only">{% call ui::localized(wiki.t.text(WikiMessage::CompareWithPrevious)) %}{% endcall %}</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for entry in entries %}
+      <tr class="border-b border-line last:border-b-0">
+        <td class="px-4 py-2.5">
+          <a href="{{ entry.url }}" class="font-medium hover:underline hover:underline-offset-4">{% call ui::localized(entry.label) %}{% endcall %}</a>
+          <span class="badge ms-1.5">{% call ui::localized(entry.change) %}{% endcall %}</span>
+          <span class="mt-0.5 block truncate text-xs text-ink-faint" dir="auto">{{ entry.title }}</span>
+        </td>
+        <td class="px-4 py-2.5 text-ink-muted">{% if let Some(author) = entry.author %}<a href="/{{ author }}" class="hover:text-ink">{{ author }}</a>{% else %}{% call ui::localized(wiki.t.text(WikiMessage::UnknownAuthor)) %}{% endcall %}{% endif %}</td>
+        <td class="whitespace-nowrap px-4 py-2.5 text-ink-muted"><time datetime="{{ entry.iso }}">{{ entry.date }}</time></td>
+        <td class="whitespace-nowrap px-4 py-2.5 text-end">{% if let Some(compare_url) = entry.compare_url %}<a href="{{ compare_url }}" class="btn btn-ghost h-7 px-2 text-xs sm:h-7" title="{{ wiki.t.text(WikiMessage::CompareWithPrevious) }}">{% call ui::icon("git-compare", "size-3.5") %}{% endcall %}<span class="hidden sm:inline">{% call ui::localized(wiki.t.text(WikiMessage::CompareWithPrevious)) %}{% endcall %}</span></a>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if let Some(older_url) = older_url %}
+<nav class="mt-4 flex justify-end" aria-label="{{ wiki.t.text(WikiMessage::History) }}">
+  <a href="{{ older_url }}" class="btn">{% call ui::localized(wiki.t.text(WikiMessage::OlderRevisions)) %}{% endcall %}{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</a>
+</nav>
+{% endif %}
+{% endblock %}

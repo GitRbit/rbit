@@ -1,0 +1,23 @@
+{% extends "wiki/layout.html" %}
+{% import "macros.html" as ui %}
+{% import "repo/diff_rows.html" as diff %}
+{#- Line differences between two revisions of one page; expects `WikiCompareTemplate`. -#}
+{% block wiki %}
+<div class="mb-3 flex min-h-8 flex-wrap items-center gap-3">
+  <div class="min-w-0 flex-1">
+    <h1 class="truncate text-base font-semibold tracking-tight" dir="auto">{{ title }}</h1>
+    <p class="text-xs text-ink-muted">{% call ui::localized(heading) %}{% endcall %}</p>
+  </div>
+  <a href="{{ history_url }}" class="btn btn-ghost">{% call ui::icon("history", "size-3.5") %}{% endcall %}{% call ui::localized(wiki.t.text(WikiMessage::History)) %}{% endcall %}</a>
+</div>
+<section class="box overflow-hidden" aria-label="{{ heading }}">
+  <h2 class="box-header text-xs text-ink-muted">{% call ui::localized(summary) %}{% endcall %}</h2>
+  {% if changes.rows.is_empty() %}
+  <p class="px-4 py-8 text-center text-[13px] text-ink-muted">{% call ui::localized(wiki.t.text(WikiMessage::NoDifferences)) %}{% endcall %}</p>
+  {% else %}
+  <div class="diff-scroll" dir="ltr"><div class="diff-view {{ changes.width_classes }}">
+    {%- for line in changes.rows -%}{% call diff::row(line, "") %}{% endcall %}{%- endfor -%}
+  </div></div>
+  {% endif %}
+</section>
+{% endblock %}

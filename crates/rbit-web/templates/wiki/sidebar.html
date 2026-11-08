@@ -1,0 +1,19 @@
+{% import "macros.html" as ui %}
+{#- The wiki's page list and search form; expects `wiki: WikiChrome` and a `prefix` for ids. -#}
+<form method="get" action="{{ wiki.urls.search() }}" role="search" class="mb-3 flex">
+  <label class="sr-only" for="{{ prefix }}-wiki-search">{% call ui::localized(wiki.t.text(WikiMessage::SearchPages)) %}{% endcall %}</label>
+  <input id="{{ prefix }}-wiki-search" class="input h-8 rounded-e-none text-[13px] sm:h-8" type="search" name="q" placeholder="{{ wiki.t.text(WikiMessage::SearchPages) }}" maxlength="200" autocomplete="off">
+  <button type="submit" class="btn btn-icon -ms-px h-8 rounded-s-none sm:h-8" aria-label="{{ wiki.t.text(WikiMessage::Search) }}" title="{{ wiki.t.text(WikiMessage::Search) }}">{% call ui::icon("search", "size-3.5") %}{% endcall %}</button>
+</form>
+<nav aria-label="{{ wiki.t.text(WikiMessage::PagesLabel) }}">
+  <h2 class="mb-1.5 px-2 text-xs font-medium text-ink-muted">{% call ui::localized(wiki.t.text(WikiMessage::Pages)) %}{% endcall %}</h2>
+  <ul class="space-y-px text-[13px]">
+    {% for entry in wiki.sidebar %}
+    <li><a href="{{ entry.url }}" class="block truncate rounded-(--radius-ui) px-2 py-1 hover:bg-hover{% if entry.is_current %} bg-subtle font-medium text-ink{% else %} text-ink-muted hover:text-ink{% endif %}" title="{{ entry.path }}" dir="auto"{% if entry.is_current %} aria-current="page"{% endif %}>{{ entry.title }}</a></li>
+    {% endfor %}
+  </ul>
+  <a href="{{ wiki.urls.pages() }}" class="mt-2 block px-2 text-xs text-ink-muted hover:text-ink">{% if wiki.more_pages %}{% call ui::localized(wiki.t.text(WikiMessage::MorePages)) %}{% endcall %}{% else %}{% call ui::localized(wiki.t.text(WikiMessage::AllPages)) %}{% endcall %}{% endif %}</a>
+</nav>
+{% if wiki.can_write %}
+<a href="{{ wiki.urls.new_page() }}" class="btn mt-4 w-full">{% call ui::icon("plus", "size-3.5") %}{% endcall %}{% call ui::localized(wiki.t.text(WikiMessage::NewPage)) %}{% endcall %}</a>
+{% endif %}

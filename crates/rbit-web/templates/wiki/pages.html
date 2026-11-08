@@ -1,0 +1,36 @@
+{% extends "wiki/layout.html" %}
+{% import "macros.html" as ui %}
+{#- All pages, or the pages matching a search; expects `WikiIndexTemplate`. -#}
+{% block wiki %}
+<div class="mb-3 flex min-h-8 flex-wrap items-center gap-3">
+  <h1 class="text-[13px] font-medium text-ink-muted" role="status">{% call ui::localized(heading) %}{% endcall %}</h1>
+  {% if wiki.can_write %}<a href="{{ wiki.urls.new_page() }}" class="btn btn-primary ms-auto">{% call ui::icon("plus", "size-3.5") %}{% endcall %}{% call ui::localized(wiki.t.text(WikiMessage::NewPage)) %}{% endcall %}</a>{% endif %}
+</div>
+{% if entries.is_empty() %}
+<div class="box px-6 py-10 text-center text-[13px] text-ink-muted">{% call ui::localized(empty) %}{% endcall %}</div>
+{% else %}
+<ul class="box">
+  {% for entry in entries %}
+  <li class="row row-link py-2">
+    {% call ui::icon("file-text", "size-3.5 shrink-0 text-ink-faint") %}{% endcall %}
+    <a href="{{ entry.url }}" class="min-w-0 flex-1">
+      <span class="block truncate text-[13px] font-medium" dir="auto">{{ entry.title }}</span>
+      <span class="block truncate font-mono text-[11px] text-ink-faint" dir="auto">{{ entry.path }}</span>
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% if let Some(next_url) = next_url %}
+<nav class="mt-4 flex justify-end" aria-label="{{ wiki.t.text(WikiMessage::AllPages) }}">
+  <a href="{{ next_url }}" class="btn">{% call ui::localized(wiki.t.text(WikiMessage::MorePages)) %}{% endcall %}{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</a>
+</nav>
+{% endif %}
+{% if wiki.can_admin && show_settings %}
+<form method="post" action="{{ wiki.urls.settings() }}" class="mt-10 flex flex-wrap items-center gap-3 border-t border-line pt-4">
+  <p class="flex-1 text-xs text-ink-muted">{% call ui::localized(wiki.t.text(WikiMessage::About)) %}{% endcall %}</p>
+  <input type="hidden" name="enabled" value="off">
+  <button type="submit" class="btn btn-danger">{% call ui::localized(wiki.t.text(WikiMessage::TurnOff)) %}{% endcall %}</button>
+</form>
+{% endif %}
+{% endblock %}

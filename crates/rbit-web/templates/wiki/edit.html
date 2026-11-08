@@ -1,0 +1,54 @@
+{% extends "wiki/layout.html" %}
+{% import "macros.html" as ui %}
+{#- Create or edit a page, with a server-rendered preview; expects `WikiEditTemplate`. -#}
+{% block wiki %}
+<h1 class="text-xl font-semibold tracking-tight">{% call ui::localized(heading) %}{% endcall %}</h1>
+<form method="post" action="{{ action_url }}" class="mt-5" novalidate>
+  {% if let Some(message) = error %}
+  <div role="alert" tabindex="-1" class="mb-5 flex items-start gap-2 rounded-(--radius-ui) border border-danger/40 bg-danger-subtle px-3 py-2.5 text-[13px] text-danger">
+    {% call ui::icon("alert", "mt-px size-4 shrink-0") %}{% endcall %}
+    <div class="min-w-0">
+      <p>{% call ui::localized(message) %}{% endcall %}</p>
+      {% if let Some(conflict) = conflict %}
+      <p class="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+        <a class="underline underline-offset-4" href="{{ conflict.current_url }}">{% call ui::localized(wiki.t.text(WikiMessage::ViewCurrent)) %}{% endcall %}</a>
+        {% if let Some(compare_url) = conflict.compare_url %}<a class="underline underline-offset-4" href="{{ compare_url }}">{% call ui::localized(wiki.t.text(WikiMessage::CompareChanges)) %}{% endcall %}</a>{% endif %}
+      </p>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+  {% if let Some(base) = base %}<input type="hidden" name="base" value="{{ base }}">{% endif %}
+
+  <label class="label" for="wiki-title">{% call ui::localized(wiki.t.text(WikiMessage::Title)) %}{% endcall %}</label>
+  <input class="input" id="wiki-title" name="title" value="{{ title }}" maxlength="200" required dir="auto" autofocus>
+
+  <label class="label mt-5" for="wiki-path">{% call ui::localized(wiki.t.text(WikiMessage::Path)) %}{% endcall %}</label>
+  <input class="input font-mono text-xs" id="wiki-path" name="path" value="{{ path }}" maxlength="512" autocomplete="off" autocapitalize="none" spellcheck="false" dir="auto" aria-describedby="wiki-path-hint">
+  <p class="hint" id="wiki-path-hint">{% call ui::localized(wiki.t.text(WikiMessage::PathHint)) %}{% endcall %}</p>
+
+  <div class="mt-5 flex items-end justify-between gap-3">
+    <label class="label mb-0" for="wiki-content">{% call ui::localized(wiki.t.text(WikiMessage::Content)) %}{% endcall %}</label>
+    <span class="text-xs text-ink-faint">{% call ui::localized(wiki.t.text(WikiMessage::Markdown)) %}{% endcall %}</span>
+  </div>
+  {#- The newline after the tag is dropped by the HTML parser, so content that starts with a blank line keeps it. -#}
+  <textarea class="input mt-2 min-h-96 resize-y py-2 font-mono text-xs leading-5" id="wiki-content" name="content" rows="20" spellcheck="true" dir="auto">
+{{ content }}</textarea>
+
+  <div class="mt-6 flex flex-wrap items-center gap-2">
+    <button type="submit" name="intent" value="save" class="btn btn-primary">{% call ui::localized(wiki.t.text(WikiMessage::Save)) %}{% endcall %}</button>
+    <button type="submit" name="intent" value="preview" class="btn">{% call ui::icon("eye", "size-3.5") %}{% endcall %}{% call ui::localized(wiki.t.text(WikiMessage::Preview)) %}{% endcall %}</button>
+    <a href="{{ cancel_url }}" class="btn btn-ghost">{% call ui::localized(wiki.t.text(WikiMessage::Cancel)) %}{% endcall %}</a>
+  </div>
+</form>
+{% if let Some(html) = preview %}
+<section class="box mt-6 overflow-hidden" aria-labelledby="wiki-preview-title">
+  <h2 id="wiki-preview-title" class="box-header text-[13px] font-medium">{% call ui::icon("eye", "size-3.5 text-ink-muted") %}{% endcall %}{% call ui::localized(wiki.t.text(WikiMessage::Preview)) %}{% endcall %}</h2>
+  {% if html.trim().is_empty() %}
+  <p class="px-5 py-6 text-[13px] text-ink-muted">{% call ui::localized(wiki.t.text(WikiMessage::NothingToPreview)) %}{% endcall %}</p>
+  {% else %}
+  <article class="prose-rbit overflow-x-auto px-5 py-6 sm:px-8" dir="auto">{{ html|safe }}</article>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}
