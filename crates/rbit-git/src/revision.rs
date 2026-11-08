@@ -4,7 +4,7 @@
 //! Derived data (language statistics, last commits) is cached by commit id because a
 //! commit's content never changes, while a branch name moves with every push.
 
-use crate::{GitError, RepositoryReader, reader::resolve_commit};
+use crate::{GitError, RepositoryReader, reader::resolve_commit, ref_alias::case_alias};
 
 impl RepositoryReader {
     /// The full hexadecimal id of the commit `revision` names.
@@ -18,14 +18,17 @@ impl RepositoryReader {
     /// when `name` is not a valid tag name.
     ///
     /// The reference is written with Git's locking (a `.lock` file, then a rename), so it
-    /// is safe against concurrent pushes.
+    /// is safe against concurrent pushes. A tag that exists under another spelling on a
+    /// case-insensitive filesystem also counts as existing (see `ref_alias`): writing
+    /// it would move that tag.
     pub async fn create_tag(&self, name: String, target: String) -> Result<String, GitError> {
         self.with_repo(move |repo| {
             let full_name = format!("refs/tags/{name}");
             if name.is_empty() || name.starts_with('-') || gix::refs::FullName::try_from(full_name.as_str()).is_err() {
                 return Err(GitError::InvalidBranchName(name));
             }
-            if repo.try_find_reference(full_name.as_str()).map_err(GitError::backend)?.is_some() {
+            if repo.try_find_reference(full_name.as_str()).map_err(GitError::backend)?.is_some() || case_alias(repo, &full_name)?.is_some()
+            {
                 return Err(GitError::AlreadyExists);
             }
             let commit = resolve_commit(repo, &target)?;

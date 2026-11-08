@@ -37,6 +37,7 @@ mod process;
 pub mod pull_refs;
 pub mod push;
 pub mod reader;
+mod ref_alias;
 pub mod relocate;
 // Milestone 3: importing and push mirrors (M).
 pub mod remote;

@@ -53,6 +53,7 @@ use crate::{
     archive::{git_command, null_device},
     overlay::{MERGES_DIR, Overlay},
     pull_refs::{branch_ref, validate_id},
+    ref_alias::case_alias_at,
 };
 
 /// Conflicting paths reported at most.
@@ -220,8 +221,9 @@ async fn merge_inner(env: &MergeEnvironment, spec: &MergeSpec<'_>) -> Result<Mer
 /// objects first, then `update-ref <target> <commit> <expected>`, the atomic
 /// compare-and-swap. `expected` is the id `target` must still point at, or all zeros when
 /// `target` must not exist yet. A ref that moved (or appeared) meanwhile is
-/// [`MergeError::BaseMoved`]; nothing in `base` changes but the fetched objects. Also used
-/// by [`crate::edit`].
+/// [`MergeError::BaseMoved`], and so is a `target` that another existing ref aliases on a
+/// case-insensitive filesystem (see `ref_alias`); nothing in `base` changes but the
+/// fetched objects. Also used by [`crate::edit`].
 pub(crate) async fn hand_over(
     scratch: &Git<'_>,
     base: &Git<'_>,
@@ -237,6 +239,9 @@ pub(crate) async fn hand_over(
         .arg(scratch.dir)
         .arg(RESULT_REF);
     expect_success(fetch.output().await?, "fetch")?;
+    if case_alias_at(base.dir, target).await?.is_some() {
+        return Err(MergeError::BaseMoved);
+    }
     let mut update = base.command();
     update.args(["update-ref", "--no-deref", "-m", reason, "--end-of-options"]).arg(target).arg(commit).arg(expected);
     let output = update.output().await?;
@@ -324,24 +329,16 @@ impl Git<'_> {
 
     /// Runs `args`, returning standard output; a non-zero status is an error.
     pub(crate) async fn run<'s>(&self, args: impl IntoIterator<Item = &'s str>) -> Result<Vec<u8>, MergeError> {
-        let mut command = self.command();
-        command.args(args);
-        let output = command.output().await?;
-        let what = "command";
-        expect_success(output, what)
+        expect_success(self.command().args(args).output().await?, "command")
     }
 
     pub(crate) async fn rev_parse(&self, name: &str) -> Result<Option<String>, MergeError> {
-        let mut command = self.command();
-        command.args(["rev-parse", "--verify", "--quiet", "--end-of-options"]).arg(name);
-        let output = command.output().await?;
+        let output = self.command().args(["rev-parse", "--verify", "--quiet", "--end-of-options"]).arg(name).output().await?;
         Ok(output.status.success().then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned()))
     }
 
     async fn is_ancestor(&self, ancestor: &str, descendant: &str) -> Result<bool, MergeError> {
-        let mut command = self.command();
-        command.args(["merge-base", "--is-ancestor", "--end-of-options", ancestor, descendant]);
-        let output = command.output().await?;
+        let output = self.command().args(["merge-base", "--is-ancestor", "--end-of-options", ancestor, descendant]).output().await?;
         match output.status.code() {
             Some(0) => Ok(true),
             Some(1) => Ok(false),
@@ -350,9 +347,7 @@ impl Git<'_> {
     }
 
     async fn merge_base(&self, a: &str, b: &str) -> Result<Option<String>, MergeError> {
-        let mut command = self.command();
-        command.args(["merge-base", "--end-of-options", a, b]);
-        let output = command.output().await?;
+        let output = self.command().args(["merge-base", "--end-of-options", a, b]).output().await?;
         match output.status.code() {
             Some(0) => {
                 let id = String::from_utf8_lossy(&output.stdout).trim().to_owned();
