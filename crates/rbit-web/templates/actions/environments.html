@@ -1,23 +1,26 @@
 {% extends "base.html" %}
 {% import "macros.html" as ui %}
+{% import "actions/settings_macros.html" as am %}
 {% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
-<div class="mx-auto max-w-3xl">
-  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">Settings</a> <span class="text-ink-faint">/</span> <a class="text-ink-muted hover:text-ink" href="{{ actions_url }}">Actions</a> <span class="text-ink-faint">/</span> Environments</p>
-  <h1 class="mt-1 text-xl font-semibold tracking-tight">Environments</h1>
-  <p class="mt-1 text-[13px] text-ink-muted">A job that names an environment with <span class="font-mono text-ink" dir="ltr">environment:</span> gets its secrets and variables, waits for one of its reviewers when it has any, and runs only from the branches it allows. An environment appears here the first time a workflow names it.</p>
+{% let t = crate::views::actions::ui_text::UiText::new(*page.locale) %}
+{% let title = t.get(rbit_localization::ActionsEnvironmentMessage::Title) %}
+<div class="mx-auto max-w-3xl" lang="{{ page.locale.tag() }}" dir="{{ page.locale.direction().as_str() }}">
+  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">{{ t.settings() }}</a> <span class="text-ink-faint">/</span> <a class="text-ink-muted hover:text-ink" href="{{ actions_url }}">{{ t.actions() }}</a> <span class="text-ink-faint">/</span> {% call ui::localized(title) %}{% endcall %}</p>
+  <h1 class="mt-1 text-xl font-semibold tracking-tight">{% call ui::localized(title) %}{% endcall %}</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">{% call am::rich(t.environments_intro()) %}{% endcall %}</p>
 
   <div class="box mt-6">
     {% if environments.is_empty() %}
-    {% call ui::empty_state("server", "No environments", "Add one below, or run a workflow whose job names one with environment:.") %}{% endcall %}
+    {% call am::empty("server", t.get(rbit_localization::ActionsEnvironmentMessage::NoEnvironments), t.no_environments_hint()) %}{% endcall %}
     {% else %}
     <ul>
       {% for environment in environments %}
       <li class="border-b border-line last:border-b-0">
         <a class="flex min-h-11 items-center gap-3 px-4 py-3 hover:bg-subtle" href="{{ environment.url }}">
           {% call ui::icon("server", "size-4 shrink-0 text-ink-muted") %}{% endcall %}
-          <span class="min-w-0 flex-1"><span class="block truncate font-medium">{{ environment.name }}</span><span class="block truncate text-xs text-ink-muted">{{ environment.protection }}</span></span>
+          <span class="min-w-0 flex-1"><span class="block truncate font-medium">{{ environment.name }}</span><span class="block truncate text-xs text-ink-muted">{% call am::rich(t.protection(environment.protection)) %}{% endcall %}</span></span>
           {% call ui::icon("chevron-right", "size-4 shrink-0 text-ink-muted") %}{% endcall %}
         </a>
       </li>
@@ -27,14 +30,14 @@
   </div>
 
   <form method="post" action="{{ action_url }}" class="box mt-4" novalidate>
-    <div class="box-header"><h2 class="text-[13px] font-medium">New environment</h2></div>
+    <div class="box-header"><h2 class="text-[13px] font-medium">{% call ui::localized(t.get(rbit_localization::ActionsEnvironmentMessage::NewEnvironment)) %}{% endcall %}</h2></div>
     <div class="p-4">
-      {% call ui::form_error(error) %}{% endcall %}
-      <label class="label" for="environment-name">Name</label>
-      <input class="input" id="environment-name" name="name" value="{{ new_name }}" maxlength="255" autocomplete="off" required placeholder="production">
+      {% call am::form_error(t, error) %}{% endcall %}
+      <label class="label" for="environment-name">{% call ui::localized(t.get(rbit_localization::ActionsEnvironmentMessage::Name)) %}{% endcall %}</label>
+      <input class="input" id="environment-name" name="name" value="{{ new_name }}" maxlength="255" autocomplete="off" required placeholder="{{ t.get(rbit_localization::ActionsEnvironmentMessage::NamePlaceholder) }}">
     </div>
     <div class="flex justify-end border-t border-line px-4 py-3">
-      <button class="btn btn-primary w-full sm:w-auto" type="submit">Add environment</button>
+      <button class="btn btn-primary w-full sm:w-auto" type="submit">{% call ui::localized(t.get(rbit_localization::ActionsEnvironmentMessage::AddEnvironment)) %}{% endcall %}</button>
     </div>
   </form>
 </div>

@@ -14,12 +14,14 @@ use rbit_core::{
     RepoId,
     actions::{DefaultTokenPermission, SecretVisibility, Variable},
 };
+use rbit_localization::ActionsSettingsMessage;
 use rbit_services::actions::{
     secrets::{ListedSecret, MAX_VALUE_BYTES, MAX_VARIABLE_BYTES},
     settings::{OwnerRepository, TrustedAuthor},
 };
 
 use crate::views::{
+    actions::environment_text::EnvironmentProtection,
     components::{FormError, SettingsCard},
     layout::Page,
     org::OrgHeader,
@@ -85,14 +87,14 @@ impl Notice {
         Self::ALL.into_iter().find(|notice| notice.key() == value)
     }
 
-    pub const fn message(self) -> &'static str {
+    pub const fn message(self) -> ActionsSettingsMessage<'static> {
         match self {
-            Self::Saved => "Settings saved.",
-            Self::SecretSaved => "Secret saved.",
-            Self::SecretDeleted => "Secret deleted.",
-            Self::VariableSaved => "Variable saved.",
-            Self::VariableDeleted => "Variable deleted.",
-            Self::Untrusted => "The author's pull requests need approval again.",
+            Self::Saved => ActionsSettingsMessage::Saved,
+            Self::SecretSaved => ActionsSettingsMessage::SecretSaved,
+            Self::SecretDeleted => ActionsSettingsMessage::SecretDeleted,
+            Self::VariableSaved => ActionsSettingsMessage::VariableSaved,
+            Self::VariableDeleted => ActionsSettingsMessage::VariableDeleted,
+            Self::Untrusted => ActionsSettingsMessage::Untrusted,
         }
     }
 }
@@ -119,8 +121,8 @@ pub struct SecretRow {
     pub updated_iso: String,
     /// Sealed with the current key; otherwise it must be set again.
     pub readable: bool,
-    /// Owner secrets: which repositories receive it. Empty for repository secrets.
-    pub visibility: String,
+    /// Owner secrets: how many repositories it is given to. `None` for repository secrets.
+    pub receivers: Option<usize>,
     /// Given to selected repositories only.
     pub selected: bool,
     /// The owner's repositories, those it is given to checked (owner secrets).
@@ -130,20 +132,13 @@ pub struct SecretRow {
 impl SecretRow {
     pub fn new(secret: &ListedSecret, owner_repositories: Option<&[OwnerRepository]>) -> Self {
         let selected = secret.info.visibility == SecretVisibility::Selected;
-        let visibility = match (owner_repositories, selected) {
-            (None, _) => String::new(),
-            (Some(_), false) => "All repositories".to_owned(),
-            (Some(_), true) => match secret.repositories.len() {
-                1 => "1 selected repository".to_owned(),
-                count => format!("{count} selected repositories"),
-            },
-        };
+
         Self {
             name: secret.info.name.to_string(),
             updated: secret.info.updated_at.relative(),
             updated_iso: secret.info.updated_at.iso8601(),
             readable: secret.readable,
-            visibility,
+            receivers: owner_repositories.map(|_| secret.repositories.len()),
             selected,
             repositories: owner_repositories.map(|all| RepoChoice::list(all, &secret.repositories)).unwrap_or_default(),
         }
@@ -263,20 +258,16 @@ impl VariablesSection {
 #[derive(Debug, Clone)]
 pub struct PermissionOption {
     pub value: &'static str,
-    pub label: &'static str,
-    pub description: &'static str,
+    pub label: ActionsSettingsMessage<'static>,
+    pub description: ActionsSettingsMessage<'static>,
     pub selected: bool,
 }
 
 impl PermissionOption {
     pub fn list(selected: DefaultTokenPermission) -> Vec<Self> {
         [
-            (DefaultTokenPermission::Read, "Read", "Workflows can read the repository's contents, issues and pull requests."),
-            (
-                DefaultTokenPermission::Write,
-                "Read and write",
-                "Workflows can also push, and comment on issues and pull requests. Branch protection still applies.",
-            ),
+            (DefaultTokenPermission::Read, ActionsSettingsMessage::PermissionRead, ActionsSettingsMessage::PermissionReadHint),
+            (DefaultTokenPermission::Write, ActionsSettingsMessage::PermissionWrite, ActionsSettingsMessage::PermissionWriteHint),
         ]
         .into_iter()
         .map(|(permission, label, description)| Self { value: permission.as_str(), label, description, selected: permission == selected })
@@ -366,7 +357,7 @@ mod tests {
     fn notices_round_trip_and_unknown_ones_show_nothing() {
         for notice in Notice::ALL {
             assert_eq!(Notice::parse(notice.key()), Some(notice));
-            assert!(notice.message().ends_with('.'));
+            assert!(rbit_localization::MessageFamily::id(notice.message()).starts_with("actions.settings.notice."));
         }
         assert_eq!(Notice::parse("<script>"), None);
     }
@@ -393,8 +384,8 @@ mod tests {
 pub struct EnvironmentRow {
     pub name: String,
     pub url: String,
-    /// "2 reviewers · branches main, release/*", or "No protection".
-    pub protection: String,
+    /// Shown as "2 reviewers · branches main, release/*", or "No protection".
+    pub protection: EnvironmentProtection,
 }
 
 /// `/{owner}/{repo}/settings/actions/environments`.

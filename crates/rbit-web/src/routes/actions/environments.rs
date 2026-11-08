@@ -27,6 +27,7 @@ use crate::{
     extract::{SignedIn, Viewer},
     routes::repo::RepoPage,
     views::{
+        actions::environment_text::EnvironmentProtection,
         actions_settings::{EnvironmentPage, EnvironmentRow, EnvironmentsPage, Notice},
         components::FormError,
         layout::Page,
@@ -39,22 +40,6 @@ fn environments_url(loaded: &RepoPage) -> String {
 
 fn environment_url(loaded: &RepoPage, name: &str) -> String {
     format!("{}/{}", environments_url(loaded), utf8_percent_encode(name, NON_ALPHANUMERIC))
-}
-
-/// "2 reviewers · branches main, release/*", or "No protection".
-fn protection(environment: &Environment) -> String {
-    let mut parts = Vec::new();
-    match environment.reviewers.len() {
-        0 => {}
-        1 => parts.push("1 reviewer".to_owned()),
-        count => parts.push(format!("{count} reviewers")),
-    }
-    match &environment.branch_policy {
-        BranchPolicy::All => {}
-        BranchPolicy::Protected => parts.push("protected branches".to_owned()),
-        BranchPolicy::Selected(patterns) => parts.push(format!("branches {}", patterns.join(", "))),
-    }
-    if parts.is_empty() { "No protection".to_owned() } else { parts.join(" · ") }
 }
 
 async fn list_page(state: &AppState, loaded: &RepoPage, page: Page, error: FormError, new_name: String) -> WebResult<EnvironmentsPage> {
@@ -71,7 +56,7 @@ async fn list_page(state: &AppState, loaded: &RepoPage, page: Page, error: FormE
             .map(|environment| EnvironmentRow {
                 name: environment.name.clone(),
                 url: environment_url(loaded, &environment.name),
-                protection: protection(environment),
+                protection: EnvironmentProtection::from(environment),
             })
             .collect(),
         error,

@@ -1,22 +1,55 @@
-{#- Pieces of the Actions settings forms (views::actions_settings). -#}
+{#- Pieces of the Actions settings forms (views::actions_settings). `t` is the page's
+    `views::actions::ui_text::UiText`. -#}
+{% import "macros.html" as ui %}
+
+{#- A `Rich` message: its marked arguments styled, the whole marked English where it fell back. -#}
+{% macro rich(value) -%}
+{%- if value.fallback %}<span lang="en">{% endif -%}
+{%- for piece in value.pieces -%}
+{%- if let Some(iso) = piece.datetime -%}<time datetime="{{ iso }}">{{ piece.text }}</time>
+{%- else if piece.class.is_empty() -%}{{ piece.text }}
+{%- else -%}<span class="{{ piece.class }}"{% if piece.ltr %} dir="ltr"{% endif %}>{{ piece.text }}</span>
+{%- endif -%}
+{%- endfor -%}
+{%- if value.fallback %}</span>{% endif -%}
+{%- endmacro %}
+
+{#- `ui::empty_state` for `Localized` text. -#}
+{% macro empty(icon_name, title, text) %}
+<div class="flex flex-col items-center px-6 py-14 text-center">
+  <div class="grid size-10 place-items-center rounded-(--radius-ui) border border-line text-ink-muted">{% call ui::icon(icon_name, "size-5") %}{% endcall %}</div>
+  <p class="mt-4 font-medium">{% call ui::localized(title) %}{% endcall %}</p>
+  <p class="mt-1 max-w-sm text-[13px] text-ink-muted">{% call ui::localized(text) %}{% endcall %}</p>
+</div>
+{% endmacro %}
+
+{#- `ui::form_error` for a service's English message inside a localized page. -#}
+{% macro form_error(t, error) %}
+{% if let Some(message) = error.0 %}
+<div role="alert" class="mb-5 flex items-start gap-2 rounded-(--radius-ui) border border-danger/40 bg-danger-subtle px-3 py-2.5 text-[13px] text-danger">
+  {% call ui::icon("alert", "mt-px size-4 shrink-0") %}{% endcall %}
+  <span>{% call ui::localized(t.english(message)) %}{% endcall %}</span>
+</div>
+{% endif %}
+{% endmacro %}
 
 {#- Where an owner secret goes: all of the owner's repositories or the ticked ones. -#}
-{% macro visibility(selected) %}
+{% macro visibility(t, selected) %}
 <fieldset class="mt-5">
-  <legend class="label">Repository access</legend>
+  <legend class="label">{% call ui::localized(t.get(rbit_localization::ActionsSettingsMessage::RepositoryAccess)) %}{% endcall %}</legend>
   <div class="box overflow-hidden">
     <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
       <input type="radio" name="visibility" value="all" class="mt-1 accent-(--ink)" {% if !selected %}checked{% endif %}>
       <span>
-        <span class="block font-medium">All repositories</span>
-        <span class="block text-[13px] text-ink-muted">Every repository of this owner, including ones created later.</span>
+        <span class="block font-medium">{% call ui::localized(t.get(rbit_localization::ActionsSettingsMessage::AllRepositories)) %}{% endcall %}</span>
+        <span class="block text-[13px] text-ink-muted">{% call ui::localized(t.get(rbit_localization::ActionsSettingsMessage::AllRepositoriesHint)) %}{% endcall %}</span>
       </span>
     </label>
     <label class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
       <input type="radio" name="visibility" value="selected" class="mt-1 accent-(--ink)" {% if selected %}checked{% endif %}>
       <span>
-        <span class="block font-medium">Selected repositories</span>
-        <span class="block text-[13px] text-ink-muted">Only the repositories ticked below.</span>
+        <span class="block font-medium">{% call ui::localized(t.get(rbit_localization::ActionsSettingsMessage::SelectedRepositories)) %}{% endcall %}</span>
+        <span class="block text-[13px] text-ink-muted">{% call ui::localized(t.get(rbit_localization::ActionsSettingsMessage::SelectedRepositoriesHint)) %}{% endcall %}</span>
       </span>
     </label>
   </div>
@@ -24,9 +57,9 @@
 {% endmacro %}
 
 {#- The owner's repositories as checkboxes named `repository`; expects `Vec<RepoChoice>`. -#}
-{% macro repositories(choices) %}
+{% macro repositories(t, choices) %}
 {% if choices.is_empty() %}
-<p class="hint">This owner has no repositories yet.</p>
+<p class="hint">{% call ui::localized(t.get(rbit_localization::ActionsSettingsMessage::NoRepositoriesYet)) %}{% endcall %}</p>
 {% else %}
 <div class="box mt-3 overflow-hidden">
   {% for choice in choices.iter() %}
