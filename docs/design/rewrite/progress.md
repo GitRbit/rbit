@@ -125,6 +125,15 @@ push assertions fail. This covers two of the seven mandatory groups; deploy
 keys, sub-`admin` token scopes, LFS/release files, pull requests and the inactive
 replacement ports remain outside this claim.
 
+The outbound-network part of the third mandatory group now has 26 hostile-input
+tests against the production webhook, import, sign-in provider and Git clients,
+using local listeners and a scripted resolver, described in the
+[security contracts](security-contracts.md#outbound-network-group-status).
+They found two defects, both fixed: unbounded, uncancellable import API body
+reads, and a stalled Git remote whose HTTP helper outlived the time limit. Path,
+archive, LFS and upload cases in the same group, process-tree containment of
+trickle-fed Git helpers and permitted strict-mode connections remain open.
+
 Security activation, complete Wiki publication/UI, remaining feature retirement,
 full localization, paired performance, bounded build retention and release-platform
 gates remain open. Earlier evidence below is historical.
