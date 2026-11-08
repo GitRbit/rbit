@@ -32,7 +32,7 @@ use std::{
 
 use pulldown_cmark::{CowStr, Event, Options, Parser, Tag, TagEnd, html};
 
-use super::document_cache::DocumentCache;
+use super::{document_cache::DocumentCache, markdown_bounds::bounded};
 use crate::urls::{DocumentBase, LinkKind, ResolvedLink};
 
 /// The prefix of every `id` a rendered document carries.
@@ -83,7 +83,7 @@ fn options() -> Options {
 type Rewrite<'r> = &'r dyn Fn(&str) -> Option<Rewritten>;
 
 fn render(source: &str, base: Option<&DocumentBase>, rewrite: Option<Rewrite<'_>>) -> String {
-    let mut events = with_heading_ids(Parser::new_ext(source, options()));
+    let mut events = with_heading_ids(bounded(Parser::new_ext(source, options())));
     let mut kept: HashSet<String> = HashSet::new();
     if let Some(rewrite) = rewrite {
         events = rewrite_text(events, rewrite, &mut kept);

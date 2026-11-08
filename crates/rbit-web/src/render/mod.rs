@@ -4,6 +4,7 @@ mod document_cache;
 mod highlight;
 mod highlight_cache;
 mod markdown;
+mod markdown_bounds;
 pub mod references;
 
 pub use document_cache::{DocumentCache, DocumentCacheStats};
