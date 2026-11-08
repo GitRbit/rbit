@@ -27,6 +27,7 @@ pub mod settings;
 mod settings_nav;
 pub use settings_nav::SettingsNavMessage;
 mod actions_ui;
+pub(crate) mod collab;
 pub mod shell;
 mod theme_preview;
 pub use actions_ui::{

@@ -110,10 +110,21 @@ dashboards, the inbox, error pages and the shared page macros) use the families 
 `rbit_localization::shell`. The `catalog-guard` node test fails on words hard-coded in
 a template; `scripts/tests/fixtures/catalog-exemptions.txt` lists the templates not
 converted yet.
+Sentences that embed markup (a link, a time, a branch, a count in its own element)
+are `RichFamily` messages, used by the issue, pull request and timeline pages
+(`CollabSentence`, `TimelineEventMessage`). Their writer adds numbered slots besides
+literals, arguments and numbers; `rich(locale)` returns a `Rich` of text parts and
+slots plus the same fallback flag. The template renders each slot's markup and the
+text between them, and puts `lang="en"` on the sentence's own element when it fell
+back, so a translation may reorder the pieces without splitting the sentence. Each
+variant documents its slots; timeline events always start with the actor in slot 0.
+Plain families look themselves up with `localized(locale)` (for example
+`IssueMessage::NewIssue.localized(page.locale)`), so templates need no catalog helper.
 
 To add a locale, add its `Locale` variant, tag, catalog key and direction. Then
 implement `translate` for the families and keys it covers (`RunPageMessage`,
-`SettingsNavMessage` and `ThemePreviewMessage` today). Everything it leaves out keeps
+`SettingsNavMessage`, `ThemePreviewMessage` and the issue, pull request, review and
+timeline families in `catalog/collab/` today). Everything it leaves out keeps
 rendering in English, marked as such, until a translator adds it. `SettingsNavMessage`
 shows a partial translation: its Spanish arm reuses the shell's existing Spanish
 labels and leaves the other sections to fall back.
