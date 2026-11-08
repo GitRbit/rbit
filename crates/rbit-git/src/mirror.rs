@@ -11,7 +11,12 @@
 
 use std::{path::Path, time::Duration};
 
-use crate::{GitError, archive::git_command, process::bounded_output, remote::ResolvedHost};
+use crate::{
+    GitError,
+    archive::git_command,
+    process::bounded_output,
+    remote::{ResolvedHost, abort_stalled_transfers},
+};
 
 /// Longest error excerpt kept from Git's output.
 const MAX_ERROR_LEN: usize = 500;
@@ -50,6 +55,7 @@ fn remote_command(git_binary: &Path, repo_path: Option<&Path>, resolution: Optio
 
 /// Runs `command` with `timeout`, returning its standard output.
 async fn run(command: &mut tokio::process::Command, timeout: Duration) -> Result<Vec<u8>, FetchError> {
+    abort_stalled_transfers(command, timeout);
     let output = tokio::time::timeout(timeout, bounded_output(command, 64 * 1024, MAX_ERROR_LEN * 4))
         .await
         .map_err(|_| FetchError::TimedOut(timeout))?

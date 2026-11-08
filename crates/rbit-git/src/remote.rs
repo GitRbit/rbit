@@ -145,8 +145,18 @@ fn failed(message: &str) -> GitError {
     GitError::backend(std::io::Error::other(message.to_owned()))
 }
 
+/// Makes a transfer that receives nothing for a little longer than `timeout` end by
+/// itself (the time limit still reports first). Killing `git` at the timeout does not stop
+/// the HTTP helper it started (`git-remote-http`), which would otherwise keep the
+/// connection to a stalled remote open indefinitely.
+pub(crate) fn abort_stalled_transfers(command: &mut tokio::process::Command, timeout: Duration) {
+    let seconds = timeout.as_secs().saturating_add(2);
+    command.env("GIT_HTTP_LOW_SPEED_LIMIT", "1").env("GIT_HTTP_LOW_SPEED_TIME", seconds.to_string());
+}
+
 /// Runs `command` with `timeout`.
 async fn run(command: &mut tokio::process::Command, timeout: Duration) -> Result<(), RemoteError> {
+    abort_stalled_transfers(command, timeout);
     let output = tokio::time::timeout(timeout, bounded_output(command, 0, MAX_ERROR_LEN * 4))
         .await
         .map_err(|_| RemoteError::TimedOut(timeout))?
