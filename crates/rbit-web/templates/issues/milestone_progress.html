@@ -1,11 +1,13 @@
 {#- A milestone's progress bar (an SVG rectangle whose `width` is the percentage) and counts; expects
     `milestone: MilestoneView`. -#}
-<svg class="block h-1.5 w-full overflow-hidden rounded-full" viewBox="0 0 100 2" preserveAspectRatio="none" role="img" aria-label="{{ milestone.percent }}% complete">
+{% import "macros.html" as ui %}
+<svg class="block h-1.5 w-full overflow-hidden rounded-full" viewBox="0 0 100 2" preserveAspectRatio="none" role="img" aria-label="{{ rbit_localization::MilestoneMessage::Complete { percent: milestone.percent.clone() }.localized(page.locale) }}">
   <rect width="100" height="2" class="fill-subtle"/>
   <rect width="{{ milestone.percent }}" height="2" class="fill-success"/>
 </svg>
+{% let complete = rbit_localization::CollabSentence::PercentComplete.rich(page.locale) %}
 <p class="mt-1.5 flex flex-wrap gap-x-3 text-xs text-ink-muted">
-  <span><span class="font-medium text-ink">{{ milestone.percent }}%</span> complete</span>
-  <span>{{ milestone.open_issues }} open</span>
-  <span>{{ milestone.closed_issues }} closed</span>
+  <span{% if complete.fallback() %} lang="en"{% endif %}>{% for part in complete.parts() %}{% if part.is_slot(0) %}<span class="font-medium text-ink">{{ milestone.percent }}%</span>{% else %}{{ part.text() }}{% endif %}{% endfor %}</span>
+  <span>{% call ui::localized(rbit_localization::MilestoneMessage::OpenIssues { count: milestone.open_issues.clone() }.localized(page.locale)) %}{% endcall %}</span>
+  <span>{% call ui::localized(rbit_localization::MilestoneMessage::ClosedIssues { count: milestone.closed_issues.clone() }.localized(page.locale)) %}{% endcall %}</span>
 </p>

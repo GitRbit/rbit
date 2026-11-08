@@ -1,35 +1,39 @@
 {#- The form under a conversation: comment, close or reopen, lock; expects `form: CommentFormView`
     (views::timeline). Works without JavaScript; buttons are 44 px tall on touch. -#}
 {% import "macros.html" as ui %}
-<section id="{{ form.anchor }}" class="timeline-item" aria-label="Add a comment">
+{% let (close, reopen) = form.state_buttons() %}
+{% let locked = rbit_localization::ThreadMessage::LockedHint.localized(page.locale) %}
+<section id="{{ form.anchor }}" class="timeline-item" aria-label="{{ rbit_localization::ThreadMessage::AddComment.localized(page.locale) }}">
   <div class="box min-w-0 flex-1 overflow-hidden">
     {% if form.can_comment %}
     <form method="post" action="{{ form.action_url }}" class="p-3 sm:p-4">
-      <label for="{{ form.anchor }}-body" class="label">Add a comment</label>
-      <textarea id="{{ form.anchor }}-body" name="body" data-markdown-editor class="input mt-1.5 h-32 resize-y py-2 text-[13px]" rows="6" maxlength="65536" placeholder="Write a comment. Use @ for users and # for issues or pull requests." data-discussion-editor data-suggestions="{{ form.suggestions_url }}" aria-autocomplete="list" aria-controls="discussion-suggestions"></textarea>
-      <div id="discussion-suggestions" class="box mt-2 max-h-64 overflow-y-auto" role="listbox" aria-label="Mention suggestions" hidden></div>
-      <p class="hint mt-2" data-discussion-status aria-live="polite">Markdown is supported. Use @name, #123 or owner/repo#123 to link a user, issue or pull request.</p>
-      {% if form.locked %}<p class="hint mt-2 flex items-center gap-1.5">{% call ui::icon("lock", "size-3.5") %}{% endcall %}This conversation is locked; only collaborators can comment.</p>{% endif %}
+      <label for="{{ form.anchor }}-body" class="label">{% call ui::localized(rbit_localization::ThreadMessage::AddComment.localized(page.locale)) %}{% endcall %}</label>
+      <textarea id="{{ form.anchor }}-body" name="body" data-markdown-editor class="input mt-1.5 h-32 resize-y py-2 text-[13px]" rows="6" maxlength="65536" placeholder="{{ rbit_localization::ThreadMessage::CommentPlaceholder.localized(page.locale) }}" data-discussion-editor data-suggestions="{{ form.suggestions_url }}" aria-autocomplete="list" aria-controls="discussion-suggestions"></textarea>
+      <div id="discussion-suggestions" class="box mt-2 max-h-64 overflow-y-auto" role="listbox" aria-label="{{ rbit_localization::ThreadMessage::MentionSuggestions.localized(page.locale) }}" hidden></div>
+      <p class="hint mt-2" data-discussion-status aria-live="polite">{% call ui::localized(rbit_localization::ThreadMessage::CommentHint.localized(page.locale)) %}{% endcall %}</p>
+      {% if form.locked %}<p class="hint mt-2 flex items-center gap-1.5">{% call ui::icon("lock", "size-3.5") %}{% endcall %}{% call ui::localized(locked) %}{% endcall %}</p>{% endif %}
       <div class="mt-3 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
         {% if form.can_set_state %}{% if form.is_open %}
-        <button type="submit" name="state" value="close_completed" class="btn h-11 sm:h-8">{% call ui::icon("circle-check", "size-3.5") %}{% endcall %}Close {{ form.noun }}</button>
-        {% if form.is_issue %}<button type="submit" name="state" value="close_not_planned" class="btn h-11 sm:h-8">{% call ui::icon("circle-slash", "size-3.5") %}{% endcall %}Close as not planned</button>{% endif %}
+        <button type="submit" name="state" value="close_completed" class="btn h-11 sm:h-8">{% call ui::icon("circle-check", "size-3.5") %}{% endcall %}{% call ui::localized(close.localized(page.locale)) %}{% endcall %}</button>
+        {% if form.is_issue %}<button type="submit" name="state" value="close_not_planned" class="btn h-11 sm:h-8">{% call ui::icon("circle-slash", "size-3.5") %}{% endcall %}{% call ui::localized(rbit_localization::ThreadMessage::CloseNotPlanned.localized(page.locale)) %}{% endcall %}</button>{% endif %}
         {% else %}
-        <button type="submit" name="state" value="reopen" class="btn h-11 sm:h-8">{% call ui::icon("circle-dot", "size-3.5") %}{% endcall %}Reopen {{ form.noun }}</button>
+        <button type="submit" name="state" value="reopen" class="btn h-11 sm:h-8">{% call ui::icon("circle-dot", "size-3.5") %}{% endcall %}{% call ui::localized(reopen.localized(page.locale)) %}{% endcall %}</button>
         {% endif %}{% endif %}
-        <button type="submit" class="btn btn-primary h-11 sm:h-8">Comment</button>
+        <button type="submit" class="btn btn-primary h-11 sm:h-8">{% call ui::localized(rbit_localization::ThreadMessage::Comment.localized(page.locale)) %}{% endcall %}</button>
       </div>
     </form>
     {% else %}
     <div class="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:p-4">
       <p class="flex flex-1 items-center gap-2 text-[13px] text-ink-muted">
-        {% if !form.signed_in %}{% call ui::icon("message-square", "size-4 shrink-0") %}{% endcall %}<span><a href="{{ form.sign_in_url }}" class="font-medium text-ink underline underline-offset-4">Sign in</a> to join the conversation.</span>
-        {% else %}{% call ui::icon("lock", "size-4 shrink-0") %}{% endcall %}<span>This conversation is locked; only collaborators can comment.</span>{% endif %}
+        {% if !form.signed_in %}{% call ui::icon("message-square", "size-4 shrink-0") %}{% endcall %}
+        {%- let sentence = rbit_localization::CollabSentence::SignInToJoin.rich(page.locale) %}
+        <span{% if sentence.fallback() %} lang="en"{% endif %}>{% for part in sentence.parts() %}{% if part.is_slot(0) %}<a href="{{ form.sign_in_url }}" class="font-medium text-ink underline underline-offset-4">{{ rbit_localization::ThreadMessage::SignIn.localized(page.locale) }}</a>{% else %}{{ part.text() }}{% endif %}{% endfor %}</span>
+        {% else %}{% call ui::icon("lock", "size-4 shrink-0") %}{% endcall %}<span>{% call ui::localized(locked) %}{% endcall %}</span>{% endif %}
       </p>
       {% if form.can_set_state %}
       <form method="post" action="{{ form.state_url }}">
-        {% if form.is_open %}<button type="submit" name="state" value="close_completed" class="btn h-11 w-full sm:h-8 sm:w-auto">Close {{ form.noun }}</button>
-        {% else %}<button type="submit" name="state" value="reopen" class="btn h-11 w-full sm:h-8 sm:w-auto">Reopen {{ form.noun }}</button>{% endif %}
+        {% if form.is_open %}<button type="submit" name="state" value="close_completed" class="btn h-11 w-full sm:h-8 sm:w-auto">{% call ui::localized(close.localized(page.locale)) %}{% endcall %}</button>
+        {% else %}<button type="submit" name="state" value="reopen" class="btn h-11 w-full sm:h-8 sm:w-auto">{% call ui::localized(reopen.localized(page.locale)) %}{% endcall %}</button>{% endif %}
       </form>
       {% endif %}
     </div>
@@ -40,10 +44,10 @@
 <form method="post" action="{{ form.lock_url }}" class="relative flex justify-end">
   {% if form.locked %}
   <input type="hidden" name="locked" value="false">
-  <button type="submit" class="btn btn-ghost h-11 text-xs sm:h-8">{% call ui::icon("unlock", "size-3.5") %}{% endcall %}Unlock conversation</button>
+  <button type="submit" class="btn btn-ghost h-11 text-xs sm:h-8">{% call ui::icon("unlock", "size-3.5") %}{% endcall %}{% call ui::localized(rbit_localization::ThreadMessage::UnlockConversation.localized(page.locale)) %}{% endcall %}</button>
   {% else %}
   <input type="hidden" name="locked" value="true">
-  <button type="submit" class="btn btn-ghost h-11 text-xs sm:h-8">{% call ui::icon("lock", "size-3.5") %}{% endcall %}Lock conversation</button>
+  <button type="submit" class="btn btn-ghost h-11 text-xs sm:h-8">{% call ui::icon("lock", "size-3.5") %}{% endcall %}{% call ui::localized(rbit_localization::ThreadMessage::LockConversation.localized(page.locale)) %}{% endcall %}</button>
   {% endif %}
 </form>
 {% endif %}

@@ -37,7 +37,7 @@ use crate::{
         components::{FormError, Pagination},
         issues::{
             Choice, IssueListPage, IssuePage, IssueRow, MenuChoices, NewIssuePage, ThreadSummary, filter_menus, list_url, safe_color,
-            sidebar,
+            sidebar, titled,
         },
         layout::Page,
         timeline::{NEW_COMMENT_ANCHOR, ThreadUrls, TimelineOptions, thread},
@@ -133,7 +133,7 @@ async fn list(
     let choices = MenuChoices { labels, milestones, people };
     let full_name = ctx.repo.full_name();
     Ok(IssueListPage {
-        page: page.titled(format!("Issues · {full_name}")),
+        page: titled(page, |locale| format!("{} · {full_name}", rbit_localization::IssueMessage::Issues.localized(locale))),
         header: loaded.header(&state, "issues"),
         rows: IssueRow::list(&results, ctx.repo.owner.name.as_str(), ctx.repo.repo.name.as_str(), &list),
         menus: filter_menus(&clean, &list, &choices, viewer.user()),
@@ -177,7 +177,7 @@ async fn new_page(state: &AppState, loaded: &RepoPage, page: Page, draft: Draft,
     };
     let list = format!("{}/issues", loaded.urls.home());
     Ok(NewIssuePage {
-        page: page.titled(format!("New issue · {}", ctx.repo.full_name())),
+        page: titled(page, |locale| format!("{} · {}", rbit_localization::IssueMessage::NewIssue.localized(locale), ctx.repo.full_name())),
         header: loaded.header(state, "issues"),
         error,
         title: draft.title,
@@ -288,7 +288,7 @@ async fn show(
         return Ok(super::timeline::moved_to_kind(&ThreadUrls::for_context(&ctx).page));
     }
     let after = params.after.as_deref().and_then(TimelineCursor::parse);
-    let options = TimelineOptions { edit: params.edit.as_deref(), ..TimelineOptions::default() };
+    let options = TimelineOptions { edit: params.edit.as_deref(), locale: page.locale, ..TimelineOptions::default() };
     let (thread_view, sidebar) =
         tokio::try_join!(thread(&state, &ctx, viewer.user(), after, options), sidebar(&state, &ctx, viewer.user()))?;
     if let Some(user) = viewer.user() {

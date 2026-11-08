@@ -488,8 +488,8 @@ async fn conversation(
     };
     let user = viewer.user();
     let after = query.after.as_deref().and_then(TimelineCursor::parse);
-    let options =
-        TimelineOptions { edit: query.edit.as_deref(), head_branch: Some(&ctx.pull.head_branch), base_branch: Some(&ctx.pull.base_branch) };
+    let (edit, locale) = (query.edit.as_deref(), page.locale);
+    let options = TimelineOptions { edit, head_branch: Some(&ctx.pull.head_branch), base_branch: Some(&ctx.pull.base_branch), locale };
     let pulls = &state.services.pulls;
     let is_open = ctx.issue().state == IssueState::Open;
     // Independent reads run together: the timeline, the reviews, the header, the sidebar

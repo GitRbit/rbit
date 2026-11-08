@@ -16,6 +16,7 @@ use axum::{
     routing::{get, post},
 };
 use rbit_core::LabelId;
+use rbit_localization::IssueMessage;
 use rbit_services::{ServiceError, issues::LabelInput};
 use serde::Deserialize;
 
@@ -26,6 +27,7 @@ use crate::{
     extract::{SignedIn, Viewer},
     views::{
         components::FormError,
+        issues::titled,
         labels::{LabelForm, LabelView, LabelsPage},
         layout::Page,
     },
@@ -47,7 +49,7 @@ async fn render(state: &AppState, loaded: &RepoPage, page: Page, form: LabelForm
     let usage = state.services.issues.label_usage(&loaded.ctx).await?;
     let home = loaded.urls.home();
     Ok(LabelsPage {
-        page: page.titled(format!("Labels · {}", loaded.ctx.repo.full_name())),
+        page: titled(page, |locale| format!("{} · {}", IssueMessage::Labels.localized(locale), loaded.ctx.repo.full_name())),
         header: loaded.header(state, "issues"),
         labels: usage.iter().map(|usage| LabelView::new(usage, &home)).collect(),
         can_write: loaded.ctx.can_write_content(),

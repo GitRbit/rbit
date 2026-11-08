@@ -5,40 +5,43 @@
 {% block content %}
 <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
   <form method="get" action="{{ list_url }}" class="flex min-w-0 flex-1" role="search">
-    <label class="sr-only" for="issue-query">Search issues</label>
+    <label class="sr-only" for="issue-query">{% call ui::localized(rbit_localization::IssueMessage::SearchIssues.localized(page.locale)) %}{% endcall %}</label>
     <span class="relative min-w-0 flex-1">
       {% call ui::icon("search", "pointer-events-none absolute inset-s-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint") %}{% endcall %}
-      <input id="issue-query" class="input ps-8 font-mono text-xs" type="search" name="q" value="{{ query }}" maxlength="1000" placeholder="Search titles and descriptions…" aria-describedby="search-help" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <input id="issue-query" class="input ps-8 font-mono text-xs" type="search" name="q" value="{{ query }}" maxlength="1000" placeholder="{{ rbit_localization::IssueMessage::SearchPlaceholder.localized(page.locale) }}" aria-describedby="search-help" autocomplete="off" autocapitalize="none" spellcheck="false">
     </span>
-    <button type="submit" class="btn ms-2">Search</button>
+    <button type="submit" class="btn ms-2">{% call ui::localized(rbit_localization::IssueMessage::Search.localized(page.locale)) %}{% endcall %}</button>
   </form>
   <div class="flex shrink-0 gap-2">
-    <a href="{{ labels_url }}" class="btn flex-1 sm:flex-none">{% call ui::icon("tag", "size-3.5") %}{% endcall %}Labels</a>
-    <a href="{{ milestones_url }}" class="btn flex-1 sm:flex-none">{% call ui::icon("milestone", "size-3.5") %}{% endcall %}Milestones</a>
-    {% if !header.archived %}<a href="{{ new_url }}" class="btn btn-primary flex-1 sm:flex-none">New issue</a>{% endif %}
+    <a href="{{ labels_url }}" class="btn flex-1 sm:flex-none">{% call ui::icon("tag", "size-3.5") %}{% endcall %}{% call ui::localized(rbit_localization::IssueMessage::Labels.localized(page.locale)) %}{% endcall %}</a>
+    <a href="{{ milestones_url }}" class="btn flex-1 sm:flex-none">{% call ui::icon("milestone", "size-3.5") %}{% endcall %}{% call ui::localized(rbit_localization::IssueMessage::Milestones.localized(page.locale)) %}{% endcall %}</a>
+    {% if !header.archived %}<a href="{{ new_url }}" class="btn btn-primary flex-1 sm:flex-none">{% call ui::localized(rbit_localization::IssueMessage::NewIssue.localized(page.locale)) %}{% endcall %}</a>{% endif %}
   </div>
 </div>
 
 <details class="mt-2 text-xs text-ink-muted" id="search-help">
-  <summary class="cursor-pointer">Search help</summary>
-  <p class="mt-2">Use the menus to filter results, or type terms such as <code>author:@me</code>, <code>label:"good first issue"</code>, <code>no:assignee</code> or <code>sort:updated-desc</code>. Text searches titles and descriptions. Each menu keeps your other filters.</p>
+  <summary class="cursor-pointer">{% call ui::localized(rbit_localization::IssueMessage::SearchHelp.localized(page.locale)) %}{% endcall %}</summary>
+  {% let help = rbit_localization::CollabSentence::IssueSearchHelp.rich(page.locale) %}
+  <p class="mt-2"{% if help.fallback() %} lang="en"{% endif %}>{% for part in help.parts() %}{% if part.is_slot(0) %}<code>author:@me</code>{% else if part.is_slot(1) %}<code>label:"good first issue"</code>{% else if part.is_slot(2) %}<code>no:assignee</code>{% else if part.is_slot(3) %}<code>sort:updated-desc</code>{% else %}{{ part.text() }}{% endif %}{% endfor %}</p>
 </details>
 {% for hint in hints %}<p class="hint mt-2">{{ hint }}</p>{% endfor %}
-{% if is_filtered %}<p class="mt-2 text-xs"><a href="{{ list_url }}" class="flex items-center gap-1 text-ink-muted hover:text-ink">{% call ui::icon("x", "size-3") %}{% endcall %}Clear the search, filters and sort</a></p>{% endif %}
+{% if is_filtered %}<p class="mt-2 text-xs"><a href="{{ list_url }}" class="flex items-center gap-1 text-ink-muted hover:text-ink">{% call ui::icon("x", "size-3") %}{% endcall %}{% call ui::localized(rbit_localization::IssueMessage::ClearSearch.localized(page.locale)) %}{% endcall %}</a></p>{% endif %}
 
 <div class="box mt-4 overflow-visible">
   {#- Phones: the state links, then the filters on one row that scrolls sideways. -#}
   <div class="box-header relative flex-col items-stretch gap-0 pt-2 sm:flex-row sm:items-center sm:gap-3 sm:pt-0">
-    <nav class="flex min-h-9 items-center gap-4 text-[13px]" aria-label="State">
-      <a href="{{ open_url }}" class="flex items-center gap-1.5 {% if showing_open %}font-medium text-ink{% else %}text-ink-muted hover:text-ink{% endif %}" {% if showing_open %}aria-current="page"{% endif %}>{% call ui::icon("circle-dot", "size-3.5") %}{% endcall %}<span class="tabular-nums">{{ open }}</span> Open</a>
-      <a href="{{ closed_url }}" class="flex items-center gap-1.5 {% if showing_closed %}font-medium text-ink{% else %}text-ink-muted hover:text-ink{% endif %}" {% if showing_closed %}aria-current="page"{% endif %}>{% call ui::icon("check", "size-3.5") %}{% endcall %}<span class="tabular-nums">{{ closed }}</span> Closed</a>
+    <nav class="flex min-h-9 items-center gap-4 text-[13px]" aria-label="{{ rbit_localization::IssueMessage::StateNav.localized(page.locale) }}">
+      {% let tab = rbit_localization::CollabSentence::OpenCount { count: open.clone() }.rich(page.locale) %}
+      <a href="{{ open_url }}" class="flex items-center gap-1.5 {% if showing_open %}font-medium text-ink{% else %}text-ink-muted hover:text-ink{% endif %}" {% if showing_open %}aria-current="page"{% endif %}{% if tab.fallback() %} lang="en"{% endif %}>{% call ui::icon("circle-dot", "size-3.5") %}{% endcall %}{% for part in tab.parts() %}{% if part.is_slot(0) %}<span class="tabular-nums">{{ open }}</span>{% else %}{{ part.text() }}{% endif %}{% endfor %}</a>
+      {% let tab = rbit_localization::CollabSentence::ClosedCount { count: closed.clone() }.rich(page.locale) %}
+      <a href="{{ closed_url }}" class="flex items-center gap-1.5 {% if showing_closed %}font-medium text-ink{% else %}text-ink-muted hover:text-ink{% endif %}" {% if showing_closed %}aria-current="page"{% endif %}{% if tab.fallback() %} lang="en"{% endif %}>{% call ui::icon("check", "size-3.5") %}{% endcall %}{% for part in tab.parts() %}{% if part.is_slot(0) %}<span class="tabular-nums">{{ closed }}</span>{% else %}{{ part.text() }}{% endif %}{% endfor %}</a>
     </nav>
     <div class="scroll-tabs -mx-4 flex px-2 sm:relative sm:mx-0 sm:ms-auto sm:gap-x-1 sm:overflow-visible sm:px-0 sm:[mask-image:none]">
       {% include "issues/filters.html" %}
     </div>
   </div>
   {% if rows.is_empty() %}
-  {% call ui::empty_state("circle-dot", "No issues match", "Try another search, or open the first issue.") %}{% endcall %}
+  {% call ui::empty_state("circle-dot", rbit_localization::IssueMessage::NoIssuesTitle.localized(page.locale), rbit_localization::IssueMessage::NoIssuesText.localized(page.locale)) %}{% endcall %}
   {% else %}
   {% include "issues/rows.html" %}
   {% endif %}

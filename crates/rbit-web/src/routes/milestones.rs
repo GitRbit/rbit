@@ -19,6 +19,7 @@ use rbit_core::{
     IssueState, MilestoneId,
     issue_query::{IssueQuery, StateFilter},
 };
+use rbit_localization::{IssueMessage, MilestoneMessage};
 use rbit_services::{ServiceError, issues::MilestoneInput};
 use serde::Deserialize;
 
@@ -31,7 +32,7 @@ use crate::{
     urls::DocumentBase,
     views::{
         components::{FormError, Pagination},
-        issues::IssueRow,
+        issues::{IssueRow, titled},
         layout::Page,
         milestones::{MilestoneForm, MilestoneFormPage, MilestonePage, MilestoneView, MilestonesPage},
     },
@@ -82,7 +83,7 @@ async fn list(
         tokio::try_join!(issues.milestones(&loaded.ctx, Some(wanted)), issues.milestone_counts(&loaded.ctx))?;
     let home = loaded.urls.home();
     Ok(MilestonesPage {
-        page: page.titled(format!("Milestones · {}", loaded.ctx.repo.full_name())),
+        page: titled(page, |locale| format!("{} · {}", IssueMessage::Milestones.localized(locale), loaded.ctx.repo.full_name())),
         header: loaded.header(&state, "issues"),
         milestones: milestones.iter().map(|progress| MilestoneView::new(progress, &home)).collect(),
         open,
@@ -127,7 +128,9 @@ async fn show(
     };
     let repo = &loaded.ctx.repo;
     Ok(MilestonePage {
-        page: page.titled(format!("{} · Milestones · {}", progress.milestone.title, repo.full_name())),
+        page: titled(page, |locale| {
+            format!("{} · {} · {}", progress.milestone.title, IssueMessage::Milestones.localized(locale), repo.full_name())
+        }),
         header: loaded.header(&state, "issues"),
         description_html: if description.trim().is_empty() { String::new() } else { render_markdown(description, Some(&base)) },
         rows: IssueRow::list(&results, repo.owner.name.as_str(), repo.repo.name.as_str(), &format!("{home}/issues")),
@@ -171,11 +174,11 @@ fn form_page(
 ) -> MilestoneFormPage {
     let home = loaded.urls.home();
     let (title, action_url, cancel_url) = match edit {
-        None => ("New milestone", format!("{home}/milestones"), format!("{home}/milestones")),
-        Some(id) => ("Edit milestone", format!("{home}/milestones/{}", id.0), format!("{home}/milestones/{}", id.0)),
+        None => (MilestoneMessage::NewMilestone, format!("{home}/milestones"), format!("{home}/milestones")),
+        Some(id) => (MilestoneMessage::EditMilestone, format!("{home}/milestones/{}", id.0), format!("{home}/milestones/{}", id.0)),
     };
     MilestoneFormPage {
-        page: page.titled(format!("{title} · {}", loaded.ctx.repo.full_name())),
+        page: titled(page, |locale| format!("{} · {}", title.localized(locale), loaded.ctx.repo.full_name())),
         header: loaded.header(state, "issues"),
         error,
         form,

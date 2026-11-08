@@ -19,6 +19,7 @@ use rbit_core::{
     issue::LabelSnapshot,
     issue_query::{DEFAULT_QUERY, IssueQuery, IssueSort, KindFilter, StateFilter, Who},
 };
+use rbit_localization::{CollabSentence, IssueFilterMenu, IssueFilterMessage, IssueSidebarMessage, Locale, ThreadMessage};
 use rbit_services::{
     ServiceError,
     issues::{IssueMetadata, IssueSearchResults, Label, MilestoneProgress},
@@ -42,6 +43,12 @@ use crate::{
 pub fn safe_color(color: &str) -> String {
     let valid = color.strip_prefix('#').is_some_and(|hex| hex.len() == 6 && hex.bytes().all(|b| b.is_ascii_hexdigit()));
     if valid { color.to_ascii_lowercase() } else { "#888888".to_owned() }
+}
+
+/// `page` titled in its own language: `title` gets the page's locale.
+pub fn titled(page: Page, title: impl FnOnce(Locale) -> String) -> Page {
+    let title = title(page.locale);
+    page.titled(title)
 }
 
 fn encode(value: &str) -> String {
@@ -93,6 +100,7 @@ pub struct StateIcon {
     /// A token utility (`text-success` for open, `text-ink-muted` for closed).
     pub class: &'static str,
     pub label: &'static str,
+    pub message: ThreadMessage,
 }
 
 impl StateIcon {
@@ -103,7 +111,7 @@ impl StateIcon {
             (IssueState::Closed, Some(StateReason::Merged)) => "text-ink",
             (IssueState::Closed, _) => "text-ink-muted",
         };
-        Self { icon: badge.icon, class, label: badge.label }
+        Self { icon: badge.icon, class, label: badge.label, message: badge.message() }
     }
 }
 
@@ -165,6 +173,17 @@ impl IssueRow {
         }
     }
 
+    /// "#12 opened … by alice" or "#12 closed …", the time in slot 0.
+    pub fn meta(&self) -> CollabSentence<'_> {
+        let number = &self.number;
+        if self.closed { CollabSentence::RowClosed { number } } else { CollabSentence::RowOpened { number, author: &self.author } }
+    }
+
+    /// The assignees' names, for a `title`.
+    pub fn assignee_names(&self) -> String {
+        self.assignees.iter().map(|person| person.name.as_str()).collect::<Vec<_>>().join(", ")
+    }
+
     /// The rows of one page of results.
     pub fn list(results: &IssueSearchResults, owner: &str, repo: &str, list: &str) -> Vec<Self> {
         results
@@ -178,23 +197,50 @@ impl IssueRow {
     }
 }
 
-/// One entry of a filter menu.
+/// One entry of a filter menu: a message, or a name (an account, a label, a milestone).
 #[derive(Debug, Clone)]
 pub struct MenuItem {
+    /// The name; empty for a message.
     pub label: String,
+    pub text: Option<IssueFilterMessage>,
     pub url: String,
     pub selected: bool,
     /// A label's colour (label menu only).
     pub color: Option<String>,
 }
 
+impl MenuItem {
+    fn message(text: IssueFilterMessage, url: String, selected: bool) -> Self {
+        Self { label: String::new(), text: Some(text), url, selected, color: None }
+    }
+
+    fn named(label: String, url: String, selected: bool) -> Self {
+        Self { label, text: None, url, selected, color: None }
+    }
+}
+
 /// A `<details>` menu above the list.
 #[derive(Debug, Clone)]
 pub struct FilterMenu {
-    pub title: &'static str,
+    pub kind: IssueFilterMenu,
     pub items: Vec<MenuItem>,
     /// Some entry other than "any" is selected.
     pub active: bool,
+}
+
+impl FilterMenu {
+    /// A stable English key, for element ids.
+    pub const fn title(&self) -> &'static str {
+        match self.kind {
+            IssueFilterMenu::State => "State",
+            IssueFilterMenu::Status => "Status",
+            IssueFilterMenu::Author => "Author",
+            IssueFilterMenu::Label => "Label",
+            IssueFilterMenu::Milestone => "Milestone",
+            IssueFilterMenu::Assignee => "Assignee",
+            IssueFilterMenu::Sort => "Sort",
+        }
+    }
 }
 
 /// Everything the filter menus can offer.
@@ -208,80 +254,60 @@ pub struct MenuChoices {
 
 /// The menus for `query` on the list at `list`.
 pub fn filter_menus(query: &IssueQuery, list: &str, choices: &MenuChoices, viewer: Option<&User>) -> Vec<FilterMenu> {
+    use IssueFilterMessage as M;
     let link = |query: IssueQuery| list_url(list, &IssueQuery { ignored: Vec::new(), ..query });
     let person = |who: &Option<Who>, name: &str| matches!(who, Some(Who::Name(n)) if n.eq_ignore_ascii_case(name));
 
-    let mut author =
-        vec![MenuItem { label: "Anyone".into(), url: link(query.with_author(None)), selected: query.author.is_none(), color: None }];
+    let mut author = vec![MenuItem::message(M::Anyone, link(query.with_author(None)), query.author.is_none())];
     let mut assignee = vec![
-        MenuItem {
-            label: "Anyone".into(),
-            url: link(query.with_assignee(None)),
-            selected: query.assignee.is_none() && !query.no_assignee,
-            color: None,
-        },
-        MenuItem { label: "Nobody".into(), url: link(query.without_assignee()), selected: query.no_assignee, color: None },
+        MenuItem::message(M::Anyone, link(query.with_assignee(None)), query.assignee.is_none() && !query.no_assignee),
+        MenuItem::message(M::Nobody, link(query.without_assignee()), query.no_assignee),
     ];
     if viewer.is_some() {
-        author.push(MenuItem {
-            label: "You".into(),
-            url: link(query.with_author(Some(Who::Me))),
-            selected: query.author == Some(Who::Me),
-            color: None,
-        });
-        assignee.push(MenuItem {
-            label: "You".into(),
-            url: link(query.with_assignee(Some(Who::Me))),
-            selected: query.assignee == Some(Who::Me),
-            color: None,
-        });
+        author.push(MenuItem::message(M::You, link(query.with_author(Some(Who::Me))), query.author == Some(Who::Me)));
+        assignee.push(MenuItem::message(M::You, link(query.with_assignee(Some(Who::Me))), query.assignee == Some(Who::Me)));
     }
     for account in &choices.people {
         let name = account.name.to_string();
         let who = Some(Who::Name(name.clone()));
-        author.push(MenuItem {
-            label: name.clone(),
-            url: link(query.with_author(who.clone())),
-            selected: person(&query.author, &name),
-            color: None,
-        });
-        assignee.push(MenuItem {
-            label: name.clone(),
-            url: link(query.with_assignee(who)),
-            selected: person(&query.assignee, &name),
-            color: None,
-        });
+        author.push(MenuItem::named(name.clone(), link(query.with_author(who.clone())), person(&query.author, &name)));
+        assignee.push(MenuItem::named(name.clone(), link(query.with_assignee(who)), person(&query.assignee, &name)));
     }
 
     let mut milestones = vec![
-        MenuItem {
-            label: "Any".into(),
-            url: link(query.with_milestone(None)),
-            selected: query.milestone.is_none() && !query.no_milestone,
-            color: None,
-        },
-        MenuItem { label: "No milestone".into(), url: link(query.without_milestone()), selected: query.no_milestone, color: None },
+        MenuItem::message(M::Any, link(query.with_milestone(None)), query.milestone.is_none() && !query.no_milestone),
+        MenuItem::message(M::NoMilestone, link(query.without_milestone()), query.no_milestone),
     ];
     for progress in &choices.milestones {
         let title = progress.milestone.title.clone();
         let selected = query.milestone.as_deref().is_some_and(|m| m.eq_ignore_ascii_case(&title));
-        milestones.push(MenuItem { url: link(query.with_milestone(Some(title.clone()))), label: title, selected, color: None });
+        milestones.push(MenuItem::named(title.clone(), link(query.with_milestone(Some(title))), selected));
     }
 
     let sort = IssueSort::ALL
         .into_iter()
-        .map(|sort| MenuItem { label: sort.label().into(), url: link(query.with_sort(sort)), selected: query.sort == sort, color: None })
+        .map(|sort| MenuItem::message(sort_message(sort), link(query.with_sort(sort)), query.sort == sort))
         .collect();
 
     let mut menus = state_menus(query, list);
     menus.extend(vec![
-        FilterMenu { title: "Author", active: query.author.is_some(), items: author },
+        FilterMenu { kind: IssueFilterMenu::Author, active: query.author.is_some(), items: author },
         label_menu(query, list, choices),
-        FilterMenu { title: "Milestone", active: query.milestone.is_some() || query.no_milestone, items: milestones },
-        FilterMenu { title: "Assignee", active: query.assignee.is_some() || query.no_assignee, items: assignee },
-        FilterMenu { title: "Sort", active: query.sort != IssueSort::default(), items: sort },
+        FilterMenu { kind: IssueFilterMenu::Milestone, active: query.milestone.is_some() || query.no_milestone, items: milestones },
+        FilterMenu { kind: IssueFilterMenu::Assignee, active: query.assignee.is_some() || query.no_assignee, items: assignee },
+        FilterMenu { kind: IssueFilterMenu::Sort, active: query.sort != IssueSort::default(), items: sort },
     ]);
     menus
+}
+
+const fn sort_message(sort: IssueSort) -> IssueFilterMessage {
+    match sort {
+        IssueSort::CreatedDesc => IssueFilterMessage::SortNewest,
+        IssueSort::CreatedAsc => IssueFilterMessage::SortOldest,
+        IssueSort::UpdatedDesc => IssueFilterMessage::SortRecentlyUpdated,
+        IssueSort::UpdatedAsc => IssueFilterMessage::SortLeastRecentlyUpdated,
+        IssueSort::CommentsDesc => IssueFilterMessage::SortMostCommented,
+    }
 }
 
 fn label_menu(query: &IssueQuery, list: &str, choices: &MenuChoices) -> FilterMenu {
@@ -292,79 +318,43 @@ fn label_menu(query: &IssueQuery, list: &str, choices: &MenuChoices) -> FilterMe
     clear_labels.no_label = false;
     let mut no_labels = clear_labels.clone();
     no_labels.no_label = true;
+    let any = query.labels.is_empty() && query.not_labels.is_empty() && !query.no_label;
     let mut labels = vec![
-        MenuItem {
-            label: "Any label".into(),
-            url: link(clear_labels),
-            selected: query.labels.is_empty() && query.not_labels.is_empty() && !query.no_label,
-            color: None,
-        },
-        MenuItem { label: "No labels".into(), url: link(no_labels), selected: query.no_label, color: None },
+        MenuItem::message(IssueFilterMessage::AnyLabel, link(clear_labels), any),
+        MenuItem::message(IssueFilterMessage::NoLabels, link(no_labels), query.no_label),
     ];
-    labels.extend(
-        choices
-            .labels
-            .iter()
-            .map(|label| MenuItem {
-                label: label.name.clone(),
-                url: link(query.toggling_label(&label.name)),
-                selected: query.has_label(&label.name),
-                color: Some(safe_color(&label.color)),
-            })
-            .collect::<Vec<_>>(),
-    );
-
-    FilterMenu { title: "Label", active: !query.labels.is_empty() || !query.not_labels.is_empty() || query.no_label, items: labels }
+    labels.extend(choices.labels.iter().map(|label| MenuItem {
+        color: Some(safe_color(&label.color)),
+        ..MenuItem::named(label.name.clone(), link(query.toggling_label(&label.name)), query.has_label(&label.name))
+    }));
+    FilterMenu { kind: IssueFilterMenu::Label, active: !any, items: labels }
 }
 
 fn state_menus(query: &IssueQuery, list: &str) -> Vec<FilterMenu> {
+    use IssueFilterMessage as M;
     let link = |query: IssueQuery| list_url(list, &IssueQuery { ignored: Vec::new(), ..query });
     let state = vec![
-        MenuItem {
-            label: "Open".into(),
-            url: link(query.with_state(StateFilter::Open)),
-            selected: query.state == Some(StateFilter::Open),
-            color: None,
-        },
-        MenuItem {
-            label: "Closed".into(),
-            url: link(query.with_state(StateFilter::Closed)),
-            selected: query.state == Some(StateFilter::Closed),
-            color: None,
-        },
-        MenuItem {
-            label: "All states".into(),
-            url: link(IssueQuery { state: None, ..query.clone() }),
-            selected: query.state.is_none(),
-            color: None,
-        },
+        MenuItem::message(M::Open, link(query.with_state(StateFilter::Open)), query.state == Some(StateFilter::Open)),
+        MenuItem::message(M::Closed, link(query.with_state(StateFilter::Closed)), query.state == Some(StateFilter::Closed)),
+        MenuItem::message(M::AllStates, link(IssueQuery { state: None, ..query.clone() }), query.state.is_none()),
     ];
-    let mut menus = vec![FilterMenu { title: "State", active: query.state != Some(StateFilter::Open), items: state }];
+    let mut menus = vec![FilterMenu { kind: IssueFilterMenu::State, active: query.state != Some(StateFilter::Open), items: state }];
     if query.kind == Some(KindFilter::Pull) {
         let any = IssueQuery { draft: false, merged: false, ..query.clone() };
+        let draft = IssueQuery { draft: true, state: Some(StateFilter::Open), ..any.clone() };
+        let merged = IssueQuery { merged: true, state: Some(StateFilter::Closed), ..any.clone() };
         menus.push(FilterMenu {
-            title: "Status",
+            kind: IssueFilterMenu::Status,
             active: query.draft || query.merged,
             items: vec![
-                MenuItem { label: "Any status".into(), url: link(any.clone()), selected: !query.draft && !query.merged, color: None },
-                MenuItem {
-                    label: "Draft".into(),
-                    url: link(IssueQuery { draft: true, state: Some(StateFilter::Open), ..any.clone() }),
-                    selected: query.draft,
-                    color: None,
-                },
-                MenuItem {
-                    label: "Merged".into(),
-                    url: link(IssueQuery { merged: true, state: Some(StateFilter::Closed), ..any }),
-                    selected: query.merged,
-                    color: None,
-                },
+                MenuItem::message(M::AnyStatus, link(any), !query.draft && !query.merged),
+                MenuItem::message(M::Draft, link(draft), query.draft),
+                MenuItem::message(M::Merged, link(merged), query.merged),
             ],
         });
     }
     menus
 }
-
 // ------------------------------------------------------------------ pages
 
 /// `/{owner}/{repo}/issues`.
@@ -424,10 +414,10 @@ pub struct NewIssuePage {
 #[derive(Debug, Clone)]
 pub struct ThreadSummary {
     pub author: ActorView,
-    pub verb: &'static str,
+    /// The author in slot 0, the time in slot 1.
+    pub sentence: CollabSentence<'static>,
     pub when: String,
     pub when_iso: String,
-    pub comments: u32,
 }
 
 impl ThreadSummary {
@@ -435,10 +425,12 @@ impl ThreadSummary {
         let issue = &ctx.issue;
         Self {
             author: ActorView::new(ctx.author.as_ref()),
-            verb: if issue.kind == IssueKind::Pull { "opened this pull request" } else { "opened this issue" },
+            sentence: match (issue.kind, u64::from(issue.comment_count)) {
+                (IssueKind::Pull, comments) => CollabSentence::OpenedPull { comments },
+                (IssueKind::Issue, comments) => CollabSentence::OpenedIssue { comments },
+            },
             when: issue.created_at.relative(),
             when_iso: issue.created_at.iso8601(),
-            comments: issue.comment_count,
         }
     }
 }
@@ -492,15 +484,15 @@ pub struct IssueSidebar {
     /// Notifications are on and the viewer is signed in.
     pub can_subscribe: bool,
     pub subscribed: bool,
-    pub subscription_reason: Option<&'static str>,
+    pub subscription_reason: Option<IssueSidebarMessage>,
     /// The viewer has an unread notification about this thread (not rendered: the page
     /// marks it read).
     pub thread_unread: bool,
     pub subscription_url: String,
     pub can_delete: bool,
     pub delete_url: String,
-    /// What the thread is called in sentences ("issue", "pull request").
-    pub noun: &'static str,
+    /// The thread is a pull request (sentences name the kind).
+    pub is_pull: bool,
 }
 
 /// The sidebar for `ctx` as `viewer` sees it: current metadata, editors for those who
@@ -530,7 +522,7 @@ pub async fn sidebar(state: &AppState, ctx: &IssueContext, viewer: Option<&User>
         subscription_url: format!("{forms}/subscription"),
         delete_url: format!("{forms}/delete"),
         can_delete: ctx.permissions.can_delete,
-        noun: if ctx.issue.is_pull() { "pull request" } else { "issue" },
+        is_pull: ctx.issue.is_pull(),
         ..IssueSidebar::default()
     };
 
@@ -561,7 +553,7 @@ pub async fn sidebar(state: &AppState, ctx: &IssueContext, viewer: Option<&User>
             .collect();
         let current = metadata.milestone.as_ref().map(|m| m.id);
         sidebar.milestone_options =
-            std::iter::once(SidebarOption { value: String::new(), label: "No milestone".into(), color: None, selected: current.is_none() })
+            std::iter::once(SidebarOption { value: String::new(), label: String::new(), color: None, selected: current.is_none() })
                 .chain(milestones.iter().map(|progress| SidebarOption {
                     value: progress.milestone.id.0.to_string(),
                     label: progress.milestone.title.clone(),
@@ -587,15 +579,15 @@ pub async fn sidebar(state: &AppState, ctx: &IssueContext, viewer: Option<&User>
 }
 
 /// Why the viewer receives notifications about a thread.
-pub const fn reason_sentence(reason: NotificationReason) -> &'static str {
+pub const fn reason_sentence(reason: NotificationReason) -> IssueSidebarMessage {
     match reason {
-        NotificationReason::Manual => "You subscribed to this thread.",
-        NotificationReason::Comment => "You commented on this thread.",
-        NotificationReason::Reviewed => "You reviewed this pull request.",
-        NotificationReason::Author => "You opened this thread.",
-        NotificationReason::Mention => "You were mentioned.",
-        NotificationReason::Assigned => "You are assigned.",
-        NotificationReason::ReviewRequested => "Your review was requested.",
+        NotificationReason::Manual => IssueSidebarMessage::ReasonManual,
+        NotificationReason::Comment => IssueSidebarMessage::ReasonComment,
+        NotificationReason::Reviewed => IssueSidebarMessage::ReasonReviewed,
+        NotificationReason::Author => IssueSidebarMessage::ReasonAuthor,
+        NotificationReason::Mention => IssueSidebarMessage::ReasonMention,
+        NotificationReason::Assigned => IssueSidebarMessage::ReasonAssigned,
+        NotificationReason::ReviewRequested => IssueSidebarMessage::ReasonReviewRequested,
     }
 }
 
@@ -669,7 +661,7 @@ mod tests {
         let query = IssueQuery::parse("is:open label:bug");
         let choices = MenuChoices { people: vec![account(2, "bob")], ..MenuChoices::default() };
         let menus = filter_menus(&query, "/a/b/issues", &choices, None);
-        let titles: Vec<&str> = menus.iter().map(|m| m.title).collect();
+        let titles: Vec<&str> = menus.iter().map(FilterMenu::title).collect();
         assert_eq!(titles, ["State", "Author", "Label", "Milestone", "Assignee", "Sort"]);
         let author = &menus[1];
         assert_eq!(author.items.len(), 2, "no \"You\" when signed out");
@@ -735,7 +727,7 @@ mod tests {
     }
 
     #[derive(Template)]
-    #[template(source = r#"{% include "issues/sidebar.html" %}"#, ext = "html")]
+    #[template(source = r#"{% let page = crate::views::test_support::page("/") %}{% include "issues/sidebar.html" %}"#, ext = "html")]
     struct SidebarFixture {
         sidebar: IssueSidebar,
     }
@@ -748,7 +740,7 @@ mod tests {
             labels: vec![LabelChip { name: "bug".into(), color: "#d73a4a".into(), url: None }],
             can_subscribe: true,
             subscription_url: "/a/b/issues/1/subscription".into(),
-            noun: "issue",
+            is_pull: false,
             ..IssueSidebar::default()
         };
         let html = SidebarFixture { sidebar: reader.clone() }.render().unwrap();

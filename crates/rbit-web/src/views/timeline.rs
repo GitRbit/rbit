@@ -20,8 +20,9 @@
 
 use rbit_core::{
     Account, CommentId, CommentSource, EventId, Issue, IssueKind, IssueNumber, IssueState, StateReason, TimelineEvent, Timestamp, User,
-    issue::{LabelSnapshot, MergeStrategy},
+    issue::LabelSnapshot,
 };
+use rbit_localization::{CollabSentence, Locale, ThreadMessage};
 use rbit_services::{
     ServiceError,
     timeline::{EventSubjects, IssueContext, MAX_TIMELINE_PAGE, Timeline, TimelineCursor, TimelineEntry},
@@ -33,6 +34,8 @@ use crate::{
     urls::{DocumentBase, RepoUrls, issue_url},
     views::components::Avatar,
 };
+
+mod events;
 
 /// The opening post's anchor.
 pub const BODY_ANCHOR: &str = "issue-body";
@@ -159,7 +162,7 @@ impl ActorView {
 
 /// One piece of an event sentence. `kind` tells `timeline/event.html` how to render it:
 /// `text`, `strong`, `struck`, `code`, `link` (`url`), `code-link` (`url`), `label`
-/// (`color`), `account` (`url`, none for a ghost) or `muted`.
+/// (`color`), `account` (`url`, none for a ghost), `actor` (the same, as the subject) or `muted`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fragment {
     pub kind: &'static str,
@@ -256,6 +259,16 @@ impl StateBadge {
     pub const fn draft() -> Self {
         Self { class: "state-badge-draft", icon: "git-pull-request-draft", label: "Draft" }
     }
+
+    /// The label as a message for localized pages; `label` stays the English key.
+    pub const fn message(self) -> ThreadMessage {
+        match self.class.as_bytes() {
+            b"state-badge-open" => ThreadMessage::Open,
+            b"state-badge-merged" => ThreadMessage::Merged,
+            b"state-badge-draft" => ThreadMessage::Draft,
+            _ => ThreadMessage::Closed,
+        }
+    }
 }
 
 /// A comment, or the opening post (`timeline/comment.html`).
@@ -289,15 +302,34 @@ pub struct CommentView {
     pub can_reply: bool,
 }
 
+impl CommentView {
+    /// "opened …" or "commented …", the time in slot 0.
+    pub const fn posted(&self) -> CollabSentence<'static> {
+        if self.is_opening_post { CollabSentence::CommentOpened } else { CollabSentence::CommentCommented }
+    }
+}
+
+impl CommentFormView {
+    /// The close and reopen buttons, which name the kind of thread.
+    pub const fn state_buttons(&self) -> (ThreadMessage, ThreadMessage) {
+        if self.is_issue {
+            (ThreadMessage::CloseIssue, ThreadMessage::ReopenIssue)
+        } else {
+            (ThreadMessage::ClosePull, ThreadMessage::ReopenPull)
+        }
+    }
+}
+
 /// An event row (`timeline/event.html`): "alice added the bug label 2 days ago".
 #[derive(Debug, Clone)]
 pub struct EventView {
     pub anchor: String,
     /// An icon `ui::icon` knows.
     pub icon: &'static str,
-    pub actor: ActorView,
-    /// What the actor did, after their name.
+    /// What happened, the actor first.
     pub sentence: Vec<Fragment>,
+    /// The sentence is the English text of an untranslated message.
+    pub fallback: bool,
     /// A muted second line (a commit summary), if any.
     pub detail: Option<String>,
     pub when: String,
@@ -340,10 +372,8 @@ pub struct CommentFormView {
     pub locked: bool,
     pub can_set_state: bool,
     pub is_open: bool,
-    /// Plain issues can also be closed as not planned.
+    /// Plain issues can also be closed as not planned; buttons name the kind.
     pub is_issue: bool,
-    /// "issue" or "pull request", for button labels.
-    pub noun: &'static str,
     /// `POST` target of the state buttons shown when the viewer may not comment (the
     /// author of a locked thread).
     pub state_url: String,
@@ -374,6 +404,8 @@ pub struct TimelineOptions<'a> {
     pub head_branch: Option<&'a str>,
     /// The pull request's base branch, named in merge sentences (P).
     pub base_branch: Option<&'a str>,
+    /// The page's language, for event sentences.
+    pub locale: Locale,
 }
 
 // ------------------------------------------------------------------ building
@@ -457,7 +489,6 @@ pub fn build_thread(
         can_set_state: permissions.can_set_state,
         is_open: issue.is_open(),
         is_issue: !issue.is_pull(),
-        noun: if issue.is_pull() { "pull request" } else { "issue" },
         state_url: urls.state.clone(),
         can_lock: permissions.can_lock,
         lock_url: urls.lock.clone(),
@@ -526,151 +557,15 @@ fn event_view(
     ctx: &IssueContext,
     options: TimelineOptions<'_>,
 ) -> EventView {
-    let (icon, sentence, detail) = sentence(actor, event, subjects, urls, ctx, options);
+    let sentence = events::sentence(actor, event, subjects, urls, ctx, options);
     EventView {
         anchor: event_anchor(id),
-        icon,
-        actor: actor.map_or_else(ActorView::ghost, |account| ActorView::new(Some(account))),
-        sentence,
-        detail,
+        icon: sentence.icon,
+        sentence: sentence.parts,
+        fallback: sentence.fallback,
+        detail: sentence.detail,
         when: at.relative(),
         when_iso: at.iso8601(),
-    }
-}
-
-/// The icon, the words after the actor's name and an optional detail line of `event`.
-#[expect(clippy::too_many_lines, reason = "one arm per event kind, kept together so none is missed")]
-fn sentence(
-    actor: Option<&Account>,
-    event: &TimelineEvent,
-    subjects: &EventSubjects,
-    urls: &RepoUrls,
-    ctx: &IssueContext,
-    options: TimelineOptions<'_>,
-) -> (&'static str, Vec<Fragment>, Option<String>) {
-    use Fragment as F;
-    let repo = &ctx.repo.repo;
-    let (owner, name) = (repo.owner.name.as_str(), repo.repo.name.as_str());
-    let subject = || F::account(subjects.account.as_ref());
-    let is_self = |account: rbit_core::AccountId| actor.is_some_and(|actor| actor.id == account);
-    match event {
-        TimelineEvent::Closed { reason, commit, pull } => {
-            let icon = match reason {
-                StateReason::Completed => "circle-check",
-                StateReason::NotPlanned => "circle-slash",
-                StateReason::Merged => "git-merge",
-            };
-            let mut parts = vec![F::text(match reason {
-                StateReason::Completed => "closed this as completed",
-                StateReason::NotPlanned => "closed this as not planned",
-                StateReason::Merged => "closed this as merged",
-            })];
-            if let Some(commit) = commit {
-                parts.extend([F::text(" in "), F::commit(commit, urls)]);
-            } else if let Some(pull) = pull {
-                parts.extend([F::text(" in "), F::link(pull.to_string(), issue_url(owner, name, IssueKind::Pull, *pull))]);
-            }
-            (icon, parts, None)
-        }
-        TimelineEvent::Reopened => ("circle-dot", vec![F::text("reopened this")], None),
-        TimelineEvent::Renamed { from, to } => {
-            ("pencil", vec![F::text("changed the title "), F::struck(from.clone()), F::text(" "), F::strong(to.clone())], None)
-        }
-        TimelineEvent::Locked => ("lock", vec![F::text("locked the conversation and limited it to collaborators")], None),
-        TimelineEvent::Unlocked => ("unlock", vec![F::text("unlocked this conversation")], None),
-        TimelineEvent::Labeled { label } => ("tag", vec![F::text("added the "), F::label(label), F::text(" label")], None),
-        TimelineEvent::Unlabeled { label } => ("tag", vec![F::text("removed the "), F::label(label), F::text(" label")], None),
-        TimelineEvent::Milestoned { title, .. } => {
-            ("milestone", vec![F::text("added this to the "), F::strong(title.clone()), F::text(" milestone")], None)
-        }
-        TimelineEvent::Demilestoned { title, .. } => {
-            ("milestone", vec![F::text("removed this from the "), F::strong(title.clone()), F::text(" milestone")], None)
-        }
-        TimelineEvent::Assigned { assignee } if is_self(*assignee) => ("user-plus", vec![F::text("self-assigned this")], None),
-        TimelineEvent::Assigned { .. } => ("user-plus", vec![F::text("assigned "), subject()], None),
-        TimelineEvent::Unassigned { assignee } if is_self(*assignee) => ("user", vec![F::text("removed their assignment")], None),
-        TimelineEvent::Unassigned { .. } => ("user", vec![F::text("unassigned "), subject()], None),
-        TimelineEvent::CommitReferenced { commit, summary } => (
-            "commit",
-            vec![F::text("referenced this in commit "), F::commit(commit, urls)],
-            Some(summary.clone()).filter(|s| !s.is_empty()),
-        ),
-        TimelineEvent::CrossReferenced { .. } => {
-            let parts = match &subjects.source {
-                Some(source) => {
-                    let (owner, name) = source.full_name.split_once('/').unwrap_or((source.full_name.as_str(), ""));
-                    let noun = if source.kind == IssueKind::Pull { "pull request" } else { "issue" };
-                    let reference = if source.full_name == repo.full_name() {
-                        source.number.to_string()
-                    } else {
-                        format!("{}{}", source.full_name, source.number)
-                    };
-                    vec![
-                        F::text(format!("mentioned this in {noun} ")),
-                        F::link(format!("{} {reference}", source.title), issue_url(owner, name, source.kind, source.number)),
-                    ]
-                }
-                // The service drops cross-references the viewer may not see; this only
-                // happens for views built by hand.
-                None => vec![F::text("mentioned this")],
-            };
-            ("link", parts, None)
-        }
-        TimelineEvent::HeadPushed { before, after, forced: true, .. } => {
-            let mut parts = vec![F::text("force-pushed ")];
-            if let Some(branch) = options.head_branch {
-                parts.extend([F::text("the "), F::code(branch), F::text(" branch ")]);
-            }
-            parts.extend([F::text("from "), F::commit(before, urls), F::text(" to "), F::commit(after, urls)]);
-            ("git-pull-request", parts, None)
-        }
-        TimelineEvent::HeadPushed { after, count, .. } => {
-            let noun = if *count == 1 { "commit" } else { "commits" };
-            let mut parts = vec![F::text(format!("added {count} {noun}"))];
-            if let Some(branch) = options.head_branch {
-                parts.extend([F::text(" to "), F::code(branch)]);
-            }
-            parts.extend([F::text(", now at "), F::commit(after, urls)]);
-            ("commit", parts, None)
-        }
-        TimelineEvent::BaseChanged { from, to } => {
-            ("branch", vec![F::text("changed the base branch from "), F::code(from.clone()), F::text(" to "), F::code(to.clone())], None)
-        }
-        TimelineEvent::Merged { commit, strategy } => {
-            let mut parts = vec![F::text("merged commit "), F::commit(commit, urls)];
-            if let Some(base) = options.base_branch {
-                parts.extend([F::text(" into "), F::code(base)]);
-            }
-            match strategy {
-                Some(MergeStrategy::Merge) => parts.push(F::muted(" (merge commit)")),
-                Some(MergeStrategy::Squash) => parts.push(F::muted(" (squash)")),
-                Some(MergeStrategy::Rebase) => parts.push(F::muted(" (rebase)")),
-                None => parts.push(F::muted(" (outside this instance)")),
-            }
-            ("git-merge", parts, None)
-        }
-        TimelineEvent::ReviewRequested { reviewer } if is_self(*reviewer) => {
-            ("eye", vec![F::text("requested a review from themselves")], None)
-        }
-        TimelineEvent::ReviewRequested { .. } => ("eye", vec![F::text("requested a review from "), subject()], None),
-        TimelineEvent::ReviewRequestRemoved { .. } => ("eye-off", vec![F::text("removed the request for review from "), subject()], None),
-        TimelineEvent::ReviewDismissed { review, reviewer } => {
-            let link = F::link("review", format!("#pullrequestreview-{}", review.0));
-            let parts = match reviewer {
-                Some(_) => vec![F::text("dismissed "), subject(), F::text("’s "), link],
-                None => vec![F::text("dismissed a "), link],
-            };
-            ("x", parts, None)
-        }
-        TimelineEvent::ReviewThreadResolved { comment } | TimelineEvent::ReviewThreadReopened { comment } => {
-            let verb = if matches!(event, TimelineEvent::ReviewThreadResolved { .. }) { "resolved " } else { "reopened " };
-            ("message-square", vec![F::text(verb), F::link("a review conversation", format!("#r{}", comment.0))], None)
-        }
-        TimelineEvent::HeadRefDeleted { branch } => {
-            ("trash", vec![F::text("deleted the "), F::code(branch.clone()), F::text(" branch")], None)
-        }
-        TimelineEvent::ConvertedToDraft => ("git-pull-request-draft", vec![F::text("marked this pull request as draft")], None),
-        TimelineEvent::ReadyForReview => ("eye", vec![F::text("marked this pull request as ready for review")], None),
     }
 }
 
@@ -682,7 +577,7 @@ mod tests {
     use rbit_core::{
         AccountId, AccountKind, Comment, IssueId, IssuePermissions, IssueText, IssueTitle, LabelId, RepoAccess, RepoId, Repository,
         ReviewId, Visibility,
-        issue::{CommentId as Cid, MilestoneId},
+        issue::{CommentId as Cid, MergeStrategy, MilestoneId},
         repository::OwnedRepository,
     };
     use rbit_git::RepositoryStorage;
@@ -792,13 +687,16 @@ mod tests {
     }
 
     #[derive(Template)]
-    #[template(source = r#"{% include "timeline/thread.html" %}"#, ext = "html")]
+    #[template(source = r#"{% let page = crate::views::test_support::page("/") %}{% include "timeline/thread.html" %}"#, ext = "html")]
     struct ThreadFixture {
         thread: ThreadView,
     }
 
     #[derive(Template)]
-    #[template(source = r#"{% include "timeline/title_form.html" %}{% include "timeline/state_badge.html" %}"#, ext = "html")]
+    #[template(
+        source = r#"{% let page = crate::views::test_support::page("/") %}{% include "timeline/title_form.html" %}{% include "timeline/state_badge.html" %}"#,
+        ext = "html"
+    )]
     struct HeaderFixture {
         title: TitleView,
         badge: StateBadge,
@@ -814,7 +712,7 @@ mod tests {
         let timeline = Timeline { entries: vec![event(1, actor, timeline_event, subjects)], next: None };
         let item = items(ctx, &timeline, &refs(), options).remove(0);
         let view = item.event.unwrap();
-        (view.icon.to_owned(), Fragment::plain(&view.sentence))
+        (view.icon.to_owned(), Fragment::plain(&view.sentence[1..]).trim_start().to_owned())
     }
 
     #[test]
@@ -860,7 +758,7 @@ mod tests {
         let none = EventSubjects::default;
         let bob_subject = || EventSubjects { account: Some(bob.clone()), source: None };
         let label = LabelSnapshot { id: LabelId(1), name: "bug".to_owned(), color: "#d73a4a".to_owned() };
-        let branches = TimelineOptions { edit: None, head_branch: Some("feature"), base_branch: Some("main") };
+        let branches = TimelineOptions { head_branch: Some("feature"), base_branch: Some("main"), ..TimelineOptions::default() };
         let plain = TimelineOptions::default();
         let a = Some(&alice);
         let cases: Vec<(TimelineEvent, EventSubjects, TimelineOptions<'_>, &str, &str)> = vec![
