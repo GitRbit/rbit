@@ -7,6 +7,8 @@
 //!   Git reaches it through [`check_public_host`], whose approved answer is then pinned
 //!   for `git` (see [`rbit_git::remote::ResolvedHost`]), so Git never resolves again.
 //! * [`refuses_literal`] classifies address literals, which never reach a resolver.
+//! * [`read_prefix`] reads a response body up to a limit and stops at the first byte past
+//!   it, so a hostile server cannot make rbit buffer an unbounded body.
 
 use std::{
     io,
@@ -55,6 +57,29 @@ pub(crate) async fn check_public_host(host: &str, port: u16, allow_private: bool
     addresses.sort_unstable();
     addresses.dedup();
     ResolvedHost::new(host, port, addresses).map_err(|_| format!("cannot resolve {host}"))
+}
+
+/// A body read up to a limit.
+#[derive(Debug)]
+pub(crate) struct Prefix {
+    pub bytes: Vec<u8>,
+    /// The body continued past the limit; reading stopped there.
+    pub truncated: bool,
+}
+
+/// Reads at most `limit` bytes of `response`'s body. Reading stops at the first chunk
+/// that goes past the limit; dropping the response then closes the connection.
+pub(crate) async fn read_prefix(response: &mut reqwest::Response, limit: usize) -> Result<Prefix, reqwest::Error> {
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await? {
+        let room = limit - bytes.len();
+        if chunk.len() > room {
+            bytes.extend_from_slice(&chunk[..room]);
+            return Ok(Prefix { bytes, truncated: true });
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(Prefix { bytes, truncated: false })
 }
 
 #[cfg(test)]

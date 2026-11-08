@@ -40,7 +40,7 @@ use serde::de::DeserializeOwned;
 use tokio::{io::AsyncRead, sync::mpsc};
 use tokio_util::sync::CancellationToken;
 
-use crate::outbound::refuses_literal;
+use crate::outbound::{read_prefix, refuses_literal};
 use crate::webhooks::delivery::{GuardedResolver, install_crypto_provider};
 
 /// Sent as `User-Agent` (GitHub requires one).
@@ -53,6 +53,10 @@ pub const MAX_DOWNLOAD_REDIRECTS: usize = 5;
 const MAX_ATTEMPTS: u32 = 5;
 /// Longest error body excerpt kept.
 const MAX_ERROR_BODY: usize = 300;
+/// Error body bytes read to find that excerpt.
+const MAX_ERROR_READ: usize = 64 * 1024;
+/// Largest API response (one page of a listing, an LFS batch answer) read from a source.
+pub const MAX_API_RESPONSE_BYTES: usize = 64 * 1024 * 1024;
 
 /// Why talking to the source failed. Messages are shown on the progress page.
 #[derive(Debug, Clone, thiserror::Error)]
@@ -173,7 +177,7 @@ impl SourceClient {
                 () = self.cancel.cancelled() => return Err(SourceError::Cancelled),
                 response = client.execute(request) => response,
             };
-            let response = match response {
+            let mut response = match response {
                 Ok(response) => response,
                 Err(error) if attempt < 3 && (error.is_timeout() || error.is_connect()) => {
                     self.pause(Duration::from_secs(u64::from(attempt) * 2)).await?;
@@ -207,11 +211,23 @@ impl SourceClient {
                 StatusCode::UNAUTHORIZED => SourceError::Unauthorized,
                 StatusCode::NOT_FOUND => SourceError::NotFound(what),
                 _ => {
-                    let body = response.text().await.unwrap_or_default();
-                    SourceError::Status { status: status.as_u16(), message: error_message(&body) }
+                    let body = read_prefix(&mut response, MAX_ERROR_READ).await.map(|prefix| prefix.bytes).unwrap_or_default();
+                    SourceError::Status { status: status.as_u16(), message: error_message(&String::from_utf8_lossy(&body)) }
                 }
             });
         }
+    }
+
+    /// Reads a JSON body of at most [`MAX_API_RESPONSE_BYTES`], stopping when the import is.
+    async fn read_json<T: DeserializeOwned>(&self, mut response: reqwest::Response) -> Result<T, SourceError> {
+        let body = tokio::select! {
+            () = self.cancel.cancelled() => return Err(SourceError::Cancelled),
+            body = read_prefix(&mut response, MAX_API_RESPONSE_BYTES) => body.map_err(|e| SourceError::Network(describe(&e)))?,
+        };
+        if body.truncated {
+            return Err(SourceError::Invalid(format!("a response is larger than {} MiB", MAX_API_RESPONSE_BYTES >> 20)));
+        }
+        serde_json::from_slice(&body.bytes).map_err(|e| SourceError::Invalid(e.to_string()))
     }
 
     async fn pause(&self, wait: Duration) -> Result<(), SourceError> {
@@ -232,7 +248,7 @@ impl SourceClient {
     /// `GET url` (on the API) as JSON.
     pub async fn get<T: DeserializeOwned>(&self, url: &str) -> Result<T, SourceError> {
         let response = self.send(&self.api, || self.api_request(url)).await?;
-        read_json(response).await
+        self.read_json(response).await
     }
 
     /// The repository's metadata.
@@ -272,7 +288,7 @@ impl SourceClient {
     ) -> Result<T, SourceError> {
         let body = serde_json::to_vec(body).map_err(|e| SourceError::Invalid(e.to_string()))?;
         let response = self.send(&self.api, || self.api.post(url).headers(headers.clone()).body(body.clone())).await?;
-        read_json(response).await
+        self.read_json(response).await
     }
 
     /// Starts downloading `url` with `headers`; the body is read through the returned
@@ -308,18 +324,12 @@ impl Pages {
         let Some(url) = self.next.take() else { return Ok(None) };
         let response = self.client.send(&self.client.api, || self.client.api_request(&url)).await?;
         let next = next_link(response.headers());
-        let items: Vec<T> = read_json(response).await?;
+        let items: Vec<T> = self.client.read_json(response).await?;
         // A `next` link elsewhere would carry the token there; an empty page ends the
         // listing even if the server keeps linking (some Gitea versions do).
         self.next = next.filter(|next| self.client.is_api_url(next) && !items.is_empty());
         Ok(Some(items))
     }
-}
-
-/// Reads a JSON body.
-async fn read_json<T: DeserializeOwned>(response: reqwest::Response) -> Result<T, SourceError> {
-    let body = response.bytes().await.map_err(|e| SourceError::Network(describe(&e)))?;
-    serde_json::from_slice(&body).map_err(|e| SourceError::Invalid(e.to_string()))
 }
 
 /// The URL of `rel="next"` in a `Link` header.
