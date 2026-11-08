@@ -1,6 +1,6 @@
 <div class="box overflow-hidden">
   <div class="flex flex-wrap items-start gap-3 px-4 py-4 sm:px-5">
-    {% let look = run.look %}
+    {% let look = text.look(run.look) %}
     <span class="mt-1 shrink-0">{% include "actions/state.html" %}</span>
     <div class="min-w-0 flex-1">
       <h1 class="break-words text-xl font-semibold tracking-tight">

@@ -14,7 +14,7 @@
     {% if !job.indent.is_empty() %}
     <span class="{{ job.indent }} shrink-0" aria-hidden="true"></span>
     {% endif %}
-    {% let look = job.look %}
+    {% let look = text.look(job.look) %}
     {% include "actions/state.html" %}
     <div class="min-w-0 flex-1">
       <a class="block break-words text-[13px] font-medium hover:underline hover:underline-offset-4" href="{{ job.url }}">{{ job.name }}</a>

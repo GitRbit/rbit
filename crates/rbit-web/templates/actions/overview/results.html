@@ -15,7 +15,7 @@
     <ul>
       {% for run in runs %}
       <li class="row flex-wrap items-start gap-3 py-3 sm:flex-nowrap">
-        {% let look = run.look %}
+        {% let look = text.look(run.look) %}
         {% include "actions/state.html" %}
         <div class="min-w-0 flex-1">
           <a class="block break-words text-[13px] font-medium hover:underline hover:underline-offset-4" href="{{ run.url }}">{{ run.title }}</a>

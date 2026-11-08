@@ -3,6 +3,11 @@ use rbit_localization::{
     ActionsMessage, ActionsOverviewMessage, Catalog, Locale, Localized, LocalizedText, OverviewControlDisplay, OverviewControlMessage,
 };
 
+use super::{
+    StateLook,
+    job_text::{LocalizedState, localized_state},
+};
+
 #[derive(Debug)]
 pub struct OverviewText {
     catalog: Catalog,
@@ -41,6 +46,11 @@ impl OverviewText {
     #[allow(clippy::trivially_copy_pass_by_ref, reason = "match Askama's borrowed enum field argument")]
     pub const fn option(&self, message: &OverviewControlMessage) -> OverviewControlDisplay {
         self.catalog.overview_control(*message)
+    }
+
+    /// A run's state icon labelled in the page's locale.
+    pub fn look(&self, look: &StateLook) -> LocalizedState {
+        localized_state(self.catalog, look)
     }
 
     /// Text that only exists in English, such as a relative timestamp.

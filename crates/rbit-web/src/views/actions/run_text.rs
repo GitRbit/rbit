@@ -5,7 +5,10 @@ use rbit_localization::{
     ActionsMessage, Catalog, Locale, Localized, LocalizedText, OverviewControlDisplay, OverviewControlMessage, RunPageMessage,
 };
 
-use super::{DeploymentView, StateLook, job_text::state_label};
+use super::{
+    DeploymentView, StateLook,
+    job_text::{LocalizedState, localized_state, state_label},
+};
 
 #[derive(Debug)]
 pub struct RunText {
@@ -64,6 +67,11 @@ impl RunText {
             approve_and_deploy: catalog.localized(RunPageMessage::ApproveAndDeploy),
             reject: catalog.localized(RunPageMessage::Reject),
         }
+    }
+
+    /// A state icon's label in the page's locale.
+    pub fn look(&self, look: &StateLook) -> LocalizedState {
+        localized_state(self.catalog, look)
     }
 
     /// The run's state, as the job rows name it.

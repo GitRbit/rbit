@@ -40,6 +40,11 @@ pub(super) fn state_label(catalog: Catalog, look: &StateLook) -> LocalizedText {
     })
 }
 
+/// A state as `actions/state.html` shows it, labelled in the catalog's locale.
+pub(super) fn localized_state(catalog: Catalog, look: &StateLook) -> LocalizedState {
+    LocalizedState { key: look.key, tone: look.tone, label: state_label(catalog, look), locale: catalog.locale() }
+}
+
 /// Same state key/icon/tone; only its plain, automatically escaped label changes.
 #[derive(Debug)]
 pub struct LocalizedState {
@@ -82,7 +87,7 @@ impl JobText {
     }
 
     pub fn look(&self, look: &StateLook) -> LocalizedState {
-        LocalizedState { key: look.key, tone: look.tone, label: state_label(self.catalog, look), locale: self.catalog.locale() }
+        localized_state(self.catalog, look)
     }
 }
 
