@@ -35,6 +35,12 @@ pub use actions_ui::{
 pub use display::LocalizedDisplay;
 use display::{PAGE_OF_SEPARATOR, PAGE_PREFIX, STARS_SUFFIX, SUBTITLE_PREFIX, SUBTITLE_SUFFIX};
 pub use theme_preview::ThemePreviewMessage;
+mod repo;
+pub use repo::{
+    ContributionLabel, ContributionMessage, ReleaseLabel, ReleaseMessage, RepoBrowseLabel, RepoBrowseMessage, RepoCreateLabel,
+    RepoCreateMessage, RepoEditLabel, RepoEditMessage, RepoHistoryLabel, RepoHistoryMessage, RepoNavLabel, RepoNavMessage,
+    RepoSettingsLabel, RepoSettingsMessage,
+};
 
 /// Typed visibility selector. Adapters map domain values without localized strings.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
