@@ -204,6 +204,10 @@ impl RichFamily for TimelineEventMessage {
             }),
         }
     }
+
+    fn translate(self, locale: crate::locale::Locale, text: &mut RichWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
+    }
 }
 
 /// `words`, then slot `slot`.
@@ -244,5 +248,9 @@ impl MessageFamily for TimelineNoteMessage {
             Self::Rebase => "(rebase)",
             Self::OutsideInstance => "(outside this instance)",
         });
+    }
+
+    fn translate(self, locale: crate::locale::Locale, text: &mut MessageWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
     }
 }

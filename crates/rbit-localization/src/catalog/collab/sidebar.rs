@@ -111,4 +111,8 @@ impl MessageFamily for IssueSidebarMessage {
             Self::ReasonReviewRequested => "Your review was requested.",
         });
     }
+
+    fn translate(self, locale: crate::locale::Locale, text: &mut MessageWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
+    }
 }

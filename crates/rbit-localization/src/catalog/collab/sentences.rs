@@ -177,6 +177,10 @@ impl RichFamily for CollabSentence<'_> {
             Self::Reviewed => slot_then(text, 0, " reviewed"),
         }
     }
+
+    fn translate(self, locale: crate::locale::Locale, text: &mut RichWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
+    }
 }
 
 fn slot_then(text: &mut RichWriter, slot: usize, words: &str) {

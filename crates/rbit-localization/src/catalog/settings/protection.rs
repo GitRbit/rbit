@@ -121,4 +121,8 @@ impl MessageFamily for RuleBadge {
             Self::AdminsBypass => text.literal("Admins bypass"),
         }
     }
+
+    fn translate(self, locale: crate::locale::Locale, text: &mut MessageWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
+    }
 }

@@ -149,6 +149,10 @@ impl MessageFamily for RepoSettingsMessage<'_> {
             }
         }
     }
+
+    fn translate(self, locale: crate::locale::Locale, text: &mut MessageWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
+    }
 }
 
 lookup!(RepoSettingsMessage<'_>);

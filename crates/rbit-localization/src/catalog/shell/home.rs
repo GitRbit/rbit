@@ -154,6 +154,10 @@ impl MessageFamily for HomeMessage<'_> {
         };
         text.literal(literal);
     }
+
+    fn translate(self, locale: crate::locale::Locale, text: &mut MessageWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
+    }
 }
 
 const fn plural(one: bool, singular: &'static str, plural: &'static str) -> &'static str {

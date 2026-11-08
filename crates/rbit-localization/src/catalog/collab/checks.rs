@@ -74,4 +74,8 @@ impl MessageFamily for ChecksMessage {
             text.literal(" expected");
         }
     }
+
+    fn translate(self, locale: crate::locale::Locale, text: &mut MessageWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
+    }
 }

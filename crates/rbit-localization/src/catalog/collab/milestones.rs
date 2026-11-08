@@ -120,4 +120,8 @@ impl MessageFamily for MilestoneMessage<'_> {
             Self::SaveMilestone => text.literal("Save milestone"),
         }
     }
+
+    fn translate(self, locale: crate::locale::Locale, text: &mut MessageWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
+    }
 }

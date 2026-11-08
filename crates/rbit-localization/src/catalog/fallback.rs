@@ -9,6 +9,7 @@ use std::fmt::{self, Write};
 
 use super::{Catalog, LocalizedText};
 use crate::locale::Locale;
+use crate::plural::Plural;
 
 /// Writes one message: catalog wording through [`MessageWriter::literal`], untrusted
 /// values through [`MessageWriter::argument`] so diagnostic catalogs can isolate them.
@@ -32,6 +33,12 @@ impl MessageWriter {
     /// An integer, written with ASCII digits.
     pub fn number(&mut self, value: u64) {
         let _ = write!(self.output, "{value}");
+    }
+
+    /// The CLDR plural category of `count` in the language being written, for choosing
+    /// a noun form: `match text.plural(count) { Plural::One => .., _ => .. }`.
+    pub const fn plural(&self, count: u64) -> Plural {
+        Plural::of(self.catalog.locale, count)
     }
 
     fn finish(self) -> LocalizedText {

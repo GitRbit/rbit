@@ -139,6 +139,10 @@ impl MessageFamily for MergeMessage<'_> {
             literal => text.literal(literal_text(literal)),
         }
     }
+
+    fn translate(self, locale: crate::locale::Locale, text: &mut MessageWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
+    }
 }
 
 /// The English text of the messages without arguments.

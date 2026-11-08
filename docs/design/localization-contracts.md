@@ -2,9 +2,11 @@
 
 `rbit-localization` is a pure presentation foundation with no I/O, HTTP, account,
 database, HTML, async runtime or production dependency. It supplies typed compiled
-English and Spanish messages for the shared shell, language settings, Explore and
-Actions presentation. Catalogs are never parsed per request. Untranslated feature
-regions explicitly retain English. `en-XA` and `ar-XB` remain opt-in expansion/RTL
+messages in English (the complete source), Spanish, and the locales prepared for
+translators: Simplified Chinese (`zh-Hans`), Brazilian Portuguese (`pt-BR`), Japanese
+(`ja`), German (`de`), Russian (`ru`), French (`fr`) and Korean (`ko`). Catalogs are
+never parsed per request. Untranslated messages and feature regions explicitly retain
+English, marked `lang="en"`. `en-XA` and `ar-XB` remain opt-in expansion/RTL
 diagnostics, not translations or Arabic grammar. See [account activation](account-locale-activation.md).
 
 ## Negotiation
@@ -49,10 +51,16 @@ typed message. Stable IDs such as `repositories.count` are separate from wording
 Counts are unsigned typed values; visibility is an exhaustive selector, not a string.
 English integer count nouns retain their existing behavior. Spanish count nouns use
 singular for 1 (absolute 1 for signed stars), otherwise plural. These particular nouns
-share the plural form across CLDR Spanish many/other categories; this is no general
-plural/date/number engine. Pseudo catalogs retain the English source grammar.
-This is not a universal plural engine: no other translated language may be added by
-copying that rule.
+share the plural form across CLDR Spanish many/other categories. Pseudo catalogs
+retain the English source grammar.
+
+Every other translation chooses its noun forms with `Plural::of(locale, count)` (or
+`text.plural(count)` on a writer), which returns the CLDR 46 category of a whole number:
+`en`/`de` one (1) and other; `es` one (1), many (whole millions) and other; `fr`/`pt-BR`
+one (0 and 1), many (whole millions) and other; `ru` one (1, 21, …; not 11), few (2–4,
+22–24, …; not 12–14) and many (the rest); `zh-Hans`/`ja`/`ko` other only.
+`Plural::categories(locale)` lists them. There is no date or number formatting engine yet:
+numbers are written with ASCII digits and no grouping.
 
 `LocalizedText` is plain Unicode text with ordinary Display behavior. Arguments are
 copied as text, never parsed as catalog syntax or HTML. Render through ordinary
@@ -76,11 +84,16 @@ Arabic translation nor a guarantee against all misleading Unicode identifiers.
 
 ## Untranslated messages and English fallback
 
-The original message families (`Message`, `ChromeMessage`, `ActionsMessage` and the
-others) are complete in English and Spanish: their Spanish match tables are
-exhaustive, so a new variant does not compile without a Spanish entry. Newer
-families implement `MessageFamily` instead, where English is the only required
-catalog:
+The original message families (`Message`, `ChromeMessage`, `ActionsMessage`,
+`ActionsOverviewMessage`, `OverviewControlMessage`, `ActionsJobMessage`, `ThemeMessage`
+and `LanguageMessage`) are complete in English and Spanish: their Spanish match tables are
+exhaustive, so a new variant does not compile without a Spanish entry. Every other locale
+gets their English text without new arms (`Locale::has_original_catalog` is `false`), and
+pages mark those regions English: the header, the footer's chrome and the theme picker
+carry `lang="en"`, and `Page::with_locale` (the constructor of the Explore, Actions and
+language-settings pages built on these families) keeps `<main lang="en">` in such a
+locale. Newer families implement `MessageFamily` instead, where English is the only
+required catalog:
 
 - `id` returns the stable key and `english` writes the source text through a
   `MessageWriter` (`literal` for wording, `argument` for names, environments and
@@ -96,7 +109,10 @@ catalog:
 
 Templates render a `Localized` through the `ui::localized` macro in `macros.html`.
 It marks fallback text `<span lang="en">` so assistive technology reads it as
-English. Translated text gets no wrapper. Neither sets `dir`: the text follows the
+English. Translated text gets no wrapper in English, Spanish and the diagnostics; in
+the other locales it is wrapped `<span lang="…">` in its own language
+(`Localized::marked_lang`), because a page built on the original families may surround
+it with English. Neither sets `dir`: the text follows the
 page direction, so it aligns with its translated neighbours in a right-to-left page.
 Do not hard-code `lang="en"` or `dir="ltr"` around untranslated prose. Keep explicit
 `dir="ltr"` only for machine values (code, paths, shas, identifiers).
@@ -121,13 +137,12 @@ variant documents its slots; timeline events always start with the actor in slot
 Plain families look themselves up with `localized(locale)` (for example
 `IssueMessage::NewIssue.localized(page.locale)`), so templates need no catalog helper.
 
-To add a locale, add its `Locale` variant, tag, catalog key and direction. Then
-implement `translate` for the families and keys it covers (`RunPageMessage`,
-`SettingsNavMessage`, `ThemePreviewMessage` and the issue, pull request, review and
-timeline families in `catalog/collab/` today). Everything it leaves out keeps
-rendering in English, marked as such, until a translator adds it. `SettingsNavMessage`
-shows a partial translation: its Spanish arm reuses the shell's existing Spanish
-labels and leaves the other sections to fall back.
+To add a locale, add its `Locale` variant, tag, catalog key, native name, direction and
+`Plural` rules, a marker and a table directory in `catalog/translations`, its account
+value (`AccountLocale` and a migration widening the stored values) and, when its script
+needs it, a font stack in `rbit-web/styles/scripts.css`. Then translators fill its table
+as described in "Translating a locale" below. `SettingsNavMessage` keeps a hand-written
+Spanish arm that reuses the shell's Spanish labels before it consults the table.
 
 The account settings, administration, organization, access, branch protection and
 webhook pages use English-only families in the `settings` module (`settings::keys`,
@@ -135,9 +150,102 @@ webhook pages use English-only families in the `settings` module (`settings::key
 labels from one `Variant = "key" => "English",` line each, and `messages!` one with
 arguments. Every family offers `text(&locale)`, which templates call with the page
 locale. Sentences that wrap a link or a machine value in markup are split at that
-markup into separate keys. To translate one of these families, give its
-`MessageFamily` implementation a `translate` method: the macros generate that
-implementation, so extend the macro with a translation table or write the family out.
+markup into separate keys. The macros generate each family's `translate`, which
+consults the translation tables like every other family.
+
+## Translating a locale
+
+Every `MessageFamily` and `RichFamily` family (78 families, about 2,400 messages) consults
+a per-locale table from its `translate` method. Tables live in
+`crates/rbit-localization/src/catalog/translations/<locale>/`, one directory per locale
+(`es`, `zh_hans`, `pt_br`, `ja`, `de`, `ru`, `fr`, `ko`), mirroring the source modules:
+the entries for `catalog/collab/review.rs` are in `translations/<locale>/collab/review.rs`,
+those for `catalog/wiki.rs` in `translations/<locale>/wiki.rs`. A translator edits only
+their own locale's directory, so translators of different languages never touch the
+same file. Each file already lists every family of its source file with an empty table:
+
+```rust
+entries! { De:
+    ReviewMessage<'a> => MessageWriter |text| {}
+}
+```
+
+To translate a message, add a match arm on the family inside the braces. End each arm
+with a comma unless it is a block. Write the text the way the English arm in the source
+file does: `text.literal(..)` for wording, `text.argument(..)` for a name or other
+interpolated value, `text.number(..)` for a count.
+
+```rust
+use crate::plural::Plural;
+
+entries! { De:
+    ReviewMessage<'a> => MessageWriter |text| {
+        ReviewMessage::Approve => text.literal("Genehmigen"),
+        ReviewMessage::CommentOnLine { line } => {
+            text.literal("Kommentar zu Zeile ");
+            text.number(line);
+        }
+        ReviewMessage::RemoveRequestFor { name } => {
+            text.literal("Prüfanfrage an ");
+            text.argument(name);
+            text.literal(" zurückziehen");
+        }
+        ReviewMessage::OutdatedComments { count } => {
+            text.number(count);
+            text.literal(match text.plural(count) {
+                Plural::One => " veralteter Kommentar steht in der Unterhaltung",
+                _ => " veraltete Kommentare stehen in der Unterhaltung",
+            });
+        }
+    }
+}
+```
+
+A message without an arm keeps its English text, marked `lang="en"`; the arm makes it
+translated, in its own language. Add arms in any order, a few at a time.
+
+- **Plurals.** Match on `text.plural(count)` (a `Plural`: `One`, `Few`, `Many`, `Other`,
+  `Zero`, `Two`), and cover the categories your language has, listed under "Text and
+  grammar boundary"; end with `_` for the rest. Russian needs `One`, `Few` and `Many`;
+  Chinese, Japanese and Korean have only `Other`, so they write one form without a match.
+  `Many` in Spanish, French and Portuguese is only whole millions: a `_` arm sharing
+  the `Other` form is right there.
+- **Rich sentences** (`CollabSentence`, `TimelineEventMessage`, written to a
+  `RichWriter`) also have `text.slot(n)`: the markup the template inserts (a link, a time,
+  a branch). Each variant's documentation says what each slot holds. Keep every slot the
+  English arm writes, exactly once, and move it wherever your grammar needs it.
+- **Arguments and slots are not optional.** Every `argument`, `number` and `slot` of the
+  English arm must appear in the translation; never replace one with literal text.
+- **No HTML.** Messages are plain text, escaped by the templates: never write tags,
+  entities or Markdown. Use the Unicode character itself (`\u{a0}`, `«`, `„`).
+- **Split fragments.** Some families split a sentence at markup into `…Lead` and `…Tail`
+  keys (the markup sits between them in the template). Translate them so they read as one
+  sentence around that markup.
+- **Native typography.** French puts a no-break space (`\u{a0}`, or the narrow `\u{202f}`)
+  before `:` `;` `?` `!` and inside `« »`. Use the language's quotation marks: `«…»`
+  (French, Russian, Spanish), `„…“` (German), `“…”` (Portuguese, Chinese), `「…」`
+  (Japanese), `“…”` or `「…」` (Korean). Chinese and Japanese use full-width punctuation
+  (`，。：；？！（）`), with no space between Han or Kana and the punctuation. Keep the
+  English ellipsis style `…` (one character).
+- **Machine values stay as they are.** Never translate argument values, keys, theme
+  names, route names, protocol fields, Git terms that are commands (`git push`) or product
+  names (`rbit`, `GitHub`, `Git LFS`).
+- **Large families.** A file that would exceed 400 lines (the configuration schema,
+  `ConfigText`, matched on its `section`/`key` strings) may move arms into a sibling
+  module: the arm calls a function there, e.g.
+  `ConfigText::Label { section, key } => return fields::label(section, key, text),`
+  with `fn label(..) -> bool` returning `false` for keys it does not have.
+- **New families.** A developer wiring a new family into the tables gives it a
+  `translate` method calling `crate::catalog::translations::write`, then adds one empty
+  line for it to every locale's file for that source module (the compiler names each
+  missing one). A family without that method keeps compiling with English alone.
+
+The original exhaustive families are not table-backed: in the new locales they stay
+English until they are converted to `MessageFamily`.
+
+`cargo test -p rbit-localization` checks a test-only table (`catalog/translations/tests.rs`):
+an entry is used and not a fallback, a missing entry falls back, and plural arms follow
+the locale.
 
 ## First-slice integration and future catalogs
 

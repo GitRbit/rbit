@@ -30,6 +30,10 @@ macro_rules! labels {
                     $(Self::$variant => $english,)+
                 });
             }
+
+            fn translate(self, locale: $crate::locale::Locale, text: &mut $crate::catalog::fallback::MessageWriter) -> bool {
+                $crate::catalog::translations::write(self, locale, text)
+            }
         }
 
         lookup!($name);
@@ -59,14 +63,14 @@ macro_rules! lookup {
     };
 }
 
-mod browse;
-mod contributions;
-mod create;
-mod edit;
-mod history;
-mod nav;
-mod releases;
-mod settings;
+pub(super) mod browse;
+pub(super) mod contributions;
+pub(super) mod create;
+pub(super) mod edit;
+pub(super) mod history;
+pub(super) mod nav;
+pub(super) mod releases;
+pub(super) mod settings;
 pub use browse::{RepoBrowseLabel, RepoBrowseMessage};
 pub use contributions::{ContributionLabel, ContributionMessage};
 pub use create::{RepoCreateLabel, RepoCreateMessage};

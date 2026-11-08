@@ -50,6 +50,10 @@ macro_rules! labels {
                     $(Self::$variant => $english,)+
                 });
             }
+
+            fn translate(self, locale: $crate::locale::Locale, text: &mut $crate::catalog::fallback::MessageWriter) -> bool {
+                $crate::catalog::translations::write(self, locale, text)
+            }
         }
     };
 }
@@ -95,6 +99,10 @@ macro_rules! messages {
                         $(part!(text, $part);)+
                     })+
                 }
+            }
+
+            fn translate(self, locale: $crate::locale::Locale, text: &mut $crate::catalog::fallback::MessageWriter) -> bool {
+                $crate::catalog::translations::write(self, locale, text)
             }
         }
     };

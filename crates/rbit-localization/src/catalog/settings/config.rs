@@ -206,6 +206,10 @@ impl MessageFamily for ConfigText<'_> {
             None => text.argument(self.key()),
         }
     }
+
+    fn translate(self, locale: crate::locale::Locale, text: &mut MessageWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
+    }
 }
 
 labels! {

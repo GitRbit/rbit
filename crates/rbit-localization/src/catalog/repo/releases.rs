@@ -115,6 +115,10 @@ impl MessageFamily for ReleaseMessage<'_> {
             }
         }
     }
+
+    fn translate(self, locale: crate::locale::Locale, text: &mut MessageWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
+    }
 }
 
 lookup!(ReleaseMessage<'_>);

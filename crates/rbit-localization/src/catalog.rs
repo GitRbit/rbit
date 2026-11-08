@@ -20,6 +20,7 @@ pub use language::LanguageMessage;
 mod chrome;
 pub use chrome::{ChromeDisplay, ChromeMessage};
 mod fallback;
+mod translations;
 pub use fallback::{Localized, MessageFamily, MessageWriter};
 mod run_page;
 pub use run_page::RunPageMessage;

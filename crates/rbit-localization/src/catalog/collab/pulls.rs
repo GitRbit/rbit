@@ -176,4 +176,8 @@ impl MessageFamily for PullMessage<'_> {
             }),
         }
     }
+
+    fn translate(self, locale: crate::locale::Locale, text: &mut MessageWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
+    }
 }

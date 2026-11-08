@@ -62,9 +62,11 @@ impl MessageFamily for SettingsNavMessage {
     }
 
     fn translate(self, locale: Locale, text: &mut MessageWriter) -> bool {
-        // The shell catalog only has Spanish entries; any other locale falls back.
-        let (Locale::Spanish, Some(shell)) = (locale, self.shell()) else { return false };
-        text.literal(Catalog::new(locale).chrome(shell).as_str());
-        true
+        // The shell catalog has Spanish entries for some sections; the tables have the rest.
+        if let (Locale::Spanish, Some(shell)) = (locale, self.shell()) {
+            text.literal(Catalog::new(locale).chrome(shell).as_str());
+            return true;
+        }
+        crate::catalog::translations::write(self, locale, text)
     }
 }

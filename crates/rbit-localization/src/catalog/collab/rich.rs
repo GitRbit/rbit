@@ -7,7 +7,7 @@
 //! gets the English sentence, marked as such.
 use std::fmt::Write;
 
-use crate::{catalog::Catalog, locale::Locale};
+use crate::{catalog::Catalog, locale::Locale, plural::Plural};
 
 /// Writes one rich message: wording, plain arguments, numbers and slots.
 #[derive(Debug)]
@@ -36,6 +36,11 @@ impl RichWriter {
     /// An integer, written with ASCII digits.
     pub fn number(&mut self, value: u64) {
         let _ = write!(self.text(), "{value}");
+    }
+
+    /// The CLDR plural category of `count` in the language being written.
+    pub const fn plural(&self, count: u64) -> Plural {
+        Plural::of(self.catalog.locale(), count)
     }
 
     /// The embedded piece numbered `index`; each message documents what its slots hold.

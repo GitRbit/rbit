@@ -181,4 +181,8 @@ impl MessageFamily for ActionsSettingsMessage<'_> {
         };
         text.literal(literal);
     }
+
+    fn translate(self, locale: crate::locale::Locale, text: &mut MessageWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
+    }
 }

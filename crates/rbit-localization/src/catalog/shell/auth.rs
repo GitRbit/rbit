@@ -152,6 +152,10 @@ impl MessageFamily for AuthMessage<'_> {
         };
         text.literal(literal);
     }
+
+    fn translate(self, locale: crate::locale::Locale, text: &mut MessageWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
+    }
 }
 
 /// Wording without arguments.

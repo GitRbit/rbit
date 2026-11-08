@@ -96,6 +96,10 @@ impl MessageFamily for ContributionMessage<'_> {
             }
         }
     }
+
+    fn translate(self, locale: crate::locale::Locale, text: &mut MessageWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
+    }
 }
 
 /// "1 commit", "3 commits".
