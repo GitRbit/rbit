@@ -141,7 +141,26 @@ reads, and a stalled Git remote whose HTTP helper outlived the time limit. Path,
 archive, LFS and upload cases in the same group, process-tree containment of
 trickle-fed Git helpers and permitted strict-mode connections remain open.
 
-Security activation, complete Wiki publication/UI, remaining feature retirement,
+Wiki publication and pages UI are now in place on top of the Wiki storage stack.
+A change prepares an unpublished commit in the dedicated object store, then one
+SQLite writer transaction rechecks the actor's current repository access, archive
+state, accepted intents, the parent head and the page's own last change before it
+records the generation (migration 0071 adds author and change kind for history).
+The repository Wiki tab offers a page view with page list and title search, history,
+older revisions with restore, comparisons, create/edit/rename/delete with per-page
+conflict detection (stale same-page forms get 409 with the text kept; edits of other
+pages are rebased) and a server-rendered preview through the shared safe Markdown
+renderer. Reads follow repository read access (anonymous on public repositories),
+changes need write access, administrators turn the wiki on or off, and archived
+repositories are read-only; service and router tests cover these and the conflicts.
+Writes run only in the legacy writer-protocol mode and are serialized per process.
+Not done: tombstones/undelete and aliases (deletion drops the page's history; a
+rename breaks old links), content search, media, link integrity, table of contents,
+HTMX enhancements, request-token replay, Git clone/push ingress, managed-writer and
+recovery integration, wiki objects (data_dir/wikis) in backup/restore, transfer/deletion lifecycle, measured budgets,
+translations beyond English, and browser accessibility acceptance.
+
+Security activation, remaining Wiki lifecycle/media/ingress work, remaining feature retirement,
 full localization, paired performance, bounded build retention and release-platform
 gates remain open. Earlier evidence below is historical.
 
