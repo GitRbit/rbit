@@ -5,11 +5,20 @@
 //! `git archive` writes the archive to its standard output, which is handed to the caller
 //! as an [`AsyncRead`] without buffering the whole archive; `tar.gz` is compressed
 //! in-process while streaming. Like every Git child process rbit runs, `git` sees a
-//! scrubbed environment and no system or global configuration ([`git_command`]).
+//! scrubbed environment, no system or global configuration and only the `file` transport
+//! ([`git_command`]).
+//!
+//! `git archive` applies the `filter` attribute, whose drivers are commands taken from the
+//! repository's configuration. It therefore never runs on the repository itself but on a
+//! throw-away [`Overlay`] that reads the repository's objects and has rbit's own
+//! configuration, so a repository's configuration never decides what runs. Attributes
+//! that do not run anything (`export-ignore`, `export-subst`, line endings) still come
+//! from the archived tree.
 //!
 //! The child is killed as soon as the reader is dropped (a client that disconnects never
 //! leaves `git archive` running), and a non-zero exit status turns the end of the stream
-//! into an I/O error, so a failed archive is never mistaken for a complete one.
+//! into an I/O error, so a failed archive is never mistaken for a complete one. The
+//! overlay is removed once the child has exited.
 
 use std::{
     ffi::OsStr,
@@ -28,7 +37,7 @@ use tokio::{
     sync::oneshot,
 };
 
-use crate::GitError;
+use crate::{GitError, overlay::Overlay};
 
 /// Environment variables passed through to Git; everything else is cleared.
 const INHERITED_ENV: [&str; 5] = ["PATH", "SYSTEMROOT", "TEMP", "TMP", "TMPDIR"];
@@ -36,6 +45,10 @@ const INHERITED_ENV: [&str; 5] = ["PATH", "SYSTEMROOT", "TEMP", "TMP", "TMPDIR"]
 /// A `git` command with a scrubbed environment and isolated configuration: no system or
 /// global config, no terminal prompts. With `git_dir`, it operates on that repository.
 /// The child is killed when its handle is dropped.
+///
+/// Only the `file` transport is allowed (`GIT_ALLOW_PROTOCOL`, which overrides every
+/// `protocol.*.allow` setting): a repository's `url.<base>.insteadOf` could otherwise turn
+/// a local fetch into `ext::<command>`. Callers that talk to remotes widen it explicitly.
 pub(crate) fn git_command(git_binary: &Path, git_dir: Option<&Path>) -> Command {
     let mut command = Command::new(git_binary);
     command.env_clear();
@@ -48,6 +61,7 @@ pub(crate) fn git_command(git_binary: &Path, git_dir: Option<&Path>) -> Command 
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_CONFIG_GLOBAL", null_device())
         .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_ALLOW_PROTOCOL", "file")
         .stdin(Stdio::null())
         .kill_on_drop(true);
     if let Some(dir) = git_dir {
@@ -104,14 +118,16 @@ impl ArchiveFormat {
 #[derive(Debug, Clone)]
 pub struct Archiver {
     git_binary: PathBuf,
+    /// `<data_dir>/tmp`; the overlays archives run in go to its `overlays` subdirectory.
+    tmp_dir: PathBuf,
 }
 
 /// An archive being produced: read it to the end to receive every byte.
 pub type ArchiveStream = Pin<Box<dyn AsyncRead + Send>>;
 
 impl Archiver {
-    pub fn new(git_binary: impl Into<PathBuf>) -> Self {
-        Self { git_binary: git_binary.into() }
+    pub fn new(git_binary: impl Into<PathBuf>, tmp_dir: impl Into<PathBuf>) -> Self {
+        Self { git_binary: git_binary.into(), tmp_dir: tmp_dir.into() }
     }
 
     /// Starts archiving `commit` (a full commit id) of the bare repository at
@@ -120,12 +136,13 @@ impl Archiver {
     /// `commit` must be a full hexadecimal id (resolve names first): it is passed to
     /// `git` as an argument, and anything else is refused so it can never be read as an
     /// option.
-    pub fn start(&self, repo_path: &Path, commit: &str, prefix: &str, format: ArchiveFormat) -> Result<ArchiveStream, GitError> {
+    pub async fn start(&self, repo_path: &Path, commit: &str, prefix: &str, format: ArchiveFormat) -> Result<ArchiveStream, GitError> {
         let is_full_id = matches!(commit.len(), 40 | 64) && commit.bytes().all(|b| b.is_ascii_hexdigit());
         if !is_full_id {
             return Err(GitError::NotFound("commit"));
         }
-        let mut child = git_command(&self.git_binary, Some(repo_path))
+        let scratch = Overlay::create(&self.tmp_dir, &[repo_path]).await?;
+        let mut child = git_command(&self.git_binary, Some(scratch.path()))
             .arg("archive")
             .arg(format!("--format={}", format.git_format()))
             .arg(format!("--prefix={prefix}/"))
@@ -152,6 +169,8 @@ impl Archiver {
                     let _ = child.kill().await;
                 }
             }
+            // The child has exited (`kill` waits for it), so none of its files are open.
+            drop(scratch);
         });
 
         let reader = ProcessReader { stdout, status: status_rx, _cancel: cancel_tx };
@@ -206,11 +225,14 @@ mod tests {
         assert_eq!(ArchiveFormat::split_suffix(".zip"), None);
     }
 
-    #[test]
-    fn only_full_commit_ids_are_archived() {
-        let archiver = Archiver::new("git");
+    #[tokio::test]
+    async fn only_full_commit_ids_are_archived() {
+        let tmp = tempfile::tempdir().unwrap();
+        let archiver = Archiver::new("git", tmp.path());
         for bad in ["main", "--output=/tmp/x", "abc123"] {
-            assert!(matches!(archiver.start(Path::new("."), bad, "x", ArchiveFormat::Zip), Err(GitError::NotFound(_))), "{bad}");
+            let started = archiver.start(Path::new("."), bad, "x", ArchiveFormat::Zip).await;
+            assert!(matches!(started, Err(GitError::NotFound(_))), "{bad}");
         }
+        assert!(std::fs::read_dir(tmp.path()).unwrap().next().is_none(), "nothing is created for a refused id");
     }
 }

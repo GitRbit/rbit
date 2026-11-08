@@ -35,7 +35,8 @@ fn fixture() -> (tempfile::TempDir, RepositoryReader, std::path::PathBuf) {
 }
 
 async fn produce(git_dir: &Path, commit: &str, format: ArchiveFormat) -> Vec<u8> {
-    let mut stream = Archiver::new("git").start(git_dir, commit, "demo-main", format).unwrap();
+    let scratch = git_dir.parent().unwrap().join("scratch");
+    let mut stream = Archiver::new("git", scratch).start(git_dir, commit, "demo-main", format).await.unwrap();
     let mut bytes = Vec::new();
     stream.read_to_end(&mut bytes).await.unwrap();
     bytes
@@ -111,7 +112,8 @@ async fn tar_gz_archives_are_gzipped_tarballs_of_the_commit() {
 #[tokio::test]
 async fn a_failing_archive_ends_in_an_error_not_a_short_file() {
     let (_dir, _reader, git_dir) = fixture();
-    let mut stream = Archiver::new("git").start(&git_dir, &"0".repeat(40), "x", ArchiveFormat::Zip).unwrap();
+    let archiver = Archiver::new("git", git_dir.parent().unwrap().join("scratch"));
+    let mut stream = archiver.start(&git_dir, &"0".repeat(40), "x", ArchiveFormat::Zip).await.unwrap();
     let mut bytes = Vec::new();
     assert!(stream.read_to_end(&mut bytes).await.is_err(), "git archive of a missing commit must fail the stream");
 }

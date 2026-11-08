@@ -98,7 +98,7 @@ impl ArchiveService {
     pub(crate) fn new(ctx: ServiceContext) -> Self {
         let ServiceContext { config, .. } = ctx;
         Self {
-            archiver: Archiver::new(config.repository.git_binary.clone()),
+            archiver: Archiver::new(config.repository.git_binary.clone(), config.storage.tmp_dir()),
             slots: ConcurrencyLimiter::new(MAX_CONCURRENT_ARCHIVES, config.repository.max_archives_per_ip()),
         }
     }
@@ -116,7 +116,7 @@ impl ArchiveService {
         let slot = self.slots.try_acquire(Some(client))?;
         let commit_id = repo.reader.commit_id(revision.to_owned()).await.map_err(ServiceError::from)?;
         let base_name = archive_base_name(repo.repo.repo.name.as_str(), revision);
-        let stream = self.archiver.start(&repo.disk_path, &commit_id, &base_name, format).map_err(ServiceError::from)?;
+        let stream = self.archiver.start(&repo.disk_path, &commit_id, &base_name, format).await.map_err(ServiceError::from)?;
         metrics::counter!("rbit_archives_total", "format" => format.extension()).increment(1);
         Ok(Archive {
             commit_id,

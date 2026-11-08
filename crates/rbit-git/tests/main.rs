@@ -6,6 +6,8 @@ mod blame;
 mod changes;
 mod compare;
 mod edit;
+mod hostile_config;
+mod hostile_support;
 mod insights;
 mod merge;
 mod overlay;

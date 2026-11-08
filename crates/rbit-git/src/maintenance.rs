@@ -8,11 +8,14 @@
 //!
 //! Like the smart-HTTP transport, the child runs with a scrubbed environment and without
 //! system or global configuration, so an operator's `~/.gitconfig` (or an attacker's
-//! environment) cannot change what runs. Detached auto-gc is disabled so the caller
-//! knows when the work is actually done and can bound how much runs at once.
+//! environment) cannot change what runs. Hooks are disabled with
+//! `core.hooksPath=<null device>`, which overrides both the repository's own setting and
+//! its `hooks` directory, so no repository can run a `pre-auto-gc` hook. Detached auto-gc
+//! is disabled so the caller knows when the work is actually done and can bound how much
+//! runs at once.
 
 use std::{
-    ffi::OsStr,
+    ffi::{OsStr, OsString},
     path::{Path, PathBuf},
     process::Stdio,
     time::Duration,
@@ -88,6 +91,8 @@ impl Maintenance {
 
     /// A `git --git-dir <repo>` command with a scrubbed environment and isolated config.
     fn command(&self, repo_path: &Path) -> Command {
+        let mut hooks = OsString::from("core.hooksPath=");
+        hooks.push(null_device());
         let mut command = Command::new(&self.git_binary);
         command.env_clear();
         for key in INHERITED_ENV {
@@ -99,6 +104,8 @@ impl Maintenance {
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .env("GIT_CONFIG_GLOBAL", null_device())
             .env("GIT_TERMINAL_PROMPT", "0")
+            .arg("-c")
+            .arg(hooks)
             .arg("--git-dir")
             .arg(repo_path)
             .stdin(Stdio::null())
