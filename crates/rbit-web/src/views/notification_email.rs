@@ -5,7 +5,11 @@
 use askama::Template;
 use askama_web::WebTemplate;
 use rbit_core::config::{EmailDelivery, EmailPreference, MAX_DIGEST_HOUR};
-use rbit_localization::shell::inbox::InboxMessage;
+use rbit_localization::{
+    Locale,
+    settings::profile::{NotificationsMessage, NotificationsText},
+    shell::inbox::InboxMessage,
+};
 use rbit_services::notification_email::EmailSettings;
 
 use crate::views::{
@@ -18,8 +22,8 @@ use crate::views::{
 #[derive(Debug, Clone)]
 pub struct PreferenceOption {
     pub value: &'static str,
-    pub label: &'static str,
-    pub description: &'static str,
+    pub label: NotificationsMessage,
+    pub description: NotificationsMessage,
     pub checked: bool,
 }
 
@@ -29,12 +33,9 @@ impl PreferenceOption {
             .into_iter()
             .map(|preference| {
                 let (label, description) = match preference {
-                    EmailPreference::Off => ("Off", "Notifications appear in your inbox only."),
-                    EmailPreference::Participating => (
-                        "Participating",
-                        "Threads you opened, commented on or reviewed, and when you are mentioned, assigned or asked for a review.",
-                    ),
-                    EmailPreference::All => ("Everything", "Also threads you subscribed to without taking part."),
+                    EmailPreference::Off => (NotificationsMessage::Off, NotificationsMessage::OffText),
+                    EmailPreference::Participating => (NotificationsMessage::Participating, NotificationsMessage::ParticipatingText),
+                    EmailPreference::All => (NotificationsMessage::Everything, NotificationsMessage::EverythingText),
                 };
                 Self { value: preference.as_str(), label, description, checked: preference == selected }
             })
@@ -46,8 +47,8 @@ impl PreferenceOption {
 #[derive(Debug, Clone)]
 pub struct DeliveryOption {
     pub value: &'static str,
-    pub label: &'static str,
-    pub description: &'static str,
+    pub label: NotificationsMessage,
+    pub description: NotificationsMessage,
     pub checked: bool,
 }
 
@@ -57,9 +58,9 @@ impl DeliveryOption {
             .into_iter()
             .map(|delivery| {
                 let (label, description) = match delivery {
-                    EmailDelivery::Immediate => ("Immediately", "One email for each notification, as it happens."),
-                    EmailDelivery::Daily => ("Daily digest", "One email a day with everything since the last one."),
-                    EmailDelivery::Weekly => ("Weekly digest", "One email every Monday with everything from the week before."),
+                    EmailDelivery::Immediate => (NotificationsMessage::Immediately, NotificationsMessage::ImmediatelyText),
+                    EmailDelivery::Daily => (NotificationsMessage::Daily, NotificationsMessage::DailyText),
+                    EmailDelivery::Weekly => (NotificationsMessage::Weekly, NotificationsMessage::WeeklyText),
                 };
                 Self { value: delivery.as_str(), label, description, checked: delivery == selected }
             })
@@ -77,8 +78,9 @@ pub struct HourOption {
 }
 
 impl HourOption {
-    fn all(chosen: Option<u8>, default: u8) -> Vec<Self> {
-        let default = Self { value: String::new(), label: format!("Default ({})", hour_label(default)), selected: chosen.is_none() };
+    fn all(chosen: Option<u8>, default: u8, locale: Locale) -> Vec<Self> {
+        let label = NotificationsText::DefaultHour(&hour_label(default)).text(&locale).to_string();
+        let default = Self { value: String::new(), label, selected: chosen.is_none() };
         std::iter::once(default)
             .chain((0..=MAX_DIGEST_HOUR).map(|hour| Self {
                 value: hour.to_string(),
@@ -115,12 +117,13 @@ pub struct NotificationSettingsPage {
 
 impl NotificationSettingsPage {
     pub fn new(page: Page, settings: &EmailSettings) -> Self {
+        let locale = page.locale;
         Self {
-            page: page.titled("Notifications"),
+            page: page.titled(NotificationsMessage::Title.text(&locale).as_str()),
             settings_nav: SettingsSection::Notifications.nav(),
             options: PreferenceOption::all(settings.preference),
             deliveries: DeliveryOption::all(settings.delivery),
-            hours: HourOption::all(settings.digest_hour, settings.default_digest_hour),
+            hours: HourOption::all(settings.digest_hour, settings.default_digest_hour, locale),
             address: settings.address.to_string(),
             verified: settings.verified,
             available: settings.available,

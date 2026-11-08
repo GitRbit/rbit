@@ -13,6 +13,10 @@ use labels::PickerLabels;
 use askama::Template;
 use askama_web::WebTemplate;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+use rbit_localization::{
+    Locale, Localized,
+    settings::profile::{AppearanceMessage, GalleryMessage, GalleryText},
+};
 
 use crate::{
     assets,
@@ -225,6 +229,12 @@ impl Gallery {
         }
     }
 
+    /// The search field's placeholder, with the number of themes.
+    #[allow(clippy::trivially_copy_pass_by_ref, reason = "Askama passes the page locale by reference")]
+    pub fn search_placeholder(&self, locale: &Locale) -> Localized {
+        GalleryText::SearchCount(u64::try_from(self.total).unwrap_or(u64::MAX)).text(locale)
+    }
+
     pub fn shown_label(&self) -> String {
         format!("{} {}", self.shown, if self.shown == 1 { "theme" } else { "themes" })
     }
@@ -350,7 +360,8 @@ pub struct AppearancePage {
 impl AppearancePage {
     pub fn new(page: Page, variant: VariantFilter, query: Option<&str>) -> Self {
         let gallery = Gallery::new(&page, SettingsSection::Appearance.url(), variant, query);
-        Self { page: page.titled("Appearance"), settings_nav: SettingsSection::Appearance.nav(), gallery }
+        let title = AppearanceMessage::Title.text(&page.locale);
+        Self { page: page.titled(title.as_str()), settings_nav: SettingsSection::Appearance.nav(), gallery }
     }
 }
 

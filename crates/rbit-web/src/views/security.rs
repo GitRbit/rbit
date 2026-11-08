@@ -16,6 +16,7 @@ use askama::Template;
 use askama_web::WebTemplate;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use qrcode::{Color, QrCode};
+use rbit_localization::settings::security::{SecurityMessage, SecurityText};
 use rbit_services::{
     accounts::ActiveSession,
     admin::Paged,
@@ -79,17 +80,17 @@ impl SecurityNotice {
         Self::ALL.into_iter().find(|notice| notice.key() == value)
     }
 
-    pub const fn message(self) -> &'static str {
+    pub const fn message(self) -> SecurityMessage {
         match self {
-            Self::TwoFactorDisabled => "Authenticator app removed.",
-            Self::AuthenticatorAdded => "Authenticator app added.",
-            Self::PasskeyAdded => "Passkey added.",
-            Self::PasskeyRemoved => "Passkey removed.",
-            Self::SessionRevoked => "Session signed out.",
-            Self::OtherSessionsRevoked => "Signed out of every other session.",
-            Self::SetupCancelled => "Two-factor setup cancelled.",
-            Self::IdentityLinked => "Account linked. You can sign in with it now.",
-            Self::IdentityUnlinked => "Account unlinked.",
+            Self::TwoFactorDisabled => SecurityMessage::AuthenticatorRemoved,
+            Self::AuthenticatorAdded => SecurityMessage::AuthenticatorAdded,
+            Self::PasskeyAdded => SecurityMessage::PasskeyAdded,
+            Self::PasskeyRemoved => SecurityMessage::PasskeyRemoved,
+            Self::SessionRevoked => SecurityMessage::SessionRevoked,
+            Self::OtherSessionsRevoked => SecurityMessage::OtherSessionsRevoked,
+            Self::SetupCancelled => SecurityMessage::SetupCancelled,
+            Self::IdentityLinked => SecurityMessage::IdentityLinked,
+            Self::IdentityUnlinked => SecurityMessage::IdentityUnlinked,
         }
     }
 
@@ -303,11 +304,12 @@ pub struct SecurityPage {
 impl SecurityPage {
     pub fn new(page: Page, view: SecurityView) -> Self {
         let title = match view {
-            SecurityView::Overview(_) => "Security",
-            SecurityView::Setup(_) => "Set up an authenticator app",
-            SecurityView::RecoveryCodes(_) => "Recovery codes",
-        };
-        Self { page: page.titled(title), settings_nav: SettingsSection::Security.nav(), view }
+            SecurityView::Overview(_) => SecurityMessage::Title,
+            SecurityView::Setup(_) => SecurityMessage::SetupTitle,
+            SecurityView::RecoveryCodes(_) => SecurityMessage::RecoveryCodes,
+        }
+        .text(&page.locale);
+        Self { page: page.titled(title.as_str()), settings_nav: SettingsSection::Security.nav(), view }
     }
 }
 

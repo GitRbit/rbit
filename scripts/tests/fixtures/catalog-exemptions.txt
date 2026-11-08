@@ -54,16 +54,7 @@ pulls/review_form.html
 pulls/review_thread.html
 pulls/reviewers.html
 pulls/show.html
-settings/account.html
-settings/appearance.html
-settings/keys.html
-settings/notifications.html
-settings/profile.html
-settings/security.html
-settings/security_components.html
-settings/tokens.html
 statuses/checks.html
-themes/gallery.html
 timeline/comment.html
 timeline/comment_form.html
 timeline/thread.html

@@ -26,8 +26,8 @@ use crate::{
         components::FormError,
         layout::Page,
         settings::{
-            AccountForm, AccountPage, CreatedToken, EmailVerification, ProfileForm, ProfilePage, SettingsSection, TokenForm, TokensPage,
-            parse_expiry,
+            AccountForm, AccountPage, EmailVerification, ProfileForm, ProfilePage, SettingsSection,
+            tokens::{CreatedToken, TokenForm, TokensPage, parse_expiry},
         },
         themes::{AppearancePage, VariantFilter},
     },

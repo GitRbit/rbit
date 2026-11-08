@@ -1,21 +1,21 @@
 {% extends "settings/layout.html" %}
 {% import "macros.html" as ui %}
 {% block settings_content %}
-<h2 class="text-xl font-semibold tracking-tight">Access tokens</h2>
-<p class="mt-1 text-[13px] text-ink-muted">Use a token instead of your password for Git over HTTPS: enter your username <span class="font-mono text-ink" dir="ltr">{{ username }}</span> and paste the token when Git asks for a password. The REST API at <span class="font-mono text-ink" dir="ltr">/api/v1</span> takes it as <span class="font-mono text-ink" dir="ltr">Authorization: Bearer</span>. Tokens start with <span class="font-mono text-ink" dir="ltr">rbit_</span>; tokens from earlier releases start with <span class="font-mono text-ink" dir="ltr">rit_</span> and keep working.</p>
+<h2 class="text-xl font-semibold tracking-tight">{% call ui::localized(TokensMessage::Title.text(page.locale)) %}{% endcall %}</h2>
+<p class="mt-1 text-[13px] text-ink-muted">{% call ui::localized(TokensMessage::IntroLead.text(page.locale)) %}{% endcall %} <span class="font-mono text-ink" dir="ltr">{{ username }}</span> {% call ui::localized(TokensMessage::IntroUsername.text(page.locale)) %}{% endcall %} <span class="font-mono text-ink" dir="ltr">/api/v1</span> {% call ui::localized(TokensMessage::IntroApi.text(page.locale)) %}{% endcall %} <span class="font-mono text-ink" dir="ltr">Authorization: Bearer</span>{% call ui::localized(TokensMessage::IntroPrefix.text(page.locale)) %}{% endcall %} <span class="font-mono text-ink" dir="ltr">rbit_</span>{% call ui::localized(TokensMessage::IntroLegacy.text(page.locale)) %}{% endcall %} <span class="font-mono text-ink" dir="ltr">rit_</span> {% call ui::localized(TokensMessage::IntroTail.text(page.locale)) %}{% endcall %}</p>
 
 {% if let Some(created) = created %}
 {#- hx-history="false" keeps this page (and the secret) out of htmx's localStorage history cache. -#}
 <section class="box mt-6 border-ink" hx-history="false" aria-labelledby="created-token-title">
   <div class="box-header">
     {% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}
-    <h3 id="created-token-title" class="min-w-0 truncate text-[13px] font-medium">Token “{{ created.name }}” created</h3>
+    <h3 id="created-token-title" class="min-w-0 truncate text-[13px] font-medium">{% call ui::localized(TokenText::Created(created.name).text(page.locale)) %}{% endcall %}</h3>
   </div>
   <div class="p-4">
-    <label class="label" for="new-token">Copy your new token now. You won't be able to see it again.</label>
+    <label class="label" for="new-token">{% call ui::localized(TokensMessage::CopyNow.text(page.locale)) %}{% endcall %}</label>
     <div class="flex" dir="ltr">
       <input id="new-token" class="input min-w-0 rounded-e-none font-mono text-[13px]" value="{{ created.secret }}" readonly autocomplete="off" spellcheck="false">
-      <button type="button" class="btn btn-icon -ms-px h-10 rounded-s-none sm:h-9 sm:w-9" data-copy="new-token" aria-label="Copy token" title="Copy">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
+      <button type="button" class="btn btn-icon -ms-px h-10 rounded-s-none sm:h-9 sm:w-9" data-copy="new-token" aria-label="{{ TokensMessage::CopyToken.text(page.locale) }}" title="{{ TokensMessage::Copy.text(page.locale) }}">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
     </div>
   </div>
 </section>
@@ -23,54 +23,54 @@
 
 <form method="post" action="/settings/tokens" class="box mt-6" novalidate>
   <div class="box-header">
-    <h3 class="text-[13px] font-medium">New token</h3>
+    <h3 class="text-[13px] font-medium">{% call ui::localized(TokensMessage::NewToken.text(page.locale)) %}{% endcall %}</h3>
   </div>
   <div class="p-4">
     {% call ui::form_error(error) %}{% endcall %}
 
-    <label class="label" for="token-name">Name</label>
-    <input class="input" id="token-name" name="name" value="{{ form.name }}" maxlength="100" placeholder="e.g. Work laptop" autocomplete="off" required>
-    <p class="hint">Something to recognise it by later.</p>
+    <label class="label" for="token-name">{% call ui::localized(TokensMessage::Name.text(page.locale)) %}{% endcall %}</label>
+    <input class="input" id="token-name" name="name" value="{{ form.name }}" maxlength="100" placeholder="{{ TokensMessage::NamePlaceholder.text(page.locale) }}" autocomplete="off" required>
+    <p class="hint">{% call ui::localized(TokensMessage::NameHint.text(page.locale)) %}{% endcall %}</p>
 
     <fieldset class="mt-5">
-      <legend class="label">Scope</legend>
+      <legend class="label">{% call ui::localized(TokensMessage::Scope.text(page.locale)) %}{% endcall %}</legend>
       <div class="box overflow-hidden">
         {% for choice in form.scope_choices %}
         <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 last:border-b-0 hover:bg-subtle has-checked:bg-subtle">
           <input type="radio" name="scope" value="{{ choice.value }}" class="mt-1 accent-(--ink)" {% if choice.selected %}checked{% endif %}>
           <span>
             <span class="block font-medium">{{ choice.label }}</span>
-            <span class="block text-[13px] text-ink-muted">{{ choice.description }}</span>
+            <span class="block text-[13px] text-ink-muted">{% call ui::localized(choice.description.text(page.locale)) %}{% endcall %}</span>
           </span>
         </label>
         {% endfor %}
       </div>
-      <p class="hint">A token can never do more than your account can.</p>
+      <p class="hint">{% call ui::localized(TokensMessage::ScopeHint.text(page.locale)) %}{% endcall %}</p>
     </fieldset>
 
-    <label class="label mt-5" for="token-expires">Expiration</label>
+    <label class="label mt-5" for="token-expires">{% call ui::localized(TokensMessage::Expiration.text(page.locale)) %}{% endcall %}</label>
     <div class="relative sm:max-w-60">
       <select class="input cursor-pointer appearance-none pe-9" id="token-expires" name="expires">
         {% for choice in form.expiry_choices %}
-        <option value="{{ choice.value }}" {% if choice.selected %}selected{% endif %}>{{ choice.label }}</option>
+        <option value="{{ choice.value }}" {% if choice.selected %}selected{% endif %}>{{ choice.label(page.locale) }}</option>
         {% endfor %}
       </select>
       {% call ui::icon("chevron-down", "pointer-events-none absolute inset-e-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
     </div>
   </div>
   <div class="flex justify-end border-t border-line px-4 py-3">
-    <button class="btn btn-primary w-full sm:w-auto" type="submit">Generate token</button>
+    <button class="btn btn-primary w-full sm:w-auto" type="submit">{% call ui::localized(TokensMessage::Generate.text(page.locale)) %}{% endcall %}</button>
   </div>
 </form>
 
 <section class="mt-6" aria-labelledby="tokens-title">
   <div class="mb-3 flex h-8 items-center justify-between">
-    <h3 id="tokens-title" class="text-[13px] font-medium text-ink-muted">Your tokens</h3>
+    <h3 id="tokens-title" class="text-[13px] font-medium text-ink-muted">{% call ui::localized(TokensMessage::YourTokens.text(page.locale)) %}{% endcall %}</h3>
     {% if !tokens.is_empty() %}<span class="text-xs text-ink-faint">{{ tokens.len() }}</span>{% endif %}
   </div>
   <div class="box">
     {% if tokens.is_empty() %}
-    {% call ui::empty_state("lock", "No access tokens", "Generate a token to clone, fetch and push over HTTPS without your password.") %}{% endcall %}
+    {% call ui::empty_state("lock", TokensMessage::EmptyTitle.text(page.locale), TokensMessage::EmptyText.text(page.locale)) %}{% endcall %}
     {% else %}
     <ul>
       {% for token in tokens %}
@@ -82,13 +82,13 @@
           </div>
           <p class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-ink-muted">
             <span class="font-mono text-ink" dir="ltr">{{ token.hint }}</span>
-            <time datetime="{{ token.created_iso }}">{{ token.created }}</time>
-            <span>{{ token.last_used }}</span>
-            <span {% if token.is_expired %}class="text-danger"{% endif %}>{{ token.expiry }}</span>
+            <time datetime="{{ token.created_iso }}">{% call ui::localized(token.created) %}{% endcall %}</time>
+            <span>{% call ui::localized(token.last_used) %}{% endcall %}</span>
+            <span {% if token.is_expired %}class="text-danger"{% endif %}>{% call ui::localized(token.expiry) %}{% endcall %}</span>
           </p>
         </div>
         <form method="post" action="{{ token.revoke_url }}" class="shrink-0">
-          <button class="btn" type="submit" aria-label="Revoke {{ token.name }}">Revoke</button>
+          <button class="btn" type="submit" aria-label="{{ TokenText::RevokeLabel(token.name).text(page.locale) }}">{% call ui::localized(TokensMessage::Revoke.text(page.locale)) %}{% endcall %}</button>
         </form>
       </li>
       {% endfor %}

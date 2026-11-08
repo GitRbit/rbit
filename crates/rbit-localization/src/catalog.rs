@@ -23,6 +23,7 @@ mod fallback;
 pub use fallback::{Localized, MessageFamily, MessageWriter};
 mod run_page;
 pub use run_page::RunPageMessage;
+pub mod settings;
 mod settings_nav;
 pub use settings_nav::SettingsNavMessage;
 mod actions_ui;

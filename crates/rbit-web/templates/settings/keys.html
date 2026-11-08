@@ -1,37 +1,37 @@
 {% extends "settings/layout.html" %}
 {% import "macros.html" as ui %}
 {% block settings_content %}
-<h2 class="text-xl font-semibold tracking-tight">SSH keys</h2>
-<p class="mt-1 text-[13px] text-ink-muted">Keys let you clone, fetch and push over SSH without a password. Paste the contents of your public key file, usually <span class="font-mono text-ink" dir="ltr">~/.ssh/id_ed25519.pub</span>.</p>
+<h2 class="text-xl font-semibold tracking-tight">{% call ui::localized(KeysMessage::Title.text(page.locale)) %}{% endcall %}</h2>
+<p class="mt-1 text-[13px] text-ink-muted">{% call ui::localized(KeysMessage::IntroLead.text(page.locale)) %}{% endcall %} <span class="font-mono text-ink" dir="ltr">~/.ssh/id_ed25519.pub</span>{% call ui::localized(KeysMessage::IntroTail.text(page.locale)) %}{% endcall %}</p>
 
 <form method="post" action="/settings/keys" class="box mt-6" novalidate>
   <div class="box-header">
-    <h3 class="text-[13px] font-medium">New SSH key</h3>
+    <h3 class="text-[13px] font-medium">{% call ui::localized(KeysMessage::NewKey.text(page.locale)) %}{% endcall %}</h3>
   </div>
   <div class="p-4">
     {% call ui::form_error(error) %}{% endcall %}
 
-    <label class="label" for="key-title">Title <span class="font-normal text-ink-faint">optional</span></label>
-    <input class="input" id="key-title" name="title" value="{{ form.title }}" maxlength="100" placeholder="e.g. Work laptop" autocomplete="off">
-    <p class="hint">Defaults to the key's comment.</p>
+    <label class="label" for="key-title">{% call ui::localized(KeysMessage::TitleLabel.text(page.locale)) %}{% endcall %} <span class="font-normal text-ink-faint">{% call ui::localized(KeysMessage::Optional.text(page.locale)) %}{% endcall %}</span></label>
+    <input class="input" id="key-title" name="title" value="{{ form.title }}" maxlength="100" placeholder="{{ KeysMessage::TitlePlaceholder.text(page.locale) }}" autocomplete="off">
+    <p class="hint">{% call ui::localized(KeysMessage::TitleHint.text(page.locale)) %}{% endcall %}</p>
 
-    <label class="label mt-5" for="key-value">Public Key</label>
-    <textarea class="input h-32 resize-y py-2 font-mono text-xs sm:h-28" dir="ltr" id="key-value" name="key" rows="4" placeholder="ssh-ed25519 AAAA… you@example.com" autocomplete="off" autocapitalize="none" spellcheck="false" required>{{ form.key }}</textarea>
-    <p class="hint">Ed25519, ECDSA, RSA (2048 bits or more) or a security key (<span class="font-mono" dir="ltr">sk-…</span>). Create one with <span class="font-mono" dir="ltr">ssh-keygen -t ed25519</span>.</p>
+    <label class="label mt-5" for="key-value">{% call ui::localized(KeysMessage::PublicKey.text(page.locale)) %}{% endcall %}</label>
+    <textarea class="input h-32 resize-y py-2 font-mono text-xs sm:h-28" dir="ltr" id="key-value" name="key" rows="4" placeholder="{{ KeysMessage::KeyPlaceholder.text(page.locale) }}" autocomplete="off" autocapitalize="none" spellcheck="false" required>{{ form.key }}</textarea>
+    <p class="hint">{% call ui::localized(KeysMessage::KeyHintLead.text(page.locale)) %}{% endcall %}<span class="font-mono" dir="ltr">sk-…</span>{% call ui::localized(KeysMessage::KeyHintMiddle.text(page.locale)) %}{% endcall %} <span class="font-mono" dir="ltr">ssh-keygen -t ed25519</span>{% call ui::localized(KeysMessage::KeyHintTail.text(page.locale)) %}{% endcall %}</p>
   </div>
   <div class="flex justify-end border-t border-line px-4 py-3">
-    <button class="btn btn-primary w-full sm:w-auto" type="submit">Add key</button>
+    <button class="btn btn-primary w-full sm:w-auto" type="submit">{% call ui::localized(KeysMessage::AddKey.text(page.locale)) %}{% endcall %}</button>
   </div>
 </form>
 
 <section class="mt-6" aria-labelledby="keys-title">
   <div class="mb-3 flex h-8 items-center justify-between">
-    <h3 id="keys-title" class="text-[13px] font-medium text-ink-muted">Your keys</h3>
+    <h3 id="keys-title" class="text-[13px] font-medium text-ink-muted">{% call ui::localized(KeysMessage::YourKeys.text(page.locale)) %}{% endcall %}</h3>
     {% if !keys.is_empty() %}<span class="text-xs text-ink-faint">{{ keys.len() }}</span>{% endif %}
   </div>
   <div class="box">
     {% if keys.is_empty() %}
-    {% call ui::empty_state("terminal", "No SSH keys", "Add a public key to use Git over SSH.") %}{% endcall %}
+    {% call ui::empty_state("terminal", KeysMessage::EmptyTitle.text(page.locale), KeysMessage::EmptyText.text(page.locale)) %}{% endcall %}
     {% else %}
     <ul>
       {% for key in keys %}
@@ -48,7 +48,7 @@
           </p>
         </div>
         <form method="post" action="{{ key.delete_url }}" class="shrink-0">
-          <button class="btn" type="submit" aria-label="Delete {{ key.title }}">Delete</button>
+          <button class="btn" type="submit" aria-label="{{ KeyLabel::Delete(key.title).text(page.locale) }}">{% call ui::localized(KeysMessage::Delete.text(page.locale)) %}{% endcall %}</button>
         </form>
       </li>
       {% endfor %}
@@ -56,7 +56,7 @@
     {% endif %}
   </div>
   {% if let Some(command) = test_command %}
-  <p class="hint mt-3">Check that a key works with <span class="font-mono text-ink" dir="ltr">{{ command }}</span>.</p>
+  <p class="hint mt-3">{% call ui::localized(KeysMessage::TestLead.text(page.locale)) %}{% endcall %} <span class="font-mono text-ink" dir="ltr">{{ command }}</span>{% call ui::localized(KeysMessage::TestTail.text(page.locale)) %}{% endcall %}</p>
   {% endif %}
 </section>
 {% endblock %}

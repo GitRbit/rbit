@@ -6,6 +6,7 @@
 use askama::Template;
 use askama_web::WebTemplate;
 use rbit_core::Timestamp;
+use rbit_localization::settings::keys::{KeyLabel, KeysMessage};
 use rbit_services::ssh_keys::{DeployKey, SshKey};
 
 use crate::views::{
