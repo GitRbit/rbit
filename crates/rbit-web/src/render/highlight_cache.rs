@@ -13,9 +13,9 @@
 //! Memory is bounded by [`DEFAULT_MAX_BYTES`], counted over the stored strings; an entry
 //! larger than a quarter of the budget is not kept, so one huge file cannot flush
 //! everything else.
-//! Concurrent misses for one key share a blocking calculation. At most four distinct
-//! jobs are admitted; cancelled requests leave their job registered until it actually
-//! finishes, and waiters never occupy blocking threads.
+//! Concurrent misses for one key share a blocking calculation. At most four distinct jobs
+//! are admitted (beyond that a request gets its lines unhighlighted); cancelled requests
+//! leave their job registered until it actually finishes; waiters never block threads.
 
 use std::{
     collections::{BTreeMap, HashMap},
@@ -215,37 +215,37 @@ impl HighlightCache {
         }
     }
 
-    /// Returns shared markup, or runs one CPU job for this key on the blocking pool.
-    /// Excess distinct jobs are rejected instead of accumulating an unbounded queue.
+    /// Returns shared markup, or runs one CPU job for this key on the blocking pool
+    /// (`compute(true)`). Excess distinct jobs never queue: the caller gets its lines
+    /// unhighlighted (`compute(false)`, not cached) so the page is still served.
     pub async fn get_or_compute<F>(&self, content_id: &str, file_name: &str, compute: F) -> WebResult<Arc<HighlightedFile>>
     where
-        F: FnOnce() -> Vec<String> + Send + 'static,
+        F: FnOnce(bool) -> Vec<String> + Send + 'static,
     {
         let key = Self::key(content_id, file_name);
-        let (mut receiver, flight) = {
+        let admitted = {
             let mut state = self.lock();
             if let Some(lines) = Self::lookup(&mut state, &key) {
                 return Ok(lines);
             }
             if let Some(receiver) = state.running.get(&key) {
-                (receiver.clone(), None)
+                Some((receiver.clone(), None))
+            } else if state.running.len() >= self.inner.max_jobs {
+                None
             } else {
-                if state.running.len() >= self.inner.max_jobs {
-                    return Err(WebError::TooManyRequests { retry_after_seconds: 1 });
-                }
                 let (sender, receiver) = watch::channel(None);
                 state.running.insert(key.clone(), receiver.clone());
                 // Construct the guard before spawning so even a queued task dropped
                 // during runtime shutdown removes its registration and closes waiters.
-                let flight = Flight { cache: self.clone(), key: Some(key), sender };
-                (receiver, Some(flight))
+                Some((receiver.clone(), Some(Flight { cache: self.clone(), key: Some(key), sender })))
             }
         };
+        let Some((mut receiver, flight)) = admitted else { return Ok(Arc::new(HighlightedFile::new(compute(false)))) };
         // Spawning or dropping a rejected task can run destructors; neither happens
         // under the cache lock. Joining a flight releases its unused source at once.
         if let Some(mut flight) = flight {
             drop(tokio::task::spawn_blocking(move || {
-                flight.complete(Arc::new(HighlightedFile::new(compute())));
+                flight.complete(Arc::new(HighlightedFile::new(compute(true))));
             }));
         } else {
             drop(compute);
@@ -399,7 +399,7 @@ mod tests {
             let calls = Arc::clone(&calls);
             tokio::spawn(async move {
                 cache
-                    .get_or_compute("id", "a.rs", move || {
+                    .get_or_compute("id", "a.rs", move |_| {
                         calls.fetch_add(1, Ordering::Relaxed);
                         started.send(()).unwrap();
                         blocked.recv_timeout(Duration::from_secs(5)).unwrap();
@@ -412,7 +412,7 @@ mod tests {
         start.await.unwrap();
         let unused_drops = Arc::new(AtomicUsize::new(0));
         let unused = UnusedSource(Arc::clone(&unused_drops));
-        let second = cache.get_or_compute("id", "a.rs", move || {
+        let second = cache.get_or_compute("id", "a.rs", move |_| {
             drop(unused);
             panic!("duplicate CPU job")
         });
@@ -424,7 +424,7 @@ mod tests {
         let second = second.await.unwrap();
         assert_eq!(calls.load(Ordering::Relaxed), 1);
         assert!(Arc::ptr_eq(&first, &second));
-        let warm = cache.get_or_compute("id", "a.rs", || panic!("warm CPU job")).await.unwrap();
+        let warm = cache.get_or_compute("id", "a.rs", |_| panic!("warm CPU job")).await.unwrap();
         assert!(Arc::ptr_eq(&first, &warm));
         assert_eq!(cache.stats().entries, 1);
     }
@@ -438,7 +438,7 @@ mod tests {
             let cache = cache.clone();
             tokio::spawn(async move {
                 cache
-                    .get_or_compute("id", "a.rs", move || {
+                    .get_or_compute("id", "a.rs", move |_| {
                         started.send(()).unwrap();
                         blocked.recv_timeout(Duration::from_secs(5)).unwrap();
                         vec!["rust".into()]
@@ -448,7 +448,7 @@ mod tests {
             })
         };
         start.await.unwrap();
-        let other = tokio::time::timeout(Duration::from_secs(2), cache.get_or_compute("id", "a.txt", || vec!["plain".into()]))
+        let other = tokio::time::timeout(Duration::from_secs(2), cache.get_or_compute("id", "a.txt", |_| vec!["plain".into()]))
             .await
             .unwrap()
             .unwrap();
@@ -466,7 +466,7 @@ mod tests {
             let cache = cache.clone();
             tokio::spawn(async move {
                 cache
-                    .get_or_compute("id", "a.rs", move || {
+                    .get_or_compute("id", "a.rs", move |_| {
                         started.send(()).unwrap();
                         blocked.recv_timeout(Duration::from_secs(5)).unwrap();
                         vec!["shared".into()]
@@ -477,32 +477,32 @@ mod tests {
         start.await.unwrap();
         first.abort();
         assert!(first.await.unwrap_err().is_cancelled());
-        let denied = cache.get_or_compute("other", "a.rs", || panic!("capacity exceeded")).await;
-        assert!(matches!(denied, Err(WebError::TooManyRequests { .. })));
-        let joined = cache.get_or_compute("id", "a.rs", || panic!("cancelled job duplicated"));
+        let denied = cache.get_or_compute("other", "a.rs", |admitted| vec![format!("admitted: {admitted}")]).await.unwrap();
+        assert_eq!(denied.lines(), ["admitted: false"], "served unhighlighted, without a job or a cache entry");
+        let joined = cache.get_or_compute("id", "a.rs", |_| panic!("cancelled job duplicated"));
         tokio::pin!(joined);
         assert!(poll!(&mut joined).is_pending());
         release.send(()).unwrap();
         assert_eq!(joined.await.unwrap().lines(), ["shared"]);
-        assert_eq!(cache.get_or_compute("other", "a.rs", || vec!["next".into()]).await.unwrap().lines(), ["next"]);
+        assert_eq!(cache.get_or_compute("other", "a.rs", |_| vec!["next".into()]).await.unwrap().lines(), ["next"]);
     }
 
     #[tokio::test]
     async fn panicked_jobs_wake_waiters_release_capacity_and_allow_retry() {
         let cache = HighlightCache::bounded(DEFAULT_MAX_BYTES, 1);
-        let failed = tokio::time::timeout(Duration::from_secs(2), cache.get_or_compute("id", "a.rs", || panic!("simulated parser panic")))
+        let failed = tokio::time::timeout(Duration::from_secs(2), cache.get_or_compute("id", "a.rs", |_| panic!("simulated parser panic")))
             .await
             .unwrap();
         assert!(matches!(failed, Err(WebError::Internal(_))));
         assert!(cache.lock().running.is_empty());
         assert_eq!(cache.stats().entries, 0);
-        assert_eq!(cache.get_or_compute("id", "a.rs", || vec!["retry".into()]).await.unwrap().lines(), ["retry"]);
+        assert_eq!(cache.get_or_compute("id", "a.rs", |_| vec!["retry".into()]).await.unwrap().lines(), ["retry"]);
     }
 
     #[tokio::test]
     async fn oversized_results_are_returned_without_retaining_them() {
         let cache = HighlightCache::new(1024);
-        let found = cache.get_or_compute("id", "a.rs", || vec!["x".repeat(1024)]).await.unwrap();
+        let found = cache.get_or_compute("id", "a.rs", |_| vec!["x".repeat(1024)]).await.unwrap();
         assert_eq!(found[0].len(), 1024);
         assert_eq!(cache.stats().bytes, 0);
         assert!(cache.lock().running.is_empty());

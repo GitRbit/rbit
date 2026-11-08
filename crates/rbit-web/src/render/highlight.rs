@@ -288,14 +288,18 @@ impl Highlighter {
     /// [`Self::highlight_lines`] through the cache. `content_id` must name `text` exactly:
     /// a Git blob id, or a Git LFS object id.
     /// The source is owned by a cold blocking job; cache hits and shared flights do
-    /// not copy its text or the highlighted strings.
+    /// not copy its text or the highlighted strings. When every job is taken, the lines
+    /// come back unhighlighted (escaped as usual) instead of the page being refused.
     pub async fn highlight_lines_cached<T>(&self, content_id: &str, file_name: &str, text: T) -> WebResult<Arc<HighlightedFile>>
     where
         T: AsRef<str> + Send + 'static,
     {
-        let highlighter = self.clone();
-        let name = file_name.to_owned();
-        self.cache.get_or_compute(content_id, file_name, move || highlighter.highlight_lines(&name, text.as_ref())).await
+        let (highlighter, name) = (self.clone(), file_name.to_owned());
+        self.cache
+            .get_or_compute(content_id, file_name, move |admitted| {
+                if admitted { highlighter.highlight_lines(&name, text.as_ref()) } else { plain_lines(text.as_ref()) }
+            })
+            .await
     }
 
     /// How the cache of highlighted files is doing.

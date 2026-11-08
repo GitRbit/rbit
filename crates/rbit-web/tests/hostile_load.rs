@@ -6,5 +6,6 @@
 mod blame;
 mod diffs;
 mod fixture;
+mod highlighting;
 mod logs;
 mod passwords;
