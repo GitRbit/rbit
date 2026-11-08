@@ -8,9 +8,10 @@
 
 use askama::Template;
 use askama_web::WebTemplate;
-use rbit_core::{
-    Timestamp,
-    webhook::{Delivery, DeliveryStatus, LastDelivery, Webhook, WebhookEvent},
+use rbit_core::webhook::{Delivery, DeliveryStatus, LastDelivery, Webhook, WebhookEvent};
+use rbit_localization::{
+    Locale, Localized,
+    settings::webhooks::{WebhookMessage, WebhookText},
 };
 use rbit_services::webhooks::MAX_HOOKS_PER_OWNER;
 
@@ -20,6 +21,8 @@ use crate::views::{
     org::OrgHeader,
     repo::RepoHeader,
 };
+
+pub mod delivery;
 
 /// Cards this workstream adds to the repository settings page.
 pub fn repo_settings_cards(header: &RepoHeader) -> Vec<SettingsCard> {
@@ -85,11 +88,6 @@ impl HookFrame {
         self
     }
 
-    /// "repository" or "organization", for sentences.
-    pub fn kind(&self) -> &'static str {
-        if self.repo.is_some() { "repository" } else { "organization" }
-    }
-
     fn hook_url(&self, hook: &Webhook) -> String {
         format!("{}/{}", self.hooks_url, hook.id.0)
     }
@@ -122,12 +120,12 @@ impl StatusBadge {
     }
 
     /// Like [`Self::new`], but a pending delivery that already failed says it is retrying.
-    fn for_delivery(delivery: &Delivery) -> Self {
+    fn for_delivery(delivery: &Delivery, locale: Locale) -> Self {
         let mut badge = Self::new(delivery.status, delivery.response_status);
         if delivery.status == DeliveryStatus::Pending && delivery.attempts > 0 {
             badge.label = match delivery.response_status {
-                Some(code) => format!("Retrying · {code}"),
-                None => "Retrying".to_owned(),
+                Some(code) => WebhookText::RetryingCode(code.into()).text(&locale).to_string(),
+                None => WebhookMessage::Retrying.text(&locale).to_string(),
             };
         }
         badge
@@ -182,14 +180,22 @@ pub struct WebhooksPage {
 
 impl WebhooksPage {
     pub fn new(page: Page, frame: HookFrame, hooks: &[Webhook]) -> Self {
+        let title = WebhookText::ListTitle(&frame.name).text(&page.locale);
         Self {
-            page: page.titled(format!("Webhooks · {}", frame.name)),
+            page: page.titled(title.as_str()),
             hooks: hooks.iter().map(|hook| HookRow::new(&frame, hook)).collect(),
             new_url: format!("{}/new", frame.hooks_url),
             can_add: i64::try_from(hooks.len()).unwrap_or(i64::MAX) < MAX_HOOKS_PER_OWNER,
             max_hooks: MAX_HOOKS_PER_OWNER,
             frame,
         }
+    }
+
+    /// Why no webhook can be added, in the page's language.
+    pub fn maximum_text(&self) -> Localized {
+        let max = u64::try_from(self.max_hooks).unwrap_or_default();
+        let text = if self.frame.repo.is_some() { WebhookText::MaxRepository(max) } else { WebhookText::MaxOrganization(max) };
+        text.text(&self.page.locale)
     }
 }
 
@@ -256,12 +262,12 @@ pub struct DeliveryRow {
 }
 
 impl DeliveryRow {
-    fn new(hook_url: &str, delivery: &Delivery) -> Self {
+    fn new(hook_url: &str, delivery: &Delivery, locale: Locale) -> Self {
         let at = delivery.last_attempt_at.unwrap_or(delivery.created_at);
         Self {
             guid: delivery.guid.clone(),
             event: event_name(delivery),
-            status: StatusBadge::for_delivery(delivery),
+            status: StatusBadge::for_delivery(delivery, locale),
             when: at.relative(),
             when_iso: at.iso8601(),
             duration: delivery.duration_ms.map(|ms| format!("{ms} ms")).unwrap_or_default(),
@@ -307,8 +313,9 @@ pub struct HookActions {
 
 impl WebhookFormPage {
     pub fn new_hook(page: Page, frame: HookFrame) -> Self {
+        let title = WebhookText::NewTitle(&frame.name).text(&page.locale);
         Self {
-            page: page.titled(format!("New webhook · {}", frame.name)),
+            page: page.titled(title.as_str()),
             action_url: frame.hooks_url.clone(),
             form: HookForm::blank(frame.actions),
             frame,
@@ -324,9 +331,10 @@ impl WebhookFormPage {
 
     /// The edit page of `hook` with one page of its deliveries (`page_count` pages).
     pub fn edit(page: Page, frame: HookFrame, hook: &Webhook, deliveries: &[Delivery], pager: Pagination) -> Self {
-        let hook_url = frame.hook_url(hook);
+        let (hook_url, locale) = (frame.hook_url(hook), page.locale);
+        let title = WebhookText::EditTitle(&frame.name).text(&locale);
         Self {
-            page: page.titled(format!("Webhook · {}", frame.name)),
+            page: page.titled(title.as_str()),
             action_url: hook_url.clone(),
             form: HookForm::for_hook(hook, frame.actions),
             error: FormError::default(),
@@ -338,7 +346,7 @@ impl WebhookFormPage {
             }),
             saved: false,
             pinged: false,
-            deliveries: deliveries.iter().map(|delivery| DeliveryRow::new(&hook_url, delivery)).collect(),
+            deliveries: deliveries.iter().map(|delivery| DeliveryRow::new(&hook_url, delivery, locale)).collect(),
             pager,
             frame,
         }
@@ -366,78 +374,14 @@ impl WebhookFormPage {
     }
 }
 
-// ------------------------------------------------------------------ one delivery
-
-/// `…/hooks/{id}/deliveries/{delivery}`: what was sent and what came back.
-#[derive(Debug, Template, WebTemplate)]
-#[template(path = "webhooks/delivery.html")]
-pub struct DeliveryPage {
-    pub page: Page,
-    pub frame: HookFrame,
-    pub hook_url: String,
-    pub redeliver_url: String,
-    pub guid: String,
-    pub event: String,
-    pub status: StatusBadge,
-    pub attempts: u32,
-    pub created: String,
-    pub created_iso: String,
-    pub next_attempt: Option<String>,
-    pub duration: String,
-    pub request_headers: Vec<(String, String)>,
-    /// The payload, pretty-printed.
-    pub payload: String,
-    pub response_status: Option<u16>,
-    pub response_headers: Vec<(String, String)>,
-    pub response_body: Option<String>,
-    pub error: Option<String>,
-}
-
-impl DeliveryPage {
-    pub fn new(page: Page, frame: HookFrame, hook: &Webhook, delivery: &Delivery) -> Self {
-        let hook_url = frame.hook_url(hook);
-        let payload = serde_json::from_str::<serde_json::Value>(&delivery.payload)
-            .and_then(|value| serde_json::to_string_pretty(&value))
-            .unwrap_or_else(|_| delivery.payload.clone());
-        let next_attempt = (delivery.status == DeliveryStatus::Pending)
-            .then_some(delivery.next_attempt_at)
-            .flatten()
-            .map(|at| if at <= Timestamp::now() { "now".to_owned() } else { at.iso8601() });
-        Self {
-            page: page.titled(format!("Delivery {} · {}", short_guid(&delivery.guid), frame.name)),
-            redeliver_url: format!("{hook_url}/deliveries/{}/redeliver", delivery.id.0),
-            hook_url,
-            guid: delivery.guid.clone(),
-            event: event_name(delivery),
-            status: StatusBadge::for_delivery(delivery),
-            attempts: delivery.attempts,
-            created: delivery.created_at.relative(),
-            created_iso: delivery.created_at.iso8601(),
-            next_attempt,
-            duration: delivery.duration_ms.map(|ms| format!("{ms} ms")).unwrap_or_default(),
-            request_headers: delivery.request_headers.clone(),
-            payload,
-            response_status: delivery.response_status,
-            response_headers: delivery.response_headers.clone(),
-            response_body: delivery.response_body.clone().filter(|body| !body.is_empty()),
-            error: delivery.error.clone(),
-            frame,
-        }
-    }
-}
-
-fn short_guid(guid: &str) -> &str {
-    guid.get(..8).unwrap_or(guid)
-}
-
 #[cfg(test)]
 mod tests {
     use rbit_core::{
-        AccountId, RepoId,
+        AccountId, RepoId, Timestamp,
         webhook::{DeliveryId, WebhookId, WebhookOwner, WebhookUrl},
     };
 
-    use super::*;
+    use super::{delivery::DeliveryPage, *};
 
     fn header() -> RepoHeader {
         RepoHeader {
@@ -496,7 +440,7 @@ mod tests {
     #[test]
     fn rows_describe_hooks_and_their_last_delivery() {
         let frame = HookFrame::for_repository(header());
-        assert_eq!((frame.name.as_str(), frame.hooks_url.as_str(), frame.kind()), ("ada/demo", "/ada/demo/settings/hooks", "repository"));
+        assert_eq!((frame.name.as_str(), frame.hooks_url.as_str()), ("ada/demo", "/ada/demo/settings/hooks"));
         let last = LastDelivery { status: DeliveryStatus::Failed, response_status: Some(500), at: Timestamp(1_792_022_400) };
         let row = HookRow::new(&frame, &hook(Some(last)));
         assert_eq!(row.host, "ci.example.com");
@@ -540,10 +484,11 @@ mod tests {
         assert_eq!(page.redeliver_url, "/ada/demo/settings/hooks/4/deliveries/9/redeliver");
         assert_eq!(page.response_body, None, "an empty body is not shown");
         assert_eq!(page.next_attempt, None);
-        assert_eq!(DeliveryRow::new("/x", &delivery(DeliveryStatus::Pending, None)).status.label, "Retrying", "two attempts were made");
-        let fresh = Delivery { attempts: 0, ..delivery(DeliveryStatus::Pending, None) };
-        assert_eq!(DeliveryRow::new("/x", &fresh).status.label, "Pending");
-        assert_eq!(DeliveryRow::new("/x", &delivery(DeliveryStatus::Pending, Some(502))).status.label, "Retrying · 502");
+        let row = |delivery: &Delivery| DeliveryRow::new("/x", delivery, Locale::English).status.label;
+        assert_eq!(row(&delivery(DeliveryStatus::Pending, None)), "Retrying", "two attempts were made");
+        assert_eq!(row(&Delivery { attempts: 0, ..delivery(DeliveryStatus::Pending, None) }), "Pending");
+        assert_eq!(row(&delivery(DeliveryStatus::Pending, Some(502))), "Retrying · 502");
+        assert_eq!(page.attempts_text().as_str(), "2 attempts");
     }
 
     fn page() -> Page {

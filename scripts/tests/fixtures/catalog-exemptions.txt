@@ -32,7 +32,3 @@ timeline/comment.html
 timeline/comment_form.html
 timeline/thread.html
 timeline/title_form.html
-webhooks/delivery.html
-webhooks/form.html
-webhooks/layout.html
-webhooks/list.html

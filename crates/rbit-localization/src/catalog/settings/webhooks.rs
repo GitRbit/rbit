@@ -1,0 +1,73 @@
+//! Repository and organization webhooks: the list, the form and the delivery log.
+
+labels! {
+    /// Fixed labels of the webhook pages.
+    WebhookMessage, "webhooks" {
+        Settings = "settings" => "Settings",
+        Webhooks = "title" => "Webhooks",
+        IntroSigned = "intro-signed" => "sends a signed",
+        IntroPayload = "intro-payload" => "with a JSON payload to each URL when the events it subscribes to happen in",
+        IntroOrgTail = "intro-org-tail" => "or any of its repositories",
+        IntroTail = "intro-tail" => ".",
+        AddWebhook = "add" => "Add webhook",
+        NoWebhooks = "empty-title" => "No webhooks",
+        NoWebhooksText = "empty-text" => "Add a webhook to notify a CI server, a chat bot or any other service about pushes, releases and more.",
+        Inactive = "inactive" => "Inactive",
+        NoDeliveries = "no-deliveries" => "No deliveries yet",
+        SendPing = "send-ping" => "Send ping",
+        NewWebhook = "new" => "New webhook",
+        PingLead = "ping-lead" => "A",
+        PingTail = "ping-tail" => "is sent as soon as the webhook is saved.",
+        Saved = "saved" => "Webhook saved.",
+        PingQueued = "ping-queued" => "Ping queued. It appears under recent deliveries in a moment.",
+        PayloadUrl = "payload-url" => "Payload URL",
+        UrlPlaceholder = "url-placeholder" => "https://example.com/hooks/rbit",
+        PayloadsAre = "payloads-are" => "Payloads are",
+        NoRedirects = "no-redirects" => ". Redirects are not followed.",
+        Secret = "secret" => "Secret",
+        Optional = "optional" => "optional",
+        SecretConfigured = "secret-configured" => "Configured — leave blank to keep it",
+        SignsLead = "signs-lead" => "Signs every payload:",
+        SignsAnd = "signs-and" => "and",
+        SignsCarry = "signs-carry" => "carry",
+        SignsTail = "signs-tail" => "and the HMAC-SHA256 of the body. It cannot be shown again.",
+        RemoveSecret = "remove-secret" => "Remove the secret",
+        Events = "events" => "Events",
+        Active = "active" => "Active",
+        ActiveText = "active-text" => "Deliver events to this URL. Inactive webhooks keep their settings and log.",
+        SaveWebhook = "save" => "Save webhook",
+        RecentDeliveries = "recent-deliveries" => "Recent deliveries",
+        NoDeliveriesText = "no-deliveries-text" => "Deliveries appear here as events happen. Send a ping to try the URL.",
+        DangerZone = "danger-zone" => "Danger zone",
+        DeleteTitle = "delete-title" => "Delete this webhook",
+        DeleteConfirm = "delete-confirm" => "I understand that this webhook will be deleted",
+        DeleteWebhook = "delete" => "Delete webhook",
+        Webhook = "webhook" => "Webhook",
+        Redeliver = "redeliver" => "Redeliver",
+        Request = "request" => "Request",
+        NotSent = "not-sent" => "Not sent yet.",
+        Response = "response" => "Response",
+        NoResponse = "no-response" => "No response was received.",
+        EmptyBody = "empty-body" => "The body was empty.",
+        Retrying = "retrying" => "Retrying",
+        Now = "now" => "now",
+    }
+}
+
+messages! {
+    /// Webhook text with arguments.
+    WebhookText<'a>, "webhooks" {
+        MaxRepository(max: u64) = "max-repository" => ["This repository has the maximum of ", (max), " webhooks. Delete one to add another."],
+        MaxOrganization(max: u64) = "max-organization" => ["This organization has the maximum of ", (max), " webhooks. Delete one to add another."],
+        StopsDeliveries(host: &'a str) = "delete-text" => ["Stops deliveries to ", {host}, " and removes the delivery log. It cannot be undone."],
+        RetryingCode(code: u64) = "retrying-code" => ["Retrying · ", (code)],
+        Created(when: &'a str) = "created" => ["Created ", {when}],
+        OneAttempt(count: u64) = "one-attempt" => [(count), " attempt"],
+        Attempts(count: u64) = "attempts" => [(count), " attempts"],
+        NextAttempt(when: &'a str) = "next-attempt" => ["Next attempt ", {when}],
+        ListTitle(name: &'a str) = "list-title" => ["Webhooks · ", {name}],
+        NewTitle(name: &'a str) = "new-title" => ["New webhook · ", {name}],
+        EditTitle(name: &'a str) = "edit-title" => ["Webhook · ", {name}],
+        DeliveryTitle(guid: &'a str, name: &'a str) = "delivery-title" => ["Delivery ", {guid}, " · ", {name}],
+    }
+}

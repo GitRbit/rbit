@@ -3,21 +3,21 @@
 {% block hooks_content %}
 <div class="mt-1 flex items-start justify-between gap-4">
   <div class="min-w-0">
-    <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ hook_url }}">{% call ui::icon("chevron-left", "inline size-3.5 align-[-2px]") %}{% endcall %}Webhook</a></p>
+    <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ hook_url }}">{% call ui::icon("chevron-left", "inline size-3.5 align-[-2px]") %}{% endcall %}{% call ui::localized(WebhookMessage::Webhook.text(page.locale)) %}{% endcall %}</a></p>
     <h1 class="mt-1 flex flex-wrap items-center gap-2 text-xl font-semibold tracking-tight">
       <span>{{ event }}</span>
       <span class="badge {{ status.class }}">{{ status.label }}</span>
     </h1>
     <p class="mt-1 flex flex-wrap gap-x-3 text-xs text-ink-muted">
       <span class="break-all font-mono" dir="ltr">{{ guid }}</span>
-      <time datetime="{{ created_iso }}">Created {{ created }}</time>
-      <span>{{ attempts }} {% if attempts == 1 %}attempt{% else %}attempts{% endif %}</span>
+      <time datetime="{{ created_iso }}">{% call ui::localized(WebhookText::Created(created).text(page.locale)) %}{% endcall %}</time>
+      <span>{% call ui::localized(self.attempts_text()) %}{% endcall %}</span>
       {% if !duration.is_empty() %}<span>{{ duration }}</span>{% endif %}
-      {% if let Some(next) = next_attempt %}<span>Next attempt {{ next }}</span>{% endif %}
+      {% if let Some(next) = next_attempt %}<span>{% call ui::localized(WebhookText::NextAttempt(next).text(page.locale)) %}{% endcall %}</span>{% endif %}
     </p>
   </div>
   <form method="post" action="{{ redeliver_url }}" class="shrink-0">
-    <button class="btn" type="submit">{% call ui::icon("refresh", "size-3.5") %}{% endcall %}Redeliver</button>
+    <button class="btn" type="submit">{% call ui::icon("refresh", "size-3.5") %}{% endcall %}{% call ui::localized(WebhookMessage::Redeliver.text(page.locale)) %}{% endcall %}</button>
   </form>
 </div>
 
@@ -28,9 +28,9 @@
 {% endif %}
 
 <section class="box mt-6" aria-labelledby="request-title">
-  <div class="box-header"><h2 id="request-title" class="text-[13px] font-medium">Request</h2></div>
+  <div class="box-header"><h2 id="request-title" class="text-[13px] font-medium">{% call ui::localized(WebhookMessage::Request.text(page.locale)) %}{% endcall %}</h2></div>
   {% if request_headers.is_empty() %}
-  <p class="px-4 py-3 text-[13px] text-ink-muted">Not sent yet.</p>
+  <p class="px-4 py-3 text-[13px] text-ink-muted">{% call ui::localized(WebhookMessage::NotSent.text(page.locale)) %}{% endcall %}</p>
   {% else %}
   <dl class="border-b border-line px-4 py-3 font-mono text-xs" dir="ltr">
     {% for (name, value) in request_headers %}
@@ -43,11 +43,11 @@
 
 <section class="box mt-6" aria-labelledby="response-title">
   <div class="box-header">
-    <h2 id="response-title" class="text-[13px] font-medium">Response</h2>
+    <h2 id="response-title" class="text-[13px] font-medium">{% call ui::localized(WebhookMessage::Response.text(page.locale)) %}{% endcall %}</h2>
     {% if let Some(code) = response_status %}<span class="ms-auto text-xs text-ink-muted"><bdi class="font-mono" dir="ltr">{{ code }}</bdi></span>{% endif %}
   </div>
   {% if response_status.is_none() %}
-  <p class="px-4 py-3 text-[13px] text-ink-muted">No response was received.</p>
+  <p class="px-4 py-3 text-[13px] text-ink-muted">{% call ui::localized(WebhookMessage::NoResponse.text(page.locale)) %}{% endcall %}</p>
   {% else %}
   {% if !response_headers.is_empty() %}
   <dl class="border-b border-line px-4 py-3 font-mono text-xs" dir="ltr">
@@ -59,7 +59,7 @@
   {% if let Some(body) = response_body %}
   <pre class="max-h-[32rem] overflow-auto px-4 py-3 font-mono text-xs leading-5" dir="ltr">{{ body }}</pre>
   {% else %}
-  <p class="px-4 py-3 text-[13px] text-ink-muted">The body was empty.</p>
+  <p class="px-4 py-3 text-[13px] text-ink-muted">{% call ui::localized(WebhookMessage::EmptyBody.text(page.locale)) %}{% endcall %}</p>
   {% endif %}
   {% endif %}
 </section>
