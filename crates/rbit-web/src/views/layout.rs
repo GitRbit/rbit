@@ -1,7 +1,7 @@
 //! Shared page chrome.
 
 use rbit_core::User;
-use rbit_localization::Locale;
+use rbit_localization::{Catalog, Locale, Localized, MessageFamily};
 
 use crate::{AppState, assets, themes::Theme, views::components::Avatar};
 
@@ -86,6 +86,14 @@ impl Page {
         self
     }
 
+    /// Declares the main content in the document's language: for pages whose text all
+    /// comes from the catalog through [`Page::text`].
+    #[must_use]
+    pub const fn with_catalog_content(mut self) -> Self {
+        self.content_locale = self.locale;
+        self
+    }
+
     /// The page rendered in `theme`.
     #[must_use]
     pub fn with_theme(mut self, theme: Theme) -> Self {
@@ -136,6 +144,12 @@ impl Page {
     /// Whether a signed-in viewer is on an instance with Actions (settings navigation).
     pub fn has_actions(&self) -> bool {
         self.viewer.as_ref().is_some_and(|viewer| viewer.has_actions)
+    }
+
+    /// A catalog message in the document's language, or its English fallback. Templates
+    /// show it through `ui::localized`, which marks only the fallback English.
+    pub fn text<M: MessageFamily>(&self, message: M) -> Localized {
+        Catalog::new(self.locale).localized(message)
     }
 
     /// Whether the current path is `prefix` or below it (for active nav styling).

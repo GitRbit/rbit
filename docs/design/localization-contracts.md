@@ -101,6 +101,16 @@ page direction, so it aligns with its translated neighbours in a right-to-left p
 Do not hard-code `lang="en"` or `dir="ltr"` around untranslated prose. Keep explicit
 `dir="ltr"` only for machine values (code, paths, shas, identifiers).
 
+`Page::text(message)` looks a family message up in the page's language;
+`{% call ui::text(page, Family::Key) %}` renders it through `ui::localized`, and an
+attribute uses `{{ page.text(Family::Key) }}`. A page whose text all comes from the
+catalog calls `Page::with_catalog_content`, so its `<main>` carries the page's
+language. The pages around the repositories (sign-in, recovery, the front page and
+dashboards, the inbox, error pages and the shared page macros) use the families in
+`rbit_localization::shell`. The `catalog-guard` node test fails on words hard-coded in
+a template; `scripts/tests/fixtures/catalog-exemptions.txt` lists the templates not
+converted yet.
+
 To add a locale, add its `Locale` variant, tag, catalog key and direction. Then
 implement `translate` for the families and keys it covers (`RunPageMessage`,
 `SettingsNavMessage` and `ThemePreviewMessage` today). Everything it leaves out keeps

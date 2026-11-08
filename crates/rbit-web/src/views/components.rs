@@ -119,9 +119,10 @@ impl Pagination {
     }
 }
 
-/// A form validation message shown above a form.
+/// A form validation message shown above a form, and whether it is the English
+/// fallback of an untranslated catalog message.
 #[derive(Debug, Clone, Default)]
-pub struct FormError(pub Option<String>);
+pub struct FormError(pub Option<String>, bool);
 
 /// A link to a settings sub-page, rendered by the `ui::settings_card` macro.
 #[derive(Debug, Clone)]
@@ -136,7 +137,17 @@ pub struct SettingsCard {
 
 impl FormError {
     pub fn new(message: impl Into<String>) -> Self {
-        Self(Some(message.into()))
+        Self(Some(message.into()), false)
+    }
+
+    /// A catalog message; English fallback text is marked as English on the page.
+    pub fn localized(message: &rbit_localization::Localized) -> Self {
+        Self(Some(message.to_string()), message.fallback())
+    }
+
+    /// Whether the message is the English fallback of an untranslated catalog message.
+    pub const fn fallback(&self) -> bool {
+        self.1
     }
 
     /// Wraps a service message (a lower-case fragment such as "name is already taken")

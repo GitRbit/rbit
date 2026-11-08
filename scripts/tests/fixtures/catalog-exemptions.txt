@@ -43,7 +43,6 @@ issues/new.html
 issues/rows.html
 issues/show.html
 issues/sidebar.html
-macros.html
 notifications/inbox.html
 offline.html
 org/header.html

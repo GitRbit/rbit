@@ -285,6 +285,7 @@ pub struct RecoveryCodes {
 }
 
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant, reason = "one short-lived view per response; the overview holds several form errors")]
 pub enum SecurityView {
     Overview(Overview),
     Setup(Setup),

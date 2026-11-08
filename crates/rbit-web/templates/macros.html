@@ -9,6 +9,11 @@
 {%- if value.fallback() %}<span lang="en">{{ value }}</span>{% else %}{{ value }}{% endif -%}
 {%- endmacro %}
 
+{#- A catalog message in the page's content language (`Page::text`), marked like `localized`. -#}
+{% macro text(page, message) -%}
+{%- call localized(page.text(*message)) %}{% endcall -%}
+{%- endmacro %}
+
 {% macro icon(name, class) %}
 <svg class="{{ class }}{% if name == "chevron-right" || name == "chevron-left" || name == "log-out" %} dir-icon{% endif %}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 {%- if name == "folder" -%}
@@ -202,7 +207,7 @@
 {% if let Some(message) = error.0 %}
 <div role="alert" class="mb-5 flex items-start gap-2 rounded-(--radius-ui) border border-danger/40 bg-danger-subtle px-3 py-2.5 text-[13px] text-danger">
   {% call icon("alert", "mt-px size-4 shrink-0") %}{% endcall %}
-  <span>{{ message }}</span>
+  <span{% if error.fallback() %} lang="en"{% endif %}>{{ message }}</span>
 </div>
 {% endif %}
 {% endmacro %}
@@ -215,15 +220,15 @@
     <div class="min-w-0 flex-1">
       <div class="flex items-center gap-2">
         <span class="truncate font-medium"><span class="text-ink-muted">{{ repo.owner }}/</span>{{ repo.name }}</span>
-        {% if repo.is_private %}<span class="badge">Private</span>{% endif %}
-        {% if repo.is_archived %}<span class="badge">Archived</span>{% endif %}
+        {% if repo.is_private %}<span class="badge">{% call text(page, rbit_localization::shell::pages::PageMessage::Private) %}{% endcall %}</span>{% endif %}
+        {% if repo.is_archived %}<span class="badge">{% call text(page, rbit_localization::shell::pages::PageMessage::Archived) %}{% endcall %}</span>{% endif %}
       </div>
       {% if let Some(description) = repo.description %}
       <p class="mt-0.5 line-clamp-2 text-[13px] text-ink-muted">{{ description }}</p>
       {% endif %}
     </div>
     <div class="flex shrink-0 items-center gap-3 text-xs text-ink-faint">
-      {% if repo.star_count > 0 %}<span class="flex items-center gap-1" title="{{ repo.star_count }} stars">{% call icon("star", "size-3") %}{% endcall %}{{ repo.star_count }}</span>{% endif %}
+      {% if repo.star_count > 0 %}<span class="flex items-center gap-1" title="{{ page.text(rbit_localization::shell::pages::PageMessage::Stars(*repo.star_count)) }}">{% call icon("star", "size-3") %}{% endcall %}{{ repo.star_count }}</span>{% endif %}
       <time datetime="{{ repo.updated_iso }}">{{ repo.updated }}</time>
     </div>
   </a>
@@ -238,20 +243,28 @@
   <p class="mt-1 max-w-sm text-[13px] text-ink-muted">{{ text }}</p>
 </div>
 {% endmacro %}
+{#- `empty_state` with catalog text (`Localized`), marked like `localized`. -#}
+{% macro localized_empty_state(icon_name, title, text) %}
+<div class="flex flex-col items-center px-6 py-14 text-center">
+  <div class="grid size-10 place-items-center rounded-(--radius-ui) border border-line text-ink-muted">{% call icon(icon_name, "size-5") %}{% endcall %}</div>
+  <p class="mt-4 font-medium">{% call localized(title) %}{% endcall %}</p>
+  <p class="mt-1 max-w-sm text-[13px] text-ink-muted">{% call localized(text) %}{% endcall %}</p>
+</div>
+{% endmacro %}
 {#- "Previous · Page n of m · Next" under a paged list; expects a `Pagination`. -#}
 {% macro pagination(pager) %}
 {% if pager.is_needed() %}
-<nav class="mt-4 flex items-center justify-between gap-2" aria-label="Pagination">
+<nav class="mt-4 flex items-center justify-between gap-2" aria-label="{{ page.text(rbit_localization::shell::pages::PageMessage::Pagination) }}">
   {% if let Some(url) = pager.previous_url %}
-  <a href="{{ url }}" class="btn" rel="prev">{% call icon("chevron-left", "size-3.5") %}{% endcall %}Previous</a>
+  <a href="{{ url }}" class="btn" rel="prev">{% call icon("chevron-left", "size-3.5") %}{% endcall %}{% call text(page, rbit_localization::shell::pages::PageMessage::Previous) %}{% endcall %}</a>
   {% else %}
-  <span class="btn pointer-events-none opacity-50" aria-hidden="true">{% call icon("chevron-left", "size-3.5") %}{% endcall %}Previous</span>
+  <span class="btn pointer-events-none opacity-50" aria-hidden="true">{% call icon("chevron-left", "size-3.5") %}{% endcall %}{% call text(page, rbit_localization::shell::pages::PageMessage::Previous) %}{% endcall %}</span>
   {% endif %}
-  <span class="text-xs text-ink-muted">Page {{ pager.page }} of {{ pager.page_count }}</span>
+  <span class="text-xs text-ink-muted">{% call text(page, rbit_localization::shell::pages::PageMessage::PageOf(*pager.page, *pager.page_count)) %}{% endcall %}</span>
   {% if let Some(url) = pager.next_url %}
-  <a href="{{ url }}" class="btn" rel="next" data-preload="visible">Next{% call icon("chevron-right", "size-3.5") %}{% endcall %}</a>
+  <a href="{{ url }}" class="btn" rel="next" data-preload="visible">{% call text(page, rbit_localization::shell::pages::PageMessage::Next) %}{% endcall %}{% call icon("chevron-right", "size-3.5") %}{% endcall %}</a>
   {% else %}
-  <span class="btn pointer-events-none opacity-50" aria-hidden="true">Next{% call icon("chevron-right", "size-3.5") %}{% endcall %}</span>
+  <span class="btn pointer-events-none opacity-50" aria-hidden="true">{% call text(page, rbit_localization::shell::pages::PageMessage::Next) %}{% endcall %}{% call icon("chevron-right", "size-3.5") %}{% endcall %}</span>
   {% endif %}
 </nav>
 {% endif %}
