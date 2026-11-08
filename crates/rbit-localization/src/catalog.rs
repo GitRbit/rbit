@@ -25,7 +25,12 @@ mod run_page;
 pub use run_page::RunPageMessage;
 mod settings_nav;
 pub use settings_nav::SettingsNavMessage;
+mod actions_ui;
 mod theme_preview;
+pub use actions_ui::{
+    environments::ActionsEnvironmentMessage, runners::ActionsRunnersMessage, secrets::ActionsSecretsMessage,
+    settings::ActionsSettingsMessage,
+};
 pub use display::LocalizedDisplay;
 use display::{PAGE_OF_SEPARATOR, PAGE_PREFIX, STARS_SUFFIX, SUBTITLE_PREFIX, SUBTITLE_SUFFIX};
 pub use theme_preview::ThemePreviewMessage;
