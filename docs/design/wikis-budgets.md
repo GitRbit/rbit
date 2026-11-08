@@ -58,7 +58,7 @@ form POST keeps the user's text in its body. Busy is never reported as a conflic
 | Attachment download headers: octet-stream, `attachment`, `nosniff`, `sandbox` CSP | policy | `crates/rbit-web/src/routes/releases.rs` |
 | Issue/PR title `MAX_TITLE_CHARS`; body `MAX_TEXT_BYTES` | 256 chars; 64 KiB | `crates/rbit-collaboration/src/threads/text.rs` |
 | Repository name `MAX_LEN` | 100 | `crates/rbit-repositories/src/names.rs` |
-| Diff `DiffLimits` default: files / bytes per side / total lines | 300 / 512 KiB / 20,000 | `crates/rbit-git/src/changes.rs` |
+| Diff `DiffLimits` default: files / bytes per side / total lines / total line bytes | 300 / 512 KiB / 20,000 / 2 MiB | `crates/rbit-git/src/changes.rs` |
 | Diff fallback `DIFF_DEADLINE`; `CONTEXT_LINES` | 500 ms; 3 | `crates/rbit-git/src/diff.rs` |
 | Highlight input / line length | 512 KiB / 5,000 | `crates/rbit-web/src/render/highlight.rs` |
 | Highlight cache bytes / jobs | 32 MiB / 4 | `crates/rbit-web/src/render/highlight_cache.rs` |

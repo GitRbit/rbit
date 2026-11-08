@@ -544,7 +544,7 @@ pub(super) fn read_workflow_file(
 /// `paths` filters pass.
 pub(super) fn changed_paths(handle: &Handle, reader: &RepositoryReader, base: Option<&str>, head: &str) -> Option<Vec<String>> {
     let base = base?;
-    let limits = DiffLimits { max_files: MAX_CHANGED_PATHS + 1, max_file_bytes: 0, max_total_lines: 0 };
+    let limits = DiffLimits { max_files: MAX_CHANGED_PATHS + 1, max_file_bytes: 0, max_total_lines: 0, max_total_bytes: 0 };
     let comparison = match handle.block_on(reader.compare(base.to_owned(), head.to_owned(), limits, 0)) {
         Ok(comparison) => comparison,
         Err(error) => {

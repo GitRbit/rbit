@@ -76,36 +76,81 @@ fn git_range(start: usize, len: usize) -> String {
 
 /// Diffs two blobs into hunks with surrounding context.
 pub fn diff_bytes(old: &[u8], new: &[u8]) -> TextChanges {
-    diff_bytes_bounded(old, new, usize::MAX).0
+    diff_bytes_bounded(old, new, usize::MAX, usize::MAX).0
 }
 
-/// Keep exact addition/deletion counts, but omit all hunks when their display lines
-/// would exceed `max_lines`. The flag distinguishes an omitted body from identical text.
-pub(crate) fn diff_bytes_bounded(old: &[u8], new: &[u8], max_lines: usize) -> (TextChanges, bool) {
-    diff_bytes_with_display(old, new, max_lines, display)
+/// The display budget a file's hunks would exceed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Exceeded {
+    Lines,
+    Bytes,
 }
 
-fn diff_bytes_with_display(old: &[u8], new: &[u8], max_lines: usize, mut display_line: impl FnMut(&[u8]) -> String) -> (TextChanges, bool) {
+/// What may still be shown of a diff: lines, and bytes of line text (terminators
+/// included). Running out of lines stops the diff; a file that would run out of bytes is
+/// summarised and smaller files after it may still be shown.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct DisplayBudget {
+    pub(crate) lines: usize,
+    pub(crate) bytes: usize,
+}
+
+impl DisplayBudget {
+    /// Diffs `old` and `new`, taking the hunks' share of the budget. The counts stay exact
+    /// when the hunks do not fit; the flag says they were omitted.
+    pub(crate) fn diff(&mut self, old: &[u8], new: &[u8]) -> (TextChanges, bool) {
+        let (changes, outcome) = diff_bytes_bounded(old, new, self.lines, self.bytes);
+        match outcome {
+            Ok(bytes) => {
+                self.lines -= changes.line_count();
+                self.bytes -= bytes;
+            }
+            Err(Exceeded::Lines) => self.lines = 0,
+            Err(Exceeded::Bytes) => {}
+        }
+        (changes, outcome.is_err())
+    }
+}
+
+/// Keep exact addition/deletion counts, but omit all hunks when their display lines would
+/// exceed `max_lines` or their text `max_bytes`. Answers the text's size when it fits,
+/// which also distinguishes an omitted body from identical text.
+fn diff_bytes_bounded(old: &[u8], new: &[u8], max_lines: usize, max_bytes: usize) -> (TextChanges, Result<usize, Exceeded>) {
+    diff_bytes_with_display(old, new, (max_lines, max_bytes), display)
+}
+
+fn diff_bytes_with_display(
+    old: &[u8],
+    new: &[u8],
+    (max_lines, max_bytes): (usize, usize),
+    mut display_line: impl FnMut(&[u8]) -> String,
+) -> (TextChanges, Result<usize, Exceeded>) {
     let old_lines = split_lines(old);
     let new_lines = split_lines(new);
     let ops = capture_diff_slices_deadline(Algorithm::Myers, &old_lines, &new_lines, Some(Instant::now() + DIFF_DEADLINE));
     let groups = group_diff_ops(ops, CONTEXT_LINES);
     let mut changes = TextChanges::default();
-    let mut rendered_lines = 0;
+    let (mut rendered_lines, mut rendered_bytes) = (0, 0_usize);
+    let size = |lines: &[&[u8]]| lines.iter().map(|line| line.len()).sum::<usize>();
     // Operations describe ranges, so count them without decoding or allocating a
     // display String for each line. In particular, an oversized file renders nothing.
     for op in groups.iter().flatten() {
         let (tag, old, new) = op.as_tag_tuple();
         if tag == DiffTag::Equal {
             rendered_lines += old.len();
+            rendered_bytes = rendered_bytes.saturating_add(size(&old_lines[old]));
         } else {
             changes.deletions += old.len();
             changes.additions += new.len();
             rendered_lines += old.len() + new.len();
+            rendered_bytes = rendered_bytes.saturating_add(size(&old_lines[old])).saturating_add(size(&new_lines[new]));
         }
     }
     if rendered_lines > max_lines {
-        return (changes, true);
+        return (changes, Err(Exceeded::Lines));
+    }
+    if rendered_bytes > max_bytes {
+        return (changes, Err(Exceeded::Bytes));
     }
 
     let mut line = |kind, old_index: Option<usize>, new_index: Option<usize>| {
@@ -145,7 +190,7 @@ fn diff_bytes_with_display(old: &[u8], new: &[u8], max_lines: usize, mut display
         }
         changes.hunks.push(Hunk { header, lines });
     }
-    (changes, false)
+    (changes, Ok(rendered_bytes))
 }
 
 /// Git's heuristic: a NUL byte in the first 8000 bytes means binary.
@@ -222,10 +267,27 @@ mod tests {
     #[test]
     fn over_budget_files_never_allocate_display_lines() {
         let data = b"new line\n".repeat(20_000);
-        let (changes, omitted) = diff_bytes_with_display(b"", &data, 1, |_| panic!("an omitted line was rendered"));
-        assert!(omitted);
+        let (changes, omitted) = diff_bytes_with_display(b"", &data, (1, usize::MAX), |_| panic!("an omitted line was rendered"));
+        assert_eq!(omitted, Err(Exceeded::Lines));
         assert_eq!((changes.additions, changes.deletions), (20_000, 0));
         assert!(changes.hunks.is_empty());
+    }
+
+    #[test]
+    fn byte_budgets_omit_only_files_whose_text_would_not_fit() {
+        let huge = format!("{}\n", "h".repeat(4096));
+        let mut budget = DisplayBudget { lines: 100, bytes: 5000 };
+        let (changes, omitted) = budget.diff(b"", huge.as_bytes());
+        assert!(!omitted && changes.hunks.len() == 1);
+        assert_eq!((budget.lines, budget.bytes), (99, 5000 - 4097));
+        let (changes, omitted) = budget.diff(b"", huge.as_bytes());
+        assert!(omitted && changes.hunks.is_empty() && changes.additions == 1, "the counts stay exact");
+        assert_eq!((budget.lines, budget.bytes), (99, 903), "an omitted file takes nothing");
+        let (_, omitted) = budget.diff(b"", b"small\n");
+        assert!(!omitted, "a smaller file after it still fits");
+        let (_, omitted) = budget.diff(b"", &b"x\n".repeat(200));
+        assert!(omitted);
+        assert_eq!(budget.lines, 0, "running out of lines stops the diff");
     }
 
     #[test]
@@ -251,11 +313,12 @@ mod tests {
             let lines = expected.line_count();
             for limit in [0, 1, lines.saturating_sub(1), lines, lines + 1] {
                 let mut displayed = 0;
-                let (actual, omitted) = diff_bytes_with_display(old, new, limit, |line| {
+                let (actual, outcome) = diff_bytes_with_display(old, new, (limit, usize::MAX), |line| {
                     displayed += 1;
                     display(line)
                 });
                 assert_eq!((actual.additions, actual.deletions), (expected.additions, expected.deletions));
+                let omitted = outcome.is_err();
                 assert_eq!(omitted, lines > limit);
                 if omitted {
                     assert_eq!(displayed, 0, "no partial hunks should be built and discarded");

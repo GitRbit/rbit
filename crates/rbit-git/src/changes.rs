@@ -6,7 +6,7 @@ use gix::{ObjectId, bstr::ByteSlice, objs::tree::EntryMode};
 
 use crate::{
     ChangeStatus, CommitDetail, FileDiff, FileDiffBody, GitError, RefDetail, RefKind, RepositoryReader,
-    diff::{diff_bytes_bounded, is_binary},
+    diff::{DisplayBudget, is_binary},
     reader::{resolve_commit, summarize},
 };
 
@@ -19,11 +19,13 @@ pub struct DiffLimits {
     pub max_file_bytes: u64,
     /// Once this many diff lines have been produced, remaining files are summarised only.
     pub max_total_lines: usize,
+    /// Line text shown, in bytes: a file whose hunks would exceed what remains is summarised.
+    pub max_total_bytes: usize,
 }
 
 impl Default for DiffLimits {
     fn default() -> Self {
-        Self { max_files: 300, max_file_bytes: 512 * 1024, max_total_lines: 20_000 }
+        Self { max_files: 300, max_file_bytes: 512 * 1024, max_total_lines: 20_000, max_total_bytes: 2 * 1024 * 1024 }
     }
 }
 
@@ -134,7 +136,7 @@ pub(crate) fn diff_trees(
     let (changes, omitted) = bounded_changes(repo, old_tree, new_tree, limits.max_files)?;
 
     let mut files = Vec::new();
-    let mut budget = limits.max_total_lines;
+    let mut budget = DisplayBudget { lines: limits.max_total_lines, bytes: limits.max_total_bytes };
     for change in changes {
         let Some((path, old_path, status, old, new)) = describe(change) else { continue };
         files.push(file_diff(repo, path, old_path, status, old, new, &limits, &mut budget)?);
@@ -238,7 +240,7 @@ fn file_diff(
     old: Side,
     new: Side,
     limits: &DiffLimits,
-    budget: &mut usize,
+    budget: &mut DisplayBudget,
 ) -> Result<FileDiff, GitError> {
     // `stats_known = false`: the file was not diffed, so its line counts are unknown.
     let summary = |body, stats_known| FileDiff {
@@ -256,7 +258,7 @@ fn file_diff(
         let id = |side: Side| side.map(|(_, id)| id.to_hex().to_string());
         return Ok(summary(FileDiffBody::Submodule { old: id(old), new: id(new) }, true));
     }
-    if *budget == 0 {
+    if budget.lines == 0 {
         return Ok(summary(FileDiffBody::TooLarge, false));
     }
 
@@ -267,7 +269,9 @@ fn file_diff(
         return Ok(summary(FileDiffBody::Binary, true));
     }
 
-    let (changes, over_budget) = diff_bytes_bounded(&old_data, &new_data, *budget);
+    // Without room, keep exact counts but no display lines; once lines run out, nothing
+    // after this file is diffed either.
+    let (changes, over_budget) = budget.diff(&old_data, &new_data);
     if !over_budget && changes.hunks.is_empty() {
         return Ok(summary(FileDiffBody::ModeOnly, true));
     }
@@ -281,12 +285,7 @@ fn file_diff(
         stats_known: true,
         body: FileDiffBody::TooLarge,
     };
-    if over_budget {
-        // Keep exact counts without allocating display lines that cannot be shown;
-        // nothing after this file is diffed either.
-        *budget = 0;
-    } else {
-        *budget -= changes.line_count();
+    if !over_budget {
         file.body = FileDiffBody::Text(changes.hunks);
     }
     Ok(file)

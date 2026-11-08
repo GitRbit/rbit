@@ -4,6 +4,7 @@
 //! and an ordinary read issued meanwhile is still served.
 
 mod blame;
+mod diffs;
 mod fixture;
 mod logs;
 mod passwords;
