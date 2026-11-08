@@ -108,8 +108,8 @@ catalog calls `Page::with_catalog_content`, so its `<main>` carries the page's
 language. The pages around the repositories (sign-in, recovery, the front page and
 dashboards, the inbox, error pages and the shared page macros) use the families in
 `rbit_localization::shell`. The `catalog-guard` node test fails on words hard-coded in
-a template; `scripts/tests/fixtures/catalog-exemptions.txt` lists the templates not
-converted yet.
+a template, in every template: there is no exemption list.
+
 Sentences that embed markup (a link, a time, a branch, a count in its own element)
 are `RichFamily` messages, used by the issue, pull request and timeline pages
 (`CollabSentence`, `TimelineEventMessage`). Their writer adds numbered slots besides
