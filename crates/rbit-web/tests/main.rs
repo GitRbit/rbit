@@ -30,6 +30,8 @@ mod admin_configuration;
 mod archives;
 mod contributions;
 mod explore_localization;
+// The hostile load regression group.
+mod hostile_load;
 mod listings;
 mod locale_preferences;
 mod markdown_preview;
