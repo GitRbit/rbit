@@ -239,7 +239,8 @@ pub async fn delete(
     let loaded = load_for_admin(&state, &viewer, &owner, &repo).await?;
     let id = rule_id(&id)?;
     if form.confirm.is_none() {
-        let rendered = edit_page(&state, &loaded, page, id).await?.delete_rejected(FormError::new("Tick the box to confirm."));
+        let error = FormError::localized(&rbit_localization::settings::protection::ProtectionMessage::TickToConfirm.text(&page.locale));
+        let rendered = edit_page(&state, &loaded, page, id).await?.delete_rejected(error);
         return Ok((StatusCode::UNPROCESSABLE_ENTITY, rendered).into_response());
     }
     state.services.protection.delete(&user, &loaded.ctx, id).await?;

@@ -346,7 +346,7 @@ pub async fn save_permission(
     let ctx = managed(&state, &user, &owner).await?;
     let Some(permission) = form.permission.as_deref().and_then(BasePermission::parse) else {
         let mut page = settings_page(&state, &user, page, &ctx, OrgProfileForm::from_org(&ctx.org)).await?;
-        page.permission_error = FormError::new("Choose a permission.");
+        page.permission_error = crate::views::org::choose_permission(page.page.locale);
         return Ok((StatusCode::UNPROCESSABLE_ENTITY, page).into_response());
     };
     state.services.orgs.set_base_permission(&user, &ctx.org, permission).await?;

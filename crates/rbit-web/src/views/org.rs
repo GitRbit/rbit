@@ -112,6 +112,11 @@ pub fn titled(page: Page, message: impl MessageFamily) -> Page {
     page.titled(title.as_str())
 }
 
+/// The base permission form's error when no permission was chosen.
+pub fn choose_permission(locale: Locale) -> FormError {
+    FormError::localized(&OrgMessage::ChoosePermission.text(&locale))
+}
+
 /// `https://acme.example/` → `acme.example`.
 fn display_url(url: &str) -> String {
     let rest = url.split_once("://").map_or(url, |(_, rest)| rest);

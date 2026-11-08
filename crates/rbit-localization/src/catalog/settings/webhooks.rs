@@ -3,6 +3,7 @@
 labels! {
     /// Fixed labels of the webhook pages.
     WebhookMessage, "webhooks" {
+        TickToConfirm = "tick-to-confirm" => "Tick the box to confirm.",
         Settings = "settings" => "Settings",
         Webhooks = "title" => "Webhooks",
         IntroSigned = "intro-signed" => "sends a signed",

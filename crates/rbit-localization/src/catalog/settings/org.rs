@@ -3,6 +3,7 @@
 labels! {
     /// Fixed labels of the organization pages.
     OrgMessage, "org" {
+        ChoosePermission = "choose-permission" => "Choose a permission.",
         Organization = "organization" => "Organization",
         Repositories = "tab.repositories" => "Repositories",
         Members = "tab.members" => "Members",

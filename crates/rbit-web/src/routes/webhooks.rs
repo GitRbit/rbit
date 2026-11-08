@@ -303,7 +303,8 @@ pub async fn delete(
     let owner = Owner::load(&state, &viewer, &path).await?;
     let id = path.hook_id()?;
     if form.confirm.is_none() {
-        let rendered = edit_page(&state, &owner, page, &path, 1).await?.delete_rejected(FormError::new("Tick the box to confirm."));
+        let error = FormError::localized(&rbit_localization::settings::webhooks::WebhookMessage::TickToConfirm.text(&page.locale));
+        let rendered = edit_page(&state, &owner, page, &path, 1).await?.delete_rejected(error);
         return Ok((StatusCode::UNPROCESSABLE_ENTITY, rendered).into_response());
     }
     state.services.webhooks.delete(&user, owner.target(), id).await?;

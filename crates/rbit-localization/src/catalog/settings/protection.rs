@@ -4,6 +4,7 @@ use crate::catalog::fallback::{MessageFamily, MessageWriter};
 labels! {
     /// Fixed labels of the branch protection pages.
     ProtectionMessage, "settings.protection" {
+        TickToConfirm = "tick-to-confirm" => "Tick the box to confirm.",
         Settings = "settings" => "Settings",
         Title = "title" => "Branch protection",
         IntroLead = "list.intro-lead" => "Rules apply to every push to",
