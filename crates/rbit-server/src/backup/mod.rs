@@ -31,7 +31,11 @@
 //!    mirror secrets, saved SMTP and OIDC secrets) cannot be read after a restore. A key
 //!    kept elsewhere (`[storage] secret_key_file`) is left out on purpose, so database and
 //!    key can be stored apart; it must then be backed up separately.
-//! 6. `manifest.json` records the format, version, time and counts.
+//! 6. Everything written so far is synced to disk ([`durable::sync_tree`]): neither
+//!    `VACUUM INTO` nor a clone nor a file copy syncs what it writes, and the manifest
+//!    must never reach the disk before the files it vouches for.
+//! 7. `manifest.json` records the format, version, time and counts. It is written to a
+//!    synced temporary file, renamed into place and its directory synced.
 //!
 //! The backup directory is created private to its owner (0700) and the database, key and
 //! manifest are written 0600 on Unix: they hold password hashes and the sealing key.
@@ -51,7 +55,11 @@ use rbit_core::{AccountId, Config, RepoId, lfs::LfsOid};
 use rbit_git::RepositoryStorage;
 use serde::Serialize;
 use sqlx::{ConnectOptions, Connection, sqlite::SqliteConnectOptions};
-use tokio::{io::AsyncWriteExt, process::Command, sync::Semaphore, task::JoinSet};
+use tokio::{process::Command, sync::Semaphore, task::JoinSet};
+
+use self::durable::{create_private_dir, create_private_file, write_private};
+
+mod durable;
 
 /// Bumped whenever the layout of a backup directory changes (2: release attachments,
 /// 3: Git LFS objects, 4: the secret key file).
@@ -149,12 +157,8 @@ pub async fn create(config: &Config, output: &Path) -> anyhow::Result<Manifest> 
         secret_key,
         kv_store: "not included: it holds only sessions and caches, which are rebuilt",
     };
-    let staging = output.join("manifest.json.tmp");
-    let mut file = create_private_file(&staging).await?;
-    file.write_all(&serde_json::to_vec_pretty(&manifest)?).await?;
-    file.sync_all().await?;
-    drop(file);
-    tokio::fs::rename(&staging, output.join("manifest.json")).await?;
+    durable::sync_tree(output).await?;
+    durable::publish(&output.join("manifest.json"), &serde_json::to_vec_pretty(&manifest)?).await?;
     Ok(manifest)
 }
 
@@ -194,28 +198,8 @@ async fn copy_secret_key(config: &Config, target: &Path) -> anyhow::Result<Strin
         }
         Err(error) => return Err(error).with_context(|| format!("cannot read {}", source.display())),
     };
-    let mut file = create_private_file(target).await?;
-    file.write_all(&key).await?;
-    file.sync_all().await?;
+    write_private(target, &key).await?;
     Ok(SECRET_KEY_FILE.to_owned())
-}
-
-/// Creates `dir` (and missing parents), accessible only to its owner on Unix.
-async fn create_private_dir(dir: &Path) -> std::io::Result<()> {
-    let mut builder = tokio::fs::DirBuilder::new();
-    builder.recursive(true);
-    #[cfg(unix)]
-    builder.mode(0o700);
-    builder.create(dir).await
-}
-
-/// Creates the new file `path`, readable only by its owner on Unix.
-async fn create_private_file(path: &Path) -> anyhow::Result<tokio::fs::File> {
-    let mut options = tokio::fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    options.mode(0o600);
-    options.open(path).await.with_context(|| format!("cannot create {}", path.display()))
 }
 
 /// What the snapshot says should be copied.
