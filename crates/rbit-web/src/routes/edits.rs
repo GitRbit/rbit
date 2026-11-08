@@ -28,6 +28,7 @@ use axum::{
 use futures_util::TryStreamExt;
 use rbit_core::{User, file_edit::EditAction};
 use rbit_git::RefKind;
+use rbit_localization::{RepoEditLabel, RepoEditMessage};
 use rbit_services::{
     ServiceError,
     edits::{CommitInput, CommitTarget, EditAccess, EditFailure, Edited},
@@ -48,6 +49,7 @@ use crate::{
         edits::{CommitBox, Conflict, DeleteFilePage, EditFilePage, UploadFilesPage},
         layout::Page,
         pulls::new_pull_url,
+        repo_text,
     },
 };
 
@@ -301,7 +303,7 @@ async fn new_page(
     let commit = commit_box(state, user, target, placeholder, form, retry).await?;
     let preview_url = markdown_preview_url(target);
     Ok(EditFilePage {
-        page: page.titled(format!("New file · {}", target.loaded.ctx.repo.full_name())),
+        page: repo_text::titled(page, RepoEditLabel::NewFile, &target.loaded.ctx.repo.full_name()),
         header: target.header(state),
         is_new: true,
         original_path: String::new(),
@@ -350,12 +352,7 @@ async fn edit_form(
                 return Err(WebError::NotFound);
             }
             let limit = max_text_size(&state);
-            (
-                String::new(),
-                Some(format!(
-                    "This file is binary or larger than {limit}, so it cannot be edited in the browser. You can delete it, or upload a replacement."
-                )),
-            )
+            (String::new(), Some(repo_text::text(&page, RepoEditMessage::NotEditable { limit: &limit }).to_string()))
         }
         Err(failure) => return Err(web_error(failure)),
     };
@@ -409,7 +406,7 @@ async fn edit_page(
     let commit = commit_box(state, user, target, placeholder, form, retry).await?;
     let preview_url = markdown_preview_url(target);
     Ok(EditFilePage {
-        page: page.titled(format!("Editing {} · {}", target.path, target.loaded.ctx.repo.full_name())),
+        page: repo_text::titled(page, RepoEditMessage::EditingTitle { path: &target.path }, &target.loaded.ctx.repo.full_name()),
         header: target.header(state),
         is_new: false,
         original_path: target.path.clone(),
@@ -480,7 +477,7 @@ async fn delete_page(
     let placeholder = EditAction::Delete(&target.path).default_title();
     let commit = commit_box(state, user, target, placeholder, form, retry).await?;
     Ok(DeleteFilePage {
-        page: page.titled(format!("Delete {} · {}", target.path, target.loaded.ctx.repo.full_name())),
+        page: repo_text::titled(page, RepoEditMessage::DeleteTitle { path: &target.path }, &target.loaded.ctx.repo.full_name()),
         header: target.header(state),
         path: target.path.clone(),
         action_url: target.action_url("delete"),
@@ -586,7 +583,7 @@ async fn upload_page(
     let commit = commit_box(state, user, target, EditAction::Upload.default_title(), form, retry).await?;
     let config = &state.config.editor;
     Ok(UploadFilesPage {
-        page: page.titled(format!("Upload files · {}", target.loaded.ctx.repo.full_name())),
+        page: repo_text::titled(page, RepoEditLabel::UploadFiles, &target.loaded.ctx.repo.full_name()),
         header: target.header(state),
         directory: if target.path.is_empty() { "/".to_owned() } else { format!("{}/", target.path) },
         action_url: target.action_url("upload"),
