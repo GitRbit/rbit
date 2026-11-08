@@ -199,6 +199,8 @@ pub struct Services {
     // Actions: foundation (F). `None` unless `[actions] enabled`: then nothing of Actions
     // runs, is routed or is written.
     pub actions: Option<ActionsService>,
+    /// Repository wiki pages: reads, history and published changes.
+    pub wikis: wikis::pages::WikiService,
 }
 
 impl Services {
@@ -321,6 +323,7 @@ impl Services {
             push_mirrors: PushMirrorService::new(ctx.clone()),
             // Actions: foundation (F).
             actions: ActionsService::new(ctx.clone()),
+            wikis: wikis::pages::WikiService::new(database, &config.storage.data_dir.join("wikis")),
             repositories,
             stars: StarService::new(ctx.clone()),
             tokens: AccessTokenService::new(database.access_tokens(), database.accounts()),

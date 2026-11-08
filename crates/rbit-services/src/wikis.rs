@@ -1,4 +1,8 @@
-//! Explicit wiki storage composition; no routes, readiness or visible publisher.
+//! Wiki storage composition: the managed writer owner (no routes or readiness) and
+//! the page service behind the web interface ([`pages`], [`publish`]).
+pub mod errors;
+pub mod pages;
+pub mod publish;
 pub mod startup;
 use rbit_git::wikis::{CatalogBoundWikiObjects, CatalogPreparedWikiObjects, WikiObjectError, WikiObjectWriter, WikiObjects};
 use rbit_kernel::BlockingBudget;
