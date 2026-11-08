@@ -18,6 +18,7 @@ use rbit_core::{
     User, Visibility,
     import::{ImportOptions, SourceKind},
 };
+use rbit_localization::RepoCreateLabel;
 use rbit_services::{ServiceError, imports::ImportInput};
 use serde::Deserialize;
 
@@ -110,7 +111,7 @@ async fn form_page(
 ) -> WebResult<NewImportPage> {
     let default_private = !state.services.instance.current().default_visibility.is_public();
     Ok(NewImportPage {
-        page: page.titled("Import a repository"),
+        page: crate::views::repo_text::titled_as(page, RepoCreateLabel::ImportARepository),
         error,
         disabled: !state.services.imports.is_enabled(),
         sources: SourceChoice::all(form.kind()),
@@ -184,7 +185,7 @@ async fn status(
     let import = state.services.imports.status(user, &loaded.ctx).await?;
     let (status_label, status_class) = ImportStatusPage::status_badge(import.status);
     Ok(ImportStatusPage {
-        page: page.titled(format!("Import · {}", loaded.ctx.repo.full_name())),
+        page: crate::views::repo_text::titled(page, RepoCreateLabel::ImportTitle, &loaded.ctx.repo.full_name()),
         header: loaded.header(&state, "code"),
         source_label: import.kind.label(),
         status_label,

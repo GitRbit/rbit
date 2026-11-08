@@ -14,6 +14,7 @@ use axum::{
     routing::{get, post},
 };
 use rbit_core::{User, Visibility};
+use rbit_localization::{Catalog, Locale, RepoCreateLabel, RepoCreateMessage, RepoSettingsLabel};
 use rbit_services::{
     ServiceError,
     mirrors::{CreateMirror, MirrorPhase},
@@ -29,6 +30,7 @@ use crate::{
         components::FormError,
         layout::Page,
         mirrors::{MirrorProgressPage, MirrorSettingsPage, MirrorView, NewMirrorPage},
+        repo_text,
     },
 };
 
@@ -69,7 +71,7 @@ fn suggested_name(url: &str) -> String {
 async fn mirror_page(state: &AppState, user: &User, page: Page, form: &NewMirrorForm, error: FormError) -> WebResult<NewMirrorPage> {
     let mirrors = &state.services.mirrors;
     Ok(NewMirrorPage {
-        page: page.titled("Mirror a repository"),
+        page: repo_text::titled_as(page, RepoCreateLabel::MirrorARepository),
         error,
         disabled: !mirrors.is_enabled(),
         owners: owner_options(state, user, &form.owner).await?,
@@ -138,30 +140,29 @@ struct ProgressStatus {
     complete: bool,
 }
 
-fn progress_status(mirror: &rbit_core::mirror::Mirror, phase: Option<MirrorPhase>, can_admin: bool) -> ProgressStatus {
+fn progress_status(mirror: &rbit_core::mirror::Mirror, phase: Option<MirrorPhase>, can_admin: bool, locale: Locale) -> ProgressStatus {
+    let text = |label: RepoCreateLabel| Catalog::new(locale).localized(label).to_string();
     let (phase, message, complete) = if let Some(phase) = phase {
         match phase {
-            MirrorPhase::Connecting => ("connecting", "Connecting to the upstream repository.".to_owned(), false),
-            MirrorPhase::Fetching => {
-                ("fetching", "Downloading branches, tags and Git objects. Large repositories may take several minutes.".to_owned(), false)
-            }
-            MirrorPhase::Finalizing => ("finalizing", "Preparing repository content and the default branch.".to_owned(), false),
+            MirrorPhase::Connecting => ("connecting", text(RepoCreateLabel::Connecting), false),
+            MirrorPhase::Fetching => ("fetching", text(RepoCreateLabel::Fetching), false),
+            MirrorPhase::Finalizing => ("finalizing", text(RepoCreateLabel::Finalizing), false),
         }
     } else if mirror.last_sync_at.is_some() {
         match &mirror.last_error {
             Some(error) => (
                 "failed",
                 if can_admin {
-                    format!("The mirror could not be fetched: {error}")
+                    Catalog::new(locale).localized(RepoCreateMessage::FetchFailed { error }).to_string()
                 } else {
-                    "The mirror could not be fetched. A repository administrator can retry from mirror settings.".to_owned()
+                    text(RepoCreateLabel::FetchFailedRetry)
                 },
                 false,
             ),
-            None => ("complete", "Mirroring complete. Opening the repository…".to_owned(), true),
+            None => ("complete", text(RepoCreateLabel::Complete), true),
         }
     } else {
-        ("queued", "Waiting for an available mirror worker.".to_owned(), false)
+        ("queued", text(RepoCreateLabel::Queued), false)
     };
     ProgressStatus { phase, message, complete }
 }
@@ -176,12 +177,12 @@ async fn progress(
     let Some(mirror) = loaded.mirror().cloned() else {
         return Ok(Redirect::to(&loaded.urls.home()).into_response());
     };
-    let status = progress_status(&mirror, state.services.mirrors.active_phase(mirror.repo_id), loaded.ctx.access.can_admin());
+    let status = progress_status(&mirror, state.services.mirrors.active_phase(mirror.repo_id), loaded.ctx.access.can_admin(), page.locale);
     if status.complete {
         return Ok(Redirect::to(&loaded.urls.home()).into_response());
     }
     Ok(MirrorProgressPage {
-        page: page.titled(format!("Mirroring · {}", loaded.ctx.repo.full_name())),
+        page: repo_text::titled(page, RepoCreateLabel::Mirroring, &loaded.ctx.repo.full_name()),
         header: loaded.header(&state, "code"),
         status_url: format!("{}/mirror/status", loaded.urls.home()),
         refresh_url: format!("{}/mirror/progress", loaded.urls.home()),
@@ -192,13 +193,21 @@ async fn progress(
     .into_response())
 }
 
-async fn status(State(state): State<AppState>, viewer: Viewer, Path((owner, repo)): Path<(String, String)>) -> WebResult<Response> {
+async fn status(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    locale: crate::localization::RequestLocale,
+    Path((owner, repo)): Path<(String, String)>,
+) -> WebResult<Response> {
+    let locale = locale.document_locale();
     let context = super::repo::open_pinned(&state, &viewer, &owner, &repo).await?;
     let status = match state.services.mirrors.find(&context).await? {
-        Some(mirror) => progress_status(&mirror, state.services.mirrors.active_phase(mirror.repo_id), context.access.can_admin()),
-        None => {
-            ProgressStatus { phase: "complete", message: "Mirroring has stopped. Opening the repository…".to_owned(), complete: true }
-        }
+        Some(mirror) => progress_status(&mirror, state.services.mirrors.active_phase(mirror.repo_id), context.access.can_admin(), locale),
+        None => ProgressStatus {
+            phase: "complete",
+            message: Catalog::new(locale).localized(RepoCreateLabel::Stopped).to_string(),
+            complete: true,
+        },
     };
     Ok(([(axum::http::header::CACHE_CONTROL, "no-store")], Json(status)).into_response())
 }
@@ -217,7 +226,7 @@ async fn load_mirror(state: &AppState, viewer: &Viewer, owner: &str, repo: &str)
 
 fn settings_view(state: &AppState, loaded: &RepoPage, mirror: &rbit_core::mirror::Mirror, page: Page) -> MirrorSettingsPage {
     MirrorSettingsPage {
-        page: page.titled(format!("Mirror · {}", loaded.ctx.repo.full_name())),
+        page: repo_text::titled(page, RepoSettingsLabel::Mirror, &loaded.ctx.repo.full_name()),
         header: loaded.header(state, "settings"),
         mirror: MirrorView::from(mirror),
         error: FormError::default(),
@@ -244,8 +253,8 @@ async fn settings(
     let (loaded, mirror) = load_mirror(&state, &viewer, &owner, &repo).await?;
     let mut view = settings_view(&state, &loaded, &mirror, page);
     view.notice = match (query.saved, query.queued) {
-        (Some(_), _) => Some("Saved."),
-        (None, Some(_)) => Some("A fetch is queued; refresh in a moment to see its outcome."),
+        (Some(_), _) => Some(repo_text::text(&view.page, RepoSettingsLabel::Saved)),
+        (None, Some(_)) => Some(repo_text::text(&view.page, RepoSettingsLabel::FetchQueued)),
         (None, None) => None,
     };
     Ok(view)
@@ -316,18 +325,18 @@ mod tests {
     #[test]
     fn progress_waits_for_a_successfully_recorded_fetch() {
         let mut mirror = pending_mirror();
-        assert_eq!(progress_status(&mirror, None, true).phase, "queued");
+        assert_eq!(progress_status(&mirror, None, true, rbit_localization::Locale::English).phase, "queued");
         for (phase, expected) in
             [(MirrorPhase::Connecting, "connecting"), (MirrorPhase::Fetching, "fetching"), (MirrorPhase::Finalizing, "finalizing")]
         {
-            let status = progress_status(&mirror, Some(phase), true);
+            let status = progress_status(&mirror, Some(phase), true, rbit_localization::Locale::English);
             assert_eq!(status.phase, expected);
             assert!(!status.complete);
         }
         mirror.last_sync_at = Some(Timestamp::now());
-        assert!(progress_status(&mirror, None, true).complete);
+        assert!(progress_status(&mirror, None, true, rbit_localization::Locale::English).complete);
         // An active retry is never reported as finished using the previous result.
-        assert!(!progress_status(&mirror, Some(MirrorPhase::Fetching), true).complete);
+        assert!(!progress_status(&mirror, Some(MirrorPhase::Fetching), true, rbit_localization::Locale::English).complete);
     }
 
     #[test]
@@ -335,8 +344,8 @@ mod tests {
         let mut mirror = pending_mirror();
         mirror.last_sync_at = Some(Timestamp::now());
         mirror.last_error = Some("private upstream diagnostics".into());
-        let admin = progress_status(&mirror, None, true);
-        let reader = progress_status(&mirror, None, false);
+        let admin = progress_status(&mirror, None, true, rbit_localization::Locale::English);
+        let reader = progress_status(&mirror, None, false, rbit_localization::Locale::English);
         assert_eq!(admin.phase, "failed");
         assert!(!admin.complete);
         assert!(admin.message.contains("private upstream diagnostics"));

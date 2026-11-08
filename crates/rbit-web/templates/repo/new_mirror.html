@@ -2,25 +2,25 @@
 {% import "macros.html" as ui %}
 {% block content %}
 <section class="mx-auto max-w-xl" data-repo-create hx-history="false" data-kind="mirror">
-  <h1 class="text-xl font-semibold tracking-tight">New repository</h1>
+  <h1 class="text-xl font-semibold tracking-tight">{% call ui::localized(rbit_localization::RepoCreateLabel::NewRepository.text(page.locale)) %}{% endcall %}</h1>
   {% let creation_kind = "mirror" %}
   {% include "repo/create_tabs.html" %}
   <div id="create-mirror-panel" role="tabpanel" aria-labelledby="create-mirror-tab" data-repo-create-panel>
-  <p class="mt-1 text-[13px] text-ink-muted">A mirror fetches the branches and tags of a public repository elsewhere on a schedule. It is read-only here: changes come from upstream.</p>
+  <p class="mt-1 text-[13px] text-ink-muted">{% call ui::localized(rbit_localization::RepoCreateLabel::MirrorLead.text(page.locale)) %}{% endcall %}</p>
 
   {% if disabled %}
-  <div class="box mt-8">{% call ui::empty_state("refresh", "Mirrors are disabled", "An administrator of this instance has turned pull mirrors off.") %}{% endcall %}</div>
+  <div class="box mt-8">{% call ui::empty_state("refresh", rbit_localization::RepoCreateLabel::MirrorsDisabled.text(page.locale), rbit_localization::RepoCreateLabel::MirrorsDisabledText.text(page.locale)) %}{% endcall %}</div>
   {% else %}
   <form method="post" action="/new/mirror" class="mt-8" novalidate>
     {% call ui::form_error(error) %}{% endcall %}
 
-    <label class="label" for="mirror-url">Upstream URL</label>
+    <label class="label" for="mirror-url">{% call ui::localized(rbit_localization::RepoCreateLabel::UpstreamUrl.text(page.locale)) %}{% endcall %}</label>
     <input class="input font-mono text-xs" dir="ltr" id="mirror-url" name="url" value="{{ url }}" type="url" inputmode="url" placeholder="https://example.com/group/project.git" autocapitalize="none" spellcheck="false" maxlength="2048" required autofocus>
-    <p class="hint">An <span class="font-mono" dir="ltr">https://</span> or <span class="font-mono" dir="ltr">http://</span> URL of a public repository.</p>
+    <p class="hint">{% call ui::localized(rbit_localization::RepoCreateLabel::UrlHintStart.text(page.locale)) %}{% endcall %} <span class="font-mono" dir="ltr">https://</span> {% call ui::localized(rbit_localization::RepoCreateLabel::UrlHintOr.text(page.locale)) %}{% endcall %} <span class="font-mono" dir="ltr">http://</span> {% call ui::localized(rbit_localization::RepoCreateLabel::UrlHintEnd.text(page.locale)) %}{% endcall %}</p>
 
     <div class="mt-5 grid gap-x-2 gap-y-5 sm:grid-cols-[minmax(0,13rem)_auto_minmax(0,1fr)] sm:items-end">
       <div>
-        <label class="label" for="mirror-owner">Owner</label>
+        <label class="label" for="mirror-owner">{% call ui::localized(rbit_localization::RepoCreateLabel::Owner.text(page.locale)) %}{% endcall %}</label>
         <div class="relative">
           <select class="input cursor-pointer appearance-none pe-9" id="mirror-owner" name="owner">
             {% for owner in owners %}
@@ -32,44 +32,44 @@
       </div>
       <span class="hidden h-9 items-center text-ink-faint sm:flex" aria-hidden="true">/</span>
       <div>
-        <label class="label" for="mirror-name">Name <span class="font-normal text-ink-faint">optional</span></label>
-        <input class="input" id="mirror-name" name="name" value="{{ name }}" maxlength="100" autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9._\-]*" placeholder="from the URL">
+        <label class="label" for="mirror-name">{% call ui::localized(rbit_localization::RepoCreateLabel::Name.text(page.locale)) %}{% endcall %} <span class="font-normal text-ink-faint">{% call ui::localized(rbit_localization::RepoCreateLabel::Optional.text(page.locale)) %}{% endcall %}</span></label>
+        <input class="input" id="mirror-name" name="name" value="{{ name }}" maxlength="100" autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9._\-]*" placeholder="{{ rbit_localization::RepoCreateLabel::FromTheUrl.text(page.locale) }}">
       </div>
     </div>
 
-    <label class="label mt-5" for="mirror-description">Description <span class="font-normal text-ink-faint">optional</span></label>
+    <label class="label mt-5" for="mirror-description">{% call ui::localized(rbit_localization::RepoCreateLabel::Description.text(page.locale)) %}{% endcall %} <span class="font-normal text-ink-faint">{% call ui::localized(rbit_localization::RepoCreateLabel::Optional.text(page.locale)) %}{% endcall %}</span></label>
     <input class="input" id="mirror-description" name="description" value="{{ description }}" maxlength="350">
 
-    <label class="label mt-5" for="mirror-interval">Fetch every</label>
+    <label class="label mt-5" for="mirror-interval">{% call ui::localized(rbit_localization::RepoCreateLabel::FetchEvery.text(page.locale)) %}{% endcall %}</label>
     <div class="flex items-center gap-2">
       <input class="input w-32" id="mirror-interval" name="interval" value="{{ interval_minutes }}" inputmode="numeric" pattern="[0-9]+" required>
-      <span class="text-[13px] text-ink-muted">minutes</span>
+      <span class="text-[13px] text-ink-muted">{% call ui::localized(rbit_localization::RepoCreateLabel::Minutes.text(page.locale)) %}{% endcall %}</span>
     </div>
-    <p class="hint">At least {{ min_interval_minutes }} minutes.</p>
+    <p class="hint">{% call ui::localized(rbit_localization::RepoCreateMessage::AtLeastMinutes { minutes: *min_interval_minutes }.text(page.locale)) %}{% endcall %}</p>
 
     <fieldset class="mt-6">
-      <legend class="label">Visibility</legend>
+      <legend class="label">{% call ui::localized(rbit_localization::RepoCreateLabel::Visibility.text(page.locale)) %}{% endcall %}</legend>
       <div class="box overflow-hidden">
         <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
           <input type="radio" name="visibility" value="public" class="mt-1 accent-(--ink)" {% if !private %}checked{% endif %}>
           <span>
-            <span class="block font-medium">Public</span>
-            <span class="block text-[13px] text-ink-muted">Anyone can see and clone the mirror.</span>
+            <span class="block font-medium">{% call ui::localized(rbit_localization::RepoCreateLabel::Public.text(page.locale)) %}{% endcall %}</span>
+            <span class="block text-[13px] text-ink-muted">{% call ui::localized(rbit_localization::RepoCreateLabel::PublicMirror.text(page.locale)) %}{% endcall %}</span>
           </span>
         </label>
         <label class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
           <input type="radio" name="visibility" value="private" class="mt-1 accent-(--ink)" {% if private %}checked{% endif %}>
           <span>
-            <span class="block font-medium">Private</span>
-            <span class="block text-[13px] text-ink-muted">Only the owner can see it. For an organization, that means its members.</span>
+            <span class="block font-medium">{% call ui::localized(rbit_localization::RepoCreateLabel::Private.text(page.locale)) %}{% endcall %}</span>
+            <span class="block text-[13px] text-ink-muted">{% call ui::localized(rbit_localization::RepoCreateLabel::PrivateHint.text(page.locale)) %}{% endcall %}</span>
           </span>
         </label>
       </div>
     </fieldset>
 
     <div class="mt-8 flex justify-end gap-2 border-t border-line pt-6">
-      <a href="/new" class="btn">Cancel</a>
-      <button class="btn btn-primary" type="submit">{% call ui::icon("refresh", "size-3.5") %}{% endcall %}Create mirror</button>
+      <a href="/new" class="btn">{% call ui::localized(rbit_localization::RepoCreateLabel::Cancel.text(page.locale)) %}{% endcall %}</a>
+      <button class="btn btn-primary" type="submit">{% call ui::icon("refresh", "size-3.5") %}{% endcall %}{% call ui::localized(rbit_localization::RepoCreateLabel::CreateMirror.text(page.locale)) %}{% endcall %}</button>
     </div>
   </form>
   {% endif %}

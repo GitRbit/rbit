@@ -78,7 +78,7 @@ pub struct PushMirrorsPage {
     pub mirrors: Vec<PushMirrorView>,
     pub form: PushMirrorForm,
     pub error: FormError,
-    pub notice: Option<&'static str>,
+    pub notice: Option<rbit_localization::Localized>,
     pub interval_minutes: u64,
     pub action_url: String,
     /// The test switch admits `file://` remotes.

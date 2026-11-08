@@ -14,6 +14,7 @@ use axum::{
     routing::{get, post},
 };
 use rbit_core::push_mirror::PushMirrorId;
+use rbit_localization::RepoSettingsLabel;
 use rbit_services::{ServiceError, push_mirrors::PushMirrorInput};
 use serde::Deserialize;
 
@@ -26,6 +27,7 @@ use crate::{
         components::FormError,
         layout::Page,
         push_mirrors::{PushMirrorEditPage, PushMirrorForm, PushMirrorView, PushMirrorsPage},
+        repo_text,
     },
 };
 
@@ -102,7 +104,7 @@ async fn list_view(state: &AppState, loaded: &RepoPage, page: Page) -> WebResult
     let base = list_url(loaded);
     let mirrors = if service.is_enabled() { service.list(&loaded.ctx).await? } else { Vec::new() };
     Ok(PushMirrorsPage {
-        page: page.titled(format!("Push mirrors · {}", loaded.ctx.repo.full_name())),
+        page: repo_text::titled(page, RepoSettingsLabel::PushMirrors, &loaded.ctx.repo.full_name()),
         header: loaded.header(state, "settings"),
         disabled: !service.is_enabled(),
         mirrors: mirrors.iter().map(|mirror| PushMirrorView::new(mirror, &base)).collect(),
@@ -126,13 +128,13 @@ async fn list(
     let loaded = load(&state, &viewer, &owner, &repo).await?;
     let mut view = list_view(&state, &loaded, page).await?;
     view.notice = if query.added.is_some() {
-        Some("Push mirror added. The first push is on its way; refresh in a moment to see its outcome.")
+        Some(repo_text::text(&view.page, RepoSettingsLabel::PushMirrorAdded))
     } else if query.queued.is_some() {
-        Some("A push is queued; refresh in a moment to see its outcome.")
+        Some(repo_text::text(&view.page, RepoSettingsLabel::PushQueued))
     } else if query.saved.is_some() {
-        Some("Saved.")
+        Some(repo_text::text(&view.page, RepoSettingsLabel::Saved))
     } else if query.removed.is_some() {
-        Some("Push mirror removed. The remote keeps what it has.")
+        Some(repo_text::text(&view.page, RepoSettingsLabel::PushMirrorRemoved))
     } else {
         None
     };
@@ -184,7 +186,7 @@ async fn edit(
 
 fn edit_view(state: &AppState, loaded: &RepoPage, page: Page, mirror: &PushMirrorView, form: PushMirrorForm) -> PushMirrorEditPage {
     PushMirrorEditPage {
-        page: page.titled(format!("Push mirror · {}", loaded.ctx.repo.full_name())),
+        page: repo_text::titled(page, RepoSettingsLabel::PushMirror, &loaded.ctx.repo.full_name()),
         header: loaded.header(state, "settings"),
         mirror: mirror.clone(),
         form,

@@ -1,24 +1,24 @@
 {#- The fields of the add and edit forms; expects `form` (a `PushMirrorForm`) and `allow_local`. -#}
-<label class="label" for="push-mirror-url">Remote URL</label>
+<label class="label" for="push-mirror-url">{% call ui::localized(rbit_localization::RepoSettingsLabel::RemoteUrl.text(page.locale)) %}{% endcall %}</label>
 <input class="input font-mono text-xs" dir="ltr" id="push-mirror-url" name="url" value="{{ form.url }}" {% if !allow_local %}type="url"{% endif %} inputmode="url" placeholder="https://github.com/acme/rocket.git" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="2048" required>
-<p class="hint">An <span class="font-mono" dir="ltr">https://</span> or <span class="font-mono" dir="ltr">http://</span> URL without a user name or password in it.</p>
+<p class="hint">{% call ui::localized(rbit_localization::RepoSettingsLabel::UrlHintStart.text(page.locale)) %}{% endcall %} <span class="font-mono" dir="ltr">https://</span> {% call ui::localized(rbit_localization::RepoSettingsLabel::UrlHintOr.text(page.locale)) %}{% endcall %} <span class="font-mono" dir="ltr">http://</span> {% call ui::localized(rbit_localization::RepoSettingsLabel::UrlHintEnd.text(page.locale)) %}{% endcall %}</p>
 
 <div class="mt-5 grid gap-x-3 gap-y-5 sm:grid-cols-2">
   <div>
-    <label class="label" for="push-mirror-username">User name <span class="font-normal text-ink-faint">optional</span></label>
+    <label class="label" for="push-mirror-username">{% call ui::localized(rbit_localization::RepoSettingsLabel::UserName.text(page.locale)) %}{% endcall %} <span class="font-normal text-ink-faint">{% call ui::localized(rbit_localization::RepoSettingsLabel::Optional.text(page.locale)) %}{% endcall %}</span></label>
     <input class="input" id="push-mirror-username" name="username" value="{{ form.username }}" maxlength="255" autocomplete="off" autocapitalize="none" spellcheck="false">
   </div>
   <div>
-    <label class="label" for="push-mirror-secret">Password or token <span class="font-normal text-ink-faint">optional</span></label>
-    <input class="input font-mono text-xs" dir="ltr" id="push-mirror-secret" name="secret" type="password" maxlength="1024" autocomplete="new-password" spellcheck="false" {% if form.has_secret %}placeholder="Configured — leave blank to keep it"{% endif %}>
+    <label class="label" for="push-mirror-secret">{% call ui::localized(rbit_localization::RepoSettingsLabel::PasswordOrToken.text(page.locale)) %}{% endcall %} <span class="font-normal text-ink-faint">{% call ui::localized(rbit_localization::RepoSettingsLabel::Optional.text(page.locale)) %}{% endcall %}</span></label>
+    <input class="input font-mono text-xs" dir="ltr" id="push-mirror-secret" name="secret" type="password" maxlength="1024" autocomplete="new-password" spellcheck="false" {% if form.has_secret %}placeholder="{{ rbit_localization::RepoSettingsLabel::SecretPlaceholder.text(page.locale) }}"{% endif %}>
   </div>
 </div>
-<p class="hint">Sent to the remote over HTTP Basic authentication. It cannot be shown again{% if form.has_secret %}, and must be entered again if the remote moves to another host{% endif %}.</p>
+<p class="hint">{% if form.has_secret %}{% call ui::localized(rbit_localization::RepoSettingsLabel::SecretHintKept.text(page.locale)) %}{% endcall %}{% else %}{% call ui::localized(rbit_localization::RepoSettingsLabel::SecretHint.text(page.locale)) %}{% endcall %}{% endif %}</p>
 
 <label class="mt-5 flex cursor-pointer items-start gap-3">
   <input type="checkbox" name="sync_on_push" value="on" class="mt-1 accent-(--ink)" {% if form.sync_on_push %}checked{% endif %}>
   <span>
-    <span class="block font-medium">Push after every push</span>
-    <span class="block text-[13px] text-ink-muted">A few seconds after this repository changes. Every mirror is also pushed on a schedule.</span>
+    <span class="block font-medium">{% call ui::localized(rbit_localization::RepoSettingsLabel::PushAfterPush.text(page.locale)) %}{% endcall %}</span>
+    <span class="block text-[13px] text-ink-muted">{% call ui::localized(rbit_localization::RepoSettingsLabel::PushAfterPushHint.text(page.locale)) %}{% endcall %}</span>
   </span>
 </label>

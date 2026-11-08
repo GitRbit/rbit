@@ -20,6 +20,10 @@ const SNIPPETS = [
   ["themes/picker.html", "<b>core</b>", "the preview's sample repository name"],
   ["themes/picker.html", "<b>Aa</b>", "a type specimen of each theme's font"],
   ["auth/two_factor.html", 'placeholder="xxxx-xxxx-xxxx"', "the shape of a recovery code"],
+  ["repo/deploy_keys.html", 'placeholder="ssh-ed25519 AAAA… deploy@server"', "the shape of a public key"],
+  ["repo/new_import.html", 'placeholder="https://gitea.example.com"', "the shape of a server address"],
+  ["repo/new_mirror.html", 'placeholder="https://example.com/group/project.git"', "the shape of a clone URL"],
+  ["repo/push_mirror_fields.html", 'placeholder="https://github.com/acme/rocket.git"', "the shape of a clone URL"],
 ];
 
 async function templatePaths() {

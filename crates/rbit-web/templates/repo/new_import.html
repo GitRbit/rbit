@@ -2,20 +2,20 @@
 {% import "macros.html" as ui %}
 {% block content %}
 <section class="mx-auto max-w-xl" data-repo-create hx-history="false" data-kind="import">
-  <h1 class="text-xl font-semibold tracking-tight">New repository</h1>
+  <h1 class="text-xl font-semibold tracking-tight">{% call ui::localized(rbit_localization::RepoCreateLabel::NewRepository.text(page.locale)) %}{% endcall %}</h1>
   {% let creation_kind = "import" %}
   {% include "repo/create_tabs.html" %}
   <div id="create-import-panel" role="tabpanel" aria-labelledby="create-import-tab" data-repo-create-panel>
-  <p class="mt-1 text-[13px] text-ink-muted">Copies a repository from GitHub or Gitea with its history and, if you like, its issues, pull requests, labels, milestones, releases and Git LFS files. Issue and pull request numbers stay the same.</p>
+  <p class="mt-1 text-[13px] text-ink-muted">{% call ui::localized(rbit_localization::RepoCreateLabel::ImportLead.text(page.locale)) %}{% endcall %}</p>
 
   {% if disabled %}
-  <div class="box mt-8">{% call ui::empty_state("download", "Importing is disabled", "An administrator of this instance has turned importing off.") %}{% endcall %}</div>
+  <div class="box mt-8">{% call ui::empty_state("download", rbit_localization::RepoCreateLabel::ImportingDisabled.text(page.locale), rbit_localization::RepoCreateLabel::ImportingDisabledText.text(page.locale)) %}{% endcall %}</div>
   {% else %}
   <form method="post" action="/new/import" class="mt-8" novalidate>
     {% call ui::form_error(error) %}{% endcall %}
 
     <fieldset>
-      <legend class="label">Import from</legend>
+      <legend class="label">{% call ui::localized(rbit_localization::RepoCreateLabel::ImportFrom.text(page.locale)) %}{% endcall %}</legend>
       <div class="box overflow-hidden">
         {% for source in sources %}
         <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 last:border-b-0 hover:bg-subtle has-checked:bg-subtle">
@@ -29,19 +29,19 @@
       </div>
     </fieldset>
 
-    <label class="label mt-5" for="import-host">Server address <span class="font-normal text-ink-faint">not needed for github.com</span></label>
+    <label class="label mt-5" for="import-host">{% call ui::localized(rbit_localization::RepoCreateLabel::ServerAddress.text(page.locale)) %}{% endcall %} <span class="font-normal text-ink-faint">{% call ui::localized(rbit_localization::RepoCreateLabel::NotNeededForGitHub.text(page.locale)) %}{% endcall %}</span></label>
     <input class="input font-mono text-xs" dir="ltr" id="import-host" name="host" value="{{ host }}" inputmode="url" placeholder="https://gitea.example.com" autocapitalize="none" spellcheck="false" maxlength="2048">
 
-    <label class="label mt-5" for="import-repository">Repository</label>
-    <input class="input font-mono text-xs" dir="ltr" id="import-repository" name="repository" value="{{ repository }}" placeholder="owner/name or its URL" autocapitalize="none" spellcheck="false" maxlength="2048" required autofocus>
+    <label class="label mt-5" for="import-repository">{% call ui::localized(rbit_localization::RepoCreateLabel::Repository.text(page.locale)) %}{% endcall %}</label>
+    <input class="input font-mono text-xs" dir="ltr" id="import-repository" name="repository" value="{{ repository }}" placeholder="{{ rbit_localization::RepoCreateLabel::OwnerNameOrUrl.text(page.locale) }}" autocapitalize="none" spellcheck="false" maxlength="2048" required autofocus>
 
-    <label class="label mt-5" for="import-token">Access token <span class="font-normal text-ink-faint">optional for public repositories</span></label>
+    <label class="label mt-5" for="import-token">{% call ui::localized(rbit_localization::RepoCreateLabel::AccessToken.text(page.locale)) %}{% endcall %} <span class="font-normal text-ink-faint">{% call ui::localized(rbit_localization::RepoCreateLabel::OptionalForPublic.text(page.locale)) %}{% endcall %}</span></label>
     <input class="input font-mono text-xs" dir="ltr" id="import-token" name="token" type="password" autocomplete="off" spellcheck="false" maxlength="1024">
-    <p class="hint">A token that can read the repository raises the source's rate limits and is needed for private repositories. It is used only while the import runs and is never stored.</p>
+    <p class="hint">{% call ui::localized(rbit_localization::RepoCreateLabel::TokenHint.text(page.locale)) %}{% endcall %}</p>
 
     <div class="mt-5 grid gap-x-2 gap-y-5 sm:grid-cols-[minmax(0,13rem)_auto_minmax(0,1fr)] sm:items-end">
       <div>
-        <label class="label" for="import-owner">Owner</label>
+        <label class="label" for="import-owner">{% call ui::localized(rbit_localization::RepoCreateLabel::Owner.text(page.locale)) %}{% endcall %}</label>
         <div class="relative">
           <select class="input cursor-pointer appearance-none pe-9" id="import-owner" name="owner">
             {% for owner in owners %}
@@ -53,13 +53,13 @@
       </div>
       <span class="hidden h-9 items-center text-ink-faint sm:flex" aria-hidden="true">/</span>
       <div>
-        <label class="label" for="import-name">Name <span class="font-normal text-ink-faint">optional</span></label>
-        <input class="input" id="import-name" name="name" value="{{ name }}" maxlength="100" autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9._\-]*" placeholder="as on the source">
+        <label class="label" for="import-name">{% call ui::localized(rbit_localization::RepoCreateLabel::Name.text(page.locale)) %}{% endcall %} <span class="font-normal text-ink-faint">{% call ui::localized(rbit_localization::RepoCreateLabel::Optional.text(page.locale)) %}{% endcall %}</span></label>
+        <input class="input" id="import-name" name="name" value="{{ name }}" maxlength="100" autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9._\-]*" placeholder="{{ rbit_localization::RepoCreateLabel::AsOnTheSource.text(page.locale) }}">
       </div>
     </div>
 
     <fieldset class="mt-6">
-      <legend class="label">Bring along</legend>
+      <legend class="label">{% call ui::localized(rbit_localization::RepoCreateLabel::BringAlong.text(page.locale)) %}{% endcall %}</legend>
       <div class="box overflow-hidden">
         {% for option in options %}
         <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
@@ -73,36 +73,36 @@
         <div class="flex items-start gap-3 px-4 py-3 text-ink-faint">
           <input type="checkbox" class="mt-1" disabled aria-describedby="import-wiki-hint">
           <span>
-            <span class="block font-medium">Wiki</span>
-            <span id="import-wiki-hint" class="block text-[13px]">Not supported: this instance has no wikis.</span>
+            <span class="block font-medium">{% call ui::localized(rbit_localization::RepoCreateLabel::Wiki.text(page.locale)) %}{% endcall %}</span>
+            <span id="import-wiki-hint" class="block text-[13px]">{% call ui::localized(rbit_localization::RepoCreateLabel::WikiNotSupported.text(page.locale)) %}{% endcall %}</span>
           </span>
         </div>
       </div>
     </fieldset>
 
     <fieldset class="mt-6">
-      <legend class="label">Visibility</legend>
+      <legend class="label">{% call ui::localized(rbit_localization::RepoCreateLabel::Visibility.text(page.locale)) %}{% endcall %}</legend>
       <div class="box overflow-hidden">
         <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
           <input type="radio" name="visibility" value="public" class="mt-1 accent-(--ink)" {% if !private %}checked{% endif %}>
           <span>
-            <span class="block font-medium">Public</span>
-            <span class="block text-[13px] text-ink-muted">Anyone can see and clone the repository.</span>
+            <span class="block font-medium">{% call ui::localized(rbit_localization::RepoCreateLabel::Public.text(page.locale)) %}{% endcall %}</span>
+            <span class="block text-[13px] text-ink-muted">{% call ui::localized(rbit_localization::RepoCreateLabel::PublicImport.text(page.locale)) %}{% endcall %}</span>
           </span>
         </label>
         <label class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
           <input type="radio" name="visibility" value="private" class="mt-1 accent-(--ink)" {% if private %}checked{% endif %}>
           <span>
-            <span class="block font-medium">Private</span>
-            <span class="block text-[13px] text-ink-muted">Only the owner can see it. For an organization, that means its members.</span>
+            <span class="block font-medium">{% call ui::localized(rbit_localization::RepoCreateLabel::Private.text(page.locale)) %}{% endcall %}</span>
+            <span class="block text-[13px] text-ink-muted">{% call ui::localized(rbit_localization::RepoCreateLabel::PrivateHint.text(page.locale)) %}{% endcall %}</span>
           </span>
         </label>
       </div>
     </fieldset>
 
     <div class="mt-8 flex justify-end gap-2 border-t border-line pt-6">
-      <a href="/new" class="btn">Cancel</a>
-      <button class="btn btn-primary" type="submit">{% call ui::icon("download", "size-3.5") %}{% endcall %}Start import</button>
+      <a href="/new" class="btn">{% call ui::localized(rbit_localization::RepoCreateLabel::Cancel.text(page.locale)) %}{% endcall %}</a>
+      <button class="btn btn-primary" type="submit">{% call ui::icon("download", "size-3.5") %}{% endcall %}{% call ui::localized(rbit_localization::RepoCreateLabel::StartImport.text(page.locale)) %}{% endcall %}</button>
     </div>
   </form>
   {% endif %}

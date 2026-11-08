@@ -86,7 +86,7 @@ pub struct MirrorSettingsPage {
     pub header: RepoHeader,
     pub mirror: MirrorView,
     pub error: FormError,
-    pub notice: Option<&'static str>,
+    pub notice: Option<rbit_localization::Localized>,
     pub min_interval_minutes: u64,
     pub action_url: String,
 }

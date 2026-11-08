@@ -4,18 +4,18 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <section class="mx-auto max-w-2xl" data-mirror-progress data-status-url="{{ status_url }}" data-home-url="{{ header.home_url }}" data-phase="{{ phase }}">
-  <h1 class="text-xl font-semibold tracking-tight">Mirroring {{ header.name }}</h1>
-  <p class="mt-2 text-[13px] text-ink-muted">The repository will open automatically when its first mirror fetch completes.</p>
+  <h1 class="text-xl font-semibold tracking-tight">{% call ui::localized(rbit_localization::RepoCreateMessage::MirroringName { name: header.name }.text(page.locale)) %}{% endcall %}</h1>
+  <p class="mt-2 text-[13px] text-ink-muted">{% call ui::localized(rbit_localization::RepoCreateLabel::OpensAutomatically.text(page.locale)) %}{% endcall %}</p>
   <div class="box mt-6 px-5 py-5">
     <p class="font-medium capitalize" data-mirror-phase>{{ phase }}</p>
     <p class="mt-2 text-[13px] text-ink-muted" role="status" aria-live="polite" data-mirror-message>{{ message }}</p>
-    <progress class="mt-4 w-full" aria-label="Mirror fetch in progress" data-mirror-indicator{% if phase == "failed" %} hidden{% endif %}></progress>
-    <p class="mt-3 text-xs text-ink-muted">Transfer size is determined by the upstream. This page shows the current stage as work progresses.</p>
+    <progress class="mt-4 w-full" aria-label="{{ rbit_localization::RepoCreateLabel::FetchInProgress.text(page.locale) }}" data-mirror-indicator{% if phase == "failed" %} hidden{% endif %}></progress>
+    <p class="mt-3 text-xs text-ink-muted">{% call ui::localized(rbit_localization::RepoCreateLabel::TransferSizeNote.text(page.locale)) %}{% endcall %}</p>
   </div>
   <div class="mt-4 flex flex-wrap gap-2">
-    <a href="{{ refresh_url }}" class="btn" hx-boost="false">Refresh status</a>
-    {% if header.can_admin %}<a href="{{ settings_url }}" class="btn">Mirror settings and retry</a>{% endif %}
+    <a href="{{ refresh_url }}" class="btn" hx-boost="false">{% call ui::localized(rbit_localization::RepoCreateLabel::RefreshStatus.text(page.locale)) %}{% endcall %}</a>
+    {% if header.can_admin %}<a href="{{ settings_url }}" class="btn">{% call ui::localized(rbit_localization::RepoCreateLabel::SettingsAndRetry.text(page.locale)) %}{% endcall %}</a>{% endif %}
   </div>
-  <noscript><p class="mt-3 text-[13px] text-ink-muted">Use Refresh status to check progress and open the repository when it is ready.</p></noscript>
+  <noscript><p class="mt-3 text-[13px] text-ink-muted">{% call ui::localized(rbit_localization::RepoCreateLabel::NoScriptHint.text(page.locale)) %}{% endcall %}</p></noscript>
 </section>
 {% endblock %}

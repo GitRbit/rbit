@@ -10,6 +10,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use rbit_core::{User, Visibility};
+use rbit_localization::RepoCreateLabel;
 use rbit_services::{CreateRepository, ServiceError};
 use serde::Deserialize;
 
@@ -64,7 +65,7 @@ pub async fn new_form(
 ) -> WebResult<NewRepositoryPage> {
     let owners = owner_options(&state, &user, query.owner.as_deref().unwrap_or_default()).await?;
     Ok(NewRepositoryPage {
-        page: page.titled("New repository"),
+        page: crate::views::repo_text::titled_as(page, RepoCreateLabel::NewRepository),
         error: FormError::default(),
         owners,
         name: String::new(),
@@ -87,7 +88,7 @@ pub async fn create(
         Ok(created) => Ok(Redirect::to(&format!("/{}/{}", created.owner.name, created.repo.name)).into_response()),
         Err(error @ (ServiceError::Invalid(_) | ServiceError::Conflict(_))) => {
             let page = NewRepositoryPage {
-                page: page.titled("New repository"),
+                page: crate::views::repo_text::titled_as(page, RepoCreateLabel::NewRepository),
                 error: FormError::from_message(&error.to_string()),
                 owners: owner_options(&state, &user, &form.owner).await?,
                 name: form.name,
