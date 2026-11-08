@@ -1,5 +1,6 @@
 //! Dedicated immutable wiki objects; no code refs, hooks, processes or publisher.
 mod catalog_bound;
+pub mod changes;
 mod exact_object;
 mod layout;
 mod managed_writer;
@@ -72,6 +73,23 @@ impl WikiObjects {
                 layout::verify_root(&root, identity)?;
                 let _writer = writer_lock::acquire(&root)?;
                 objects::prepare(&root, identity, &request)
+            })
+            .await?
+    }
+}
+
+impl WikiObjects {
+    /// Prepare an unpublished commit that creates, replaces, removes or keeps one page
+    /// on top of `parent`. Same budget, root binding and writer lock as [`Self::prepare`].
+    pub async fn prepare_change(&self, request: changes::PrepareWikiChange) -> Result<WikiRevisionId, WikiObjectError> {
+        let reservation = self.budget.try_reserve()?;
+        let root = Arc::clone(&self.root);
+        let identity = self.identity;
+        reservation
+            .spawn(move || {
+                layout::verify_root(&root, identity)?;
+                let _writer = writer_lock::acquire(&root)?;
+                objects::prepare_change(&root, identity, &request)
             })
             .await?
     }

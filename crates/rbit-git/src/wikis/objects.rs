@@ -1,5 +1,9 @@
 //! Native Git object preparation/read with bounded headers and a flat stable-ID tree.
-use super::{PrepareWikiPage, WikiObjectError, exact_object, layout};
+use super::{
+    PrepareWikiPage, WikiObjectError,
+    changes::{PrepareWikiChange, WikiTreeChange},
+    exact_object, layout,
+};
 use rbit_core::RepoId;
 use rbit_wikis::{
     MAX_WIKI_CONTENT_BYTES, WikiContent, WikiId, WikiPageId, WikiRevisionId, WikiStoreId, commands::WikiIntent, policy::WikiExpected,
@@ -102,7 +106,7 @@ pub(super) fn prepare_intent(root: &Path, intent: &WikiIntent) -> Result<WikiRev
         wiki,
         page,
         parent: head.map(|head| head.revision),
-        content: &intent.command.content,
+        entry: Entry::Upsert(&intent.command.content),
         actor: intent.command.actor,
         at: intent.accepted_at,
     };
@@ -118,12 +122,20 @@ pub(super) fn prepare_intent(root: &Path, intent: &WikiIntent) -> Result<WikiRev
     Ok(revision)
 }
 
+/// The prepared commit's effect on the page's blob.
+#[derive(Clone, Copy)]
+enum Entry<'a> {
+    Upsert(&'a WikiContent),
+    Remove,
+    Keep,
+}
+
 struct PageInput<'a> {
     repository: RepoId,
     wiki: WikiId,
     page: WikiPageId,
     parent: Option<WikiRevisionId>,
-    content: &'a WikiContent,
+    entry: Entry<'a>,
     actor: rbit_core::AccountId,
     at: rbit_core::Timestamp,
 }
@@ -142,7 +154,7 @@ fn prepare_page(
             wiki: request.wiki,
             page: request.page,
             parent: request.parent,
-            content: &request.content,
+            entry: Entry::Upsert(&request.content),
             actor: request.actor,
             at: request.at,
         },
@@ -173,14 +185,22 @@ fn prepare_input(
         let stored: &[u8] = entry.filename.as_ref();
         stored.cmp(filename.as_bytes())
     });
-    if position.is_err() && entries.len() == MAX_PAGES {
-        return Err(WikiObjectError::Format);
-    }
-    let blob = exact_object::blob(&repo, request.content.as_str().as_bytes())?;
-    let entry = gix::objs::tree::Entry { mode: gix::objs::tree::EntryKind::Blob.into(), filename: filename.into(), oid: blob };
-    match position {
-        Ok(index) => entries[index] = entry,
-        Err(index) => entries.insert(index, entry),
+    match (request.entry, position) {
+        (Entry::Upsert(_), Err(_)) if entries.len() == MAX_PAGES => return Err(WikiObjectError::Format),
+        (Entry::Upsert(content), position) => {
+            let blob = exact_object::blob(&repo, content.as_str().as_bytes())?;
+            let entry = gix::objs::tree::Entry { mode: gix::objs::tree::EntryKind::Blob.into(), filename: filename.into(), oid: blob };
+            match position {
+                Ok(index) => entries[index] = entry,
+                Err(index) => entries.insert(index, entry),
+            }
+        }
+        (Entry::Remove, Ok(index)) => {
+            entries.remove(index);
+        }
+        (Entry::Keep, Ok(_)) => {}
+        // Removing or keeping requires the page in the parent snapshot.
+        (Entry::Remove | Entry::Keep, Err(_)) => return Err(WikiObjectError::Format),
     }
     let tree = exact_object::object(&repo, gix::objs::Tree { entries })?;
     let signature = gix::actor::Signature {
@@ -194,9 +214,36 @@ fn prepare_input(
         author: signature.clone(),
         committer: signature,
         encoding: None,
-        message: "Wiki page update\n".into(),
+        message: match request.entry {
+            Entry::Upsert(_) => "Wiki page update\n",
+            Entry::Remove => "Wiki page deletion\n",
+            Entry::Keep => "Wiki page rename\n",
+        }
+        .into(),
         extra_headers: Vec::new(),
     };
     let prepared = exact_object::object(&repo, commit)?;
     WikiRevisionId::try_from(prepared.as_slice()).map_err(|_| WikiObjectError::Format)
+}
+
+pub(super) fn prepare_change(root: &Path, identity: WikiStoreId, request: &PrepareWikiChange) -> Result<WikiRevisionId, WikiObjectError> {
+    let entry = match &request.change {
+        WikiTreeChange::Upsert(content) => Entry::Upsert(content),
+        WikiTreeChange::Remove => Entry::Remove,
+        WikiTreeChange::Keep => Entry::Keep,
+    };
+    prepare_input(
+        root,
+        identity,
+        &PageInput {
+            repository: request.repository,
+            wiki: request.wiki,
+            page: request.page,
+            parent: request.parent,
+            entry,
+            actor: request.actor,
+            at: request.at,
+        },
+        format!("account-{}", request.actor.0),
+    )
 }
