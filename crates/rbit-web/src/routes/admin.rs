@@ -519,9 +519,9 @@ fn configuration_page(
     saved: bool,
 ) -> WebResult<ConfigurationPage> {
     Ok(ConfigurationPage {
+        form: crate::views::admin::configuration::ConfigurationForm::new(document, section, page.locale)?,
         page: crate::views::admin::titled(page, rbit_localization::settings::admin::AdminMessage::Configuration),
         admin_nav: AdminSection::Configuration.nav(),
-        form: crate::views::admin::configuration::ConfigurationForm::new(document, section)?,
         error,
         saved,
     })

@@ -1,9 +1,13 @@
 //! Typed, section-scoped administrator forms. JSON stays an internal persistence format.
+pub mod field;
 mod schema;
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use field::Field;
 use rbit_core::config::ProviderConfig;
+use rbit_localization::settings::config::{ConfigMessage, ConfigText};
+use rbit_localization::{Locale, Localized};
 use rbit_services::ServiceError;
 use serde_json::Value;
 
@@ -16,14 +20,12 @@ enum Kind {
     Toggle,
     Lines,
     Secret,
-    Choice(&'static [(&'static str, &'static str)]),
+    Choice(&'static [&'static str]),
 }
 
 #[derive(Debug)]
 struct Spec {
     key: &'static str,
-    label: &'static str,
-    help: &'static str,
     kind: Kind,
     optional: bool,
     max: &'static str,
@@ -32,74 +34,14 @@ struct Spec {
 #[derive(Debug)]
 struct Section {
     key: &'static str,
-    title: &'static str,
-    help: &'static str,
     fields: &'static [Spec],
 }
 
 #[derive(Debug)]
 pub struct SectionLink {
     pub key: &'static str,
-    pub title: &'static str,
+    pub title: Localized,
     pub active: bool,
-}
-
-#[derive(Debug)]
-pub struct Choice {
-    pub value: &'static str,
-    pub label: &'static str,
-    pub selected: bool,
-}
-
-#[derive(Debug)]
-pub struct Field {
-    pub name: String,
-    pub label: &'static str,
-    pub help: &'static str,
-    pub kind: &'static str,
-    pub value: String,
-    pub choices: Vec<Choice>,
-    pub optional: bool,
-    pub configured: bool,
-    pub read_only: bool,
-    pub max: &'static str,
-    pub default_mode: &'static str,
-    pub secret_action: &'static str,
-}
-
-impl Field {
-    fn new(spec: &Spec, name: String, value: &Value, read_only: bool) -> Self {
-        let text = match value {
-            Value::Null => String::new(),
-            Value::String(text) => text.clone(),
-            Value::Array(values) => values.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("\n"),
-            other => other.to_string(),
-        };
-        let (kind, choices) = match spec.kind {
-            Kind::Text => ("text", Vec::new()),
-            Kind::Number => ("number", Vec::new()),
-            Kind::Toggle => ("checkbox", Vec::new()),
-            Kind::Lines => ("lines", Vec::new()),
-            Kind::Secret => ("password", Vec::new()),
-            Kind::Choice(options) => {
-                ("select", options.iter().map(|&(value, label)| Choice { value, label, selected: text == value }).collect())
-            }
-        };
-        Self {
-            name,
-            label: spec.label,
-            help: spec.help,
-            kind,
-            value: if matches!(spec.kind, Kind::Secret) { String::new() } else { text },
-            choices,
-            optional: spec.optional,
-            configured: matches!(spec.kind, Kind::Secret) && value.as_str() == Some("<unchanged>"),
-            read_only,
-            max: spec.max,
-            default_mode: if value.is_null() { "default" } else { "custom" },
-            secret_action: "keep",
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -112,8 +54,8 @@ pub struct Provider {
 #[derive(Debug)]
 pub struct ConfigurationForm {
     pub section: &'static str,
-    pub title: &'static str,
-    pub help: &'static str,
+    pub title: Localized,
+    pub help: Localized,
     pub sections: Vec<SectionLink>,
     pub fields: Vec<Field>,
     pub providers: Vec<Provider>,
@@ -130,33 +72,30 @@ impl ConfigurationForm {
         self
     }
 
-    pub fn new(document: &Value, key: &str) -> Result<Self, ServiceError> {
+    pub fn new(document: &Value, key: &str, locale: Locale) -> Result<Self, ServiceError> {
         let section = section(key)?;
-        let fields =
-            section.fields.iter().map(|spec| Field::new(spec, spec.key.into(), &document[key][spec.key], key == "storage")).collect();
+        let fields = Field::list(section.fields, (key, ""), &document[key], key == "storage", locale);
+        let untitled = ConfigMessage::NewProvider.text(&locale).to_string();
         let providers = document[key].get("providers").and_then(Value::as_array).map_or_else(Vec::new, |providers| {
             providers
                 .iter()
                 .enumerate()
                 .map(|(index, provider)| Provider {
                     index,
-                    title: provider["name"].as_str().filter(|name| !name.is_empty()).unwrap_or("New sign-in provider").into(),
-                    fields: schema::PROVIDER
-                        .iter()
-                        .map(|spec| Field::new(spec, format!("providers.{index}.{}", spec.key), &provider[spec.key], false))
-                        .collect(),
+                    title: provider["name"].as_str().filter(|name| !name.is_empty()).unwrap_or(&untitled).into(),
+                    fields: Field::list(schema::PROVIDER, ("provider", &format!("providers.{index}.")), provider, false, locale),
                 })
                 .collect()
         });
         Ok(Self {
             section: section.key,
-            title: section.title,
-            help: section.help,
+            title: ConfigText::SectionTitle(key).text(&locale),
+            help: ConfigText::SectionHelp(key).text(&locale),
             fields,
             providers,
             sections: schema::SECTIONS
                 .iter()
-                .map(|item| SectionLink { key: item.key, title: item.title, active: item.key == key })
+                .map(|item| SectionLink { key: item.key, title: ConfigText::SectionTitle(item.key).text(&locale), active: item.key == key })
                 .collect(),
         })
     }
@@ -175,7 +114,7 @@ pub fn apply_submission(document: &mut Value, key: &str, inputs: &BTreeMap<Strin
     }
     let mut allowed: BTreeSet<String> = ["section", "action"].into_iter().map(str::to_owned).collect();
     let mut first_error = None;
-    apply_fields(&mut document[key], section.fields, "", inputs, &mut allowed, &mut first_error);
+    apply_fields(&mut document[key], (key, section.fields), "", inputs, &mut allowed, &mut first_error);
     if key == "auth" {
         allowed.insert("provider_count".into());
         let count = inputs
@@ -186,7 +125,7 @@ pub fn apply_submission(document: &mut Value, key: &str, inputs: &BTreeMap<Strin
         let providers = document[key]["providers"].as_array_mut().ok_or_else(|| invalid("Invalid sign-in provider settings."))?;
         providers.resize_with(count, || serde_json::to_value(ProviderConfig::default()).expect("provider configuration serializes"));
         for (index, provider) in providers.iter_mut().enumerate() {
-            apply_fields(provider, schema::PROVIDER, &format!("providers.{index}."), inputs, &mut allowed, &mut first_error);
+            apply_fields(provider, ("provider", schema::PROVIDER), &format!("providers.{index}."), inputs, &mut allowed, &mut first_error);
         }
     }
     if inputs.keys().any(|key| !allowed.contains(key)) {
@@ -221,7 +160,7 @@ pub fn apply_submission(document: &mut Value, key: &str, inputs: &BTreeMap<Strin
 
 fn apply_fields(
     target: &mut Value,
-    specs: &[Spec],
+    (section, specs): (&str, &[Spec]),
     prefix: &str,
     inputs: &BTreeMap<String, String>,
     allowed: &mut BTreeSet<String>,
@@ -236,7 +175,7 @@ fn apply_fields(
         if spec.optional && matches!(spec.kind, Kind::Lines) {
             allowed.insert(format!("default.{name}"));
         }
-        match parse_field(spec, &name, &target[spec.key], inputs) {
+        match parse_field(spec, section, &name, &target[spec.key], inputs) {
             Ok(value) => target[spec.key] = value,
             Err(error) => {
                 // Keep non-secret input for correction; secret fields are always rendered empty.
@@ -249,19 +188,20 @@ fn apply_fields(
     }
 }
 
-fn parse_field(spec: &Spec, name: &str, prior: &Value, inputs: &BTreeMap<String, String>) -> Result<Value, ServiceError> {
+fn parse_field(spec: &Spec, section: &str, name: &str, prior: &Value, inputs: &BTreeMap<String, String>) -> Result<Value, ServiceError> {
+    let label = ConfigText::Label { section, key: spec.key }.text(&Locale::English);
     if matches!(spec.kind, Kind::Toggle) {
         return match inputs.get(name).map(String::as_str) {
             None => Ok(Value::Bool(false)),
             Some("true") => Ok(Value::Bool(true)),
-            _ => Err(invalid(&format!("{}: choose enabled or disabled.", spec.label))),
+            _ => Err(invalid(&format!("{label}: choose enabled or disabled."))),
         };
     }
-    let raw = inputs.get(name).ok_or_else(|| invalid(&format!("{} is missing from the form.", spec.label)))?;
+    let raw = inputs.get(name).ok_or_else(|| invalid(&format!("{label} is missing from the form.")))?;
     if matches!(spec.kind, Kind::Secret) {
         if inputs.contains_key(&format!("clear.{name}")) {
             if !raw.is_empty() {
-                return Err(invalid(&format!("{}: enter a replacement or clear the credential, not both.", spec.label)));
+                return Err(invalid(&format!("{label}: enter a replacement or clear the credential, not both.")));
             }
             return Ok(if spec.optional { Value::Null } else { Value::String(String::new()) });
         }
@@ -279,13 +219,13 @@ fn parse_field(spec: &Spec, name: &str, prior: &Value, inputs: &BTreeMap<String,
             .ok()
             .filter(|value| spec.max.parse::<u64>().is_ok_and(|max| *value <= max))
             .map(|value| Value::Number(value.into()))
-            .ok_or_else(|| invalid(&format!("{} must be a whole number between 0 and {}.", spec.label, spec.max))),
+            .ok_or_else(|| invalid(&format!("{label} must be a whole number between 0 and {}.", spec.max))),
         Kind::Lines => {
             Ok(Value::Array(raw.lines().map(str::trim).filter(|line| !line.is_empty()).map(|line| Value::String(line.into())).collect()))
         }
         Kind::Choice(choices) => {
-            if !choices.iter().any(|(value, _)| *value == raw) {
-                return Err(invalid(&format!("{}: choose one of the offered options.", spec.label)));
+            if !choices.contains(&raw.as_str()) {
+                return Err(invalid(&format!("{label}: choose one of the offered options.")));
             }
             Ok(if spec.key == "allow_registration" && raw != "always" { Value::Bool(raw == "true") } else { Value::String(raw.clone()) })
         }
@@ -302,6 +242,10 @@ mod tests {
     use super::*;
     use rbit_core::Config;
     use serde_json::json;
+
+    fn build(document: &Value, key: &str) -> ConfigurationForm {
+        ConfigurationForm::new(document, key, Locale::English).unwrap()
+    }
 
     fn document() -> Value {
         let mut config = Config::default();
@@ -339,7 +283,7 @@ mod tests {
             if section.key == "storage" {
                 continue;
             }
-            let form = ConfigurationForm::new(&original, section.key).unwrap();
+            let form = build(&original, section.key);
             let mut copy = original.clone();
             assert!(apply_submission(&mut copy, section.key, &inputs(&form)).unwrap());
             assert_eq!(copy, original, "{}", section.key);
@@ -352,7 +296,7 @@ mod tests {
     fn secrets_are_never_rendered_and_can_be_preserved_replaced_or_cleared() {
         let mut doc = document();
         doc["mail"]["smtp_password"] = json!("<unchanged>");
-        let form = ConfigurationForm::new(&doc, "mail").unwrap();
+        let form = build(&doc, "mail");
         let secret = form.fields.iter().find(|field| field.name == "smtp_password").unwrap();
         assert!(secret.value.is_empty() && secret.configured);
         let mut values = inputs(&form);
@@ -361,7 +305,7 @@ mod tests {
         values.insert("smtp_password".into(), "new secret with spaces".into());
         apply_submission(&mut doc, "mail", &values).unwrap();
         assert_eq!(doc["mail"]["smtp_password"], "new secret with spaces");
-        assert_eq!(ConfigurationForm::new(&doc, "mail").unwrap().fields.iter().find(|field| field.kind == "password").unwrap().value, "");
+        assert_eq!(build(&doc, "mail").fields.iter().find(|field| field.kind == "password").unwrap().value, "");
         values.insert("clear.smtp_password".into(), "true".into());
         assert!(apply_submission(&mut doc, "mail", &values).is_err());
         values.insert("smtp_password".into(), String::new());
@@ -373,11 +317,11 @@ mod tests {
     fn fields_validate_types_preserve_other_sections_and_retain_failed_input() {
         let mut doc = document();
         let original = doc.clone();
-        let mut values = inputs(&ConfigurationForm::new(&doc, "mail").unwrap());
+        let mut values = inputs(&build(&doc, "mail"));
         values.insert("smtp_port".into(), "65536".into());
         values.insert("from_name".into(), "New sender".into());
         assert!(apply_submission(&mut doc, "mail", &values).is_err());
-        let form = ConfigurationForm::new(&doc, "mail").unwrap();
+        let form = build(&doc, "mail");
         assert_eq!(form.fields.iter().find(|field| field.name == "from_name").unwrap().value, "New sender");
         assert_eq!(doc["repository"], original["repository"]);
         values.insert("smtp_port".into(), String::new());
@@ -387,17 +331,17 @@ mod tests {
         values.insert("repository.default_branch".into(), "hijacked".into());
         assert!(apply_submission(&mut doc, "mail", &values).is_err());
         assert!(apply_submission(&mut doc, "storage", &BTreeMap::new()).is_err());
-        assert!(ConfigurationForm::new(&doc, "unknown").is_err());
+        assert!(ConfigurationForm::new(&doc, "unknown", Locale::English).is_err());
     }
 
     #[test]
     fn unchecked_toggles_disable_features_and_network_lists_preserve_entries() {
         let mut doc = document();
-        let mut values = inputs(&ConfigurationForm::new(&doc, "webhooks").unwrap());
+        let mut values = inputs(&build(&doc, "webhooks"));
         values.remove("enabled");
         apply_submission(&mut doc, "webhooks", &values).unwrap();
         assert_eq!(doc["webhooks"]["enabled"], false);
-        values = inputs(&ConfigurationForm::new(&doc, "security").unwrap());
+        values = inputs(&build(&doc, "security"));
         values.insert("trusted_proxies".into(), "127.0.0.1\r\n 10.0.0.0/8 \n".into());
         apply_submission(&mut doc, "security", &values).unwrap();
         assert_eq!(doc["security"]["trusted_proxies"], json!(["127.0.0.1", "10.0.0.0/8"]));
@@ -407,11 +351,11 @@ mod tests {
     #[test]
     fn provider_cards_add_remove_and_handle_optional_lists_and_registration_choices() {
         let mut doc = document();
-        let mut values = inputs(&ConfigurationForm::new(&doc, "auth").unwrap());
+        let mut values = inputs(&build(&doc, "auth"));
         values.insert("action".into(), "add_provider".into());
         assert!(!apply_submission(&mut doc, "auth", &values).unwrap());
         assert_eq!(doc["auth"]["providers"].as_array().unwrap().len(), 2);
-        values = inputs(&ConfigurationForm::new(&doc, "auth").unwrap());
+        values = inputs(&build(&doc, "auth"));
         values.insert("providers.0.allow_registration".into(), "always".into());
         values.insert("providers.0.scopes".into(), "openid\n email \n\nprofile".into());
         values.remove("default.providers.0.scopes");
@@ -420,7 +364,7 @@ mod tests {
         assert_eq!(doc["auth"]["providers"][0]["scopes"], json!(["openid", "email", "profile"]));
         assert_eq!(doc["auth"]["providers"][0]["allow_registration"], "always");
         assert_eq!(doc["auth"]["providers"].as_array().unwrap().len(), 1);
-        values = inputs(&ConfigurationForm::new(&doc, "auth").unwrap());
+        values = inputs(&build(&doc, "auth"));
         values.insert("providers.0.scopes".into(), String::new());
         values.insert("providers.0.allow_registration".into(), "false".into());
         assert!(apply_submission(&mut doc, "auth", &values).unwrap());
