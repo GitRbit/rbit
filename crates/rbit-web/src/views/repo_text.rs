@@ -1,6 +1,6 @@
 //! Repository page text chosen in handlers, such as document titles, in the page's
 //! language. Untranslated messages fall back to English (`rbit_localization::Localized`).
-use rbit_localization::{Catalog, Localized, MessageFamily};
+use rbit_localization::{Catalog, Localized, MessageFamily, RepoHistoryLabel};
 
 use super::layout::Page;
 
@@ -13,6 +13,18 @@ pub fn text<M: MessageFamily>(page: &Page, message: M) -> Localized {
 pub fn titled<M: MessageFamily>(page: Page, label: M, repo: &str) -> Page {
     let label = text(&page, label);
     page.titled(format!("{label} · {repo}"))
+}
+
+/// The change-status label for a diff status-mark key (`added`, `deleted`, `modified`,
+/// `renamed`, `copied`); anything else reads as modified.
+pub fn change_status(key: &str) -> RepoHistoryLabel {
+    match key {
+        "added" => RepoHistoryLabel::StatusAdded,
+        "deleted" => RepoHistoryLabel::StatusDeleted,
+        "renamed" => RepoHistoryLabel::StatusRenamed,
+        "copied" => RepoHistoryLabel::StatusCopied,
+        _ => RepoHistoryLabel::StatusModified,
+    }
 }
 
 /// Titles `page` with `message` alone, in the page's language.

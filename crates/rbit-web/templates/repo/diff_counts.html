@@ -1,4 +1,5 @@
+{% import "macros.html" as ui %}
 {#- Line counts carry their meaning in visible text; color and borders are secondary cues. -#}
 {% macro counts(additions, deletions, classes) -%}
-<span class="change-counts {{ classes }}"><span class="change-count change-count-added"><b dir="ltr">+{{ additions }}</b> Added</span><span class="change-count change-count-deleted"><b dir="ltr">−{{ deletions }}</b> Deleted</span></span>
+<span class="change-counts {{ classes }}"><span class="change-count change-count-added"><b dir="ltr">+{{ additions }}</b> {% call ui::localized(rbit_localization::RepoHistoryLabel::LinesAdded.text(page.locale)) %}{% endcall %}</span><span class="change-count change-count-deleted"><b dir="ltr">−{{ deletions }}</b> {% call ui::localized(rbit_localization::RepoHistoryLabel::LinesDeleted.text(page.locale)) %}{% endcall %}</span></span>
 {%- endmacro %}

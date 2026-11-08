@@ -3,6 +3,7 @@
 use crate::views::pagination::{LIST_PAGE_SIZE, ListQuery, Pagination};
 use axum::extract::{Path, Query, State};
 use rbit_git::{DiffLimits, RefKind};
+use rbit_localization::RepoNavLabel;
 use rbit_services::ServiceError;
 
 use super::repo::RepoPage;
@@ -114,7 +115,7 @@ async fn refs(
         commits.truncate(200);
         return Ok(RefsPage {
             pagination: Pagination::new(references.len(), &query, loaded.urls.branches(), vec![]),
-            page: page.titled(format!("Branches · {}", loaded.ctx.repo.full_name())),
+            page: crate::views::repo_text::titled(page, RepoNavLabel::Branches, &loaded.ctx.repo.full_name()),
             header: loaded.header(&state, "branches"),
             kind: "branch",
             rows: Vec::new(),
@@ -133,8 +134,8 @@ async fn refs(
     rows.sort_by_key(|row| !row.is_default);
 
     let (label, tab, kind_name) = match kind {
-        RefKind::Branch => ("Branches", "branches", "branch"),
-        RefKind::Tag => ("Tags", "tags", "tag"),
+        RefKind::Branch => (RepoNavLabel::Branches, "branches", "branch"),
+        RefKind::Tag => (RepoNavLabel::Tags, "tags", "tag"),
     };
     // Only branches carry the "Protected" badge.
     let protected = match kind {
@@ -150,7 +151,7 @@ async fn refs(
     Ok(RefsPage {
         graph: None,
         pagination: Pagination::new(total, &query, format!("{}/{tab}", loaded.urls.home()), vec![]),
-        page: page.titled(format!("{label} · {}", loaded.ctx.repo.full_name())),
+        page: crate::views::repo_text::titled(page, label, &loaded.ctx.repo.full_name()),
         header: loaded.header(&state, tab),
         kind: kind_name,
         rows,

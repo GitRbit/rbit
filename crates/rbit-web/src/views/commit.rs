@@ -577,7 +577,7 @@ pub(crate) mod tests {
     }
 
     #[derive(Template)]
-    #[template(source = r#"{% include "repo/file_diffs.html" %}"#, ext = "html")]
+    #[template(source = r#"{% let page = crate::views::test_support::page("/") %}{% include "repo/file_diffs.html" %}"#, ext = "html")]
     struct Diffs {
         files: Vec<FileDiffView>,
         additions: usize,

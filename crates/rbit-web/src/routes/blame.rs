@@ -13,6 +13,7 @@ use axum::{
     routing::get,
 };
 use rbit_git::blame::Blame;
+use rbit_localization::RepoHistoryMessage;
 use rbit_services::ServiceError;
 
 use super::repo::RepoPage;
@@ -66,7 +67,7 @@ async fn show(
     };
 
     Ok(BlamePage {
-        page: page.titled(format!("Blame {path} · {}", loaded.ctx.repo.full_name())),
+        page: crate::views::repo_text::titled(page, RepoHistoryMessage::BlameTitle { path: &path }, &loaded.ctx.repo.full_name()),
         header: loaded.header_at(&state, "code", &revision),
         switcher: loaded.switcher(&revision, RefTarget::Blame, &path),
         breadcrumbs: breadcrumbs(loaded.ctx.repo.repo.name.as_str(), urls, &revision, &path),

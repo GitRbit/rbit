@@ -4,11 +4,11 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <div class="mb-3 flex min-h-8 flex-wrap items-center justify-between gap-3">
-  <h1 class="text-[13px] font-medium text-ink-muted">{% if kind == "branch" %}Branches{% else %}Tags{% endif %} <span class="ms-1 text-ink-faint">{{ pagination.total }}</span></h1>
+  <h1 class="text-[13px] font-medium text-ink-muted">{% if kind == "branch" %}{% call ui::localized(rbit_localization::RepoNavLabel::Branches.text(page.locale)) %}{% endcall %}{% else %}{% call ui::localized(rbit_localization::RepoNavLabel::Tags.text(page.locale)) %}{% endcall %}{% endif %} <span class="ms-1 text-ink-faint">{{ pagination.total }}</span></h1>
   {% if kind == "branch" %}
-  <nav class="flex gap-1" aria-label="Branch view">
-    <a href="{{ header.branches_url }}?view=list" class="btn {% if graph.is_none() %}btn-primary{% endif %}" {% if graph.is_none() %}aria-current="page"{% endif %}>List</a>
-    <a href="{{ header.branches_url }}?view=tree" class="btn {% if graph.is_some() %}btn-primary{% endif %}" {% if graph.is_some() %}aria-current="page"{% endif %}>{% call ui::icon("branch", "size-3.5") %}{% endcall %}Git tree</a>
+  <nav class="flex gap-1" aria-label="{{ rbit_localization::RepoHistoryLabel::BranchView.text(page.locale) }}">
+    <a href="{{ header.branches_url }}?view=list" class="btn {% if graph.is_none() %}btn-primary{% endif %}" {% if graph.is_none() %}aria-current="page"{% endif %}>{% call ui::localized(rbit_localization::RepoHistoryLabel::List.text(page.locale)) %}{% endcall %}</a>
+    <a href="{{ header.branches_url }}?view=tree" class="btn {% if graph.is_some() %}btn-primary{% endif %}" {% if graph.is_some() %}aria-current="page"{% endif %}>{% call ui::icon("branch", "size-3.5") %}{% endcall %}{% call ui::localized(rbit_localization::RepoHistoryLabel::GitTree.text(page.locale)) %}{% endcall %}</a>
   </nav>
   {% endif %}
 </div>
@@ -22,11 +22,11 @@
   {% else %}
   {% if rows.is_empty() %}
   {% if !pagination.query.is_empty() %}
-  <p class="p-6 text-ink-muted">No matching refs.</p>
+  <p class="p-6 text-ink-muted">{% call ui::localized(rbit_localization::RepoHistoryLabel::NoMatchingRefs.text(page.locale)) %}{% endcall %}</p>
   {% else if kind == "branch" %}
-  {% call ui::empty_state("branch", "No branches yet", "Push a commit to create the first branch.") %}{% endcall %}
+  {% call ui::empty_state("branch", rbit_localization::RepoHistoryLabel::NoBranchesYet.text(page.locale), rbit_localization::RepoHistoryLabel::NoBranchesText.text(page.locale)) %}{% endcall %}
   {% else %}
-  {% call ui::empty_state("tag", "No tags yet", "Tags mark releases and other important points in history.") %}{% endcall %}
+  {% call ui::empty_state("tag", rbit_localization::RepoHistoryLabel::NoTagsYet.text(page.locale), rbit_localization::RepoHistoryLabel::NoTagsText.text(page.locale)) %}{% endcall %}
   {% endif %}
   {% else %}
   <ul>
@@ -36,8 +36,8 @@
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2">
           <a href="{{ row.url }}" class="truncate font-mono text-[13px] font-medium hover:underline hover:underline-offset-4" dir="ltr">{{ row.name }}</a>
-          {% if row.is_default %}<span class="badge">default</span>{% endif %}
-          {% if row.protected %}<span class="badge" title="A branch protection rule applies to this branch">{% call ui::icon("shield", "size-3") %}{% endcall %}Protected</span>{% endif %}
+          {% if row.is_default %}<span class="badge">{% call ui::localized(rbit_localization::RepoBrowseLabel::Default.text(page.locale)) %}{% endcall %}</span>{% endif %}
+          {% if row.protected %}<span class="badge" title="{{ rbit_localization::RepoHistoryLabel::ProtectedTitle.text(page.locale) }}">{% call ui::icon("shield", "size-3") %}{% endcall %}{% call ui::localized(rbit_localization::RepoHistoryLabel::Protected.text(page.locale)) %}{% endcall %}</span>{% endif %}
         </div>
         <p class="mt-2 flex min-w-0 items-center gap-1.5 text-xs text-ink-muted">
           <a href="{{ row.commit.url }}" class="truncate hover:text-ink">{{ row.commit.summary }}</a>
@@ -45,11 +45,11 @@
         </p>
       </div>
       {% if let Some(url) = row.compare_url %}
-      <a href="{{ url }}" class="btn btn-ghost hidden h-7 shrink-0 px-2 text-xs sm:inline-flex sm:h-7" title="Compare with the default branch">Compare</a>
+      <a href="{{ url }}" class="btn btn-ghost hidden h-7 shrink-0 px-2 text-xs sm:inline-flex sm:h-7" title="{{ rbit_localization::RepoHistoryLabel::CompareWithDefault.text(page.locale) }}">{% call ui::localized(rbit_localization::RepoHistoryLabel::Compare.text(page.locale)) %}{% endcall %}</a>
       {% endif %}
       {% if kind == "tag" %}
-      <a href="{{ row.zip_url }}" class="btn btn-ghost hidden h-7 shrink-0 px-2 text-xs sm:inline-flex sm:h-7" hx-boost="false" download title="Download ZIP">zip</a>
-      <a href="{{ row.tar_url }}" class="btn btn-ghost hidden h-7 shrink-0 px-2 text-xs sm:inline-flex sm:h-7" hx-boost="false" download title="Download tar.gz">tar.gz</a>
+      <a href="{{ row.zip_url }}" class="btn btn-ghost hidden h-7 shrink-0 px-2 text-xs sm:inline-flex sm:h-7" hx-boost="false" download title="{{ rbit_localization::RepoNavLabel::DownloadZip.text(page.locale) }}">zip</a>
+      <a href="{{ row.tar_url }}" class="btn btn-ghost hidden h-7 shrink-0 px-2 text-xs sm:inline-flex sm:h-7" hx-boost="false" download title="{{ rbit_localization::RepoHistoryLabel::DownloadTarGz.text(page.locale) }}">tar.gz</a>
       {% endif %}
       <a href="{{ row.commit.url }}" class="btn h-7 shrink-0 px-2 font-mono text-xs sm:h-7" dir="ltr">{{ row.commit.short_id }}</a>
     </li>

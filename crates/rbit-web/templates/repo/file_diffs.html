@@ -7,25 +7,25 @@
     buttons; without it the tree is a plain list of links and every file stays expandable. -#}
 {% let tree = crate::views::commit::FileDiffView::tree(files) %}
 {% let has_tree = files.len() > 1 %}
-<section class="diff-layout mt-8" data-diff-layout aria-label="Changes">
+<section class="diff-layout mt-8" data-diff-layout aria-label="{{ rbit_localization::RepoHistoryLabel::Changes.text(page.locale) }}">
   <div class="diff-toolbar">
     {% if has_tree %}
-    <button type="button" class="btn btn-ghost btn-icon h-8 sm:h-8" data-diff-sidebar-toggle aria-pressed="true" aria-controls="diff-sidebar" title="Toggle file tree" aria-label="Toggle file tree" hidden>
+    <button type="button" class="btn btn-ghost btn-icon h-8 sm:h-8" data-diff-sidebar-toggle aria-pressed="true" aria-controls="diff-sidebar" title="{{ rbit_localization::RepoHistoryLabel::ToggleFileTree.text(page.locale) }}" aria-label="{{ rbit_localization::RepoHistoryLabel::ToggleFileTree.text(page.locale) }}" hidden>
       {% call ui::icon("panel-left", "size-4") %}{% endcall %}
     </button>
     {% endif %}
-    <p class="text-[13px] text-ink-muted"><span class="font-medium text-ink tabular-nums">{{ files.len() }}</span> {% if files.len() == 1 %}file{% else %}files{% endif %} changed</p>
+    <p class="text-[13px] text-ink-muted"><span class="font-medium text-ink tabular-nums">{{ files.len() }}</span> {% call ui::localized(rbit_localization::RepoHistoryMessage::FilesChangedNoun { count: files.len() }.text(page.locale)) %}{% endcall %}</p>
     {% call stats::counts(additions, deletions, "") %}{% endcall %}
     {% if files.len() > 1 %}
     <button type="button" class="btn btn-ghost ms-auto h-8 px-2 text-xs sm:h-8" data-diff-collapse-all hidden>
-      <span class="contents" data-when="expanded">{% call ui::icon("chevrons-down-up", "size-3.5") %}{% endcall %}Collapse all</span>
-      <span class="hidden" data-when="collapsed">{% call ui::icon("chevrons-up-down", "size-3.5") %}{% endcall %}Expand all</span>
+      <span class="contents" data-when="expanded">{% call ui::icon("chevrons-down-up", "size-3.5") %}{% endcall %}{% call ui::localized(rbit_localization::RepoHistoryLabel::CollapseAll.text(page.locale)) %}{% endcall %}</span>
+      <span class="hidden" data-when="collapsed">{% call ui::icon("chevrons-up-down", "size-3.5") %}{% endcall %}{% call ui::localized(rbit_localization::RepoHistoryLabel::ExpandAll.text(page.locale)) %}{% endcall %}</span>
     </button>
     {% endif %}
   </div>
 
   {% if truncated %}
-  <p class="notice mb-4">{% call ui::icon("alert", "mt-px size-4 shrink-0") %}{% endcall %}<span>This change is very large, so some diffs are not shown. Clone the repository to see the full change.</span></p>
+  <p class="notice mb-4">{% call ui::icon("alert", "mt-px size-4 shrink-0") %}{% endcall %}<span>{% call ui::localized(rbit_localization::RepoHistoryLabel::DiffTruncated.text(page.locale)) %}{% endcall %}</span></p>
   {% endif %}
 
   <div class="diff-columns{% if has_tree %} has-tree{% endif %}">
@@ -41,15 +41,15 @@
           screen (app.css "Virtual blocks"); only diffs of more rows than
           `BLOCKED_ABOVE_ROWS` also put their rows in blocks. -#}
       <details id="{{ file.anchor }}" class="diff-file box group" data-path="{{ file.path }}" data-rows="{{ file.rows() }}" open>
-        <summary class="diff-file-header" title="Click to collapse or expand · Alt-click for every file">
+        <summary class="diff-file-header" title="{{ rbit_localization::RepoHistoryLabel::CollapseHint.text(page.locale) }}">
           {% call ui::icon("chevron-right", "size-3.5 shrink-0 text-ink-faint transition-transform duration-150 group-open:rotate-inline-90") %}{% endcall %}
-          <span class="status-mark status-{{ file.status_key }}" title="{{ file.status }}"><span class="sr-only">{{ file.status }}</span></span>
+          <span class="status-mark status-{{ file.status_key }}" title="{{ crate::views::repo_text::change_status(file.status_key).text(page.locale) }}"><span class="sr-only">{% call ui::localized(crate::views::repo_text::change_status(file.status_key).text(page.locale)) %}{% endcall %}</span></span>
           <span class="min-w-0 flex-1 truncate font-mono text-xs"><bdi dir="ltr">
             {%- if let Some(old) = file.old_path %}<span class="text-ink-faint">{{ old }} → </span>{% endif -%}
             <span class="text-ink-muted">{{ file.directory }}</span><span class="font-medium text-ink">{{ file.name }}</span>
           </bdi></span>
           <span id="{{ file.anchor }}-path" hidden>{{ file.path }}</span>
-          <button type="button" class="diff-file-action" data-copy="{{ file.anchor }}-path" aria-label="Copy path" title="Copy path">
+          <button type="button" class="diff-file-action" data-copy="{{ file.anchor }}-path" aria-label="{{ rbit_localization::RepoHistoryLabel::CopyPath.text(page.locale) }}" title="{{ rbit_localization::RepoHistoryLabel::CopyPath.text(page.locale) }}">
             {% call ui::icon("copy", "copy-idle size-3.5") %}{% endcall %}
             {% call ui::icon("check", "copy-done size-3.5 text-success") %}{% endcall %}
           </button>
@@ -57,7 +57,7 @@
           {% call stats::counts(file.additions, file.deletions, "diff-file-counts") %}{% endcall %}
           {% endif %}
           {% if let Some(url) = file.view_url %}
-          <a href="{{ url }}" class="diff-file-action px-2 font-sans" title="View the file at this commit">View<span class="sr-only"> {{ file.path }}</span></a>
+          <a href="{{ url }}" class="diff-file-action px-2 font-sans" title="{{ rbit_localization::RepoHistoryLabel::ViewFileAtCommit.text(page.locale) }}">{% call ui::localized(rbit_localization::RepoHistoryLabel::View.text(page.locale)) %}{% endcall %}<span class="sr-only"> {{ file.path }}</span></a>
           {% endif %}
         </summary>
         {% match file.body %}
@@ -74,13 +74,13 @@
           {%- endfor %}
         </div></div>
         {% when DiffBodyView::Binary %}
-        <p class="diff-placeholder">Binary file not shown.</p>
+        <p class="diff-placeholder">{% call ui::localized(rbit_localization::RepoHistoryLabel::BinaryNotShown.text(page.locale)) %}{% endcall %}</p>
         {% when DiffBodyView::TooLarge %}
-        <p class="diff-placeholder">Diff too large to display.</p>
+        <p class="diff-placeholder">{% call ui::localized(rbit_localization::RepoHistoryLabel::DiffTooLarge.text(page.locale)) %}{% endcall %}</p>
         {% when DiffBodyView::Submodule { old, new } %}
-        <p class="diff-placeholder font-mono text-xs">Submodule commit <bdi dir="ltr">{{ old }} → {{ new }}</bdi></p>
+        <p class="diff-placeholder font-mono text-xs">{% call ui::localized(rbit_localization::RepoHistoryLabel::SubmoduleCommit.text(page.locale)) %}{% endcall %} <bdi dir="ltr">{{ old }} → {{ new }}</bdi></p>
         {% when DiffBodyView::NoContentChanges %}
-        <p class="diff-placeholder">No content changes.</p>
+        <p class="diff-placeholder">{% call ui::localized(rbit_localization::RepoHistoryLabel::NoContentChanges.text(page.locale)) %}{% endcall %}</p>
         {% endmatch %}
       </details>
       {% endif %}

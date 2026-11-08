@@ -15,22 +15,22 @@
   </div>
   <div class="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line bg-subtle px-4 py-2.5 text-[13px] sm:px-5">
     {% call ui::avatar(commit.avatar, "size-5 text-[9px]") %}{% endcall %}
-    <span><span class="font-medium">{{ commit.author }}</span> <span class="text-ink-muted">committed</span> <time class="text-ink-muted" datetime="{{ commit.when_iso }}" title="{{ commit.when_iso }}">{{ commit.when }}</time></span>
-    {% if let Some(committer) = committer %}<span class="text-ink-muted">· committed by {{ committer }}</span>{% endif %}
+    <span><span class="font-medium">{{ commit.author }}</span> <span class="text-ink-muted">{% call ui::localized(rbit_localization::RepoHistoryLabel::Committed.text(page.locale)) %}{% endcall %}</span> <time class="text-ink-muted" datetime="{{ commit.when_iso }}" title="{{ commit.when_iso }}">{{ commit.when }}</time></span>
+    {% if let Some(committer) = committer %}<span class="text-ink-muted">· {% call ui::localized(rbit_localization::RepoHistoryLabel::CommittedBy.text(page.locale)) %}{% endcall %} {{ committer }}</span>{% endif %}
     <div class="ms-auto flex items-center gap-3 font-mono text-xs text-ink-muted">
       {% if !parents.is_empty() %}
-      <span>{% if parents.len() == 1 %}parent{% else %}parents{% endif %}
+      <span>{% call ui::localized(rbit_localization::RepoHistoryMessage::ParentNoun { count: parents.len() }.text(page.locale)) %}{% endcall %}
         {% for parent in parents %}<a href="{{ parent.url }}" class="text-ink hover:underline hover:underline-offset-4" dir="ltr">{{ parent.short_id }}</a>{% if !loop.last %} + {% endif %}{% endfor %}
       </span>
       {% endif %}
-      <span title="{{ commit.id }}">commit <bdi class="text-ink" dir="ltr">{{ commit.short_id }}</bdi></span>
-      <a href="{{ commit.browse_url }}" class="btn h-7 px-2 font-sans sm:h-7">Browse files</a>
+      <span title="{{ commit.id }}">{% call ui::localized(rbit_localization::RepoHistoryLabel::Commit.text(page.locale)) %}{% endcall %} <bdi class="text-ink" dir="ltr">{{ commit.short_id }}</bdi></span>
+      <a href="{{ commit.browse_url }}" class="btn h-7 px-2 font-sans sm:h-7">{% call ui::localized(rbit_localization::RepoHistoryLabel::BrowseFiles.text(page.locale)) %}{% endcall %}</a>
     </div>
   </div>
 </header>
 
 {% if let Some(checks) = checks %}
-<section class="box mt-4 overflow-hidden" aria-label="Checks">{% include "statuses/checks.html" %}</section>
+<section class="box mt-4 overflow-hidden" aria-label="{{ rbit_localization::RepoHistoryLabel::Checks.text(page.locale) }}">{% include "statuses/checks.html" %}</section>
 {% endif %}
 
 {% include "repo/file_diffs.html" %}

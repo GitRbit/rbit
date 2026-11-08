@@ -58,19 +58,11 @@ releases/card.html
 releases/form.html
 releases/list.html
 releases/show.html
-repo/blame.html
-repo/branch_graph.html
-repo/commit.html
 repo/commit_box.html
-repo/commits.html
-repo/compare.html
 repo/create_tabs.html
 repo/delete_file.html
 repo/deploy_keys.html
-repo/diff_counts.html
-repo/diff_tree.html
 repo/edit_file.html
-repo/file_diffs.html
 repo/import_status.html
 repo/mirror_progress.html
 repo/mirror_settings.html
@@ -80,7 +72,6 @@ repo/new_mirror.html
 repo/push_mirror_edit.html
 repo/push_mirror_fields.html
 repo/push_mirrors.html
-repo/refs.html
 repo/settings.html
 repo/upload_files.html
 settings/account.html

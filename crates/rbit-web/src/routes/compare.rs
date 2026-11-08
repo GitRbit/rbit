@@ -17,6 +17,7 @@ use axum::{
 };
 use rbit_core::pull::HeadSpec;
 use rbit_git::{DiffLimits, RefKind};
+use rbit_localization::{RepoHistoryLabel, RepoHistoryMessage};
 use rbit_services::{RepoContext, ServiceError};
 use serde::Deserialize;
 
@@ -119,7 +120,7 @@ fn picker_with(loaded: &RepoPage, network: &[rbit_core::OwnedRepository], base: 
 
 fn empty_page(loaded: &RepoPage, state: &AppState, page: Page, picker: ComparePicker) -> ComparePage {
     ComparePage {
-        page: page.titled(format!("Compare · {}", loaded.ctx.repo.full_name())),
+        page: crate::views::repo_text::titled(page, RepoHistoryLabel::Compare, &loaded.ctx.repo.full_name()),
         header: loaded.header(state, "code"),
         picker,
         summary: None,
@@ -205,7 +206,8 @@ async fn compare(
     let head_full_name = head_ctx.repo.full_name();
     let picker = picker_with(&loaded, &network.unwrap_or_default(), &base, &head_spec_parsed.branch, &head_full_name);
     let mut view = empty_page(&loaded, &state, page, picker);
-    view.page.title = Some(format!("Compare {base}...{head} · {}", loaded.ctx.repo.full_name()));
+    let title = crate::views::repo_text::text(&view.page, RepoHistoryMessage::CompareTitle { base: &base, head: &head });
+    view.page.title = Some(format!("{title} · {}", loaded.ctx.repo.full_name()));
     let head_urls = RepoUrls::new(head_ctx.repo.owner.name.as_str(), head_ctx.repo.repo.name.as_str());
     let mut summary = CompareSummary::new(&comparison, &base, &head, &loaded.urls, &head_urls, same);
     if comparison.ahead > 0 && comparison.merge_base.is_some() {

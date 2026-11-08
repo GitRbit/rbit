@@ -1,14 +1,14 @@
 {% if graph.rows.is_empty() %}
-{% call ui::empty_state("branch", "No branches yet", "Push a commit to create the first branch.") %}{% endcall %}
+{% call ui::empty_state("branch", rbit_localization::RepoHistoryLabel::NoBranchesYet.text(page.locale), rbit_localization::RepoHistoryLabel::NoBranchesText.text(page.locale)) %}{% endcall %}
 {% else %}
-<div class="commit-graph" data-commit-graph aria-label="Branch commit graph">
+<div class="commit-graph" data-commit-graph aria-label="{{ rbit_localization::RepoHistoryLabel::BranchCommitGraph.text(page.locale) }}">
   <div class="commit-graph-help">
-    <span data-graph-status aria-live="polite">Follow colored lines to trace history. Select a track to highlight its commits.</span>
-    <button type="button" class="link" data-graph-clear hidden>Clear highlight</button>
+    <span data-graph-status aria-live="polite">{% call ui::localized(rbit_localization::RepoHistoryLabel::GraphHelp.text(page.locale)) %}{% endcall %}</span>
+    <button type="button" class="link" data-graph-clear hidden>{% call ui::localized(rbit_localization::RepoHistoryLabel::ClearHighlight.text(page.locale)) %}{% endcall %}</button>
   </div>
   <table class="commit-graph-table">
     <colgroup><col class="commit-graph-column{% if graph.width <= 112 %} commit-graph-column-compact{% endif %}"><col></colgroup>
-    <thead class="sr-only"><tr><th>History connections</th><th>Commit details</th></tr></thead>
+    <thead class="sr-only"><tr><th>{% call ui::localized(rbit_localization::RepoHistoryLabel::HistoryConnections.text(page.locale)) %}{% endcall %}</th><th>{% call ui::localized(rbit_localization::RepoHistoryLabel::CommitDetails.text(page.locale)) %}{% endcall %}</th></tr></thead>
     <tbody>
     {% for row in graph.rows %}
     <tr data-graph-row="{{ row.lane }}">
@@ -20,10 +20,10 @@
       </td>
       <td class="commit-graph-details">
         <div class="commit-graph-labels">
-          <button type="button" class="commit-graph-track graph-color-{{ row.color }}" data-graph-track="{{ row.lane }}" aria-pressed="false" aria-label="Highlight track {{ row.lane + 1 }}">Track {{ row.lane + 1 }}</button>
-          {% for branch in row.branches %}<a href="{{ branch.1 }}" class="badge commit-graph-branch graph-color-{{ row.color }}" title="Branch: {{ branch.0 }}">{% call ui::icon("branch", "size-3 shrink-0") %}{% endcall %}<span>{{ branch.0 }}</span></a>{% endfor %}
-          {% if row.more_branches > 0 %}<a href="{{ header.branches_url }}" class="badge">{{ row.more_branches }} more branches</a>{% endif %}
-          {% if row.is_merge %}<span class="commit-graph-merge">Merge</span>{% endif %}
+          <button type="button" class="commit-graph-track graph-color-{{ row.color }}" data-graph-track="{{ row.lane }}" aria-pressed="false" aria-label="{{ rbit_localization::RepoHistoryMessage::HighlightTrack { track: row.lane + 1 }.text(page.locale) }}">{% call ui::localized(rbit_localization::RepoHistoryMessage::Track { track: row.lane + 1 }.text(page.locale)) %}{% endcall %}</button>
+          {% for branch in row.branches %}<a href="{{ branch.1 }}" class="badge commit-graph-branch graph-color-{{ row.color }}" title="{{ rbit_localization::RepoHistoryMessage::BranchName { name: branch.0 }.text(page.locale) }}">{% call ui::icon("branch", "size-3 shrink-0") %}{% endcall %}<span>{{ branch.0 }}</span></a>{% endfor %}
+          {% if row.more_branches > 0 %}<a href="{{ header.branches_url }}" class="badge">{% call ui::localized(rbit_localization::RepoHistoryMessage::MoreBranches { count: *row.more_branches }.text(page.locale)) %}{% endcall %}</a>{% endif %}
+          {% if row.is_merge %}<span class="commit-graph-merge">{% call ui::localized(rbit_localization::RepoHistoryLabel::Merge.text(page.locale)) %}{% endcall %}</span>{% endif %}
         </div>
         <a href="{{ row.commit.url }}" class="commit-graph-summary hover:underline">{{ row.commit.summary }}</a>
         <div class="commit-graph-meta">
@@ -37,5 +37,5 @@
     </tbody>
   </table>
 </div>
-{% if graph.truncated %}<p class="border-t border-line p-4 text-xs text-ink-muted">Showing the latest 200 commits across branches. Lines at the bottom continue into older history. Open a branch’s history to explore further.</p>{% endif %}
+{% if graph.truncated %}<p class="border-t border-line p-4 text-xs text-ink-muted">{% call ui::localized(rbit_localization::RepoHistoryLabel::GraphTruncated.text(page.locale)) %}{% endcall %}</p>{% endif %}
 {% endif %}

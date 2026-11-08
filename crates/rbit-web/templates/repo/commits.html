@@ -9,7 +9,7 @@
 
 <div class="space-y-6">
   {% for day in days %}
-  <section aria-label="Commits on {{ day.date }}">
+  <section aria-label="{{ rbit_localization::RepoHistoryMessage::CommitsOn { date: day.date }.text(page.locale) }}">
     <h2 class="mb-2 text-xs font-medium text-ink-muted">{{ day.date }}</h2>
     <ol class="box">
       {% for commit in day.commits %}
@@ -21,8 +21,8 @@
         </div>
         {% if let Some(mark) = commit.status %}{% include "statuses/mark.html" %}{% endif %}
         <div class="flex shrink-0" dir="ltr">
-          <a href="{{ commit.url }}" class="btn h-7 rounded-e-none px-2 font-mono text-xs sm:h-7" title="View commit {{ commit.id }}">{{ commit.short_id }}</a>
-          <a href="{{ commit.browse_url }}" class="btn btn-icon -ms-px h-7 w-7 rounded-s-none sm:h-7 sm:w-7" aria-label="Browse files at this commit" title="Browse files">{% call ui::icon("code", "size-3.5") %}{% endcall %}</a>
+          <a href="{{ commit.url }}" class="btn h-7 rounded-e-none px-2 font-mono text-xs sm:h-7" title="{{ rbit_localization::RepoHistoryMessage::ViewCommit { id: commit.id }.text(page.locale) }}">{{ commit.short_id }}</a>
+          <a href="{{ commit.browse_url }}" class="btn btn-icon -ms-px h-7 w-7 rounded-s-none sm:h-7 sm:w-7" aria-label="{{ rbit_localization::RepoHistoryLabel::BrowseFilesAtCommit.text(page.locale) }}" title="{{ rbit_localization::RepoHistoryLabel::BrowseFiles.text(page.locale) }}">{% call ui::icon("code", "size-3.5") %}{% endcall %}</a>
         </div>
       </li>
       {% endfor %}
@@ -32,9 +32,9 @@
 </div>
 
 {% if newer_url.is_some() || older_url.is_some() %}
-<nav class="mt-6 flex justify-center" aria-label="Pagination">
-  {% if let Some(url) = newer_url %}<a class="btn rounded-e-none" href="{{ url }}">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}Newer</a>{% else %}<span class="btn pointer-events-none rounded-e-none opacity-50" aria-disabled="true">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}Newer</span>{% endif %}
-  {% if let Some(url) = older_url %}<a class="btn -ms-px rounded-s-none" href="{{ url }}" data-preload="visible">Older{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</a>{% else %}<span class="btn pointer-events-none -ms-px rounded-s-none opacity-50" aria-disabled="true">Older{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</span>{% endif %}
+<nav class="mt-6 flex justify-center" aria-label="{{ rbit_localization::RepoHistoryLabel::Pagination.text(page.locale) }}">
+  {% if let Some(url) = newer_url %}<a class="btn rounded-e-none" href="{{ url }}">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}{% call ui::localized(rbit_localization::RepoHistoryLabel::Newer.text(page.locale)) %}{% endcall %}</a>{% else %}<span class="btn pointer-events-none rounded-e-none opacity-50" aria-disabled="true">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}{% call ui::localized(rbit_localization::RepoHistoryLabel::Newer.text(page.locale)) %}{% endcall %}</span>{% endif %}
+  {% if let Some(url) = older_url %}<a class="btn -ms-px rounded-s-none" href="{{ url }}" data-preload="visible">{% call ui::localized(rbit_localization::RepoHistoryLabel::Older.text(page.locale)) %}{% endcall %}{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</a>{% else %}<span class="btn pointer-events-none -ms-px rounded-s-none opacity-50" aria-disabled="true">{% call ui::localized(rbit_localization::RepoHistoryLabel::Older.text(page.locale)) %}{% endcall %}{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</span>{% endif %}
 </nav>
 {% endif %}
 {% endblock %}
