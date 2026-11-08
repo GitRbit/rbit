@@ -4,6 +4,7 @@
 
 use askama::Template;
 use askama_web::WebTemplate;
+use rbit_localization::Locale;
 use rbit_services::{StarSummary, stars::Stargazer};
 
 use crate::{
@@ -102,7 +103,11 @@ impl RepoSettingsPage {
         Self {
             cards: settings_cards(&header),
             danger_cards: transfer::danger_zone_cards(&header),
-            page: page.titled(format!("Settings · {}/{}", header.owner, header.name)),
+            page: super::repo_text::titled(
+                page,
+                rbit_localization::RepoSettingsLabel::Settings,
+                &format!("{}/{}", header.owner, header.name),
+            ),
             name: header.name.clone(),
             full_name: format!("{}/{}", header.owner, header.name),
             general_url: settings_url.clone(),
@@ -158,11 +163,13 @@ pub struct StarButton {
     pub count: i64,
     pub starred: bool,
     pub is_signed_in: bool,
+    /// The page's language, for the button's labels.
+    pub locale: Locale,
 }
 
 impl StarButton {
     /// `repo_url` is `/{owner}/{repo}`; `return_to` a local path.
-    pub fn new(repo_url: &str, summary: StarSummary, is_signed_in: bool, return_to: &str) -> Self {
+    pub fn new(repo_url: &str, summary: StarSummary, is_signed_in: bool, return_to: &str, locale: Locale) -> Self {
         Self {
             action_url: format!("{repo_url}/star"),
             stargazers_url: format!("{repo_url}/stargazers"),
@@ -171,6 +178,7 @@ impl StarButton {
             count: summary.count,
             starred: summary.starred_by_viewer,
             is_signed_in,
+            locale,
         }
     }
 
@@ -181,10 +189,11 @@ impl StarButton {
 }
 
 impl RepoHeader {
-    /// The star button for this header; called from `repo/subnav.html`.
-    pub fn star_button(&self, is_signed_in: bool, return_to: &str) -> StarButton {
+    /// The star button for this header; called from `repo/subnav.html` with the page locale.
+    #[allow(clippy::trivially_copy_pass_by_ref, reason = "Askama passes the page locale by reference")]
+    pub fn star_button(&self, is_signed_in: bool, return_to: &str, locale: &Locale) -> StarButton {
         let summary = StarSummary { count: self.star_count, starred_by_viewer: self.starred_by_viewer };
-        StarButton::new(&self.home_url, summary, is_signed_in, return_to)
+        StarButton::new(&self.home_url, summary, is_signed_in, return_to, *locale)
     }
 }
 
@@ -235,13 +244,13 @@ mod tests {
     #[test]
     fn star_button_urls_and_state() {
         let summary = StarSummary { count: 3, starred_by_viewer: true };
-        let button = StarButton::new("/alice/proj", summary, true, "/alice/proj/tree/main");
+        let button = StarButton::new("/alice/proj", summary, true, "/alice/proj/tree/main", Locale::English);
         assert_eq!(button.action_url, "/alice/proj/star");
         assert_eq!(button.stargazers_url, "/alice/proj/stargazers");
         assert_eq!(button.login_url, "/login?next=/alice/proj/tree/main");
         assert_eq!(button.next_action(), "unstar");
 
-        let anonymous = StarButton::new("/alice/proj", StarSummary::default(), false, "/alice/proj/blob/main/a b&c.md");
+        let anonymous = StarButton::new("/alice/proj", StarSummary::default(), false, "/alice/proj/blob/main/a b&c.md", Locale::English);
         assert_eq!(anonymous.login_url, "/login?next=/alice/proj/blob/main/a%20b%26c.md");
         assert_eq!(anonymous.next_action(), "star");
     }
@@ -282,7 +291,7 @@ mod tests {
 
     #[test]
     fn star_fragment_renders_toggle() {
-        let star = StarButton::new("/alice/proj", StarSummary { count: 1, starred_by_viewer: true }, true, "/alice/proj");
+        let star = StarButton::new("/alice/proj", StarSummary { count: 1, starred_by_viewer: true }, true, "/alice/proj", Locale::English);
         let html = StarButtonFragment { star }.render().unwrap();
         assert!(html.contains(r#"id="star-button""#));
         assert!(html.contains(r#"hx-post="/alice/proj/star""#));

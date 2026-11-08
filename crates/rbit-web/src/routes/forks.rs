@@ -12,6 +12,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
     routing::get,
 };
+use rbit_localization::RepoBrowseMessage;
 use rbit_services::{ServiceError, forks::ForkInput};
 use serde::Deserialize;
 
@@ -24,8 +25,14 @@ use crate::{
         components::{FormError, RepoCard},
         forks::{ForkFormPage, ForksPage},
         layout::Page,
+        repo_text,
     },
 };
+
+/// "Fork owner/name", the fork form's title.
+fn fork_title(loaded: &RepoPage) -> RepoBrowseMessage<'_> {
+    RepoBrowseMessage::ForkTitle { owner: loaded.ctx.repo.owner.name.as_str(), name: loaded.ctx.repo.repo.name.as_str() }
+}
 
 pub fn routes() -> Router<AppState> {
     Router::new().route("/{owner}/{repo}/fork", get(fork_form).post(fork)).route("/{owner}/{repo}/forks", get(list))
@@ -42,7 +49,7 @@ async fn fork_form(
 ) -> WebResult<ForkFormPage> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     Ok(ForkFormPage {
-        page: page.titled(format!("Fork {}", loaded.ctx.repo.full_name())),
+        page: repo_text::titled_as(page, fork_title(&loaded)),
         header: loaded.header(&state, "code"),
         error: FormError::default(),
         owners: owner_options(&state, &user, "").await?,
@@ -74,7 +81,7 @@ async fn fork(
         Ok(created) => Ok(Redirect::to(&format!("/{}/{}", created.owner.name, created.repo.name)).into_response()),
         Err(error @ (ServiceError::Invalid(_) | ServiceError::Conflict(_))) => {
             let view = ForkFormPage {
-                page: page.titled(format!("Fork {}", loaded.ctx.repo.full_name())),
+                page: repo_text::titled_as(page, fork_title(&loaded)),
                 header: loaded.header(&state, "code"),
                 error: FormError::from_message(&error.to_string()),
                 owners: owner_options(&state, &user, &form.owner).await?,
@@ -98,7 +105,7 @@ async fn list(
     let forks = state.services.forks.list(viewer.user(), &loaded.ctx).await?;
     let stars = state.services.stars.counts(&forks).await?;
     Ok(ForksPage {
-        page: page.titled(format!("Forks · {}", loaded.ctx.repo.full_name())),
+        page: repo_text::titled(page, rbit_localization::RepoNavLabel::Forks, &loaded.ctx.repo.full_name()),
         header: loaded.header(&state, "code"),
         forks: RepoCard::list(&forks, &stars),
         fork_url: viewer.user().is_some().then(|| format!("{}/fork", loaded.urls.home())),

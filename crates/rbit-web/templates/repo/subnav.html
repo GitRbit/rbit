@@ -1,13 +1,13 @@
 {% import "macros.html" as ui %}
 {#- Repository tabs, star and fork buttons and clone menu under the top bar; expects `header: RepoHeader` and `page: Page` fields. -#}
 {% if let Some(parent) = header.forked_from %}
-<p class="mx-auto flex max-w-[96rem] items-center gap-1.5 px-4 pt-2 text-xs text-ink-muted sm:px-6">{% call ui::icon("git-fork", "size-3 shrink-0") %}{% endcall %}<span class="truncate">forked from <a class="font-medium text-ink hover:underline hover:underline-offset-4" href="{{ parent.url }}">{{ parent.full_name }}</a></span></p>
+<p class="mx-auto flex max-w-[96rem] items-center gap-1.5 px-4 pt-2 text-xs text-ink-muted sm:px-6">{% call ui::icon("git-fork", "size-3 shrink-0") %}{% endcall %}<span class="truncate">{% call ui::localized(rbit_localization::RepoNavLabel::ForkedFrom.text(page.locale)) %}{% endcall %} <a class="font-medium text-ink hover:underline hover:underline-offset-4" href="{{ parent.url }}">{{ parent.full_name }}</a></span></p>
 {% endif %}
 {% if header.archived %}
-<div class="mx-auto max-w-[96rem] px-4 pt-2 sm:px-6"><p class="flex items-start gap-2 rounded-(--radius-ui) border border-line bg-subtle px-3 py-2 text-[13px] text-ink-muted" role="note">{% call ui::icon("archive", "mt-0.5 size-3.5 shrink-0") %}{% endcall %}<span>This repository has been archived. It is read-only: you can clone, fork and star it, but not change it.</span></p></div>
+<div class="mx-auto max-w-[96rem] px-4 pt-2 sm:px-6"><p class="flex items-start gap-2 rounded-(--radius-ui) border border-line bg-subtle px-3 py-2 text-[13px] text-ink-muted" role="note">{% call ui::icon("archive", "mt-0.5 size-3.5 shrink-0") %}{% endcall %}<span>{% call ui::localized(rbit_localization::RepoNavLabel::ArchivedNote.text(page.locale)) %}{% endcall %}</span></p></div>
 {% endif %}
 {% if let Some(upstream) = header.mirror_url %}
-<p class="mx-auto flex max-w-[96rem] items-center gap-1.5 px-4 pt-2 text-xs text-ink-muted sm:px-6">{% call ui::icon("refresh", "size-3 shrink-0") %}{% endcall %}<span class="truncate">mirror of <span class="font-mono text-ink" dir="ltr">{{ upstream }}</span></span></p>
+<p class="mx-auto flex max-w-[96rem] items-center gap-1.5 px-4 pt-2 text-xs text-ink-muted sm:px-6">{% call ui::icon("refresh", "size-3 shrink-0") %}{% endcall %}<span class="truncate">{% call ui::localized(rbit_localization::RepoNavLabel::MirrorOf.text(page.locale)) %}{% endcall %} <span class="font-mono text-ink" dir="ltr">{{ upstream }}</span></span></p>
 {% endif %}
 {#- `data-repo-scope` lets nav.js swap only <main> and these tabs between pages of the same repository;
     the markers are where `partial.rs` cuts them out for partial responses (the div must open exactly so).
@@ -20,55 +20,55 @@
     <a href="/{{ header.owner }}" class="block truncate text-xs text-ink-muted hover:text-ink">{{ header.owner }}</a>
     <p class="flex min-w-0 items-center gap-2">
       <a href="{{ header.home_url }}" class="truncate text-base font-semibold tracking-tight" title="{{ header.owner }}/{{ header.name }}">{{ header.name }}</a>
-      {% if header.is_private %}{% call ui::icon("lock", "size-3.5 shrink-0 text-ink-muted") %}{% endcall %}<span class="sr-only">Private</span>{% endif %}
+      {% if header.is_private %}{% call ui::icon("lock", "size-3.5 shrink-0 text-ink-muted") %}{% endcall %}<span class="sr-only">{% call ui::localized(rbit_localization::RepoNavLabel::Private.text(page.locale)) %}{% endcall %}</span>{% endif %}
     </p>
   </div>
 
-  <nav class="repo-tabs -mb-px flex min-w-0 gap-5 scroll-tabs" aria-label="Repository">
-    <a class="tab" data-repo-tab="code" data-preload="visible" href="{{ header.home_url }}" {% if header.active_tab == "code" %}aria-current="page"{% endif %}>Code</a>
-    <a class="tab" data-repo-tab="issues" data-preload="visible" href="{{ header.issues_url }}" {% if header.active_tab == "issues" %}aria-current="page"{% endif %}>Issues{% if header.open_issues > 0 %}<span class="badge tabular-nums">{{ header.open_issues }}</span>{% endif %}</a>
-    <a class="tab" data-repo-tab="pulls" data-preload="visible" href="{{ header.pulls_url }}" {% if header.active_tab == "pulls" %}aria-current="page"{% endif %}>Pull requests{% if header.open_pulls > 0 %}<span class="badge tabular-nums">{{ header.open_pulls }}</span>{% endif %}</a>
-    <a class="tab" data-repo-tab="commits" data-preload="visible" href="{{ header.commits_url }}" {% if header.active_tab == "commits" %}aria-current="page"{% endif %}>Commits</a>
-    <a class="tab" data-repo-tab="branches" data-preload="visible" href="{{ header.branches_url }}" {% if header.active_tab == "branches" %}aria-current="page"{% endif %}>Branches</a>
-    <a class="tab" data-repo-tab="tags" data-preload="visible" href="{{ header.tags_url }}" {% if header.active_tab == "tags" %}aria-current="page"{% endif %}>Tags</a>
-    <a class="tab" data-repo-tab="releases" data-preload="visible" href="{{ header.releases_url }}" {% if header.active_tab == "releases" %}aria-current="page"{% endif %}>Releases</a>
-    <a class="tab" data-repo-tab="activity" data-preload="visible" href="{{ header.activity_url }}" {% if header.active_tab == "activity" %}aria-current="page"{% endif %}>Activity</a>
+  <nav class="repo-tabs -mb-px flex min-w-0 gap-5 scroll-tabs" aria-label="{{ rbit_localization::RepoNavLabel::Repository.text(page.locale) }}">
+    <a class="tab" data-repo-tab="code" data-preload="visible" href="{{ header.home_url }}" {% if header.active_tab == "code" %}aria-current="page"{% endif %}>{% call ui::localized(rbit_localization::RepoNavLabel::Code.text(page.locale)) %}{% endcall %}</a>
+    <a class="tab" data-repo-tab="issues" data-preload="visible" href="{{ header.issues_url }}" {% if header.active_tab == "issues" %}aria-current="page"{% endif %}>{% call ui::localized(rbit_localization::RepoNavLabel::Issues.text(page.locale)) %}{% endcall %}{% if header.open_issues > 0 %}<span class="badge tabular-nums">{{ header.open_issues }}</span>{% endif %}</a>
+    <a class="tab" data-repo-tab="pulls" data-preload="visible" href="{{ header.pulls_url }}" {% if header.active_tab == "pulls" %}aria-current="page"{% endif %}>{% call ui::localized(rbit_localization::RepoNavLabel::PullRequests.text(page.locale)) %}{% endcall %}{% if header.open_pulls > 0 %}<span class="badge tabular-nums">{{ header.open_pulls }}</span>{% endif %}</a>
+    <a class="tab" data-repo-tab="commits" data-preload="visible" href="{{ header.commits_url }}" {% if header.active_tab == "commits" %}aria-current="page"{% endif %}>{% call ui::localized(rbit_localization::RepoNavLabel::Commits.text(page.locale)) %}{% endcall %}</a>
+    <a class="tab" data-repo-tab="branches" data-preload="visible" href="{{ header.branches_url }}" {% if header.active_tab == "branches" %}aria-current="page"{% endif %}>{% call ui::localized(rbit_localization::RepoNavLabel::Branches.text(page.locale)) %}{% endcall %}</a>
+    <a class="tab" data-repo-tab="tags" data-preload="visible" href="{{ header.tags_url }}" {% if header.active_tab == "tags" %}aria-current="page"{% endif %}>{% call ui::localized(rbit_localization::RepoNavLabel::Tags.text(page.locale)) %}{% endcall %}</a>
+    <a class="tab" data-repo-tab="releases" data-preload="visible" href="{{ header.releases_url }}" {% if header.active_tab == "releases" %}aria-current="page"{% endif %}>{% call ui::localized(rbit_localization::RepoNavLabel::Releases.text(page.locale)) %}{% endcall %}</a>
+    <a class="tab" data-repo-tab="activity" data-preload="visible" href="{{ header.activity_url }}" {% if header.active_tab == "activity" %}aria-current="page"{% endif %}>{% call ui::localized(rbit_localization::RepoNavLabel::Activity.text(page.locale)) %}{% endcall %}</a>
     {% if let Some(actions_url) = header.actions_url %}
-    <a class="tab" data-repo-tab="actions" data-preload="visible" href="{{ actions_url }}" {% if header.active_tab == "actions" %}aria-current="page"{% endif %}>Actions</a>
+    <a class="tab" data-repo-tab="actions" data-preload="visible" href="{{ actions_url }}" {% if header.active_tab == "actions" %}aria-current="page"{% endif %}>{% call ui::localized(rbit_localization::RepoNavLabel::Actions.text(page.locale)) %}{% endcall %}</a>
     {% endif %}
     {% if header.can_admin %}
-    <a class="tab" data-repo-tab="settings" href="{{ header.settings_url }}" {% if header.active_tab == "settings" %}aria-current="page"{% endif %}>Settings</a>
+    <a class="tab" data-repo-tab="settings" href="{{ header.settings_url }}" {% if header.active_tab == "settings" %}aria-current="page"{% endif %}>{% call ui::localized(rbit_localization::RepoNavLabel::Settings.text(page.locale)) %}{% endcall %}</a>
     {% endif %}
   </nav>
 
   <div class="repo-actions flex shrink-0 items-center gap-2">
-    {% let star = header.star_button(page.is_signed_in(), page.path.as_str()) %}
+    {% let star = header.star_button(page.is_signed_in(), page.path.as_str(), page.locale) %}
     {% include "repo/star_button.html" %}
 
     <div class="flex shrink-0">
-      <a class="btn h-8 rounded-e-none px-2.5 sm:h-7" href="{{ header.fork_url }}" title="Fork this repository">{% call ui::icon("git-fork", "size-3.5 text-ink-muted") %}{% endcall %}<span class="hidden sm:inline">Fork</span></a>
-      <a class="btn -ms-px h-8 rounded-s-none px-2 tabular-nums sm:h-7" href="{{ header.forks_url }}" title="Forks" aria-label="{{ header.fork_count }} {% if header.fork_count == 1 %}fork{% else %}forks{% endif %}">{{ header.fork_count }}</a>
+      <a class="btn h-8 rounded-e-none px-2.5 sm:h-7" href="{{ header.fork_url }}" title="{{ rbit_localization::RepoNavLabel::ForkThisRepository.text(page.locale) }}">{% call ui::icon("git-fork", "size-3.5 text-ink-muted") %}{% endcall %}<span class="hidden sm:inline">{% call ui::localized(rbit_localization::RepoNavLabel::Fork.text(page.locale)) %}{% endcall %}</span></a>
+      <a class="btn -ms-px h-8 rounded-s-none px-2 tabular-nums sm:h-7" href="{{ header.forks_url }}" title="{{ rbit_localization::RepoNavLabel::Forks.text(page.locale) }}" aria-label="{{ rbit_localization::RepoNavMessage::ForkCount { count: *header.fork_count }.text(page.locale) }}">{{ header.fork_count }}</a>
     </div>
 
     <details class="relative" data-menu>
       <summary class="btn h-8 cursor-pointer sm:h-7">
-        Clone{% call ui::icon("chevron-down", "size-3.5 text-ink-muted") %}{% endcall %}
+        {% call ui::localized(rbit_localization::RepoNavLabel::Clone.text(page.locale)) %}{% endcall %}{% call ui::icon("chevron-down", "size-3.5 text-ink-muted") %}{% endcall %}
       </summary>
       <div class="menu inset-e-0 w-[min(24rem,calc(100vw-2rem))] p-3">
         <p class="mb-2 text-xs font-medium text-ink-muted">HTTPS</p>
         <div class="flex" dir="ltr">
-          <input id="clone-url" class="input h-8 rounded-e-none font-mono text-xs sm:h-8" value="{{ header.clone_url }}" readonly aria-label="Clone URL">
-          <button type="button" class="btn btn-icon -ms-px h-8 rounded-s-none sm:h-8" data-copy="clone-url" aria-label="Copy clone URL" title="Copy">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
+          <input id="clone-url" class="input h-8 rounded-e-none font-mono text-xs sm:h-8" value="{{ header.clone_url }}" readonly aria-label="{{ rbit_localization::RepoNavLabel::CloneUrl.text(page.locale) }}">
+          <button type="button" class="btn btn-icon -ms-px h-8 rounded-s-none sm:h-8" data-copy="clone-url" aria-label="{{ rbit_localization::RepoNavLabel::CopyCloneUrl.text(page.locale) }}" title="{{ rbit_localization::RepoNavLabel::Copy.text(page.locale) }}">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
         </div>
         {% if let Some(ssh_url) = header.ssh_clone_url %}
         <p class="mb-2 mt-3 text-xs font-medium text-ink-muted">SSH</p>
         <div class="flex" dir="ltr">
-          <input id="ssh-clone-url" class="input h-8 rounded-e-none font-mono text-xs sm:h-8" value="{{ ssh_url }}" readonly aria-label="SSH clone URL">
-          <button type="button" class="btn btn-icon -ms-px h-8 rounded-s-none sm:h-8" data-copy="ssh-clone-url" aria-label="Copy SSH clone URL" title="Copy">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
+          <input id="ssh-clone-url" class="input h-8 rounded-e-none font-mono text-xs sm:h-8" value="{{ ssh_url }}" readonly aria-label="{{ rbit_localization::RepoNavLabel::SshCloneUrl.text(page.locale) }}">
+          <button type="button" class="btn btn-icon -ms-px h-8 rounded-s-none sm:h-8" data-copy="ssh-clone-url" aria-label="{{ rbit_localization::RepoNavLabel::CopySshCloneUrl.text(page.locale) }}" title="{{ rbit_localization::RepoNavLabel::Copy.text(page.locale) }}">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
         </div>
-        <p class="mt-2 text-xs text-ink-faint">SSH needs a key in <a class="underline hover:text-ink" href="/settings/keys">your settings</a>.</p>
+        <p class="mt-2 text-xs text-ink-faint">{% call ui::localized(rbit_localization::RepoNavLabel::SshKeyNote.text(page.locale)) %}{% endcall %} <a class="underline hover:text-ink" href="/settings/keys">{% call ui::localized(rbit_localization::RepoNavLabel::YourSettings.text(page.locale)) %}{% endcall %}</a>.</p>
         {% endif %}
-        <a class="btn mt-3 w-full justify-center" href="{{ header.zip_url }}" hx-boost="false" download>{% call ui::icon("archive", "size-3.5") %}{% endcall %}Download ZIP</a>
+        <a class="btn mt-3 w-full justify-center" href="{{ header.zip_url }}" hx-boost="false" download>{% call ui::icon("archive", "size-3.5") %}{% endcall %}{% call ui::localized(rbit_localization::RepoNavLabel::DownloadZip.text(page.locale)) %}{% endcall %}</a>
       </div>
     </details>
   </div>

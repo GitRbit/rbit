@@ -4,14 +4,14 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <section class="mx-auto max-w-xl">
-  <h1 class="text-xl font-semibold tracking-tight">Fork {{ header.owner }}/{{ header.name }}</h1>
-  <p class="mt-1 text-[13px] text-ink-muted">A fork is your own copy of the repository's branches and tags. It keeps the original's visibility{% if header.is_private %} — this one stays private{% endif %}.</p>
+  <h1 class="text-xl font-semibold tracking-tight">{% call ui::localized(rbit_localization::RepoBrowseMessage::ForkTitle { owner: header.owner, name: header.name }.text(page.locale)) %}{% endcall %}</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">{% if header.is_private %}{% call ui::localized(rbit_localization::RepoBrowseLabel::ForkLeadPrivate.text(page.locale)) %}{% endcall %}{% else %}{% call ui::localized(rbit_localization::RepoBrowseLabel::ForkLead.text(page.locale)) %}{% endcall %}{% endif %}</p>
 
   <form method="post" action="{{ action_url }}" class="mt-8" novalidate>
     {% call ui::form_error(error) %}{% endcall %}
     <div class="grid gap-x-2 gap-y-5 sm:grid-cols-[minmax(0,13rem)_auto_minmax(0,1fr)] sm:items-end">
       <div>
-        <label class="label" for="fork-owner">Owner</label>
+        <label class="label" for="fork-owner">{% call ui::localized(rbit_localization::RepoBrowseLabel::Owner.text(page.locale)) %}{% endcall %}</label>
         <div class="relative">
           <select class="input cursor-pointer appearance-none pe-9" id="fork-owner" name="owner">
             {% for owner in owners %}
@@ -23,13 +23,13 @@
       </div>
       <span class="hidden h-9 items-center text-ink-faint sm:flex" aria-hidden="true">/</span>
       <div>
-        <label class="label" for="fork-name">Name</label>
+        <label class="label" for="fork-name">{% call ui::localized(rbit_localization::RepoBrowseLabel::Name.text(page.locale)) %}{% endcall %}</label>
         <input class="input" id="fork-name" name="name" value="{{ name }}" maxlength="100" autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9._\-]+" required>
       </div>
     </div>
     <div class="mt-8 flex flex-wrap items-center gap-2">
-      <button type="submit" class="btn btn-primary">{% call ui::icon("git-fork", "size-3.5") %}{% endcall %}Create fork</button>
-      <a href="{{ header.home_url }}" class="btn btn-ghost">Cancel</a>
+      <button type="submit" class="btn btn-primary">{% call ui::icon("git-fork", "size-3.5") %}{% endcall %}{% call ui::localized(rbit_localization::RepoBrowseLabel::CreateFork.text(page.locale)) %}{% endcall %}</button>
+      <a href="{{ header.home_url }}" class="btn btn-ghost">{% call ui::localized(rbit_localization::RepoBrowseLabel::Cancel.text(page.locale)) %}{% endcall %}</a>
     </div>
   </form>
 </section>

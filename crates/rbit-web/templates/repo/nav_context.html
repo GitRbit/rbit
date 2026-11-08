@@ -6,5 +6,5 @@
   <a href="/{{ header.owner }}" class="truncate text-ink-muted hover:text-ink">{{ header.owner }}</a>
   <span class="text-ink-faint">/</span>
   <a href="{{ header.home_url }}" class="truncate font-medium">{{ header.name }}</a>
-  {% if header.is_private %}<span class="badge">Private</span>{% endif %}
+  {% if header.is_private %}<span class="badge">{% call ui::localized(rbit_localization::RepoNavLabel::Private.text(page.locale)) %}{% endcall %}</span>{% endif %}
 </span>

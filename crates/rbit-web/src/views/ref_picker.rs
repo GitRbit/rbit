@@ -4,6 +4,7 @@ use askama::Template;
 use askama_web::WebTemplate;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use rbit_git::{RefKind, RefSummary};
+use rbit_localization::{Locale, RepoBrowseLabel};
 use serde::Deserialize;
 
 use crate::{
@@ -82,7 +83,7 @@ impl RefPickerLinks {
 #[derive(Debug)]
 pub struct RefOption {
     pub link: RefLink,
-    pub kind: &'static str,
+    pub kind: RepoBrowseLabel,
 }
 
 #[derive(Debug)]
@@ -99,10 +100,12 @@ pub struct RefPicker {
     pub options_action: String,
     pub previous: Option<RefPickerLinks>,
     pub next: Option<RefPickerLinks>,
+    /// The page's language: the options are also served as a fragment without a page.
+    pub locale: Locale,
 }
 
 impl RefPicker {
-    pub fn new(refs: &[RefSummary], default_branch: &str, urls: &RepoUrls, mut query: RefPickerQuery) -> Self {
+    pub fn new(refs: &[RefSummary], default_branch: &str, urls: &RepoUrls, mut query: RefPickerQuery, locale: Locale) -> Self {
         query.q = query.q.trim().chars().take(100).collect();
         let needle = query.q.to_lowercase();
         let matches = |reference: &&RefSummary| needle.is_empty() || reference.name.to_lowercase().contains(&needle);
@@ -116,8 +119,8 @@ impl RefPicker {
             .take(PAGE_SIZE)
             .map(|reference| {
                 let (prefix, kind) = match reference.kind {
-                    RefKind::Branch => ("refs/heads/", "Branch"),
-                    RefKind::Tag => ("refs/tags/", "Tag"),
+                    RefKind::Branch => ("refs/heads/", RepoBrowseLabel::Branch),
+                    RefKind::Tag => ("refs/tags/", RepoBrowseLabel::Tag),
                 };
                 let full_revision = format!("{prefix}{}", reference.name);
                 // Keep branch URLs compatible with the editing routes; disambiguate tags.
@@ -149,6 +152,7 @@ impl RefPicker {
             path: query.path,
             action,
             options_action,
+            locale,
         }
     }
 }
@@ -179,11 +183,11 @@ mod tests {
     fn pagination_bounds_links_and_clamps_extreme_pages() {
         let refs = refs();
         let urls = RepoUrls::new("realworld", "git");
-        let first = RefPicker::new(&refs, "main", &urls, RefPickerQuery::default());
+        let first = RefPicker::new(&refs, "main", &urls, RefPickerQuery::default(), Locale::English);
         assert_eq!((first.rows.len(), first.total, first.pages), (50, 1020, 21));
         assert!(first.previous.is_none());
         assert!(first.next.is_some());
-        let last = RefPicker::new(&refs, "main", &urls, RefPickerQuery { page: usize::MAX, ..Default::default() });
+        let last = RefPicker::new(&refs, "main", &urls, RefPickerQuery { page: usize::MAX, ..Default::default() }, Locale::English);
         assert_eq!((last.rows.len(), last.page), (20, 21));
         assert!(last.next.is_none());
     }
@@ -196,6 +200,7 @@ mod tests {
             "main",
             &RepoUrls::new("realworld", "git"),
             RefPickerQuery { target: RefTarget::Blame, path: "src/a #.c".into(), q: " V1019 ".into(), ..Default::default() },
+            Locale::English,
         );
         assert_eq!(picker.total, 1);
         assert_eq!(picker.rows[0].link.url, "/realworld/git/blame/refs/tags/v1019/src/a%20%23.c");
@@ -203,7 +208,7 @@ mod tests {
 
     #[test]
     fn fragment_is_bounded_and_keeps_no_script_navigation() {
-        let picker = RefPicker::new(&refs(), "main", &RepoUrls::new("realworld", "git"), RefPickerQuery::default());
+        let picker = RefPicker::new(&refs(), "main", &RepoUrls::new("realworld", "git"), RefPickerQuery::default(), Locale::English);
         let html = RefPickerOptions { picker }.render().expect("render picker");
         assert_eq!(html.matches("data-ref-option").count(), PAGE_SIZE);
         assert!(html.contains("method=\"get\""));
@@ -216,6 +221,7 @@ mod tests {
         #[derive(Template)]
         #[template(path = "repo/ref_switcher.html")]
         struct Menu {
+            page: Page,
             switcher: crate::views::repo::RefSwitcher,
         }
         let mut references = refs();
@@ -225,7 +231,7 @@ mod tests {
         assert_eq!((switcher.branch_count, switcher.tag_count), (1, 1020));
         assert_eq!(switcher.current, "v1019");
         assert!(switcher.current_is_tag);
-        let html = Menu { switcher }.render().unwrap();
+        let html = Menu { page: crate::views::test_support::page("/"), switcher }.render().unwrap();
         assert_eq!(html.matches("<a ").count(), 1);
         assert!(!html.contains("v0000"));
         assert!(html.contains("hx-disinherit=\"hx-target hx-swap\""));

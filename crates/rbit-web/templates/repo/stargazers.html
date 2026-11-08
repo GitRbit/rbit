@@ -4,12 +4,12 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <div class="mb-3 flex h-8 items-center">
-  <h1 class="text-[13px] font-medium text-ink-muted">Stargazers <span class="ms-1 text-ink-faint">{{ header.star_count }}</span></h1>
+  <h1 class="text-[13px] font-medium text-ink-muted">{% call ui::localized(rbit_localization::RepoNavLabel::Stargazers.text(page.locale)) %}{% endcall %} <span class="ms-1 text-ink-faint">{{ header.star_count }}</span></h1>
 </div>
 
 <div class="box">
   {% if stargazers.is_empty() %}
-  {% call ui::empty_state("user", "No stargazers yet", "People who star this repository appear here.") %}{% endcall %}
+  {% call ui::empty_state("user", rbit_localization::RepoBrowseLabel::NoStargazersYet.text(page.locale), rbit_localization::RepoBrowseLabel::StargazersEmpty.text(page.locale)) %}{% endcall %}
   {% else %}
   <ul>
     {% for gazer in stargazers %}

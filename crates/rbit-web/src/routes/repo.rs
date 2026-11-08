@@ -10,6 +10,7 @@ use axum::{
 };
 use rbit_core::mirror::Mirror;
 use rbit_git::{EntryKind, GitError, RefKind, RefSummary};
+use rbit_localization::{RepoBrowseMessage, RepoNavLabel};
 use rbit_services::{RepoContext, ServiceError, StarSummary, timeline::OpenCounts};
 use serde::Deserialize;
 
@@ -32,6 +33,7 @@ use crate::{
             BlobContent, BlobPage, CommitDay, CommitView, CommitsPage, EmptyRepoPage, EntryRow, RefSwitcher, RepoHeader,
             RepositoryDocumentsFragment, TreePage, breadcrumbs,
         },
+        repo_text,
         statuses::{CHECKS_ANCHOR, StatusMark},
     },
 };
@@ -41,8 +43,7 @@ const COMMITS_PER_PAGE: usize = 30;
 #[path = "repository_documents.rs"]
 mod repository_documents;
 
-/// Kept flat because `serde_urlencoded`'s flattened maps lose the string-to-number
-/// conversion used for numeric pagination fields.
+/// Kept flat because `serde_urlencoded`'s flattened maps lose the string-to-number conversion used for numeric pagination fields.
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct TreeQuery {
@@ -73,8 +74,7 @@ pub async fn activity(
     Query(query): Query<ActivityQuery>,
 ) -> WebResult<Response> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
-    let calendar =
-        crate::views::contributions::ContributionCalendar::new(query.year, "Commits on this repository's configured default branch.", "");
+    let calendar = crate::views::contributions::ContributionCalendar::repository(query.year, page.locale);
     let (start, end) = calendar.bounds();
     let contributions = if query.calendar.is_some() {
         calendar.populate(&state.services.contributions.repository(&loaded.ctx, start, end).await?)
@@ -85,7 +85,7 @@ pub async fn activity(
         return Ok(crate::views::contributions::ContributionFragment { contributions }.into_response());
     }
     Ok(crate::views::contributions::ActivityPage {
-        page: page.titled(format!("Activity · {}", loaded.ctx.repo.full_name())),
+        page: repo_text::titled(page, RepoNavLabel::Activity, &loaded.ctx.repo.full_name()),
         header: loaded.header(&state, "activity"),
         contributions,
     }
@@ -186,8 +186,7 @@ impl RepoPage {
 }
 
 /// Opens `owner/repo` for `viewer` with a [pinned](rbit_git::RepositoryReader::pinned)
-/// reader: the handful of Git reads one page makes share a single opened repository,
-/// which is released when the request ends.
+/// reader: the handful of Git reads one page makes share a single opened repository, which is released when the request ends.
 pub(super) async fn open_pinned(state: &AppState, viewer: &Viewer, owner: &str, repo: &str) -> WebResult<RepoContext> {
     let mut ctx = state.services.repositories.open(viewer.user(), owner, repo).await?;
     ctx.reader = ctx.reader.pinned();
@@ -251,7 +250,7 @@ pub async fn language_files(
     // The outline covers only this page's paths, so its size stays bounded.
     let rows = crate::views::repo_files::file_rows(&paths[pagination.start..pagination.end], &loaded.urls, &revision);
     Ok(crate::views::repo_files::LanguageFilesPage {
-        page: page.titled(format!("{} files · {}", query.language, loaded.ctx.repo.full_name())),
+        page: repo_text::titled(page, RepoBrowseMessage::LanguageFiles { language: &query.language }, &loaded.ctx.repo.full_name()),
         header: loaded.header_at(&state, "code", &revision),
         language: query.language,
         rows,
@@ -309,7 +308,7 @@ pub async fn tree(
             state.services.repositories.max_render_bytes(),
         )
         .await?;
-        return Ok(RepositoryDocumentsFragment { document_scope: urls.home(), documents, readme }.into_response());
+        return Ok(RepositoryDocumentsFragment { page, document_scope: urls.home(), documents, readme }.into_response());
     }
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let (revision, path) = loaded.split(rest).await?;
@@ -637,7 +636,7 @@ async fn render_commits(state: &AppState, loaded: RepoPage, page: Page, revision
     }
 
     Ok(CommitsPage {
-        page: page.titled(format!("Commits · {}", loaded.ctx.repo.full_name())),
+        page: repo_text::titled(page, RepoNavLabel::Commits, &loaded.ctx.repo.full_name()),
         header: loaded.header_at(state, "commits", &revision),
         switcher: loaded.switcher(&revision, RefTarget::Commits, ""),
         days: CommitDay::group(commits),

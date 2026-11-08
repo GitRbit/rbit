@@ -17,10 +17,12 @@ use crate::{
     AppState,
     error::WebResult,
     extract::Viewer,
+    localization::RequestLocale,
     urls::{RepoUrls, encode_path, safe_redirect_target},
     views::{
         layout::Page,
         repo_settings::{StarButton, StarButtonFragment, StargazerRow, StargazersPage},
+        repo_text,
     },
 };
 
@@ -46,6 +48,7 @@ fn wants_fragment(headers: &HeaderMap) -> bool {
 pub async fn toggle(
     State(state): State<AppState>,
     viewer: Viewer,
+    locale: RequestLocale,
     headers: HeaderMap,
     Path((owner, repo)): Path<(String, String)>,
     Form(form): Form<StarFormInput>,
@@ -68,7 +71,7 @@ pub async fn toggle(
     let summary = if star { stars.star(user, &ctx).await? } else { stars.unstar(user, &ctx).await? };
 
     if wants_fragment(&headers) {
-        let fragment = StarButtonFragment { star: StarButton::new(&urls.home(), summary, true, &return_to) };
+        let fragment = StarButtonFragment { star: StarButton::new(&urls.home(), summary, true, &return_to, locale.document_locale()) };
         return Ok(([(header::VARY, HeaderValue::from_static("HX-Request"))], fragment).into_response());
     }
     Ok(Redirect::to(&return_to).into_response())
@@ -84,7 +87,7 @@ pub async fn stargazers(
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let stargazers = state.services.stars.stargazers(&loaded.ctx).await?;
     Ok(StargazersPage {
-        page: page.titled(format!("Stargazers · {}", loaded.ctx.repo.full_name())),
+        page: repo_text::titled(page, rbit_localization::RepoNavLabel::Stargazers, &loaded.ctx.repo.full_name()),
         header: loaded.header(&state, "stargazers"),
         stargazers: stargazers.iter().map(StargazerRow::from).collect(),
     })

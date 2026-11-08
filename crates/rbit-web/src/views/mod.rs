@@ -53,6 +53,7 @@ mod render_probe;
 pub mod repo;
 pub mod repo_files;
 pub mod repo_settings;
+pub mod repo_text;
 pub mod security;
 pub mod settings;
 #[cfg(feature = "shared-shell-experiment")]

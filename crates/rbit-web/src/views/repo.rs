@@ -24,8 +24,7 @@ use crate::{
 
 /// Title block and tabs shown at the top of every repository page.
 ///
-/// `Default` exists so tests can build one with `..RepoHeader::default()` and keep
-/// compiling when fields are added.
+/// `Default` lets tests build one with `..RepoHeader::default()` and keep compiling when fields are added.
 #[derive(Debug, Clone, Default)]
 #[expect(clippy::struct_excessive_bools, reason = "independent display flags")]
 pub struct RepoHeader {
@@ -254,6 +253,7 @@ pub struct TreePage {
 #[derive(Debug, Template, WebTemplate)]
 #[template(path = "repo/documents_fragment.html")]
 pub struct RepositoryDocumentsFragment {
+    pub page: Page,
     pub document_scope: String,
     pub documents: Vec<RepositoryDocument>,
     pub readme: Option<ReadmeView>,
