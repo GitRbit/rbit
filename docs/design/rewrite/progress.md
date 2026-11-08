@@ -119,27 +119,11 @@ excluding the inactive epoch paths. The first retirement ports `identity.bootstr
 session purge now runs through identity, and the `Passwords` facade and service session
 aliases are deleted and guarded. The six other identity rows have no identity application yet.
 
-The permission regression group now has a table-driven differential matrix:
-eleven actors against personal/organisation, public/private and archived
-repositories, with the expected table proven equal to the pure policy and
-compared with the actual decision of the services, browser pages and forms,
-browser edits, REST API, Git smart HTTP, SSH and runner task credentials, plus
-listing omission and conditional-request (`ETag`/304) checks. Its 19 tests (6
-services, 12 web, 1 SSH) are described in the
-[security contracts](security-contracts.md#permission-group-status). They found
-no defect; removing the archive check from the push gate makes the Git and task
-push assertions fail. This covers two of the seven mandatory groups; deploy
-keys, sub-`admin` token scopes, LFS/release files, pull requests and the inactive
-replacement ports remain outside this claim.
+The permission regression group now has a table-driven differential matrix: eleven actors against personal/organisation, public/private and archived repositories, with the expected table proven equal to the pure policy and compared with the actual decision of the services, browser pages and forms, browser edits, REST API, Git smart HTTP, SSH and runner task credentials, plus listing omission and conditional-request (`ETag`/304) checks. Its 19 tests (6 services, 12 web, 1 SSH) are described in the [security contracts](security-contracts.md#permission-group-status). They found no defect; removing the archive check from the push gate makes the Git and task push assertions fail. This covers two of the seven mandatory groups; deploy keys, sub-`admin` token scopes, LFS/release files, pull requests and the inactive replacement ports remain outside this claim.
 
-The outbound-network part of the third mandatory group now has 26 hostile-input
-tests against the production webhook, import, sign-in provider and Git clients,
-using local listeners and a scripted resolver, described in the
-[security contracts](security-contracts.md#outbound-network-group-status).
-They found two defects, both fixed: unbounded, uncancellable import API body
-reads, and a stalled Git remote whose HTTP helper outlived the time limit. Path,
-archive, LFS and upload cases in the same group, process-tree containment of
-trickle-fed Git helpers and permitted strict-mode connections remain open.
+The outbound-network part of the third mandatory group now has 26 hostile-input tests against the production webhook, import, sign-in provider and Git clients, using local listeners and a scripted resolver, described in the [security contracts](security-contracts.md#outbound-network-group-status). They found two defects, both fixed: unbounded, uncancellable import API body reads, and a stalled Git remote whose HTTP helper outlived the time limit. Path, archive, LFS and upload cases in the same group, process-tree containment of trickle-fed Git helpers and permitted strict-mode connections remain open.
+
+The fork-run regression group now has 9 hostile tests against real fork pull requests, run-page approval, the runner protocol and task tokens over Git, LFS and the API, described in the [security contracts](security-contracts.md#fork-run-group-status): no secret or variable (repository, owner or environment, in the job or in server-side `if:`) and only a read-only token after approval or author trust, approvals bound to their run, and completion, logs, artifacts and caches refused without the current lease. They found two defects, both fixed: a task the sweeper failed was never told to stop, and uploads outliving their lease were stored. This covers the fourth of the seven mandatory groups; dispatch inputs, cross-repository called workflows, `workflow_run`, runner-side masking and isolation, and SSH task credentials remain outside this claim.
 
 Wiki publication and pages UI are now in place on top of the Wiki storage stack.
 A change prepares an unpublished commit in the dedicated object store, then one
