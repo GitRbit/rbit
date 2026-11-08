@@ -67,7 +67,7 @@ async fn protected_branches_over_http() {
         &[("pattern", "main"), ("deny_force_push", "on"), ("deny_deletion", "on"), ("required_approvals", "0")],
     )
     .await;
-    alice.get(&main_rule).await.expect_contains(&["Matches:", "<span class=\"font-mono text-ink\">main</span>", "Danger zone"]);
+    alice.get(&main_rule).await.expect_contains(&["Matches:", "<span class=\"font-mono text-ink\" dir=\"ltr\">main</span>", "Danger zone"]);
     alice.get("/alice/demo/settings/branches").await.expect_contains(&[">main<", ">No force pushes<", ">No deletion<", "Matches main"]);
     alice.get("/alice/demo/settings/branches/999").await.expect_status(StatusCode::NOT_FOUND);
     alice.get("/alice/demo/settings/branches/abc").await.expect_status(StatusCode::NOT_FOUND);

@@ -85,7 +85,7 @@ async fn editing_a_file_in_the_browser() {
     // The editor shows the file; the commit lands on main, closing issue 1.
     let editor = alice.get("/alice/demo/edit/main/README.md").await;
     editor.expect_contains(&[
-        "Edit <span class=\"font-mono text-lg\">README.md</span>",
+        "Edit <span class=\"font-mono text-lg\" dir=\"ltr\">README.md</span>",
         "Hello from the end-to-end suite.",
         "Commit directly to",
     ]);
@@ -145,7 +145,7 @@ async fn editing_a_file_in_the_browser() {
     moved.expect_redirect("/alice/demo/blob/main/guide.txt");
 
     let delete = alice.get("/alice/demo/delete/main/docs/deep/notes.md").await;
-    delete.expect_contains(&["Delete <span class=\"font-mono text-lg\">docs/deep/notes.md</span>", "Delete file"]);
+    delete.expect_contains(&["Delete <span class=\"font-mono text-lg\" dir=\"ltr\">docs/deep/notes.md</span>", "Delete file"]);
     let deleted = alice.post("/alice/demo/delete/main/docs/deep/notes.md", &[("commit", &opened_at(&delete))]).await;
     // docs/deep and docs are gone, so the root is shown.
     deleted.expect_redirect("/alice/demo/tree/main");
