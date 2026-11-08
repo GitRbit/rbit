@@ -8,6 +8,7 @@
 mod catalog;
 mod locale;
 mod negotiation;
+mod plural;
 mod pseudo;
 
 pub use catalog::collab::{
@@ -30,3 +31,4 @@ pub use catalog::{
 };
 pub use locale::{Direction, Locale};
 pub use negotiation::{LocalePreferences, LocaleResolver, PreferenceSource, ResolvedLocale, UnsupportedDefault};
+pub use plural::Plural;

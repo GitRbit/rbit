@@ -58,8 +58,8 @@ impl RequestLocale {
     /// Diagnostics remain feature-owned opt-ins, never a global shell default.
     pub const fn document_locale(self) -> Locale {
         match self.0.locale {
-            Locale::English | Locale::Spanish => self.0.locale,
             Locale::PseudoExpanded | Locale::PseudoRtl => Locale::English,
+            locale => locale,
         }
     }
 

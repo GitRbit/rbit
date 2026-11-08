@@ -246,7 +246,7 @@ impl Catalog {
     }
 
     fn literal_text(self, text: &'static str) -> LocalizedText {
-        if matches!(self.locale, Locale::English | Locale::Spanish) {
+        if !matches!(self.locale, Locale::PseudoExpanded | Locale::PseudoRtl) {
             return LocalizedText(Cow::Borrowed(text));
         }
         let mut output = String::new();
@@ -265,7 +265,7 @@ impl Catalog {
     fn literal(self, output: &mut String, text: &str) {
         match self.locale {
             Locale::PseudoExpanded => pseudo::expand(output, text),
-            Locale::English | Locale::Spanish | Locale::PseudoRtl => output.push_str(text),
+            _ => output.push_str(text),
         }
     }
 
