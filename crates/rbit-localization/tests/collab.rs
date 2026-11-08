@@ -4,9 +4,9 @@
 use std::collections::HashSet;
 
 use rbit_localization::{
-    CloseReason, CollabSentence, IssueFilterMenu, IssueFilterMessage, IssueMessage, IssueSidebarMessage, LabelMessage, Locale, Localized,
-    MergeMessage, MessageFamily, MilestoneMessage, PullMessage, ReviewMessage, Rich, RichFamily, ThreadMessage, TimelineEventMessage,
-    TimelineNoteMessage,
+    ChecksMessage, CloseReason, CollabSentence, IssueFilterMenu, IssueFilterMessage, IssueMessage, IssueSidebarMessage, LabelMessage,
+    Locale, Localized, MergeMessage, MessageFamily, MilestoneMessage, PullMessage, ReviewMessage, Rich, RichFamily, ThreadMessage,
+    TimelineEventMessage, TimelineNoteMessage,
 };
 
 /// One sample of every plain family: (id, English, Spanish, pseudo-expanded).
@@ -26,6 +26,7 @@ fn plain() -> Vec<(&'static str, Localized, Localized, Localized)> {
         sample(MergeMessage::Approvals { have: 0, need: 1 }, MergeMessage::localized),
         sample(ThreadMessage::LockConversation, ThreadMessage::localized),
         sample(TimelineNoteMessage::Squash, TimelineNoteMessage::localized),
+        sample(ChecksMessage::Summary { successful: 1, failing: 2, pending: 1, expected: 1 }, ChecksMessage::localized),
     ]
 }
 
@@ -43,6 +44,7 @@ fn plain_families_render_english_and_fall_back_in_spanish() {
         "0 of 1 required approval",
         "Lock conversation",
         "(squash)",
+        "1 successful, 2 failing and 1 pending checks, 1 expected",
     ];
     for ((id, english, spanish, pseudo), text) in plain().into_iter().zip(expected) {
         assert_eq!((english.as_str(), english.fallback()), (text, false), "{id}");

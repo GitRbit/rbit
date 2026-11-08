@@ -11,9 +11,9 @@ mod negotiation;
 mod pseudo;
 
 pub use catalog::collab::{
-    CloseReason, CollabSentence, IssueFilterMenu, IssueFilterMessage, IssueMessage, IssueSidebarMessage, LabelMessage, MergeMessage,
-    MilestoneMessage, PullMessage, ReviewMessage, Rich, RichFamily, RichPart, RichWriter, ThreadMessage, TimelineEventMessage,
-    TimelineNoteMessage,
+    ChecksMessage, CloseReason, CollabSentence, IssueFilterMenu, IssueFilterMessage, IssueMessage, IssueSidebarMessage, LabelMessage,
+    MergeMessage, MilestoneMessage, PullMessage, ReviewMessage, Rich, RichFamily, RichPart, RichWriter, ThreadMessage,
+    TimelineEventMessage, TimelineNoteMessage,
 };
 pub use catalog::settings;
 pub use catalog::shell;

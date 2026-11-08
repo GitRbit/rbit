@@ -11,6 +11,7 @@ use std::borrow::Borrow;
 use super::{Catalog, fallback::Localized};
 use crate::locale::Locale;
 
+mod checks;
 mod events;
 mod filters;
 mod issues;
@@ -24,6 +25,7 @@ mod sentences;
 mod sidebar;
 mod thread;
 
+pub use checks::ChecksMessage;
 pub use events::{CloseReason, TimelineEventMessage, TimelineNoteMessage};
 pub use filters::{IssueFilterMenu, IssueFilterMessage};
 pub use issues::IssueMessage;
@@ -62,6 +64,7 @@ macro_rules! rich_lookup {
 }
 
 plain_lookup!(
+    ChecksMessage,
     IssueMessage<'_>,
     IssueFilterMessage,
     IssueSidebarMessage,

@@ -11,6 +11,7 @@
 //! `rel="nofollow noopener noreferrer"`.
 
 use rbit_core::status::{CommitStatus, StatusContext, StatusState};
+use rbit_localization::ChecksMessage;
 use rbit_services::statuses::CombinedStatus;
 
 /// The in-page anchor of the checks on the commit page.
@@ -133,6 +134,32 @@ impl ChecksView {
     }
 }
 
+impl ChecksView {
+    /// The summary as a message, counted from the rows.
+    pub fn summary_message(&self) -> ChecksMessage {
+        let count = |keys: &[&str]| self.rows.iter().filter(|row| keys.contains(&row.key)).count() as u64;
+        ChecksMessage::Summary {
+            successful: count(&["success"]),
+            failing: count(&["failure", "error"]),
+            pending: count(&["pending"]),
+            expected: count(&["expected"]),
+        }
+    }
+}
+
+impl CheckRow {
+    /// The state's label as a message (`label` stays the English key).
+    pub fn state_message(&self) -> ChecksMessage {
+        match self.key {
+            "success" => ChecksMessage::Success,
+            "failure" => ChecksMessage::Failure,
+            "error" => ChecksMessage::Error,
+            "pending" => ChecksMessage::Pending,
+            _ => ChecksMessage::Expected,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use rbit_core::{RepoId, Timestamp, status::StatusId};
@@ -181,7 +208,7 @@ mod tests {
     /// Renders both templates the way the pages include them.
     #[derive(askama::Template)]
     #[template(
-        source = r#"{% if let Some(mark) = mark %}{% include "statuses/mark.html" %}{% endif %}{% include "statuses/checks.html" %}"#,
+        source = r#"{% let page = crate::views::test_support::page("/") %}{% if let Some(mark) = mark %}{% include "statuses/mark.html" %}{% endif %}{% include "statuses/checks.html" %}"#,
         ext = "html"
     )]
     struct Fragments {
@@ -221,6 +248,7 @@ mod tests {
         let rows: Vec<_> = checks.rows.iter().map(|row| (row.context.as_str(), row.key, row.required)).collect();
         assert_eq!(rows, [("deploy", "expected", true), ("lint", "success", true), ("build", "pending", false)]);
         assert_eq!(checks.summary, "1 successful and 1 pending checks, 1 expected");
+        assert_eq!(checks.summary_message().localized(rbit_localization::Locale::English).as_str(), checks.summary, "same words");
         assert_eq!(checks.rows[1].target_url.as_deref(), Some("https://ci.example/1"));
         assert_eq!(checks.rows[0].description, "Waiting for this status to be reported");
     }
