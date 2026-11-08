@@ -70,7 +70,7 @@ async fn backup_writes_a_restorable_snapshot() {
     assert!(output.status.success(), "backup failed: {}", String::from_utf8_lossy(&output.stderr));
 
     let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(backup.join("manifest.json")).unwrap()).unwrap();
-    assert_eq!(manifest["format"], 4);
+    assert_eq!(manifest["format"], 5);
     assert_eq!(manifest["secret_key"], "secret.key");
     assert_eq!(std::fs::read(backup.join("secret.key")).unwrap(), std::fs::read(data_dir.join("secret.key")).unwrap());
     #[cfg(unix)]

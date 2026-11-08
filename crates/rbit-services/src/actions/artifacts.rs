@@ -1,8 +1,8 @@
 //! Workflow artifacts (§12.7 of `docs/design/actions.md`): files a job uploads, one tar.gz
 //! each, for later jobs of the run and for people to download.
 //!
-//! * Files live at `<data_dir>/actions/artifacts/<run id>/<artifact id>.tar.gz`, outside
-//!   backups like logs. An upload streams to a temporary file beside them while its size
+//! * Files live at `<data_dir>/actions/artifacts/<run id>/<artifact id>.tar.gz`, backed up
+//!   like logs. An upload streams to a temporary file beside them while its size
 //!   and SHA-256 are counted, is refused past `[actions] max_artifact_bytes` or the
 //!   repository's `max_artifact_storage_bytes`, must match the digest the runner sent, and
 //!   only then is recorded and moved into place.

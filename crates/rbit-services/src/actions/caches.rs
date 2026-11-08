@@ -1,7 +1,7 @@
 //! Actions: shared cache. `actions/cache` entries the server keeps for every runner of a
 //! repository, as GitHub's cache service does, so a job restores what another runner saved.
 //!
-//! * Files live at `<data_dir>/actions/caches/<repo id>/<entry id>.tar.gz`, outside backups.
+//! * Files live at `<data_dir>/actions/caches/<repo id>/<entry id>.tar.gz`, included in backups.
 //!   An upload streams to a temporary file beside them while its size and SHA-256 are
 //!   counted, must match the digest the runner sent, and only then is recorded and moved
 //!   into place.

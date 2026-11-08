@@ -32,12 +32,12 @@
 //! # `schedule` entries per repository.
 //! max_schedules_per_repository = 20
 //! # Largest artifact one job may upload, artifact bytes kept per repository, and days they
-//! # are kept (a workflow's `retention-days` may only lower it). Artifacts are not backed up.
+//! # are kept (a workflow's `retention-days` may only lower it). Artifacts are backed up.
 //! max_artifact_bytes = 2147483648
 //! max_artifact_storage_bytes = 10737418240
 //! artifact_retention_days = 90
 //! # `actions/cache` bytes kept per repository for all its runners (the least recently used
-//! # entries go first), and days an entry is kept unused. Caches are not backed up.
+//! # entries go first), and days an entry is kept unused. Caches are backed up.
 //! max_cache_storage_bytes = 10737418240
 //! cache_retention_days = 7
 //! # How long a runner's poll for work is held open, in seconds (at most 25).
@@ -229,7 +229,7 @@ impl ActionsConfig {
 
 impl StorageConfig {
     /// Actions state outside SQLite: `<actions_dir>/logs/<repo_id>/<task_id>.log` and the
-    /// default secrets key. Never backed up; created only when Actions is enabled.
+    /// default secrets key. Backed up except the key; created only when Actions is enabled.
     pub fn actions_dir(&self) -> PathBuf {
         self.data_dir.join("actions")
     }

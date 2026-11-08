@@ -1,5 +1,5 @@
-//! `rbit backup --output DIR`: a consistent snapshot of the database, repositories,
-//! release files and Git LFS objects, safe to take while the server is running.
+//! `rbit backup --output DIR`: a consistent snapshot of the database, repositories and
+//! every stored file the database refers to, safe to take while the server is running.
 //!
 //! The backup directory mirrors the data directory, so restoring is a copy:
 //!
@@ -9,6 +9,9 @@
 //! ├── repositories/<owner>/<id>.git  # bare mirrors made with `git clone --mirror`
 //! ├── attachments/<repo>/<asset>     # files attached to releases
 //! ├── lfs/<aa>/<bb>/<oid>            # Git LFS objects
+//! ├── actions/artifacts/<run>/<id>.tar.gz   # workflow artifacts
+//! ├── actions/caches/<repo>/<id>.tar.gz     # `actions/cache` entries
+//! ├── actions/logs/<repo>/<task>.{log,log.gz,idx}  # job logs
 //! ├── secret.key                     # the key that seals stored credentials (see below)
 //! └── manifest.json                  # written last: its presence marks a complete backup
 //! ```
@@ -19,22 +22,23 @@
 //!    protocol (`--no-local`), which reads each repository's refs and the objects they
 //!    reach consistently even during a push or `git gc`. A repository created after the
 //!    snapshot is not included; one deleted after it is reported as missing.
-//! 3. The release files listed in the snapshot are copied. They are written once (an
-//!    upload is renamed into place only when complete) and never changed, so a plain copy
-//!    is consistent; uploads in progress (`attachments/tmp`) and files the snapshot does
-//!    not know are skipped, and files deleted in between are reported as missing.
-//! 4. The Git LFS objects listed in the snapshot are copied the same way: content-addressed
-//!    and renamed into place only when complete, so a plain copy is consistent; uploads in
-//!    progress (`<data_dir>/tmp`) are never included.
-//! 5. The secret key file is copied, when it lives in the data directory (the default).
+//! 3. The stored files listed in the snapshot are copied ([`inventory`]): release files,
+//!    Git LFS objects, workflow artifacts and cache entries are written once (an upload is
+//!    renamed into place only when complete) and never changed, so a plain copy is
+//!    consistent. A finished job's log is compressed and never changes either; a running
+//!    job's log only grows past the line count the snapshot records, and one finished
+//!    since is decompressed back. Uploads in progress and files the snapshot does not know
+//!    are skipped; files deleted in between are reported as missing.
+//! 4. The secret key file is copied, when it lives in the data directory (the default).
 //!    Without it the credentials sealed in the database (TOTP seeds, webhook and push
 //!    mirror secrets, saved SMTP and OIDC secrets) cannot be read after a restore. A key
 //!    kept elsewhere (`[storage] secret_key_file`) is left out on purpose, so database and
-//!    key can be stored apart; it must then be backed up separately.
-//! 6. Everything written so far is synced to disk ([`durable::sync_tree`]): neither
+//!    key can be stored apart; it must then be backed up separately. The Actions secrets
+//!    key is never included, for the same reason.
+//! 5. Everything written so far is synced to disk ([`durable::sync_tree`]): neither
 //!    `VACUUM INTO` nor a clone nor a file copy syncs what it writes, and the manifest
 //!    must never reach the disk before the files it vouches for.
-//! 7. `manifest.json` records the format, version, time and counts. It is written to a
+//! 6. `manifest.json` records the format, version, time and counts. It is written to a
 //!    synced temporary file, renamed into place and its directory synced.
 //!
 //! The backup directory is created private to its owner (0700) and the database, key and
@@ -45,56 +49,73 @@
 
 use std::{
     path::{Path, PathBuf},
-    process::Stdio,
     str::FromStr,
-    sync::Arc,
 };
 
 use anyhow::{Context, bail};
-use rbit_core::{AccountId, Config, RepoId, lfs::LfsOid};
+use rbit_core::Config;
 use rbit_git::RepositoryStorage;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::{ConnectOptions, Connection, sqlite::SqliteConnectOptions};
-use tokio::{process::Command, sync::Semaphore, task::JoinSet};
 
 use self::durable::{create_private_dir, create_private_file, write_private};
 
+mod copy;
 mod durable;
+mod inventory;
 
 /// Bumped whenever the layout of a backup directory changes (2: release attachments,
-/// 3: Git LFS objects, 4: the secret key file).
-const FORMAT_VERSION: u32 = 4;
+/// 3: Git LFS objects, 4: the secret key file, 5: Actions artifacts, caches and logs).
+pub const FORMAT_VERSION: u32 = 5;
 /// The secret key file's name inside the backup, as in the data directory.
 const SECRET_KEY_FILE: &str = "secret.key";
-/// Repositories copied at the same time.
-const COPY_CONCURRENCY: usize = 4;
-/// Environment variables passed through to Git; everything else is cleared.
-const INHERITED_ENV: [&str; 5] = ["PATH", "SYSTEMROOT", "TEMP", "TMP", "TMPDIR"];
 
 /// `manifest.json`.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Manifest {
     pub format: u32,
-    pub rbit_version: &'static str,
+    pub rbit_version: String,
     /// RFC 3339, UTC.
     pub created_at: String,
     /// File name of the `SQLite` snapshot inside the backup directory.
-    pub database: &'static str,
+    pub database: String,
     pub accounts: u64,
     pub repositories: u64,
     /// Repositories recorded in the database whose directory did not exist.
     pub missing_repositories: Vec<i64>,
     /// Release files copied into `attachments/`.
+    #[serde(default)]
     pub attachments: u64,
     /// Release files (asset ids) recorded in the database whose file did not exist.
+    #[serde(default)]
     pub missing_attachments: Vec<i64>,
     /// Git LFS objects copied into `lfs/`.
+    #[serde(default)]
     pub lfs_objects: u64,
     /// Git LFS objects (ids) recorded in the database whose file did not exist.
+    #[serde(default)]
     pub missing_lfs_objects: Vec<String>,
+    /// Workflow artifacts copied into `actions/artifacts/`, and those (ids) missing.
+    #[serde(default)]
+    pub artifacts: u64,
+    #[serde(default)]
+    pub missing_artifacts: Vec<i64>,
+    /// Cache entries copied into `actions/caches/`, and those (ids) missing.
+    #[serde(default)]
+    pub caches: u64,
+    #[serde(default)]
+    pub missing_caches: Vec<i64>,
+    /// Job log files copied into `actions/logs/`, and the tasks whose log was missing.
+    #[serde(default)]
+    pub logs: u64,
+    #[serde(default)]
+    pub missing_logs: Vec<i64>,
     /// [`SECRET_KEY_FILE`] when included, otherwise where the key must be backed up from.
+    #[serde(default)]
     pub secret_key: String,
-    pub kv_store: &'static str,
+    #[serde(default)]
+    pub actions_secrets_key: String,
+    pub kv_store: String,
 }
 
 pub async fn run(config: Config, output: PathBuf) -> anyhow::Result<()> {
@@ -108,6 +129,9 @@ pub async fn run(config: Config, output: PathBuf) -> anyhow::Result<()> {
         missing_attachments = manifest.missing_attachments.len(),
         lfs_objects = manifest.lfs_objects,
         missing_lfs_objects = manifest.missing_lfs_objects.len(),
+        artifacts = manifest.artifacts,
+        caches = manifest.caches,
+        logs = manifest.logs,
         "backup complete"
     );
     Ok(())
@@ -126,36 +150,42 @@ pub async fn create(config: &Config, output: &Path) -> anyhow::Result<Manifest> 
     // `VACUUM INTO` accepts an empty file, so the snapshot is private from the start.
     drop(create_private_file(&snapshot).await?);
     snapshot_database(&source, &snapshot).await?;
-    let Inventory { accounts, repositories, assets, lfs_objects } = read_inventory(&snapshot).await?;
+    let inventory = inventory::read(&snapshot, FORMAT_VERSION).await?;
     tracing::info!(
-        accounts,
-        repositories = repositories.len(),
-        attachments = assets.len(),
-        lfs_objects = lfs_objects.len(),
+        accounts = inventory.accounts,
+        repositories = inventory.repositories.len(),
+        files = inventory.blobs.len(),
         "database snapshot written"
     );
 
     let storage = RepositoryStorage::new(config.storage.repositories_dir());
     let target = RepositoryStorage::new(output.join("repositories"));
-    let copied = copy_repositories(&config.repository.git_binary, &storage, &target, &repositories).await?;
-    let attachments = copy_attachments(&config.storage.attachments_dir(), &output.join("attachments"), &assets).await?;
-    let lfs = copy_lfs_objects(&config.storage.lfs_dir(), &output.join("lfs"), &lfs_objects).await?;
+    let repositories = copy::copy_repositories(&config.repository.git_binary, &storage, &target, &inventory.repositories).await?;
+    let blobs = copy::copy_blobs(&config.storage.data_dir, output, &inventory.blobs).await?;
     let secret_key = copy_secret_key(config, &output.join(SECRET_KEY_FILE)).await?;
+    let actions_key = config.actions.secrets_key_path(&config.storage);
 
     let manifest = Manifest {
         format: FORMAT_VERSION,
-        rbit_version: env!("CARGO_PKG_VERSION"),
+        rbit_version: env!("CARGO_PKG_VERSION").to_owned(),
         created_at: now_rfc3339()?,
-        database: "rbit.db",
-        accounts,
-        repositories: copied.copied,
-        missing_repositories: copied.missing,
-        attachments: attachments.copied,
-        missing_attachments: attachments.missing,
-        lfs_objects: lfs.copied,
-        missing_lfs_objects: lfs.missing,
+        database: "rbit.db".to_owned(),
+        accounts: inventory.accounts,
+        repositories: repositories.copied,
+        missing_repositories: repositories.missing,
+        attachments: blobs.attachments.copied,
+        missing_attachments: blobs.attachments.missing,
+        lfs_objects: blobs.lfs.copied,
+        missing_lfs_objects: blobs.lfs.missing,
+        artifacts: blobs.artifacts.copied,
+        missing_artifacts: blobs.artifacts.missing,
+        caches: blobs.caches.copied,
+        missing_caches: blobs.caches.missing,
+        logs: blobs.logs.copied,
+        missing_logs: blobs.logs.missing,
         secret_key,
-        kv_store: "not included: it holds only sessions and caches, which are rebuilt",
+        actions_secrets_key: format!("not included: kept at {}; back it up separately", actions_key.display()),
+        kv_store: "not included: it holds only sessions and caches, which are rebuilt".to_owned(),
     };
     durable::sync_tree(output).await?;
     durable::publish(&output.join("manifest.json"), &serde_json::to_vec_pretty(&manifest)?).await?;
@@ -200,181 +230,6 @@ async fn copy_secret_key(config: &Config, target: &Path) -> anyhow::Result<Strin
     };
     write_private(target, &key).await?;
     Ok(SECRET_KEY_FILE.to_owned())
-}
-
-/// What the snapshot says should be copied.
-struct Inventory {
-    accounts: u64,
-    /// `(repository, owner)`.
-    repositories: Vec<(RepoId, AccountId)>,
-    /// `(repository, asset)` ids of release files.
-    assets: Vec<(i64, i64)>,
-    /// Ids of Git LFS objects.
-    lfs_objects: Vec<LfsOid>,
-}
-
-async fn read_inventory(snapshot: &Path) -> anyhow::Result<Inventory> {
-    let mut connection = SqliteConnectOptions::from_str("sqlite:")?.filename(snapshot).read_only(true).connect().await?;
-    let accounts: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM accounts").fetch_one(&mut connection).await?;
-    let rows: Vec<(i64, i64)> = sqlx::query_as("SELECT id, owner_id FROM repositories ORDER BY id").fetch_all(&mut connection).await?;
-    let assets: Vec<(i64, i64)> = sqlx::query_as("SELECT repo_id, id FROM release_assets ORDER BY id").fetch_all(&mut connection).await?;
-    let oids: Vec<String> = sqlx::query_scalar("SELECT oid FROM lfs_objects ORDER BY oid").fetch_all(&mut connection).await?;
-    connection.close().await?;
-    let lfs_objects =
-        oids.iter().map(|oid| LfsOid::parse(oid).with_context(|| format!("invalid LFS object id {oid:?}"))).collect::<Result<_, _>>()?;
-    Ok(Inventory {
-        accounts: u64::try_from(accounts).unwrap_or_default(),
-        repositories: rows.into_iter().map(|(id, owner)| (RepoId(id), AccountId(owner))).collect(),
-        assets,
-        lfs_objects,
-    })
-}
-
-#[derive(Debug)]
-struct Copied<Id = i64> {
-    copied: u64,
-    missing: Vec<Id>,
-}
-
-impl<Id> Default for Copied<Id> {
-    fn default() -> Self {
-        Self { copied: 0, missing: Vec::new() }
-    }
-}
-
-async fn copy_repositories(
-    git: &Path,
-    source: &RepositoryStorage,
-    target: &RepositoryStorage,
-    repositories: &[(RepoId, AccountId)],
-) -> anyhow::Result<Copied> {
-    let permits = Arc::new(Semaphore::new(COPY_CONCURRENCY));
-    let mut copies = JoinSet::new();
-    let mut result = Copied::default();
-    for &(repo, owner) in repositories {
-        let from = source.path_for(owner, repo);
-        if !from.join("HEAD").is_file() {
-            tracing::warn!(repo = repo.0, path = %from.display(), "repository is in the database but not on disk; skipped");
-            result.missing.push(repo.0);
-            continue;
-        }
-        let to = target.path_for(owner, repo);
-        let git = git.to_owned();
-        let permit = Arc::clone(&permits).acquire_owned().await?;
-        copies.spawn(async move {
-            let _permit = permit;
-            mirror(&git, &from, &to).await.with_context(|| format!("cannot copy repository {} ({})", repo.0, from.display()))
-        });
-    }
-    let mut failures = Vec::new();
-    while let Some(copy) = copies.join_next().await {
-        match copy? {
-            Ok(()) => result.copied += 1,
-            Err(error) => {
-                tracing::error!("{error:#}");
-                failures.push(error);
-            }
-        }
-    }
-    if let Some(first) = failures.into_iter().next() {
-        return Err(first.context("backup incomplete: at least one repository could not be copied"));
-    }
-    Ok(result)
-}
-
-/// Copies the release files `assets` (`(repository, asset)` ids) from `<source>/<repo>/<asset>`
-/// to the same place under `target`. Files are immutable once in place, so a copy is
-/// consistent; one that disappeared since the snapshot (its release was deleted) is
-/// reported as missing rather than failing the backup.
-async fn copy_attachments(source: &Path, target: &Path, assets: &[(i64, i64)]) -> anyhow::Result<Copied> {
-    // Always present, so restoring can copy it unconditionally.
-    tokio::fs::create_dir_all(target).await?;
-    let mut result = Copied::default();
-    for &(repo, asset) in assets {
-        let relative = Path::new(&repo.to_string()).join(asset.to_string());
-        let from = source.join(&relative);
-        if !tokio::fs::try_exists(&from).await? {
-            tracing::warn!(asset, path = %from.display(), "release file is in the database but not on disk; skipped");
-            result.missing.push(asset);
-            continue;
-        }
-        let to = target.join(&relative);
-        if let Some(parent) = to.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-        tokio::fs::copy(&from, &to).await.with_context(|| format!("cannot copy release file {asset} ({})", from.display()))?;
-        result.copied += 1;
-    }
-    Ok(result)
-}
-
-/// Copies the Git LFS objects `oids` from `<source>/<aa>/<bb>/<oid>` to the same place
-/// under `target`. Objects never change once in place; one removed since the snapshot (no
-/// repository used it any more) is reported as missing.
-async fn copy_lfs_objects(source: &Path, target: &Path, oids: &[LfsOid]) -> anyhow::Result<Copied<String>> {
-    tokio::fs::create_dir_all(target).await?;
-    let mut result = Copied::default();
-    for oid in oids {
-        let (first, second) = oid.shards();
-        let relative = Path::new(first).join(second).join(oid.as_str());
-        let from = source.join(&relative);
-        if !tokio::fs::try_exists(&from).await? {
-            tracing::warn!(%oid, path = %from.display(), "LFS object is in the database but not on disk; skipped");
-            result.missing.push(oid.to_string());
-            continue;
-        }
-        let to = target.join(&relative);
-        if let Some(parent) = to.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-        tokio::fs::copy(&from, &to).await.with_context(|| format!("cannot copy LFS object {oid} ({})", from.display()))?;
-        result.copied += 1;
-    }
-    Ok(result)
-}
-
-/// Mirrors one bare repository through the pack protocol, then makes the copy
-/// indistinguishable from the original: same `HEAD`, no `origin` remote.
-async fn mirror(git: &Path, from: &Path, to: &Path) -> anyhow::Result<()> {
-    if let Some(parent) = to.parent() {
-        tokio::fs::create_dir_all(parent).await?;
-    }
-    run_git(git, |command| {
-        command.args(["clone", "--mirror", "--no-local", "--quiet"]).arg(from).arg(to);
-    })
-    .await?;
-    // `clone` points HEAD at the source's HEAD branch only if it exists; copy the
-    // symbolic ref itself so empty repositories keep their default branch too.
-    tokio::fs::copy(from.join("HEAD"), to.join("HEAD")).await?;
-    // Not `git remote remove`: with a mirror refspec it would delete every ref.
-    run_git(git, |command| {
-        command.arg("--git-dir").arg(to).args(["config", "--remove-section", "remote.origin"]);
-    })
-    .await
-}
-
-async fn run_git(git: &Path, configure: impl FnOnce(&mut Command)) -> anyhow::Result<()> {
-    let mut command = Command::new(git);
-    command.env_clear();
-    for key in INHERITED_ENV {
-        if let Some(value) = std::env::var_os(key) {
-            command.env(key, value);
-        }
-    }
-    command
-        .env("GIT_CONFIG_NOSYSTEM", "1")
-        .env("GIT_CONFIG_GLOBAL", if cfg!(windows) { "NUL" } else { "/dev/null" })
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    configure(&mut command);
-    let output = command.output().await.with_context(|| format!("cannot run {}", git.display()))?;
-    if !output.status.success() {
-        bail!("git exited with {}: {}", output.status, String::from_utf8_lossy(&output.stderr).trim());
-    }
-    Ok(())
 }
 
 fn now_rfc3339() -> anyhow::Result<String> {
