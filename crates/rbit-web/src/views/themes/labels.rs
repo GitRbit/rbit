@@ -1,5 +1,5 @@
 //! Lazy compiled labels for the shared picker, with no per-row formatted strings.
-use rbit_localization::{Catalog, Locale, LocalizedText, ThemeMessage as Message};
+use rbit_localization::{Catalog, Locale, Localized, LocalizedText, ThemeMessage as Message, ThemePreviewMessage as Preview};
 
 #[derive(Debug, Clone, Copy)]
 pub struct PickerLabels(Catalog);
@@ -88,5 +88,20 @@ impl PickerLabels {
             "light" => Message::Light,
             _ => Message::Auto,
         })
+    }
+
+    /// A label of the miniature page, or its English fallback.
+    pub fn preview_text(self, message: Preview) -> Localized {
+        self.0.localized(message)
+    }
+
+    /// The miniature file's line count.
+    pub fn preview_lines(self, count: u64) -> Localized {
+        self.0.localized(Preview::Lines { count })
+    }
+
+    /// The miniature page's failing-check count.
+    pub fn preview_failing(self, count: u64) -> Localized {
+        self.0.localized(Preview::Failing { count })
     }
 }

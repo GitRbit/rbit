@@ -24,9 +24,11 @@ pub use fallback::{Localized, MessageFamily, MessageWriter};
 mod run_page;
 pub use run_page::RunPageMessage;
 mod settings_nav;
+pub use settings_nav::SettingsNavMessage;
+mod theme_preview;
 pub use display::LocalizedDisplay;
 use display::{PAGE_OF_SEPARATOR, PAGE_PREFIX, STARS_SUFFIX, SUBTITLE_PREFIX, SUBTITLE_SUFFIX};
-pub use settings_nav::SettingsNavMessage;
+pub use theme_preview::ThemePreviewMessage;
 
 /// Typed visibility selector. Adapters map domain values without localized strings.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

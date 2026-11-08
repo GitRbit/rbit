@@ -69,6 +69,12 @@ test("every template uses only logical sides", async () => {
     // Mirroring comes from logical properties and the `dir-icon` tokens; a per-direction
     // variant would mirror a second time.
     assert.doesNotMatch(source, /[\s"'](?:rtl|ltr):/, `${path} styles one direction by hand`);
+    // Untranslated prose goes through the catalog and `ui::localized`, which marks only
+    // the English fallback and keeps the page direction; a pinned English island would
+    // sit on the wrong side of a right-to-left page.
+    for (const [tag] of source.matchAll(OPEN_TAG)) {
+      assert.ok(!(/\blang="en"/.test(tag) && /\bdir="ltr"/.test(tag)), `${path} pins an English island: ${tag}`);
+    }
   }
 });
 

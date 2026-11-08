@@ -154,7 +154,10 @@ fn spanish_picker_preserves_theme_identity_and_escapes_site_content() {
     assert!(html.contains("aria-label=\"Buscar temas\""));
     assert!(html.contains("data-tpk-variant=\"colorblind\" aria-pressed=\"false\">Daltonismo</button>"));
     assert!(html.contains("data-label-applied=\"Aplicado\""));
-    assert!(html.contains("lang=\"en\" dir=\"ltr\" data-theme=\"system\""));
+    // The miniature page follows the dialog's direction; only its untranslated labels are English.
+    assert!(html.contains("<div class=\"tpk-preview\" data-theme=\"system\""));
+    assert!(html.contains("<span lang=\"en\">Pull requests</span>"));
+    assert!(!html.contains("lang=\"en\" dir=\"ltr\""));
     assert!(!html.contains("Forge <script>"));
     assert!(html.contains("&#60;script&#62;"));
 }

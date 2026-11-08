@@ -66,18 +66,18 @@
         </div>
         <button class="btn btn-primary ms-auto shrink-0" type="submit" form="tpk-list" name="theme" value="system" data-tpk-apply>{{ labels.apply() }}</button>
       </div>
-      <div class="tpk-preview" lang="en" dir="ltr" data-theme="system" data-tpk-preview aria-hidden="true">
+      <div class="tpk-preview" data-theme="system" data-tpk-preview aria-hidden="true">
         <div class="pv-top">
           {% call ui::brand_logo(page, "size-3.5", 14) %}{% endcall %}
           <span class="pv-crumb"><span>{{ page.site_name }}</span> / <b>core</b></span>
-          <span class="pv-btn">{% call ui::icon("star", "size-3") %}{% endcall %} Star</span>
-          <span class="pv-btn pv-primary">Clone</span>
+          <span class="pv-btn">{% call ui::icon("star", "size-3") %}{% endcall %} {% call ui::localized(labels.preview_text(rbit_localization::ThemePreviewMessage::Star)) %}{% endcall %}</span>
+          <span class="pv-btn pv-primary">{% call ui::localized(labels.preview_text(rbit_localization::ThemePreviewMessage::Clone)) %}{% endcall %}</span>
         </div>
-        <div class="pv-tabs"><span class="pv-tab-on">Code</span><span>Issues <i>3</i></span><span>Pull requests <i>1</i></span><span>Releases</span></div>
+        <div class="pv-tabs"><span class="pv-tab-on">{% call ui::localized(labels.preview_text(rbit_localization::ThemePreviewMessage::Code)) %}{% endcall %}</span><span>{% call ui::localized(labels.preview_text(rbit_localization::ThemePreviewMessage::Issues)) %}{% endcall %} <i>3</i></span><span>{% call ui::localized(labels.preview_text(rbit_localization::ThemePreviewMessage::PullRequests)) %}{% endcall %} <i>1</i></span><span>{% call ui::localized(labels.preview_text(rbit_localization::ThemePreviewMessage::Releases)) %}{% endcall %}</span></div>
         <div class="pv-main">
           <div class="pv-box">
-            <div class="pv-box-head"><span>src/main.rs</span><span class="pv-faint">8 lines</span></div>
-            <pre class="pv-code"><span class="pv-ln">1</span><span class="pv-k">use</span> std::<span class="pv-t">io</span>;
+            <div class="pv-box-head"><span dir="ltr">src/main.rs</span><span class="pv-faint">{% call ui::localized(labels.preview_lines(8)) %}{% endcall %}</span></div>
+            <pre class="pv-code" dir="ltr"><span class="pv-ln">1</span><span class="pv-k">use</span> std::<span class="pv-t">io</span>;
 <span class="pv-ln">2</span>
 <span class="pv-ln">3</span><span class="pv-c">/// Greets the world.</span>
 <span class="pv-ln">4</span><span class="pv-k">fn</span> <span class="pv-f">main</span>() -&gt; <span class="pv-t">io::Result</span>&lt;()&gt; {
@@ -87,15 +87,15 @@
 <span class="pv-ln">8</span>}</pre>
           </div>
           <div class="pv-box">
-            <div class="pv-box-head"><span>lib.rs</span>{% call stats::counts(2, 1, "") %}{% endcall %}</div>
-            <pre class="pv-code pv-diff"><span class="pv-del-line">-    <span class="pv-k">let</span> name = <span class="pv-s">"world"</span>;</span><span class="pv-add-line">+    <span class="pv-k">let</span> name = <span class="pv-f">env</span>(<span class="pv-s">"USER"</span>);</span><span class="pv-add-line">+    <span class="pv-k">let</span> times = <span class="pv-n">3</span>;</span></pre>
+            <div class="pv-box-head"><span dir="ltr">lib.rs</span>{% call stats::counts(2, 1, "") %}{% endcall %}</div>
+            <pre class="pv-code pv-diff" dir="ltr"><span class="pv-del-line">-    <span class="pv-k">let</span> name = <span class="pv-s">"world"</span>;</span><span class="pv-add-line">+    <span class="pv-k">let</span> name = <span class="pv-f">env</span>(<span class="pv-s">"USER"</span>);</span><span class="pv-add-line">+    <span class="pv-k">let</span> times = <span class="pv-n">3</span>;</span></pre>
           </div>
           <div class="pv-row">
-            <span class="pv-pill pv-ok">{% call ui::icon("circle-check", "size-3") %}{% endcall %} Checks passed</span>
-            <span class="pv-pill pv-warn">{% call ui::icon("circle-dot", "size-3") %}{% endcall %} Review pending</span>
-            <span class="pv-pill pv-bad">{% call ui::icon("circle-slash", "size-3") %}{% endcall %} 1 failing</span>
+            <span class="pv-pill pv-ok">{% call ui::icon("circle-check", "size-3") %}{% endcall %} {% call ui::localized(labels.preview_text(rbit_localization::ThemePreviewMessage::ChecksPassed)) %}{% endcall %}</span>
+            <span class="pv-pill pv-warn">{% call ui::icon("circle-dot", "size-3") %}{% endcall %} {% call ui::localized(labels.preview_text(rbit_localization::ThemePreviewMessage::ReviewPending)) %}{% endcall %}</span>
+            <span class="pv-pill pv-bad">{% call ui::icon("circle-slash", "size-3") %}{% endcall %} {% call ui::localized(labels.preview_failing(1)) %}{% endcall %}</span>
           </div>
-          <p class="pv-text">Self-hosted Git, <span class="pv-link">fast</span> and quiet. <span class="pv-faint">Updated 2 hours ago</span></p>
+          <p class="pv-text">{% call ui::localized(labels.preview_text(rbit_localization::ThemePreviewMessage::Tagline)) %}{% endcall %} <span class="pv-link">{% call ui::localized(labels.preview_text(rbit_localization::ThemePreviewMessage::Link)) %}{% endcall %}</span> <span class="pv-faint">{% call ui::localized(labels.preview_text(rbit_localization::ThemePreviewMessage::Updated)) %}{% endcall %}</span></p>
         </div>
       </div>
       <p class="tpk-author" data-tpk-author></p>

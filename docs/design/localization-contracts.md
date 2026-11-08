@@ -74,6 +74,40 @@ identifiers. RTL diagnostics set document `dir=rtl` and wrap textual arguments i
 Unicode FSI/PDI. This tests layout and mixed-direction identifiers; it is neither an
 Arabic translation nor a guarantee against all misleading Unicode identifiers.
 
+## Untranslated messages and English fallback
+
+The original message families (`Message`, `ChromeMessage`, `ActionsMessage` and the
+others) are complete in English and Spanish: their Spanish match tables are
+exhaustive, so a new variant does not compile without a Spanish entry. Newer
+families implement `MessageFamily` instead, where English is the only required
+catalog:
+
+- `id` returns the stable key and `english` writes the source text through a
+  `MessageWriter` (`literal` for wording, `argument` for names, environments and
+  lists, `number` for counts). Plurals are chosen in the arm, as elsewhere.
+- `translate(locale, writer)` writes a translation and returns `true`. Its default
+  returns `false` for every locale, so a new key or a whole new family compiles with
+  English alone (`tests/fallback.rs` proves this with a test-only family).
+- `Catalog::localized(message)` returns a `Localized`: the text plus whether it fell
+  back. Without a translation it is the English text with `fallback() == true`.
+  English and the `en-XA`/`ar-XB` diagnostics derive from English and never fall back.
+  `Localized::english_only` wraps text that only exists in English, such as core
+  relative timestamps, with the same rule.
+
+Templates render a `Localized` through the `ui::localized` macro in `macros.html`.
+It marks fallback text `<span lang="en">` so assistive technology reads it as
+English. Translated text gets no wrapper. Neither sets `dir`: the text follows the
+page direction, so it aligns with its translated neighbours in a right-to-left page.
+Do not hard-code `lang="en"` or `dir="ltr"` around untranslated prose. Keep explicit
+`dir="ltr"` only for machine values (code, paths, shas, identifiers).
+
+To add a locale, add its `Locale` variant, tag, catalog key and direction. Then
+implement `translate` for the families and keys it covers (`RunPageMessage`,
+`SettingsNavMessage` and `ThemePreviewMessage` today). Everything it leaves out keeps
+rendering in English, marked as such, until a translator adds it. `SettingsNavMessage`
+shows a partial translation: its Spanish arm reuses the shell's existing Spanish
+labels and leaves the other sections to fall back.
+
 ## First-slice integration and future catalogs
 
 The HTTP adapter should pass Catalog/Locale to presentation; set both HTML `lang` and

@@ -2,7 +2,7 @@
 //! back to English wherever a locale has not translated it.
 use std::collections::BTreeSet;
 
-use rbit_localization::{Catalog, Locale, MessageFamily, RunPageMessage, SettingsNavMessage};
+use rbit_localization::{Catalog, Locale, MessageFamily, RunPageMessage, SettingsNavMessage, ThemePreviewMessage};
 
 const LOCALES: [Locale; 4] = [Locale::English, Locale::Spanish, Locale::PseudoExpanded, Locale::PseudoRtl];
 
@@ -90,4 +90,29 @@ fn settings_navigation_keys_exist_and_translate_only_what_spanish_has() {
     let keys = spanish.localized(M::SshKeys);
     assert_eq!(keys.as_str(), "SSH keys");
     assert!(keys.fallback());
+}
+
+#[test]
+fn theme_preview_keys_exist_render_and_fall_back_in_spanish() {
+    use ThemePreviewMessage as M;
+    let all = [
+        M::Star,
+        M::Clone,
+        M::Code,
+        M::Issues,
+        M::PullRequests,
+        M::Releases,
+        M::Lines { count: 8 },
+        M::ChecksPassed,
+        M::ReviewPending,
+        M::Failing { count: 1 },
+        M::Tagline,
+        M::Link,
+        M::Updated,
+    ];
+    check_family(&all, 13);
+    let english = Catalog::new(Locale::English);
+    assert_eq!(english.localized(M::Lines { count: 1 }).as_str(), "1 line");
+    assert_eq!(english.localized(M::Lines { count: 8 }).as_str(), "8 lines");
+    assert!(all.iter().all(|&message| Catalog::new(Locale::Spanish).localized(message).fallback()));
 }

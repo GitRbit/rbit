@@ -13,7 +13,7 @@ mod pseudo;
 pub use catalog::{
     ActionsDisplay, ActionsJobMessage, ActionsMessage, ActionsOverviewMessage, Catalog, ChromeDisplay, ChromeMessage, JobDisplay,
     LanguageMessage, Localized, LocalizedDisplay, LocalizedText, Message, MessageFamily, MessageWriter, OverviewControlDisplay,
-    OverviewControlMessage, RepositoryVisibility, RunPageMessage, SettingsNavMessage, ThemeMessage,
+    OverviewControlMessage, RepositoryVisibility, RunPageMessage, SettingsNavMessage, ThemeMessage, ThemePreviewMessage,
 };
 pub use locale::{Direction, Locale};
 pub use negotiation::{LocalePreferences, LocaleResolver, PreferenceSource, ResolvedLocale, UnsupportedDefault};
