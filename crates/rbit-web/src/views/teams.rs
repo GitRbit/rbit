@@ -1,11 +1,6 @@
-//! Organisation team pages.
-//!
-//! Milestone 2 workstream A (access) owns this file.
-//!
-//! `/{org}/teams` lists the teams, `/{org}/teams/new` creates one, `/{org}/teams/{team}`
-//! shows its members and repositories (with forms for owners), and
-//! `/{org}/teams/{team}/settings` renames or deletes it. Every page shares the
-//! organisation header with the Teams tab selected.
+//! Organisation team pages: `/{org}/teams` lists the teams, `/{org}/teams/new` creates one,
+//! `/{org}/teams/{team}` shows its members and repositories (with forms for owners) and
+//! `/{org}/teams/{team}/settings` renames or deletes it, all under the organisation header.
 
 use askama::Template;
 use askama_web::WebTemplate;
@@ -14,6 +9,9 @@ use rbit_core::{
     membership::{Permission, TeamSummary},
     repository::OwnedRepository,
 };
+use rbit_localization::settings::org::{OrgMessage, OrgText};
+use rbit_localization::settings::org_teams::{TeamMessage, TeamText};
+use rbit_localization::{Locale, Localized};
 use rbit_services::teams::TeamContext;
 
 use crate::views::{
@@ -48,22 +46,21 @@ pub struct TeamRow {
     pub name: String,
     pub url: String,
     pub description: Option<String>,
-    /// e.g. `3 members · 2 repositories`.
-    pub counts: String,
+    /// e.g. `3 members` and `2 repositories`.
+    pub counts: [Localized; 2],
 }
 
 impl TeamRow {
-    pub fn new(summary: &TeamSummary, org: &str) -> Self {
-        let plural = |n: i64, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
+    pub fn new(summary: &TeamSummary, org: &str, locale: Locale) -> Self {
+        let count = |n: i64, one: TeamMessage, many: fn(u64) -> TeamText<'static>| {
+            if n == 1 { one.text(&locale) } else { many(u64::try_from(n).unwrap_or_default()).text(&locale) }
+        };
+        let members = count(summary.member_count, TeamMessage::OneMember, TeamText::Members);
         Self {
             name: summary.team.name.to_string(),
             url: team_url(org, summary.team.name.as_str()),
             description: summary.team.description.clone(),
-            counts: format!(
-                "{} · {}",
-                plural(summary.member_count, "member", "members"),
-                plural(summary.repo_count, "repository", "repositories")
-            ),
+            counts: [members, count(summary.repo_count, TeamMessage::OneRepository, TeamText::Repositories)],
         }
     }
 }
@@ -117,7 +114,7 @@ impl TeamSettingsPage {
     pub fn new(page: Page, header: OrgHeader, team: &TeamContext) -> Self {
         let url = team_url(&header.name, team.team.name.as_str());
         Self {
-            page: page.titled(format!("Settings · {}", team.full_name())),
+            page: crate::views::org::titled(page, TeamText::SettingsTitle(&team.full_name())),
             team_name: team.team.name.to_string(),
             save_url: format!("{url}/settings"),
             delete_url: format!("{url}/settings/delete"),
@@ -339,9 +336,9 @@ mod tests {
     #[test]
     fn rows_count_members_and_repositories() {
         let summary = TeamSummary { team: team(true).team, member_count: 1, repo_count: 2 };
-        let row = TeamRow::new(&summary, "acme");
+        let row = TeamRow::new(&summary, "acme", Locale::English);
         assert_eq!(row.url, "/acme/teams/core");
-        assert_eq!(row.counts, "1 member · 2 repositories");
+        assert_eq!([row.counts[0].as_str(), row.counts[1].as_str()], ["1 member", "2 repositories"]);
     }
 
     #[test]
@@ -351,7 +348,7 @@ mod tests {
             TeamsPage {
                 page: page(),
                 header: header(can_manage),
-                teams: vec![TeamRow::new(&summary, "acme")],
+                teams: vec![TeamRow::new(&summary, "acme", Locale::English)],
                 can_manage,
                 new_url: "/acme/teams/new".into(),
             }

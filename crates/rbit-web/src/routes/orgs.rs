@@ -91,7 +91,7 @@ pub async fn new_form(State(state): State<AppState>, SignedIn(user): SignedIn, p
         return Err(WebError::Forbidden);
     }
     Ok(NewOrgPage {
-        page: page.titled("New organization"),
+        page: crate::views::org::titled(page, rbit_localization::settings::org::OrgMessage::NewOrganization),
         error: FormError::default(),
         name: String::new(),
         display_name: String::new(),
@@ -113,7 +113,7 @@ pub async fn create(
         Err(error) => {
             let message = validation_message(error)?;
             let page = NewOrgPage {
-                page: page.titled("New organization"),
+                page: crate::views::org::titled(page, rbit_localization::settings::org::OrgMessage::NewOrganization),
                 error: FormError::from_message(&message),
                 name: form.name,
                 display_name: form.display_name,
@@ -186,7 +186,7 @@ async fn members_page(
     let members = state.services.orgs.members(&ctx.org).await?;
     let base = format!("/{}/members", ctx.org.name());
     Ok(MembersPage {
-        page: page.titled(format!("Members · {}", ctx.org.label())),
+        page: crate::views::org::titled(page, rbit_localization::settings::org::OrgText::MembersTitle(ctx.org.label())),
         header,
         members: members.iter().map(|member| MemberRow::new(&ctx.org, member, viewer)).collect(),
         error,
@@ -315,7 +315,7 @@ async fn settings_page(state: &AppState, user: &User, page: Page, ctx: &OrgConte
         cards.extend(crate::views::actions_settings::org_settings_cards(&base));
     }
     Ok(OrgSettingsPage {
-        page: page.titled(format!("Settings · {}", ctx.org.label())),
+        page: crate::views::org::titled(page, rbit_localization::settings::org::OrgText::SettingsTitle(ctx.org.label())),
         header,
         form,
         error: FormError::default(),

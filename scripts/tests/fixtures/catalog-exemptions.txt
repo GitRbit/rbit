@@ -16,15 +16,6 @@ issues/new.html
 issues/rows.html
 issues/show.html
 issues/sidebar.html
-org/header.html
-org/members.html
-org/new.html
-org/profile.html
-org/settings.html
-org/team.html
-org/team_new.html
-org/team_settings.html
-org/teams.html
 protection/form.html
 protection/list.html
 pulls/commits.html

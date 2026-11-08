@@ -6,14 +6,14 @@
 
 <div class="mt-6 max-w-3xl">
   <div class="mb-3 flex h-8 items-center justify-between gap-3">
-    <h2 class="text-[13px] font-medium text-ink-muted">Teams <span class="ms-1 text-ink-faint">{{ teams.len() }}</span></h2>
+    <h2 class="text-[13px] font-medium text-ink-muted">{% call ui::localized(OrgMessage::Teams.text(page.locale)) %}{% endcall %} <span class="ms-1 text-ink-faint">{{ teams.len() }}</span></h2>
     {% if can_manage %}
-    <a href="{{ new_url }}" class="btn btn-primary">{% call ui::icon("plus", "size-3.5") %}{% endcall %}New team</a>
+    <a href="{{ new_url }}" class="btn btn-primary">{% call ui::icon("plus", "size-3.5") %}{% endcall %}{% call ui::localized(TeamMessage::NewTeam.text(page.locale)) %}{% endcall %}</a>
     {% endif %}
   </div>
   <div class="box">
     {% if teams.is_empty() %}
-    {% call ui::empty_state("users", "No teams yet", "Teams group members and give each group its own access to repositories.") %}{% endcall %}
+    {% call ui::empty_state("users", TeamMessage::NoTeams.text(page.locale), TeamMessage::NoTeamsText.text(page.locale)) %}{% endcall %}
     {% else %}
     <ul>
       {% for team in teams %}
@@ -24,7 +24,7 @@
             <span class="block truncate font-medium">{{ team.name }}</span>
             {% if let Some(description) = team.description %}<span class="mt-0.5 block line-clamp-2 text-[13px] text-ink-muted">{{ description }}</span>{% endif %}
           </span>
-          <span class="shrink-0 text-xs text-ink-faint">{{ team.counts }}</span>
+          <span class="shrink-0 text-xs text-ink-faint">{% call ui::localized(team.counts[0]) %}{% endcall %} · {% call ui::localized(team.counts[1]) %}{% endcall %}</span>
         </a>
       </li>
       {% endfor %}

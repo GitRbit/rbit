@@ -7,49 +7,49 @@
 <div class="mt-6 max-w-3xl">
   <form method="post" action="{{ save_url }}" class="box" novalidate>
     <div class="box-header">
-      <h2 class="text-[13px] font-medium">Profile</h2>
+      <h2 class="text-[13px] font-medium">{% call ui::localized(OrgMessage::Profile.text(page.locale)) %}{% endcall %}</h2>
     </div>
     <div class="p-4">
       {% call ui::form_error(error) %}{% endcall %}
 
-      <label class="label" for="org-display-name">Display name <span class="font-normal text-ink-faint">optional</span></label>
+      <label class="label" for="org-display-name">{% call ui::localized(OrgMessage::DisplayName.text(page.locale)) %}{% endcall %} <span class="font-normal text-ink-faint">{% call ui::localized(OrgMessage::Optional.text(page.locale)) %}{% endcall %}</span></label>
       <input class="input" id="org-display-name" name="display_name" value="{{ form.display_name }}" maxlength="100" placeholder="{{ header.name }}">
 
-      <label class="label mt-5" for="org-description">Description <span class="font-normal text-ink-faint">optional</span></label>
+      <label class="label mt-5" for="org-description">{% call ui::localized(OrgMessage::Description.text(page.locale)) %}{% endcall %} <span class="font-normal text-ink-faint">{% call ui::localized(OrgMessage::Optional.text(page.locale)) %}{% endcall %}</span></label>
       <textarea class="input h-auto min-h-20 py-2" id="org-description" name="description" maxlength="350" rows="3">{{ form.description }}</textarea>
 
-      <label class="label mt-5" for="org-website">Website <span class="font-normal text-ink-faint">optional</span></label>
-      <input class="input" id="org-website" name="website" type="url" value="{{ form.website }}" maxlength="255" placeholder="https://" autocapitalize="none" spellcheck="false">
+      <label class="label mt-5" for="org-website">{% call ui::localized(OrgMessage::Website.text(page.locale)) %}{% endcall %} <span class="font-normal text-ink-faint">{% call ui::localized(OrgMessage::Optional.text(page.locale)) %}{% endcall %}</span></label>
+      <input class="input" id="org-website" name="website" type="url" value="{{ form.website }}" maxlength="255" placeholder="{{ OrgMessage::WebsitePlaceholder.text(page.locale) }}" autocapitalize="none" spellcheck="false">
     </div>
     <div class="flex justify-end border-t border-line px-4 py-3">
-      <button class="btn btn-primary w-full sm:w-auto" type="submit">Save profile</button>
+      <button class="btn btn-primary w-full sm:w-auto" type="submit">{% call ui::localized(OrgMessage::SaveProfile.text(page.locale)) %}{% endcall %}</button>
     </div>
   </form>
 
   <form method="post" action="{{ permission_url }}" class="box mt-6" novalidate>
     <div class="box-header">
-      <h2 class="text-[13px] font-medium">Member permission</h2>
+      <h2 class="text-[13px] font-medium">{% call ui::localized(OrgMessage::MemberPermission.text(page.locale)) %}{% endcall %}</h2>
     </div>
     <div class="p-4">
       {% call ui::form_error(permission_error) %}{% endcall %}
       <fieldset>
-        <legend class="label">What every member gets on every repository</legend>
+        <legend class="label">{% call ui::localized(OrgMessage::PermissionLegend.text(page.locale)) %}{% endcall %}</legend>
         <div class="box overflow-hidden">
           {% for option in base_permissions %}
           <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 last:border-b-0 hover:bg-subtle has-checked:bg-subtle">
             <input type="radio" name="permission" class="mt-1 accent-(--ink)" value="{{ option.value }}" {% if option.selected %}checked{% endif %}>
             <span>
-              <span class="block font-medium">{{ option.label }}</span>
-              <span class="block text-[13px] text-ink-muted">{{ option.description }}</span>
+              <span class="block font-medium">{% call ui::localized(option.label.text(page.locale)) %}{% endcall %}</span>
+              <span class="block text-[13px] text-ink-muted">{% call ui::localized(option.description.text(page.locale)) %}{% endcall %}</span>
             </span>
           </label>
           {% endfor %}
         </div>
       </fieldset>
-      <p class="hint">Teams and collaborators can add to this, never take away. Owners always administer every repository.</p>
+      <p class="hint">{% call ui::localized(OrgMessage::PermissionHint.text(page.locale)) %}{% endcall %}</p>
     </div>
     <div class="flex justify-end border-t border-line px-4 py-3">
-      <button class="btn btn-primary w-full sm:w-auto" type="submit">Save permission</button>
+      <button class="btn btn-primary w-full sm:w-auto" type="submit">{% call ui::localized(OrgMessage::SavePermission.text(page.locale)) %}{% endcall %}</button>
     </div>
   </form>
 
@@ -57,22 +57,22 @@
 
   <form method="post" action="{{ delete_url }}" class="box mt-8 border-danger/40" novalidate>
     <div class="box-header">
-      <h2 class="text-[13px] font-medium text-danger">Danger zone</h2>
+      <h2 class="text-[13px] font-medium text-danger">{% call ui::localized(OrgMessage::DangerZone.text(page.locale)) %}{% endcall %}</h2>
     </div>
     <div class="p-4">
       {% call ui::form_error(delete_error) %}{% endcall %}
-      <p class="font-medium">Delete this organization</p>
+      <p class="font-medium">{% call ui::localized(OrgMessage::DeleteOrganization.text(page.locale)) %}{% endcall %}</p>
       {% if repo_count == 0 %}
-      <p class="mt-1 text-[13px] text-ink-muted">This permanently removes the organization and all of its memberships. It cannot be undone.</p>
-      <label class="label mt-4" for="org-confirm">Type <span class="font-mono" dir="ltr">{{ header.name }}</span> to confirm</label>
+      <p class="mt-1 text-[13px] text-ink-muted">{% call ui::localized(OrgMessage::DeleteText.text(page.locale)) %}{% endcall %}</p>
+      <label class="label mt-4" for="org-confirm">{% call ui::localized(OrgMessage::TypeToConfirmLead.text(page.locale)) %}{% endcall %} <span class="font-mono" dir="ltr">{{ header.name }}</span> {% call ui::localized(OrgMessage::TypeToConfirmTail.text(page.locale)) %}{% endcall %}</label>
       <input class="input" id="org-confirm" name="confirm" autocomplete="off" autocapitalize="none" spellcheck="false" required>
       {% else %}
-      <p class="mt-1 text-[13px] text-ink-muted">{{ header.name }} still owns {{ repo_count }} {% if repo_count == 1 %}repository{% else %}repositories{% endif %}. Delete or transfer {% if repo_count == 1 %}it{% else %}them{% endif %} first.</p>
+      <p class="mt-1 text-[13px] text-ink-muted">{% if repo_count == 1 %}{% call ui::localized(OrgText::StillOwnsOne(header.name).text(page.locale)) %}{% endcall %}{% else %}{% call ui::localized(self.still_owns()) %}{% endcall %}{% endif %}</p>
       {% endif %}
     </div>
     {% if repo_count == 0 %}
     <div class="flex justify-end border-t border-line px-4 py-3">
-      <button class="btn btn-danger w-full sm:w-auto" type="submit">Delete organization</button>
+      <button class="btn btn-danger w-full sm:w-auto" type="submit">{% call ui::localized(OrgMessage::DeleteOrganizationButton.text(page.locale)) %}{% endcall %}</button>
     </div>
     {% endif %}
   </form>

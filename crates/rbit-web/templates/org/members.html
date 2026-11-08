@@ -8,28 +8,28 @@
   {% if can_manage %}
   <form method="post" action="{{ add_url }}" class="box mb-6" novalidate>
     <div class="box-header">
-      <h2 class="text-[13px] font-medium">Add a member</h2>
+      <h2 class="text-[13px] font-medium">{% call ui::localized(OrgMessage::AddMember.text(page.locale)) %}{% endcall %}</h2>
     </div>
     <div class="p-4">
       {% call ui::form_error(error) %}{% endcall %}
       <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem_auto] sm:items-end">
         <div>
-          <label class="label" for="member-username">Username</label>
+          <label class="label" for="member-username">{% call ui::localized(OrgMessage::Username.text(page.locale)) %}{% endcall %}</label>
           <input class="input" id="member-username" name="username" value="{{ form.username }}" maxlength="39" autocapitalize="none" autocomplete="off" spellcheck="false" required>
         </div>
         <div>
-          <label class="label" for="member-role">Role</label>
+          <label class="label" for="member-role">{% call ui::localized(OrgMessage::Role.text(page.locale)) %}{% endcall %}</label>
           <div class="relative">
             <select class="input cursor-pointer appearance-none pe-9" id="member-role" name="role">
-              <option value="member" {% if !form.owner %}selected{% endif %}>Member</option>
-              <option value="owner" {% if form.owner %}selected{% endif %}>Owner</option>
+              <option value="member" {% if !form.owner %}selected{% endif %}>{{ OrgMessage::Member.text(page.locale) }}</option>
+              <option value="owner" {% if form.owner %}selected{% endif %}>{{ OrgMessage::Owner.text(page.locale) }}</option>
             </select>
             {% call ui::icon("chevron-down", "pointer-events-none absolute inset-e-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
           </div>
         </div>
-        <button class="btn btn-primary h-10 w-full sm:h-9 sm:w-auto" type="submit">Add</button>
+        <button class="btn btn-primary h-10 w-full sm:h-9 sm:w-auto" type="submit">{% call ui::localized(OrgMessage::Add.text(page.locale)) %}{% endcall %}</button>
       </div>
-      <p class="hint">Members get the organization's base permission on every repository, plus whatever their teams grant. Owners can also manage members, teams and settings.</p>
+      <p class="hint">{% call ui::localized(OrgMessage::MembersHint.text(page.locale)) %}{% endcall %}</p>
     </div>
   </form>
   {% else %}
@@ -37,7 +37,7 @@
   {% endif %}
 
   <div class="mb-3 flex h-8 items-center">
-    <h2 class="text-[13px] font-medium text-ink-muted">Members <span class="ms-1 text-ink-faint">{{ members.len() }}</span></h2>
+    <h2 class="text-[13px] font-medium text-ink-muted">{% call ui::localized(OrgMessage::Members.text(page.locale)) %}{% endcall %} <span class="ms-1 text-ink-faint">{{ members.len() }}</span></h2>
   </div>
   <div class="box">
     <ul>
@@ -46,26 +46,26 @@
         <a href="{{ member.url }}" class="flex min-w-0 flex-1 items-center gap-3">
           {% call ui::avatar(member.avatar, "size-8 text-[11px]") %}{% endcall %}
           <span class="min-w-0">
-            <span class="block truncate font-medium">{{ member.label }}{% if member.is_viewer %} <span class="font-normal text-ink-faint">(you)</span>{% endif %}</span>
+            <span class="block truncate font-medium">{{ member.label }}{% if member.is_viewer %} <span class="font-normal text-ink-faint">{% call ui::localized(OrgMessage::You.text(page.locale)) %}{% endcall %}</span>{% endif %}</span>
             <span class="block truncate text-xs text-ink-muted">{{ member.name }}</span>
           </span>
         </a>
-        <span class="badge shrink-0">{{ member.role_label }}</span>
+        <span class="badge shrink-0">{% call ui::localized(member.role_label.text(page.locale)) %}{% endcall %}</span>
         {% if can_manage || member.is_viewer %}
         <div class="flex w-full shrink-0 justify-end gap-2 sm:w-auto">
           {% if can_manage %}
           <form method="post" action="{{ member.role_url }}">
             <input type="hidden" name="role" value="{{ member.other_role }}">
-            <button class="btn" type="submit" aria-label="{{ member.other_role_label }}: {{ member.name }}">{{ member.other_role_label }}</button>
+            <button class="btn" type="submit" aria-label="{{ self.role_action(member) }}">{% call ui::localized(member.other_role_label.text(page.locale)) %}{% endcall %}</button>
           </form>
           {% endif %}
           {% if member.is_viewer %}
           <form method="post" action="{{ leave_url }}">
-            <button class="btn" type="submit">Leave</button>
+            <button class="btn" type="submit">{% call ui::localized(OrgMessage::Leave.text(page.locale)) %}{% endcall %}</button>
           </form>
           {% else if can_manage %}
           <form method="post" action="{{ member.remove_url }}">
-            <button class="btn" type="submit" aria-label="Remove {{ member.name }}">Remove</button>
+            <button class="btn" type="submit" aria-label="{{ OrgText::RemoveLabel(member.name).text(page.locale) }}">{% call ui::localized(OrgMessage::Remove.text(page.locale)) %}{% endcall %}</button>
           </form>
           {% endif %}
         </div>

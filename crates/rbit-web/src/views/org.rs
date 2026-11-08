@@ -4,6 +4,10 @@
 use askama::Template;
 use askama_web::WebTemplate;
 use rbit_core::{BasePermission, OrgMember, OrgRole, Organization, User};
+use rbit_localization::{
+    Catalog, Locale, Localized, MessageFamily,
+    settings::org::{OrgMessage, OrgText},
+};
 use rbit_services::orgs::OrgContext;
 
 use crate::views::{
@@ -78,6 +82,19 @@ impl OrgHeader {
         self
     }
 
+    /// The badge (`organization`) and tab labels of `org/header.html`, in the page's language.
+    #[allow(clippy::trivially_copy_pass_by_ref, clippy::unused_self, reason = "Askama calls it on the header with the page locale")]
+    pub fn caption(&self, locale: &Locale, name: &str) -> Localized {
+        match name {
+            "repositories" => OrgMessage::Repositories,
+            "members" => OrgMessage::Members,
+            "teams" => OrgMessage::Teams,
+            "settings" => OrgMessage::Settings,
+            _ => OrgMessage::Organization,
+        }
+        .text(locale)
+    }
+
     pub fn is_active(&self, tab: &str) -> bool {
         let current = match self.active {
             OrgTab::Repositories => "repositories",
@@ -87,6 +104,12 @@ impl OrgHeader {
         };
         current == tab
     }
+}
+
+/// `page` titled with `message` in its own language.
+pub fn titled(page: Page, message: impl MessageFamily) -> Page {
+    let title = Catalog::new(page.locale).localized(message);
+    page.titled(title.as_str())
 }
 
 /// `https://acme.example/` → `acme.example`.
@@ -120,7 +143,7 @@ pub struct MemberRow {
     pub label: String,
     pub url: String,
     pub avatar: Avatar,
-    pub role_label: &'static str,
+    pub role_label: OrgMessage,
     pub is_owner: bool,
     /// This row is the viewer.
     pub is_viewer: bool,
@@ -128,7 +151,7 @@ pub struct MemberRow {
     pub remove_url: String,
     /// The role offered by the "Make …" button.
     pub other_role: &'static str,
-    pub other_role_label: &'static str,
+    pub other_role_label: OrgMessage,
 }
 
 impl MemberRow {
@@ -140,13 +163,13 @@ impl MemberRow {
             label: member.user.label().to_owned(),
             url: format!("/{}", member.user.name),
             avatar: Avatar::for_account(&member.user),
-            role_label: member.role.label(),
+            role_label: if member.role.is_owner() { OrgMessage::Owner } else { OrgMessage::Member },
             is_owner: member.role.is_owner(),
             is_viewer: viewer.is_some_and(|user| user.id() == member.user.id),
             role_url: format!("{base}/role"),
             remove_url: format!("{base}/remove"),
             other_role: other.as_str(),
-            other_role_label: if other.is_owner() { "Make owner" } else { "Make member" },
+            other_role_label: if other.is_owner() { OrgMessage::MakeOwner } else { OrgMessage::MakeMember },
         }
     }
 }
@@ -171,6 +194,14 @@ pub struct MembersPage {
     pub is_member: bool,
     pub add_url: String,
     pub leave_url: String,
+}
+
+impl MembersPage {
+    /// The accessible name of a member's role button, e.g. `Make owner: alice`.
+    pub fn role_action(&self, member: &MemberRow) -> Localized {
+        let action = member.other_role_label.text(&self.page.locale);
+        OrgText::RoleLabel(action.as_str(), &member.name).text(&self.page.locale)
+    }
 }
 
 // ------------------------------------------------------------------ settings
@@ -213,12 +244,20 @@ pub struct OrgSettingsPage {
     pub permission_error: FormError,
 }
 
+impl OrgSettingsPage {
+    /// Why the organization cannot be deleted yet, when it still owns repositories.
+    pub fn still_owns(&self) -> Localized {
+        let count = u64::try_from(self.repo_count).unwrap_or(u64::MAX);
+        OrgText::StillOwns(&self.header.name, count).text(&self.page.locale)
+    }
+}
+
 /// One choice of the organisation base permission.
 #[derive(Debug, Clone)]
 pub struct BasePermissionOption {
     pub value: &'static str,
-    pub label: &'static str,
-    pub description: &'static str,
+    pub label: OrgMessage,
+    pub description: OrgMessage,
     pub selected: bool,
 }
 
@@ -227,7 +266,14 @@ impl BasePermissionOption {
     pub fn list(selected: BasePermission) -> Vec<Self> {
         BasePermission::ALL
             .into_iter()
-            .map(|base| Self { value: base.as_str(), label: base.label(), description: base.description(), selected: base == selected })
+            .map(|base| {
+                let (label, description) = match base {
+                    BasePermission::None => (OrgMessage::NoPermission, OrgMessage::NoPermissionText),
+                    BasePermission::Read => (OrgMessage::Read, OrgMessage::ReadText),
+                    BasePermission::Write => (OrgMessage::Write, OrgMessage::WriteText),
+                };
+                Self { value: base.as_str(), label, description, selected: base == selected }
+            })
             .collect()
     }
 }

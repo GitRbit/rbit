@@ -16,6 +16,7 @@ use axum::{
     routing::{get, post},
 };
 use rbit_core::{Permission, User};
+use rbit_localization::settings::org_teams::TeamText;
 use rbit_services::{
     ServiceError,
     orgs::OrgContext,
@@ -109,10 +110,11 @@ pub async fn list(State(state): State<AppState>, viewer: Viewer, page: Page, Pat
     let org = organisation(&state, viewer.user(), &owner).await?;
     let teams = state.services.teams.list(viewer.user(), &org.org).await?;
     let name = org.org.name().to_string();
+    let locale = page.locale;
     Ok(TeamsPage {
-        page: page.titled(format!("Teams · {}", org.org.label())),
+        page: crate::views::org::titled(page, TeamText::TeamsTitle(org.org.label())),
         header: header(&state, viewer.user(), &org).await?,
-        teams: teams.iter().map(|summary| TeamRow::new(summary, &name)).collect(),
+        teams: teams.iter().map(|summary| TeamRow::new(summary, &name, locale)).collect(),
         can_manage: org.can_manage,
         new_url: format!("/{name}/teams/new"),
     })
@@ -120,7 +122,7 @@ pub async fn list(State(state): State<AppState>, viewer: Viewer, page: Page, Pat
 
 async fn new_team_page(state: &AppState, user: &User, page: Page, org: &OrgContext, form: TeamForm) -> WebResult<NewTeamPage> {
     Ok(NewTeamPage {
-        page: page.titled(format!("New team · {}", org.org.label())),
+        page: crate::views::org::titled(page, TeamText::NewTeamTitle(org.org.label())),
         header: header(state, Some(user), org).await?,
         teams_url: format!("/{}/teams", org.org.name()),
         form,
