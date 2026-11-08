@@ -162,3 +162,10 @@ pub fn link_directory(target: &Path, link: &Path) {
     }
 }
 
+/// A directory outside every root under test holding one file that must survive.
+pub fn precious_outside() -> (tempfile::TempDir, PathBuf) {
+    let outside = tempfile::tempdir().unwrap();
+    let file = outside.path().join("precious.txt");
+    std::fs::write(&file, "keep me").unwrap();
+    (outside, file)
+}

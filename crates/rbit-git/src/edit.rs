@@ -305,10 +305,10 @@ impl EditWorkspace {
             stdin.shutdown().await?;
         }
         let output = child.wait_with_output().await?;
-        if !output.status.success() {
-            // Our checks passed, so Git refused a path itself (e.g. one it considers unsafe).
+        // Our checks passed, so Git refused a path itself: failing, or skipping it ("Ignoring path"), which must never drop a change.
+        if !output.status.success() || String::from_utf8_lossy(&output.stderr).contains("Ignoring path") {
             return Err(match failure(&output, "update-index") {
-                MergeError::Failed(message) if message.contains("nvalid path") => {
+                MergeError::Failed(message) if message.contains("nvalid path") || message.contains("Ignoring path") => {
                     EditError::Rejected("Git refuses one of these paths".to_owned())
                 }
                 other => other.into(),
