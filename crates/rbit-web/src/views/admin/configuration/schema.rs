@@ -1075,7 +1075,7 @@ const ACTIONS: &[Spec] = &[
     Spec {
         key: "max_artifact_storage_bytes",
         label: "Artifact storage per repository (bytes)",
-        help: "Artifact bytes kept per repository; uploads beyond it are refused. Artifacts are not backed up.",
+        help: "Artifact bytes kept per repository; uploads beyond it are refused. Backups (format 5 and later) include artifacts.",
         kind: Kind::Number,
         optional: false,
         max: "18446744073709551615",
@@ -1092,7 +1092,7 @@ const ACTIONS: &[Spec] = &[
     Spec {
         key: "max_cache_storage_bytes",
         label: "Cache storage per repository (bytes)",
-        help: "actions/cache bytes kept per repository for all its runners; the least recently used entries go first. Caches are not backed up.",
+        help: "actions/cache bytes kept per repository for all its runners; the least recently used entries go first. Backups (format 5 and later) include cache entries.",
         kind: Kind::Number,
         optional: false,
         max: "18446744073709551615",
