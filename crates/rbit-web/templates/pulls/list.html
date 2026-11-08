@@ -4,41 +4,45 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <form method="get" action="{{ list_url }}" role="search" class="mb-3 flex gap-2">
-  <label for="pull-query" class="sr-only">Search pull requests</label>
-  <input id="pull-query" type="search" class="input min-w-0 flex-1 font-mono text-xs" name="q" value="{{ query }}" maxlength="1000" placeholder="Search titles and descriptions…">
-  <button type="submit" class="btn">Search</button>
+  <label for="pull-query" class="sr-only">{% call ui::localized(rbit_localization::PullMessage::SearchPulls.localized(page.locale)) %}{% endcall %}</label>
+  <input id="pull-query" type="search" class="input min-w-0 flex-1 font-mono text-xs" name="q" value="{{ query }}" maxlength="1000" placeholder="{{ rbit_localization::IssueMessage::SearchPlaceholder.localized(page.locale) }}">
+  <button type="submit" class="btn">{% call ui::localized(rbit_localization::IssueMessage::Search.localized(page.locale)) %}{% endcall %}</button>
 </form>
-<p class="hint mb-3">Choose filters below, or type terms such as <code>is:draft</code>, <code>is:merged</code>, <code>author:@me</code> or <code>label:bug</code>. <a class="link" href="{{ list_url }}">Clear search and filters</a></p>
+{% let help = rbit_localization::CollabSentence::PullSearchHelp.rich(page.locale) %}
+<p class="hint mb-3"><span{% if help.fallback() %} lang="en"{% endif %}>{% for part in help.parts() %}{% if part.is_slot(0) %}<code>is:draft</code>{% else if part.is_slot(1) %}<code>is:merged</code>{% else if part.is_slot(2) %}<code>author:@me</code>{% else if part.is_slot(3) %}<code>label:bug</code>{% else %}{{ part.text() }}{% endif %}{% endfor %}</span> <a class="link" href="{{ list_url }}">{% call ui::localized(rbit_localization::PullMessage::ClearSearch.localized(page.locale)) %}{% endcall %}</a></p>
 {% for hint in hints %}<p class="hint mb-2">{{ hint }}</p>{% endfor %}
-<div class="relative mb-3 flex flex-wrap gap-1" aria-label="Pull request filters">
+<div class="relative mb-3 flex flex-wrap gap-1" aria-label="{{ rbit_localization::PullMessage::FiltersLabel.localized(page.locale) }}">
   {% include "issues/filters.html" %}
 </div>
 <div class="mb-3 flex min-h-8 flex-wrap items-center gap-3">
-  <nav class="flex items-center gap-1" aria-label="Pull request state">
-    <a href="{{ tabs.open_url }}" class="btn {% if tabs.state == "open" %}btn-primary{% else %}btn-ghost{% endif %} h-11 sm:h-8" {% if tabs.state == "open" %}aria-current="page"{% endif %}>{% call ui::icon("git-pull-request", "size-3.5") %}{% endcall %}<span class="tabular-nums">{{ tabs.open }}</span> Open</a>
-    <a href="{{ tabs.closed_url }}" class="btn {% if tabs.state == "closed" %}btn-primary{% else %}btn-ghost{% endif %} h-11 sm:h-8" {% if tabs.state == "closed" %}aria-current="page"{% endif %}>{% call ui::icon("check", "size-3.5") %}{% endcall %}<span class="tabular-nums">{{ tabs.closed }}</span> Closed</a>
+  <nav class="flex items-center gap-1" aria-label="{{ rbit_localization::PullMessage::StateNav.localized(page.locale) }}">
+    {% let tab = rbit_localization::CollabSentence::OpenCount { count: tabs.open.clone() }.rich(page.locale) %}
+    <a href="{{ tabs.open_url }}" class="btn {% if tabs.state == "open" %}btn-primary{% else %}btn-ghost{% endif %} h-11 sm:h-8" {% if tabs.state == "open" %}aria-current="page"{% endif %}{% if tab.fallback() %} lang="en"{% endif %}>{% call ui::icon("git-pull-request", "size-3.5") %}{% endcall %}{% for part in tab.parts() %}{% if part.is_slot(0) %}<span class="tabular-nums">{{ tabs.open }}</span>{% else %}{{ part.text() }}{% endif %}{% endfor %}</a>
+    {% let tab = rbit_localization::CollabSentence::ClosedCount { count: tabs.closed.clone() }.rich(page.locale) %}
+    <a href="{{ tabs.closed_url }}" class="btn {% if tabs.state == "closed" %}btn-primary{% else %}btn-ghost{% endif %} h-11 sm:h-8" {% if tabs.state == "closed" %}aria-current="page"{% endif %}{% if tab.fallback() %} lang="en"{% endif %}>{% call ui::icon("check", "size-3.5") %}{% endcall %}{% for part in tab.parts() %}{% if part.is_slot(0) %}<span class="tabular-nums">{{ tabs.closed }}</span>{% else %}{{ part.text() }}{% endif %}{% endfor %}</a>
   </nav>
-  {% if let Some(author) = author_filter %}<span class="badge">author: {{ author }}</span>{% endif %}
-  {% if !header.archived %}<a href="{{ new_url }}" class="btn btn-primary ms-auto h-11 sm:h-8">{% call ui::icon("git-pull-request", "size-3.5") %}{% endcall %}New<span class="hidden sm:inline">&nbsp;pull request</span></a>{% endif %}
+  {% if let Some(author) = author_filter %}<span class="badge">{% call ui::localized(rbit_localization::PullMessage::AuthorFilter { author: author.as_str() }.localized(page.locale)) %}{% endcall %}</span>{% endif %}
+  {% if !header.archived %}<a href="{{ new_url }}" class="btn btn-primary ms-auto h-11 sm:h-8">{% call ui::icon("git-pull-request", "size-3.5") %}{% endcall %}{% call ui::localized(rbit_localization::PullMessage::New.localized(page.locale)) %}{% endcall %}<span class="hidden sm:inline">&nbsp;{% call ui::localized(rbit_localization::PullMessage::NewSuffix.localized(page.locale)) %}{% endcall %}</span></a>{% endif %}
 </div>
 
 <div class="box">
   {% if rows.is_empty() %}
-  {% call ui::empty_state("git-pull-request", "No pull requests here", "Pull requests propose changes from a branch or a fork. Compare branches to open one.") %}{% endcall %}
+  {% call ui::empty_state("git-pull-request", rbit_localization::PullMessage::EmptyTitle.localized(page.locale), rbit_localization::PullMessage::EmptyText.localized(page.locale)) %}{% endcall %}
   {% else %}
   <ul>
     {% for row in rows %}
     <li class="flex items-start gap-3 border-b border-line px-4 py-3 last:border-b-0">
-      <span class="mt-0.5 {% if row.badge.label == "Open" %}text-success{% else if row.badge.label == "Draft" %}text-ink-faint{% else %}text-ink-muted{% endif %}" title="{{ row.badge.label }}">{% call ui::icon(row.badge.icon, "size-4") %}{% endcall %}</span>
+      <span class="mt-0.5 {% if row.badge.class == "state-badge-open" %}text-success{% else if row.badge.class == "state-badge-draft" %}text-ink-faint{% else %}text-ink-muted{% endif %}" title="{{ row.badge.message().localized(page.locale) }}">{% call ui::icon(row.badge.icon, "size-4") %}{% endcall %}</span>
       <div class="min-w-0 flex-1">
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
           <a href="{{ row.url }}" class="min-w-0 break-words text-[13px] font-medium hover:underline hover:underline-offset-4">{{ row.title }}</a>
           {% for label in row.labels %}<span class="label-chip"><svg viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="{{ label.color }}"/></svg>{{ label.name }}</span>{% endfor %}
-          {% if row.badge.label == "Draft" %}<span class="badge">Draft</span>{% endif %}
+          {% if row.badge.class == "state-badge-draft" %}<span class="badge">{% call ui::localized(rbit_localization::ThreadMessage::Draft.localized(page.locale)) %}{% endcall %}</span>{% endif %}
         </div>
-        <p class="mt-0.5 truncate text-xs text-ink-muted">{{ row.number }} {{ row.verb() }} <time datetime="{{ row.when_iso }}" title="{{ row.when_iso }}">{{ row.when }}</time> by {{ row.author }}{% if let Some(review) = row.review %} · <span class="{{ review.1 }}">{{ review.0 }}</span>{% endif %}</p>
+        {% let meta = row.meta().rich(page.locale) %}
+        <p class="mt-0.5 truncate text-xs text-ink-muted"><span{% if meta.fallback() %} lang="en"{% endif %}>{% for part in meta.parts() %}{% if part.is_slot(0) %}<time datetime="{{ row.when_iso }}" title="{{ row.when_iso }}">{{ row.when }}</time>{% else %}{{ part.text() }}{% endif %}{% endfor %}</span>{% if let Some(review) = row.review %} · <span class="{{ review.1 }}">{% call ui::localized(review.0.localized(page.locale)) %}{% endcall %}</span>{% endif %}</p>
       </div>
-      {% if row.comment_count > 0 %}<span class="flex shrink-0 items-center gap-1 text-xs text-ink-faint" title="{{ row.comment_count }} comments">{% call ui::icon("message-square", "size-3.5") %}{% endcall %}{{ row.comment_count }}</span>{% endif %}
+      {% if row.comment_count > 0 %}<span class="flex shrink-0 items-center gap-1 text-xs text-ink-faint" title="{{ rbit_localization::IssueMessage::Comments { count: row.comment_count.clone().into() }.localized(page.locale) }}">{% call ui::icon("message-square", "size-3.5") %}{% endcall %}{{ row.comment_count }}</span>{% endif %}
     </li>
     {% endfor %}
   </ul>

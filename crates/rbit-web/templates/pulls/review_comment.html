@@ -1,11 +1,12 @@
 {#- One review comment; expects `comment: ReviewCommentView` (views::pulls) and `show_hunk`
     (whether to repeat the stored diff excerpt, as in the conversation). -#}
+{% import "macros.html" as ui %}
 <div {% if comment.is_reply %}id="{{ comment.anchor }}"{% endif %} class="scroll-mt-28 {% if comment.is_reply %}border-t border-line{% endif %}">
   {% if show_hunk && !comment.is_reply %}
   <div class="flex flex-wrap items-center gap-2 border-b border-line bg-subtle px-3 py-1.5 text-xs">
     <a href="{{ comment.line_url }}" class="min-w-0 flex-1 truncate font-mono text-ink hover:underline hover:underline-offset-4"><bdi dir="ltr">{{ comment.path }}</bdi></a>
     <span class="font-mono text-ink-faint" dir="ltr">{{ comment.line_label }}</span>
-    {% if comment.outdated %}<span class="badge">Outdated</span>{% endif %}
+    {% if comment.outdated %}<span class="badge">{% call ui::localized(rbit_localization::ReviewMessage::Outdated.localized(page.locale)) %}{% endcall %}</span>{% endif %}
   </div>
   {% if !comment.hunk.is_empty() %}
   <div class="diff-scroll border-b border-line" dir="ltr"><div class="diff-view diff-excerpt">
@@ -18,7 +19,7 @@
     <p class="flex flex-wrap items-center gap-x-2 text-[13px]">
       {% if let Some(url) = comment.author.url %}<a href="{{ url }}" class="font-medium text-ink hover:underline hover:underline-offset-4">{{ comment.author.name }}</a>{% else %}<span class="font-medium text-ink-muted">{{ comment.author.name }}</span>{% endif %}
       <a href="#{{ comment.anchor }}" class="text-xs text-ink-faint hover:underline hover:underline-offset-4"><time datetime="{{ comment.when_iso }}" title="{{ comment.when_iso }}">{{ comment.when }}</time></a>
-      {% if comment.pending %}<span class="badge text-warning">Pending</span>{% endif %}
+      {% if comment.pending %}<span class="badge text-warning">{% call ui::localized(rbit_localization::ReviewMessage::Pending.localized(page.locale)) %}{% endcall %}</span>{% endif %}
     </p>
     <div class="prose-rbit mt-1">{{ comment.body_html|safe }}</div>
   </div>

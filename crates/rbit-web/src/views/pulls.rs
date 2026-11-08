@@ -32,6 +32,7 @@ use rbit_git::{
     ChangeStatus, FileDiff, FileDiffBody,
     diff::{Hunk, LineKind},
 };
+use rbit_localization::{CollabSentence, Locale, Localized, PullMessage};
 use rbit_services::pulls::{MergeBox, PullContext, PullListItem, ReviewData, ReviewEntry};
 use sha2::{Digest, Sha256};
 
@@ -172,12 +173,8 @@ impl PullCountsView {
     }
 
     /// "1 commit", "3 commits", or just "commits" while unknown (also the no-JS text).
-    pub fn commits_phrase(&self) -> String {
-        match self.commits {
-            Some(1) => "1 commit".to_owned(),
-            Some(count) => format!("{count} commits"),
-            None => "commits".to_owned(),
-        }
+    pub fn commits_phrase(&self, locale: impl std::borrow::Borrow<Locale>) -> Localized {
+        PullMessage::CommitsPhrase { count: self.commits.map(|count| count as u64) }.localized(locale)
     }
 
     /// A badge's text: the count, or a dash while unknown.
@@ -201,8 +198,8 @@ pub struct PullHeaderView {
     pub number: String,
     pub badge: StateBadge,
     pub author: ActorView,
-    /// "wants to merge", "merged" or "proposed to merge".
-    pub verb: &'static str,
+    /// "… wants to merge …", "… merged …" or "… proposed to merge …".
+    pub sentence: CollabSentence<'static>,
     pub base_branch: String,
     pub base_url: String,
     pub head_label: String,
@@ -222,17 +219,17 @@ impl PullHeaderView {
         let repo = &ctx.repo().repo;
         let urls = RepoUrls::new(repo.owner.name.as_str(), repo.repo.name.as_str());
         let badge = badge(issue, ctx.pull.is_draft, ctx.pull.is_merged());
-        let verb = match (ctx.pull.is_merged(), issue.state) {
-            (true, _) => "merged",
-            (false, IssueState::Open) => "wants to merge",
-            (false, IssueState::Closed) => "proposed to merge",
+        let sentence = match (ctx.pull.is_merged(), issue.state) {
+            (true, _) => CollabSentence::MergedInto,
+            (false, IssueState::Open) => CollabSentence::WantsToMerge,
+            (false, IssueState::Closed) => CollabSentence::ProposedToMerge,
         };
         Self {
             title: issue.title.to_string(),
             number: issue.number.to_string(),
             badge,
             author: ActorView::new(ctx.thread.author.as_ref()),
-            verb,
+            sentence,
             base_url: urls.tree(&ctx.pull.base_branch, ""),
             base_branch: ctx.pull.base_branch.clone(),
             head_label: ctx.head_label(),
@@ -325,7 +322,7 @@ pub struct NewPullPage {
     pub title: String,
     pub body: String,
     /// Why no pull request can be opened (no commits, unrelated histories, …).
-    pub problem: Option<String>,
+    pub problem: Option<Localized>,
     pub can_create: bool,
     pub signed_in: bool,
     pub sign_in_url: String,
@@ -376,7 +373,7 @@ mod tests {
             anchor: review_anchor(id),
             id,
             reviewer: ActorView::ghost(),
-            sentence: "reviewed",
+            sentence: CollabSentence::Reviewed,
             icon: "eye",
             tone: "",
             body_html: String::new(),
@@ -444,7 +441,7 @@ mod tests {
             number: "#3".to_owned(),
             badge: StateBadge::draft(),
             author: ActorView::ghost(),
-            verb: "wants to merge",
+            sentence: CollabSentence::WantsToMerge,
             base_branch: "main".to_owned(),
             base_url: "/alice/demo/tree/main".to_owned(),
             head_label: "bob:fix".to_owned(),
@@ -470,7 +467,7 @@ mod tests {
             labels: vec![LabelView { name: "bug".to_owned(), color: "#d73a4a".to_owned() }],
             head_label: "fix".to_owned(),
             base_branch: "main".to_owned(),
-            review: Some(("Approved", "text-success")),
+            review: Some((rbit_localization::ReviewMessage::Approved, "text-success")),
             comment_count: 2,
         };
         let html = PullListPage {

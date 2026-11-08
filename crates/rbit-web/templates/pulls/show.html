@@ -4,30 +4,31 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 {#- A pull request's conversation: T0's timeline interleaved with reviews, then the merge box. -#}
+{% let details = rbit_localization::IssueMessage::Details.localized(page.locale) %}
 {% let title = thread.title %}{% include "timeline/title_form.html" %}
 {% include "pulls/header.html" %}
 {% if can_change_base %}
 <details class="mt-3">
-  <summary class="btn btn-ghost min-h-11 cursor-pointer text-xs sm:min-h-8">Change base branch</summary>
+  <summary class="btn btn-ghost min-h-11 cursor-pointer text-xs sm:min-h-8">{% call ui::localized(rbit_localization::PullMessage::ChangeBase.localized(page.locale)) %}{% endcall %}</summary>
   <form method="post" action="{{ pull.urls.page }}/base" data-compare-picker data-branches-only="true" data-repository="{{ header.owner }}/{{ header.name }}" class="box mt-2 flex flex-col gap-3 p-3 sm:flex-row sm:items-end">
     <div class="min-w-0 flex-1">
-      <label class="label" for="pull-base">Base branch</label>
+      <label class="label" for="pull-base">{% call ui::localized(rbit_localization::PullMessage::BaseBranch.localized(page.locale)) %}{% endcall %}</label>
       <div class="relative" data-compare-field>
         <input id="pull-base" class="input font-mono text-xs" dir="ltr" name="base" value="{{ pull.base_branch }}" required autocomplete="off" data-compare-ref="base" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="pull-base-options">
-        <div id="pull-base-options" class="menu inset-x-0 top-full max-h-64 overflow-y-auto" role="listbox" aria-label="Base branches" hidden></div>
+        <div id="pull-base-options" class="menu inset-x-0 top-full max-h-64 overflow-y-auto" role="listbox" aria-label="{{ rbit_localization::PullMessage::BaseBranches.localized(page.locale) }}" hidden></div>
         <p class="hint" data-compare-status aria-live="polite"></p>
       </div>
-      <p class="hint">Changing the base updates the commits, diff and merge checks.</p>
+      <p class="hint">{% call ui::localized(rbit_localization::PullMessage::ChangeBaseHint.localized(page.locale)) %}{% endcall %}</p>
     </div>
-    <button type="submit" class="btn btn-primary h-11 sm:h-9">Update base branch</button>
+    <button type="submit" class="btn btn-primary h-11 sm:h-9">{% call ui::localized(rbit_localization::PullMessage::UpdateBase.localized(page.locale)) %}{% endcall %}</button>
   </form>
 </details>
 {% endif %}
 
 <div class="mt-6 flex flex-col gap-6 md:flex-row md:items-start">
-  <aside class="md:order-last md:w-60 md:shrink-0" aria-label="Details">
+  <aside class="md:order-last md:w-60 md:shrink-0" aria-label="{{ details }}">
     <details class="box md:hidden">
-      <summary class="flex min-h-11 cursor-pointer items-center gap-2 px-3 text-[13px] font-medium">{% call ui::icon("chevron-right", "size-3.5 text-ink-faint") %}{% endcall %}Details</summary>
+      <summary class="flex min-h-11 cursor-pointer items-center gap-2 px-3 text-[13px] font-medium">{% call ui::icon("chevron-right", "size-3.5 text-ink-faint") %}{% endcall %}{% call ui::localized(details) %}{% endcall %}</summary>
       <div class="border-t border-line p-3">{% include "pulls/reviewers.html" %}{% include "issues/sidebar.html" %}</div>
     </details>
     <div class="hidden md:block">{% include "pulls/reviewers.html" %}{% include "issues/sidebar.html" %}</div>
@@ -41,19 +42,23 @@
       {% if let Some(review) = entry.review %}{% include "pulls/review.html" %}{% endif %}
       {% endfor %}
       {% if let Some(url) = thread.next_url %}
-      <div class="relative flex justify-center"><a href="{{ url }}" class="btn h-11 sm:h-8">Load more</a></div>
+      <div class="relative flex justify-center"><a href="{{ url }}" class="btn h-11 sm:h-8">{% call ui::localized(rbit_localization::ThreadMessage::LoadMore.localized(page.locale)) %}{% endcall %}</a></div>
       {% endif %}
       {% if let Some(merge) = merge_box %}{% include "pulls/merge_box.html" %}{% endif %}
       {% if let Some(closed) = closed_box %}
-      <section class="timeline-item" aria-label="Merged">
+      <section class="timeline-item" aria-label="{{ rbit_localization::ThreadMessage::Merged.localized(page.locale) }}">
         <span class="timeline-badge {% if closed.merged %}bg-inverted text-inverted-ink{% endif %}">{% if closed.merged %}{% call ui::icon("git-merge", "size-3.5") %}{% endcall %}{% else %}{% call ui::icon("git-pull-request-closed", "size-3.5") %}{% endcall %}{% endif %}</span>
         <div class="box flex min-w-0 flex-1 flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center sm:px-4">
           <p class="flex-1 text-[13px] text-ink-muted">
-            {% if closed.merged %}Pull request merged{% if let Some(commit) = closed.merge_commit %} as <a href="{{ commit.1 }}" class="font-mono text-xs text-ink hover:underline hover:underline-offset-4" dir="ltr">{{ commit.0 }}</a>{% endif %}.{% else %}This pull request is closed.{% endif %}
+            {%- if closed.merged %}{% if let Some(commit) = closed.merge_commit %}
+            {%- let merged = rbit_localization::CollabSentence::PullMergedAs.rich(page.locale) %}
+            <span{% if merged.fallback() %} lang="en"{% endif %}>{% for part in merged.parts() %}{% if part.is_slot(0) %}<a href="{{ commit.1 }}" class="font-mono text-xs text-ink hover:underline hover:underline-offset-4" dir="ltr">{{ commit.0 }}</a>{% else %}{{ part.text() }}{% endif %}{% endfor %}</span>
+            {%- else %}{% call ui::localized(rbit_localization::PullMessage::IsMerged.localized(page.locale)) %}{% endcall %}{% endif %}
+            {%- else %}{% call ui::localized(rbit_localization::PullMessage::IsClosed.localized(page.locale)) %}{% endcall %}{% endif -%}
           </p>
           {% if closed.can_delete_branch %}
           <form method="post" action="{{ closed.delete_url }}">
-            <button type="submit" class="btn h-11 w-full sm:h-8 sm:w-auto">{% call ui::icon("trash", "size-3.5") %}{% endcall %}Delete {{ closed.head_label }}</button>
+            <button type="submit" class="btn h-11 w-full sm:h-8 sm:w-auto">{% call ui::icon("trash", "size-3.5") %}{% endcall %}{% call ui::localized(rbit_localization::PullMessage::DeleteBranch { branch: closed.head_label.as_str() }.localized(page.locale)) %}{% endcall %}</button>
           </form>
           {% endif %}
         </div>
@@ -65,7 +70,7 @@
     {% if can_convert_to_draft %}
     <form method="post" action="{{ pull.urls.draft }}" class="mt-2 flex justify-end">
       <input type="hidden" name="draft" value="true">
-      <button type="submit" class="btn btn-ghost h-11 text-xs sm:h-8">{% call ui::icon("git-pull-request-draft", "size-3.5") %}{% endcall %}Convert to draft</button>
+      <button type="submit" class="btn btn-ghost h-11 text-xs sm:h-8">{% call ui::icon("git-pull-request-draft", "size-3.5") %}{% endcall %}{% call ui::localized(rbit_localization::PullMessage::ConvertToDraft.localized(page.locale)) %}{% endcall %}</button>
     </form>
     {% endif %}
   </div>

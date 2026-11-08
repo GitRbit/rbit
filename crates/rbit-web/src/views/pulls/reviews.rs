@@ -1,5 +1,7 @@
 //! Pull request review and conversation view models.
 
+use rbit_localization::{CollabSentence, ReviewMessage};
+
 use super::{
     ActorView, PullUrls, RefContext, ReviewComment, ReviewData, ReviewEntry, ReviewSide, ReviewState, TimelineItemView, line_anchor,
     render_issue_markdown, review_anchor, review_comment_anchor,
@@ -84,8 +86,8 @@ pub struct ReviewView {
     pub anchor: String,
     pub id: i64,
     pub reviewer: ActorView,
-    /// "approved these changes", "requested changes", "reviewed", …
-    pub sentence: &'static str,
+    /// "… approved these changes", "… requested changes", "… reviewed", the reviewer in slot 0.
+    pub sentence: CollabSentence<'static>,
     pub icon: &'static str,
     /// `text-success`, `text-danger` or `text-ink-muted`.
     pub tone: &'static str,
@@ -93,7 +95,8 @@ pub struct ReviewView {
     pub when: String,
     pub when_iso: String,
     pub comments: Vec<ReviewCommentView>,
-    pub dismissal: Option<String>,
+    /// Who dismissed it, and why.
+    pub dismissal: Option<(String, String)>,
     pub can_dismiss: bool,
     pub dismiss_url: String,
 }
@@ -102,15 +105,15 @@ impl ReviewView {
     pub fn new(entry: &ReviewEntry, comments: Vec<ReviewCommentView>, can_dismiss: bool, urls: &PullUrls, refs: &RefContext) -> Self {
         let review = &entry.review;
         let (sentence, icon, tone) = match review.state {
-            ReviewState::Approved => ("approved these changes", "circle-check", "text-success"),
-            ReviewState::ChangesRequested => ("requested changes", "file-diff", "text-danger"),
-            ReviewState::Dismissed => ("reviewed (dismissed)", "eye-off", "text-ink-muted"),
-            ReviewState::Commented | ReviewState::Pending => ("reviewed", "eye", "text-ink-muted"),
+            ReviewState::Approved => (CollabSentence::ReviewApproved, "circle-check", "text-success"),
+            ReviewState::ChangesRequested => (CollabSentence::ReviewChangesRequested, "file-diff", "text-danger"),
+            ReviewState::Dismissed => (CollabSentence::ReviewDismissed, "eye-off", "text-ink-muted"),
+            ReviewState::Commented | ReviewState::Pending => (CollabSentence::Reviewed, "eye", "text-ink-muted"),
         };
         let at = review.submitted_at.unwrap_or(review.created_at);
         let dismissal = review.dismissal_message.as_ref().map(|message| {
             let by = entry.dismissed_by.as_ref().map_or_else(|| "ghost".to_owned(), |account| account.name.to_string());
-            format!("Dismissed by {by}: {message}")
+            (by, message.clone())
         });
         Self {
             anchor: review_anchor(review.id.0),
@@ -156,8 +159,8 @@ pub fn interleave(items: Vec<TimelineItemView>, reviews: Vec<(i64, ReviewView)>)
 pub struct ReviewerView {
     pub actor: ActorView,
     pub name: String,
-    /// "Approved", "Changes requested", "Commented", "Requested", "Dismissed".
-    pub state: &'static str,
+    /// Approved, changes requested, commented, awaiting review, dismissed.
+    pub state: ReviewMessage<'static>,
     pub tone: &'static str,
     pub requested: bool,
 }
@@ -187,7 +190,7 @@ impl ReviewersView {
                 None => reviewers.push(ReviewerView {
                     actor: ActorView::new(Some(account)),
                     name: account.name.to_string(),
-                    state: "Awaiting review",
+                    state: ReviewMessage::AwaitingReview,
                     tone: "text-warning",
                     requested: true,
                 }),
@@ -197,13 +200,13 @@ impl ReviewersView {
     }
 }
 
-fn review_state_label(state: ReviewState) -> (&'static str, &'static str) {
+fn review_state_label(state: ReviewState) -> (ReviewMessage<'static>, &'static str) {
     match state {
-        ReviewState::Approved => ("Approved", "text-success"),
-        ReviewState::ChangesRequested => ("Changes requested", "text-danger"),
-        ReviewState::Dismissed => ("Dismissed", "text-ink-faint"),
-        ReviewState::Commented => ("Commented", "text-ink-muted"),
-        ReviewState::Pending => ("Pending", "text-warning"),
+        ReviewState::Approved => (ReviewMessage::Approved, "text-success"),
+        ReviewState::ChangesRequested => (ReviewMessage::ChangesRequested, "text-danger"),
+        ReviewState::Dismissed => (ReviewMessage::Dismissed, "text-ink-faint"),
+        ReviewState::Commented => (ReviewMessage::Commented, "text-ink-muted"),
+        ReviewState::Pending => (ReviewMessage::Pending, "text-warning"),
     }
 }
 

@@ -17,8 +17,8 @@
     <a href="{{ commit.url }}" class="btn h-7 shrink-0 px-2 font-mono text-xs sm:h-7" dir="ltr">{{ commit.short_id }}</a>
   </li>
   {% else %}
-  <li>{% call ui::empty_state("commit", "No commits", "The head and the base point at the same commit.") %}{% endcall %}</li>
+  <li>{% call ui::empty_state("commit", rbit_localization::PullMessage::NoCommitsTitle.localized(page.locale), rbit_localization::PullMessage::NoCommitsText.localized(page.locale)) %}{% endcall %}</li>
   {% endfor %}
 </ol>
-{% if more_commits %}<p class="mt-2 text-xs text-ink-muted">Only the newest {{ commits.len() }} commits are listed.</p>{% endif %}
+{% if more_commits %}<p class="mt-2 text-xs text-ink-muted">{% call ui::localized(rbit_localization::PullMessage::NewestCommits { count: commits.len().try_into().unwrap_or_default() }.localized(page.locale)) %}{% endcall %}</p>{% endif %}
 {% endblock %}

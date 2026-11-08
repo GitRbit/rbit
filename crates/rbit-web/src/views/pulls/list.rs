@@ -1,5 +1,7 @@
 //! Pull request list view models.
 
+use rbit_localization::{CollabSentence, ReviewMessage};
+
 use super::{IssueState, Page, Pagination, PullListItem, RepoHeader, StateBadge, Template, WebTemplate, badge};
 
 /// One label of a list row (colour as an SVG fill).
@@ -21,7 +23,7 @@ pub struct PullRowView {
     pub labels: Vec<LabelView>,
     pub head_label: String,
     pub base_branch: String,
-    pub review: Option<(&'static str, &'static str)>,
+    pub review: Option<(ReviewMessage<'static>, &'static str)>,
     pub comment_count: u32,
 }
 
@@ -29,9 +31,9 @@ impl PullRowView {
     pub fn new(item: &PullListItem, owner: &str, repo: &str, labels: Vec<LabelView>) -> Self {
         let issue = &item.issue;
         let review = if item.changes_requested > 0 {
-            Some(("Changes requested", "text-danger"))
+            Some((ReviewMessage::ChangesRequested, "text-danger"))
         } else if item.approvals > 0 {
-            Some(("Approved", "text-success"))
+            Some((ReviewMessage::Approved, "text-success"))
         } else {
             None
         };
@@ -52,12 +54,13 @@ impl PullRowView {
         }
     }
 
-    /// "opened" / "merged" / "closed", for the row's metadata line.
-    pub fn verb(&self) -> &'static str {
+    /// "#3 opened … by bob" (or merged, closed), the time in slot 0.
+    pub fn meta(&self) -> CollabSentence<'_> {
+        let (number, author) = (self.number.as_str(), self.author.as_str());
         match self.badge.label {
-            "Merged" => "merged",
-            "Closed" => "closed",
-            _ => "opened",
+            "Merged" => CollabSentence::RowMergedBy { number, author },
+            "Closed" => CollabSentence::RowClosedBy { number, author },
+            _ => CollabSentence::RowOpened { number, author },
         }
     }
 }

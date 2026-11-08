@@ -1,11 +1,14 @@
 //! Pull request merge and closed-state view models.
 
+use rbit_core::pull::{ChecksStatus, Requirement};
+use rbit_localization::MergeMessage;
+
 use super::{MergeBox, MergeStrategy, Mergeability, PullContext, PullUrls, User};
 
 /// One requirement line.
 #[derive(Debug, Clone)]
 pub struct RequirementView {
-    pub text: String,
+    pub text: MergeMessage<'static>,
     pub met: bool,
     /// `text-success`, `text-danger` or `text-warning` (checking).
     pub tone: &'static str,
@@ -33,7 +36,7 @@ pub struct MergeBoxView {
     pub default_message: String,
     pub default_squash_title: String,
     pub default_squash_message: String,
-    pub strategies: Vec<(&'static str, &'static str)>,
+    pub strategies: Vec<(&'static str, MergeMessage<'static>)>,
     pub draft_url: String,
     pub can_mark_ready: bool,
 }
@@ -45,7 +48,6 @@ impl MergeBoxView {
             .checks
             .iter()
             .map(|check| {
-                use rbit_core::pull::{ChecksStatus, Requirement};
                 let checking = match check.requirement {
                     Requirement::NoConflicts(Mergeability::Unknown) => true,
                     // Milestone 3 (S): required checks still running are pending, not failed.
@@ -64,7 +66,7 @@ impl MergeBoxView {
                     (_, false, false) => ("text-danger", "x"),
                 };
                 let met = check.met && !matches!(check.requirement, Requirement::Checks(ChecksStatus::Failing | ChecksStatus::Pending));
-                RequirementView { text: check.requirement.describe(check.met), met, tone, icon }
+                RequirementView { text: requirement_message(check.requirement, check.met), met, tone, icon }
             })
             .collect();
         let ready = merge_box.evaluation.can_merge();
@@ -99,15 +101,52 @@ impl MergeBoxView {
                 .into_iter()
                 .map(|strategy| {
                     let label = match strategy {
-                        MergeStrategy::Merge => "Create a merge commit",
-                        MergeStrategy::Squash => "Squash and merge",
-                        MergeStrategy::Rebase => "Rebase and merge",
+                        MergeStrategy::Merge => MergeMessage::CreateMergeCommit,
+                        MergeStrategy::Squash => MergeMessage::SquashAndMerge,
+                        MergeStrategy::Rebase => MergeMessage::RebaseAndMerge,
                     };
                     (strategy.as_str(), label)
                 })
                 .collect(),
             draft_url: urls.draft.clone(),
             can_mark_ready: ctx.pull.is_draft && !ctx.repo().repo.repo.is_archived() && (is_author || ctx.repo().access.can_write()),
+        }
+    }
+}
+
+/// The merge box sentence of `requirement`, as `Requirement::describe` words it.
+fn requirement_message(requirement: Requirement, met: bool) -> MergeMessage<'static> {
+    let count = |count: usize| count as u64;
+    match (requirement, met) {
+        (Requirement::Open, true) => MergeMessage::PullOpen,
+        (Requirement::Open, false) => MergeMessage::PullClosed,
+        (Requirement::NotDraft, true) => MergeMessage::ReadyForReview,
+        (Requirement::NotDraft, false) => MergeMessage::StillDraft,
+        (Requirement::HeadBranchExists, true) => MergeMessage::HeadExists,
+        (Requirement::HeadBranchExists, false) => MergeMessage::HeadDeleted,
+        (Requirement::NoConflicts(state), _) => match state {
+            Mergeability::Clean => MergeMessage::NoConflicts,
+            Mergeability::Conflict => MergeMessage::Conflicts,
+            Mergeability::Unknown => MergeMessage::CheckingConflicts,
+            Mergeability::Error => MergeMessage::MergeabilityError,
+        },
+        (Requirement::Approvals { have, need }, _) => MergeMessage::Approvals { have: count(have), need: need.into() },
+        (Requirement::NoChangesRequested { .. }, true) => MergeMessage::NoChangesRequested,
+        (Requirement::NoChangesRequested { count: reviewers }, false) => MergeMessage::ChangesRequestedBy { count: count(reviewers) },
+        (Requirement::MergerMayPush, true) => MergeMessage::MayPush,
+        (Requirement::MergerMayPush, false) => MergeMessage::MayNotPush,
+        (Requirement::Checks(status), _) => match status {
+            ChecksStatus::NotConfigured => MergeMessage::NoChecks,
+            ChecksStatus::Pending => MergeMessage::ChecksPending,
+            ChecksStatus::Passing => MergeMessage::ChecksPassed,
+            ChecksStatus::Failing => MergeMessage::ChecksFailed,
+        },
+        (Requirement::RequiredChecks(checks), _) if checks.all_pass() => MergeMessage::RequiredPassed { count: count(checks.required) },
+        (Requirement::RequiredChecks(checks), _) if checks.failing > 0 => {
+            MergeMessage::RequiredFailed { failing: count(checks.failing), required: count(checks.required) }
+        }
+        (Requirement::RequiredChecks(checks), _) => {
+            MergeMessage::RequiredWaiting { waiting: count(checks.waiting()), required: count(checks.required) }
         }
     }
 }

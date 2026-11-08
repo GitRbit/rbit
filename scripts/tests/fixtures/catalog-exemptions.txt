@@ -1,17 +1,4 @@
 # Templates that still hard-code user-visible text; see catalog-guard.test.mjs.
 # One path per line, relative to crates/rbit-web/templates, sorted. Remove a template
 # once it shows only catalog text. The guard is final when this list is empty.
-pulls/commits.html
-pulls/files.html
-pulls/header.html
-pulls/list.html
-pulls/merge_box.html
-pulls/new.html
-pulls/picker.html
-pulls/review.html
-pulls/review_comment.html
-pulls/review_form.html
-pulls/review_thread.html
-pulls/reviewers.html
-pulls/show.html
 statuses/checks.html

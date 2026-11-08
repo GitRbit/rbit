@@ -26,6 +26,7 @@ use rbit_core::{
     pull::{HeadSpec, ReviewCommentId, ReviewSide},
 };
 use rbit_git::DiffLimits;
+use rbit_localization::{Locale, Localized, PullMessage};
 use rbit_services::{
     RepoContext, ServiceError,
     issues::MetadataNeeds,
@@ -44,7 +45,7 @@ use crate::{
     views::{
         commit::FileDiffView,
         components::Pagination,
-        issues::{MenuChoices, filter_menus, list_url},
+        issues::{MenuChoices, filter_menus, list_url, titled},
         layout::Page,
         pulls::{
             ClosedBoxView, LabelView, ListTabs, MergeBoxView, NewPullPage, PullCommitsPage, PullCountsFragment, PullCountsView,
@@ -221,8 +222,9 @@ async fn header_without_diff(state: &AppState, ctx: &PullContext, active: &'stat
     PullHeaderView::new(ctx, counts, counts_url, active)
 }
 
-fn title(ctx: &PullContext, suffix: &str) -> String {
-    format!("{}{suffix} · Pull request {} · {}", ctx.issue().title, ctx.issue().number, ctx.repo().repo.full_name())
+fn title(ctx: &PullContext, tab: Option<PullMessage<'_>>, locale: Locale) -> String {
+    let (issue, tab) = (ctx.issue(), tab.map_or_else(String::new, |tab| format!(" · {}", tab.localized(locale))));
+    format!("{}{tab} · {} {} · {}", issue.title, PullMessage::PullRequest.localized(locale), issue.number, ctx.repo().repo.full_name())
 }
 
 // ------------------------------------------------------------------ list
@@ -281,7 +283,7 @@ async fn list(
         next_url: (results.page < results.page_count()).then(|| page_url(results.page + 1)),
     };
     Ok(PullListPage {
-        page: page.titled(format!("Pull requests · {}", ctx.repo.full_name())),
+        page: titled(page, |locale| format!("{} · {}", PullMessage::PullRequests.localized(locale), ctx.repo.full_name())),
         header: loaded.header(&state, "pulls"),
         rows,
         pagination,
@@ -370,7 +372,7 @@ async fn new_page(
     let mut picker = super::compare::pickers(&state, &viewer, &loaded, &base, &spec.branch, &head_full_name).await;
     picker.branches_only = true;
     let mut view = NewPullPage {
-        page: page.titled(format!("Open a pull request · {}", loaded.ctx.repo.full_name())),
+        page: titled(page, |locale| format!("{} · {}", PullMessage::OpenTitle.localized(locale), loaded.ctx.repo.full_name())),
         header: loaded.header(&state, "pulls"),
         picker,
         action_url: format!("{}/pulls", loaded.urls.home()),
@@ -393,10 +395,8 @@ async fn new_page(
         .compare(&loaded.ctx, &format!("refs/heads/{base}"), &head_ctx, &format!("refs/heads/{}", spec.branch), DiffLimits::default(), 100)
         .await
     {
-        Ok(comparison) if comparison.merge_base.is_none() => {
-            view.problem = Some("These branches have entirely different histories.".to_owned());
-        }
-        Ok(comparison) if comparison.ahead == 0 => view.problem = Some(format!("{base} is up to date with all commits from {head}.")),
+        Ok(c) if c.merge_base.is_none() => view.problem = Some(PullMessage::DifferentHistories.localized(view.page.locale)),
+        Ok(c) if c.ahead == 0 => view.problem = Some(PullMessage::UpToDate { base: &base, head: &head }.localized(view.page.locale)),
         Ok(comparison) => {
             if comparison.ahead == 1 {
                 view.title = comparison.commits.first().map_or_else(|| spec.branch.clone(), |commit| commit.summary.clone());
@@ -411,10 +411,10 @@ async fn new_page(
             view.can_create = viewer.user().is_some();
         }
         Err(ServiceError::Internal(source)) => return Err(WebError::Internal(source)),
-        Err(_) => view.problem = Some("Choose two existing branches to compare.".to_owned()),
+        Err(_) => view.problem = Some(PullMessage::ChooseBranches.localized(view.page.locale)),
     }
     if loaded.ctx.repo.repo.is_archived() {
-        view.problem = Some(rbit_core::repository::ARCHIVED_READ_ONLY.to_owned());
+        view.problem = Some(Localized::english_only(rbit_core::repository::ARCHIVED_READ_ONLY.to_owned(), view.page.locale));
         view.can_create = false;
     }
     Ok(view.into_response())
@@ -554,7 +554,7 @@ async fn conversation(
     let sidebar = sidebar?;
     let entries = interleave(thread.items.clone(), reviews);
     let view = PullPage {
-        page: page.titled(title(&ctx, "")),
+        page: titled(page, |locale| title(&ctx, None, locale)),
         header: loaded.header(&state, "pulls"),
         pull: pull_header,
         thread,
@@ -588,7 +588,7 @@ async fn commits(
         changes.as_ref().map(|c| c.commits.iter().map(|commit| CommitView::new(commit, &loaded.urls)).collect()).unwrap_or_default();
     let more_commits = changes.as_ref().is_some_and(|c| c.ahead > c.commits.len());
     let view = PullCommitsPage {
-        page: page.titled(title(&ctx, " · Commits")),
+        page: titled(page, |locale| title(&ctx, Some(PullMessage::Commits), locale)),
         header: loaded.header(&state, "pulls"),
         pull: pull_header,
         commits,
@@ -644,7 +644,7 @@ async fn files(
         None => (Vec::new(), 0, 0, false),
     };
     let view = PullFilesPage {
-        page: page.titled(title(&ctx, " · Files changed")),
+        page: titled(page, |locale| title(&ctx, Some(PullMessage::FilesChanged), locale)),
         header: loaded.header(&state, "pulls"),
         pull: PullHeaderView::new(&ctx, counts, None, "files"),
         files,

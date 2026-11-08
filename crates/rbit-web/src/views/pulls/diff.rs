@@ -1,5 +1,7 @@
 //! Pull request file diff view models.
 
+use rbit_localization::ReviewMessage;
+
 use super::{
     BLOCKED_ABOVE_ROWS, Block, Blocker, ChangeStatus, DiffLineView, FILE_HEADER_ROWS, FileDiff, FileDiffBody, HashMap, Hunk, LineKind,
     PLACEHOLDER_ROWS, Page, PullHeaderView, RepoHeader, RepoUrls, ReviewCommentView, ReviewFormView, ReviewSide, Template, WebTemplate,
@@ -76,7 +78,7 @@ pub struct PullFileView {
     pub anchor: String,
     pub path: String,
     pub old_path: Option<String>,
-    pub status: &'static str,
+    pub status: ReviewMessage<'static>,
     pub status_key: &'static str,
     pub additions: usize,
     pub deletions: usize,
@@ -88,13 +90,27 @@ pub struct PullFileView {
 /// Rows the "View file" bar under a file's header takes (`.diff-file-bar`, app.css).
 pub const FILE_BAR_ROWS: usize = 2;
 
+/// The file tree's status label, shared with commit pages, which still label it in English.
+const fn tree_status(key: &str) -> &'static str {
+    match key.as_bytes() {
+        b"added" => "Added",
+        b"deleted" => "Deleted",
+        b"renamed" => "Renamed",
+        b"copied" => "Copied",
+        _ => "Modified",
+    }
+}
+
 impl PullFileView {
     /// Share the commit navigator while keeping stable review anchors and file indexes.
     pub fn tree(files: &[Self]) -> Vec<crate::views::commit::FileTreeRow> {
         use crate::views::commit::{FileTreeLeaf, file_tree};
 
         file_tree(files.iter().enumerate().map(|(index, file)| {
-            (&*file.path, FileTreeLeaf { index, anchor: file.anchor.clone(), status: file.status, status_key: file.status_key })
+            (
+                &*file.path,
+                FileTreeLeaf { index, anchor: file.anchor.clone(), status: tree_status(file.status_key), status_key: file.status_key },
+            )
         }))
     }
 
@@ -132,11 +148,11 @@ impl PullFileView {
             .into_iter()
             .map(|file| {
                 let (status, status_key) = match file.status {
-                    ChangeStatus::Added => ("Added", "added"),
-                    ChangeStatus::Deleted => ("Deleted", "deleted"),
-                    ChangeStatus::Modified => ("Modified", "modified"),
-                    ChangeStatus::Renamed => ("Renamed", "renamed"),
-                    ChangeStatus::Copied => ("Copied", "copied"),
+                    ChangeStatus::Added => (ReviewMessage::Added, "added"),
+                    ChangeStatus::Deleted => (ReviewMessage::Deleted, "deleted"),
+                    ChangeStatus::Modified => (ReviewMessage::Modified, "modified"),
+                    ChangeStatus::Renamed => (ReviewMessage::Renamed, "renamed"),
+                    ChangeStatus::Copied => (ReviewMessage::Copied, "copied"),
                 };
                 let body = match file.body {
                     FileDiffBody::Text(hunks) => PullDiffBody::Text(diff_text(hunks, &file.path, &mut by_anchor, form_at, can_comment)),
