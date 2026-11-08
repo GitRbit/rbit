@@ -31,7 +31,8 @@ use crate::{
     routes::repo::RepoPage,
     views::{
         actions_runners::{
-            AdminRunnersPage, IssuedToken, LIFETIMES, OrgRunnersPage, RepoRunnersPage, RunnerRow, RunnersSection, TokenRow, UserRunnersPage,
+            AdminRunnersPage, IssuedToken, LIFETIMES, OrgRunnersPage, RepoRunnersPage, RunnerRow, RunnersSection, RunnersSubject, TokenRow,
+            UserRunnersPage,
         },
         admin::AdminSection,
         components::FormError,
@@ -87,7 +88,7 @@ async fn section(
     user: &User,
     scope: ManagedScope<'_>,
     base_url: &str,
-    subject: String,
+    subject: RunnersSubject,
     outcome: Outcome,
 ) -> WebResult<RunnersSection> {
     let actions = actions(state)?;
@@ -172,7 +173,7 @@ async fn load_admin(state: &AppState, viewer: &Viewer, owner: &str, repo: &str) 
 async fn repo_page(state: &AppState, user: &User, loaded: &RepoPage, page: Page, outcome: Outcome) -> WebResult<RepoRunnersPage> {
     let actions_url = format!("{}/settings/actions", loaded.urls.home());
     let base = format!("{actions_url}/runners");
-    let section = section(state, user, ManagedScope::Repository(&loaded.ctx), &base, "this repository".to_owned(), outcome).await?;
+    let section = section(state, user, ManagedScope::Repository(&loaded.ctx), &base, RunnersSubject::Repository, outcome).await?;
     Ok(RepoRunnersPage {
         page: page.titled(format!("Runners · Settings · {}", loaded.ctx.repo.full_name())),
         header: loaded.header(state, "settings"),
@@ -231,7 +232,7 @@ async fn org_page(state: &AppState, user: &User, owner: &str, page: Page, outcom
     let actions_url = format!("/{}/settings/actions", ctx.org.name());
     let base = format!("{actions_url}/runners");
     let scope = ManagedScope::Owner(&ctx.org.account);
-    let section = section(state, user, scope, &base, ctx.org.name().to_string(), outcome).await?;
+    let section = section(state, user, scope, &base, RunnersSubject::Owner(ctx.org.name().to_string()), outcome).await?;
     Ok(OrgRunnersPage {
         page: page.titled(format!("Runners · Settings · {}", ctx.org.label())),
         header: OrgHeader::new(&ctx, OrgTab::Settings),
@@ -287,8 +288,7 @@ pub async fn organization_runner(
 
 async fn user_page(state: &AppState, user: &User, page: Page, outcome: Outcome) -> WebResult<UserRunnersPage> {
     let section =
-        section(state, user, ManagedScope::Owner(&user.account), "/settings/actions/runners", "your repositories".to_owned(), outcome)
-            .await?;
+        section(state, user, ManagedScope::Owner(&user.account), "/settings/actions/runners", RunnersSubject::Account, outcome).await?;
     Ok(UserRunnersPage {
         page: page.titled("Runners"),
         settings_nav: SettingsSection::Actions.nav(),
@@ -328,8 +328,7 @@ pub async fn personal_runner(
 // ------------------------------------------------------------------ the instance
 
 async fn admin_page(state: &AppState, admin: &User, page: Page, outcome: Outcome) -> WebResult<AdminRunnersPage> {
-    let section =
-        section(state, admin, ManagedScope::Instance, "/admin/runners", "every owner allowed instance runners".to_owned(), outcome).await?;
+    let section = section(state, admin, ManagedScope::Instance, "/admin/runners", RunnersSubject::Instance, outcome).await?;
     Ok(AdminRunnersPage { page: page.titled("Runners · Administration"), admin_nav: AdminSection::Runners.nav(), section })
 }
 

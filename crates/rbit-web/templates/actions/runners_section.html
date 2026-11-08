@@ -1,31 +1,32 @@
-{#- Runners and registration tokens of one scope; expects `section: RunnersSection` (views::actions_runners). -#}
+{#- Runners and registration tokens of one scope; expects `section: RunnersSection` (views::actions_runners) and `t`. -#}
 {% import "macros.html" as ui %}
+{% import "actions/settings_macros.html" as am %}
 {% if let Some(issued) = section.issued %}
 <div class="box mt-6 border-success/40" role="status">
   <div class="p-4">
-    <p class="font-medium">Registration token created</p>
-    <p class="mt-1 text-[13px] text-ink-muted">Copy it now: it is not shown again. On the machine that should run jobs, run the command below and paste the token when it waits for input, then start the runner with <span class="font-mono text-ink" dir="ltr">rbit-runner run</span>.</p>
-    <label class="label mt-3" for="issued-token">Token</label>
+    <p class="font-medium">{% call ui::localized(t.get(rbit_localization::ActionsRunnersMessage::TokenCreated)) %}{% endcall %}</p>
+    <p class="mt-1 text-[13px] text-ink-muted">{% call am::rich(t.token_created_hint()) %}{% endcall %}</p>
+    <label class="label mt-3" for="issued-token">{% call ui::localized(t.get(rbit_localization::ActionsRunnersMessage::Token)) %}{% endcall %}</label>
     <div class="flex" dir="ltr">
       <input id="issued-token" class="input rounded-e-none font-mono text-xs" value="{{ issued.value }}" readonly autocomplete="off" spellcheck="false">
-      <button type="button" class="btn btn-icon -ms-px h-10 rounded-s-none sm:h-9" data-copy="issued-token" aria-label="Copy the token" title="Copy">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
+      <button type="button" class="btn btn-icon -ms-px h-10 rounded-s-none sm:h-9" data-copy="issued-token" aria-label="{{ t.get(rbit_localization::ActionsRunnersMessage::CopyToken) }}" title="{{ t.get(rbit_localization::ActionsRunnersMessage::Copy) }}">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
     </div>
-    <label class="label mt-3" for="issued-command">Command</label>
+    <label class="label mt-3" for="issued-command">{% call ui::localized(t.get(rbit_localization::ActionsRunnersMessage::Command)) %}{% endcall %}</label>
     <div class="flex" dir="ltr">
       <input id="issued-command" class="input rounded-e-none font-mono text-xs" value="{{ issued.command }}" readonly autocomplete="off" spellcheck="false">
-      <button type="button" class="btn btn-icon -ms-px h-10 rounded-s-none sm:h-9" data-copy="issued-command" aria-label="Copy the command" title="Copy">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
+      <button type="button" class="btn btn-icon -ms-px h-10 rounded-s-none sm:h-9" data-copy="issued-command" aria-label="{{ t.get(rbit_localization::ActionsRunnersMessage::CopyCommand) }}" title="{{ t.get(rbit_localization::ActionsRunnersMessage::Copy) }}">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
     </div>
-    <p class="hint">Labels map to how jobs run: <span class="font-mono" dir="ltr">name:container:image</span> runs in Docker or Podman, <span class="font-mono" dir="ltr">name:host</span> runs on the machine itself with no isolation — only for trusted repositories.</p>
+    <p class="hint">{% call am::rich(t.labels_hint()) %}{% endcall %}</p>
   </div>
 </div>
 {% endif %}
 
 <section class="mt-8" aria-labelledby="runners-title">
-  <h2 id="runners-title" class="text-[13px] font-medium">Runners</h2>
-  <p class="mt-1 text-[13px] text-ink-muted">Machines running <span class="font-mono text-ink" dir="ltr">rbit-runner</span> that take the jobs of {{ section.subject }}.</p>
+  <h2 id="runners-title" class="text-[13px] font-medium">{% call ui::localized(t.get(rbit_localization::ActionsRunnersMessage::Title)) %}{% endcall %}</h2>
+  <p class="mt-1 text-[13px] text-ink-muted">{% call am::rich(t.runners_intro(section)) %}{% endcall %}</p>
   <div class="box mt-4">
     {% if section.runners.is_empty() %}
-    {% call ui::empty_state("server", "No runners yet", "Create a registration token below and register a runner with it. Jobs wait until a runner with their labels is online.") %}{% endcall %}
+    {% call am::empty("server", t.get(rbit_localization::ActionsRunnersMessage::NoRunners), t.get(rbit_localization::ActionsRunnersMessage::NoRunnersHint)) %}{% endcall %}
     {% else %}
     <ul>
       {% for runner in section.runners %}
@@ -33,25 +34,25 @@
         <div class="min-w-0 flex-1 basis-60">
           <p class="flex flex-wrap items-center gap-2">
             <span class="truncate font-medium">{{ runner.name }}</span>
-            <span class="text-xs {{ runner.tone }}">{{ runner.state }}</span>
-            {% if runner.scope != "repository" %}<span class="badge">{{ runner.scope }}</span>{% endif %}
-            {% if runner.ephemeral %}<span class="badge">ephemeral</span>{% endif %}
-            {% if runner.host %}<span class="badge border-warning/40 text-warning" title="Jobs on its host labels run as the runner's user, with no isolation">host — no isolation</span>{% endif %}
+            <span class="text-xs {{ runner.tone }}">{% call ui::localized(t.get(*runner.state)) %}{% endcall %}</span>
+            {% if let Some(scope) = t.runner_scope(runner) %}<span class="badge">{% call ui::localized(scope) %}{% endcall %}</span>{% endif %}
+            {% if runner.ephemeral %}<span class="badge">{% call ui::localized(t.get(rbit_localization::ActionsRunnersMessage::Ephemeral)) %}{% endcall %}</span>{% endif %}
+            {% if runner.host %}<span class="badge border-warning/40 text-warning" title="{{ t.get(rbit_localization::ActionsRunnersMessage::HostWarning) }}">{% call ui::localized(t.get(rbit_localization::ActionsRunnersMessage::HostNoIsolation)) %}{% endcall %}</span>{% endif %}
           </p>
           <p class="mt-0.5 break-words text-xs text-ink-muted"><span class="font-mono" dir="ltr">{{ runner.labels }}</span></p>
-          <p class="mt-0.5 text-xs text-ink-faint">{{ runner.backends }}{% if !runner.platform.is_empty() %} · {{ runner.platform }}{% endif %} · rbit-runner {{ runner.version }} · {{ runner.capacity }} at once{% if let Some(seen) = runner.last_seen %} · seen {{ seen }}{% endif %}</p>
+          <p class="mt-0.5 text-xs text-ink-faint">{{ runner.backends }}{% if !runner.platform.is_empty() %} · {{ runner.platform }}{% endif %} · <span dir="ltr">rbit-runner {{ runner.version }}</span> · {% call ui::localized(t.capacity(runner)) %}{% endcall %}{% if let Some(seen) = runner.last_seen %} · {% call ui::localized(t.seen(seen)) %}{% endcall %}{% endif %}</p>
         </div>
         {% if runner.manageable %}
         <div class="flex shrink-0 gap-2">
           <form method="post" action="{{ runner.url }}">
             {% if runner.disabled %}
-            <button class="btn h-10 sm:h-8" type="submit" name="action" value="enable">Enable</button>
+            <button class="btn h-10 sm:h-8" type="submit" name="action" value="enable">{% call ui::localized(t.get(rbit_localization::ActionsRunnersMessage::Enable)) %}{% endcall %}</button>
             {% else %}
-            <button class="btn h-10 sm:h-8" type="submit" name="action" value="disable">Disable</button>
+            <button class="btn h-10 sm:h-8" type="submit" name="action" value="disable">{% call ui::localized(t.get(rbit_localization::ActionsRunnersMessage::Disable)) %}{% endcall %}</button>
             {% endif %}
           </form>
           <form method="post" action="{{ runner.url }}">
-            <button class="btn btn-danger h-10 sm:h-8" type="submit" name="action" value="remove" aria-label="Remove {{ runner.name }}">Remove</button>
+            <button class="btn btn-danger h-10 sm:h-8" type="submit" name="action" value="remove" aria-label="{{ t.remove_runner(runner.name) }}">{% call ui::localized(t.get(rbit_localization::ActionsRunnersMessage::Remove)) %}{% endcall %}</button>
           </form>
         </div>
         {% endif %}
@@ -63,31 +64,31 @@
 </section>
 
 <section class="mt-8" aria-labelledby="tokens-title">
-  <h2 id="tokens-title" class="text-[13px] font-medium">Registration tokens</h2>
-  <p class="mt-1 text-[13px] text-ink-muted">A runner trades a registration token for its own credential once. Tokens are single-use and expire unless you choose otherwise.</p>
+  <h2 id="tokens-title" class="text-[13px] font-medium">{% call ui::localized(t.get(rbit_localization::ActionsRunnersMessage::TokensTitle)) %}{% endcall %}</h2>
+  <p class="mt-1 text-[13px] text-ink-muted">{% call ui::localized(t.get(rbit_localization::ActionsRunnersMessage::TokensIntro)) %}{% endcall %}</p>
   <form method="post" action="{{ section.action_url }}" class="box mt-4" novalidate>
     <div class="grid gap-4 p-4 sm:grid-cols-2">
-      <div class="sm:col-span-2">{% call ui::form_error(section.error) %}{% endcall %}</div>
+      <div class="sm:col-span-2">{% call am::form_error(t, section.error) %}{% endcall %}</div>
       <div>
-        <label class="label" for="token-lifetime">Expires after</label>
+        <label class="label" for="token-lifetime">{% call ui::localized(t.get(rbit_localization::ActionsRunnersMessage::ExpiresAfter)) %}{% endcall %}</label>
         <div class="relative">
           <select class="input cursor-pointer appearance-none pe-9" id="token-lifetime" name="lifetime">
-            {% for choice in section.lifetimes %}<option value="{{ choice.value }}">{{ choice.label }}</option>{% endfor %}
+            {% for choice in section.lifetimes %}<option value="{{ choice.value }}"{% if t.get(*choice.label).fallback() %} lang="en"{% endif %}>{{ t.get(*choice.label) }}</option>{% endfor %}
           </select>
           {% call ui::icon("chevron-down", "pointer-events-none absolute inset-e-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
         </div>
       </div>
       <div>
-        <label class="label" for="token-labels">Only these labels <span class="font-normal text-ink-faint">(optional)</span></label>
-        <input class="input font-mono" dir="ltr" id="token-labels" name="labels" placeholder="ubuntu-latest, arm64" autocomplete="off" autocapitalize="none" spellcheck="false">
+        <label class="label" for="token-labels">{% call ui::localized(t.get(rbit_localization::ActionsRunnersMessage::OnlyTheseLabels)) %}{% endcall %} <span class="font-normal text-ink-faint">{% call ui::localized(t.get(rbit_localization::ActionsRunnersMessage::Optional)) %}{% endcall %}</span></label>
+        <input class="input font-mono" dir="ltr" id="token-labels" name="labels" placeholder="{{ t.get(rbit_localization::ActionsRunnersMessage::LabelsPlaceholder) }}" autocomplete="off" autocapitalize="none" spellcheck="false">
       </div>
       <label class="flex min-h-11 cursor-pointer items-center gap-3 sm:col-span-2">
         <input class="accent-(--ink)" type="checkbox" name="reusable" value="on">
-        <span class="text-[13px]">Allow any number of runners to register with it until it expires</span>
+        <span class="text-[13px]">{% call ui::localized(t.get(rbit_localization::ActionsRunnersMessage::Reusable)) %}{% endcall %}</span>
       </label>
     </div>
     <div class="flex justify-end border-t border-line px-4 py-3">
-      <button class="btn btn-primary w-full sm:w-auto" type="submit" name="action" value="create">{% call ui::icon("plus", "size-3.5") %}{% endcall %}New registration token</button>
+      <button class="btn btn-primary w-full sm:w-auto" type="submit" name="action" value="create">{% call ui::icon("plus", "size-3.5") %}{% endcall %}{% call ui::localized(t.get(rbit_localization::ActionsRunnersMessage::NewToken)) %}{% endcall %}</button>
     </div>
   </form>
   {% if !section.tokens.is_empty() %}
@@ -95,13 +96,13 @@
     {% for token in section.tokens %}
     <li class="row flex-wrap items-center gap-3 py-2.5">
       <div class="min-w-0 flex-1">
-        <p class="text-[13px]">Created {{ token.created }} · {% if token.usable %}expires {{ token.expires }}{% else %}<span class="text-ink-faint">no longer usable</span>{% endif %}</p>
-        <p class="text-xs text-ink-muted">{{ token.uses }}{% if let Some(labels) = token.labels %} · <span class="font-mono" dir="ltr">{{ labels }}</span>{% endif %}</p>
+        <p class="text-[13px]">{% call ui::localized(t.token_created(token)) %}{% endcall %} · {% if token.usable %}{% call ui::localized(t.token_expires(token)) %}{% endcall %}{% else %}<span class="text-ink-faint">{% call ui::localized(t.get(rbit_localization::ActionsRunnersMessage::NoLongerUsable)) %}{% endcall %}</span>{% endif %}</p>
+        <p class="text-xs text-ink-muted">{% call ui::localized(t.get(*token.uses)) %}{% endcall %}{% if let Some(labels) = token.labels %} · <span class="font-mono" dir="ltr">{{ labels }}</span>{% endif %}</p>
       </div>
       {% if token.usable %}
       <form method="post" action="{{ section.action_url }}" class="shrink-0">
         <input type="hidden" name="token" value="{{ token.id }}">
-        <button class="btn h-10 sm:h-8" type="submit" name="action" value="revoke">Revoke</button>
+        <button class="btn h-10 sm:h-8" type="submit" name="action" value="revoke">{% call ui::localized(t.get(rbit_localization::ActionsRunnersMessage::Revoke)) %}{% endcall %}</button>
       </form>
       {% endif %}
     </li>

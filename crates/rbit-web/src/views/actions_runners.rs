@@ -16,6 +16,7 @@ use rbit_core::{
     Timestamp,
     actions::{RegistrationToken, Runner, RunnerBackend, RunnerLabel, RunnerScope},
 };
+use rbit_localization::ActionsRunnersMessage;
 
 use crate::views::{admin::AdminLink, components::FormError, layout::Page, org::OrgHeader, repo::RepoHeader, settings::SettingsLink};
 
@@ -35,8 +36,8 @@ pub struct RunnerRow {
     pub platform: String,
     pub version: String,
     pub capacity: u32,
-    /// "online", "offline", "disabled" or "never seen".
-    pub state: &'static str,
+    /// Online, offline, disabled or never seen.
+    pub state: ActionsRunnersMessage<'static>,
     pub tone: &'static str,
     pub last_seen: Option<String>,
     pub ephemeral: bool,
@@ -59,10 +60,10 @@ impl RunnerRow {
             })
             .collect();
         let (state, tone) = match runner.last_online {
-            _ if runner.disabled => ("disabled", "text-ink-faint"),
-            Some(_) if runner.is_online(now) => ("online", "text-success"),
-            Some(_) => ("offline", "text-ink-muted"),
-            None => ("never seen", "text-ink-muted"),
+            _ if runner.disabled => (ActionsRunnersMessage::Disabled, "text-ink-faint"),
+            Some(_) if runner.is_online(now) => (ActionsRunnersMessage::Online, "text-success"),
+            Some(_) => (ActionsRunnersMessage::Offline, "text-ink-muted"),
+            None => (ActionsRunnersMessage::NeverSeen, "text-ink-muted"),
         };
         let capabilities = &runner.capabilities;
         Self {
@@ -96,8 +97,8 @@ pub struct TokenRow {
     pub id: i64,
     pub created: String,
     pub expires: String,
-    /// "1 use left", "unlimited", "used up", "expired" or "revoked".
-    pub uses: String,
+    /// How many uses are left, or why there are none.
+    pub uses: ActionsRunnersMessage<'static>,
     pub usable: bool,
     pub labels: Option<String>,
 }
@@ -105,15 +106,14 @@ pub struct TokenRow {
 impl TokenRow {
     pub fn new(token: &RegistrationToken, now: Timestamp) -> Self {
         let uses = if token.revoked_at.is_some() {
-            "revoked".to_owned()
+            ActionsRunnersMessage::Revoked
         } else if now >= token.expires_at {
-            "expired".to_owned()
+            ActionsRunnersMessage::Expired
         } else {
             match token.uses_remaining {
-                None => "unlimited uses".to_owned(),
-                Some(0) => "used up".to_owned(),
-                Some(1) => "1 use left".to_owned(),
-                Some(left) => format!("{left} uses left"),
+                None => ActionsRunnersMessage::UnlimitedUses,
+                Some(0) => ActionsRunnersMessage::UsedUp,
+                Some(left) => ActionsRunnersMessage::UsesLeft { count: u64::try_from(left).unwrap_or(0) },
             }
         };
         Self {
@@ -158,22 +158,32 @@ impl IssuedToken {
 #[derive(Debug, Clone)]
 pub struct Choice {
     pub value: &'static str,
-    pub label: &'static str,
+    pub label: ActionsRunnersMessage<'static>,
 }
 
 /// How long a new token lasts, as the form offers it.
 pub const LIFETIMES: [Choice; 4] = [
-    Choice { value: "3600", label: "1 hour" },
-    Choice { value: "86400", label: "1 day" },
-    Choice { value: "604800", label: "7 days" },
-    Choice { value: "2592000", label: "30 days" },
+    Choice { value: "3600", label: ActionsRunnersMessage::Hours { count: 1 } },
+    Choice { value: "86400", label: ActionsRunnersMessage::Days { count: 1 } },
+    Choice { value: "604800", label: ActionsRunnersMessage::Days { count: 7 } },
+    Choice { value: "2592000", label: ActionsRunnersMessage::Days { count: 30 } },
 ];
+
+/// Whose jobs the runners of a section take, for its introduction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RunnersSubject {
+    Repository,
+    /// An organization, by name.
+    Owner(String),
+    /// The signed-in user's own repositories.
+    Account,
+    Instance,
+}
 
 /// The section every runners page shows.
 #[derive(Debug, Clone)]
 pub struct RunnersSection {
-    /// "this repository", "acme", "your account" or "this instance", for sentences.
-    pub subject: String,
+    pub subject: RunnersSubject,
     pub runners: Vec<RunnerRow>,
     pub tokens: Vec<TokenRow>,
     pub issued: Option<IssuedToken>,
@@ -255,13 +265,13 @@ mod tests {
         let row = RunnerRow::new(&runner(Some(Timestamp(9_950)), false), true, "/admin/runners", now);
         assert_eq!(
             (row.state, row.scope, row.backends.as_str(), row.platform.as_str()),
-            ("online", "instance", "container, host", "linux/x86_64")
+            (ActionsRunnersMessage::Online, "instance", "container, host", "linux/x86_64")
         );
         assert!(row.host, "a host label means no isolation");
         assert_eq!(row.url, "/admin/runners/3");
-        assert_eq!(RunnerRow::new(&runner(Some(Timestamp(1)), false), true, "", now).state, "offline");
-        assert_eq!(RunnerRow::new(&runner(None, false), true, "", now).state, "never seen");
-        assert_eq!(RunnerRow::new(&runner(Some(now), true), true, "", now).state, "disabled");
+        assert_eq!(RunnerRow::new(&runner(Some(Timestamp(1)), false), true, "", now).state, ActionsRunnersMessage::Offline);
+        assert_eq!(RunnerRow::new(&runner(None, false), true, "", now).state, ActionsRunnersMessage::NeverSeen);
+        assert_eq!(RunnerRow::new(&runner(Some(now), true), true, "", now).state, ActionsRunnersMessage::Disabled);
     }
 
     #[test]
@@ -277,11 +287,11 @@ mod tests {
             expires_at: Timestamp(expires),
             revoked_at: revoked,
         };
-        assert_eq!(TokenRow::new(&token(Some(1), 200, None), now).uses, "1 use left");
-        assert_eq!(TokenRow::new(&token(None, 200, None), now).uses, "unlimited uses");
-        assert_eq!(TokenRow::new(&token(Some(0), 200, None), now).uses, "used up");
-        assert_eq!(TokenRow::new(&token(Some(1), 50, None), now).uses, "expired");
-        assert_eq!(TokenRow::new(&token(Some(1), 200, Some(Timestamp(90))), now).uses, "revoked");
+        assert_eq!(TokenRow::new(&token(Some(1), 200, None), now).uses, ActionsRunnersMessage::UsesLeft { count: 1 });
+        assert_eq!(TokenRow::new(&token(None, 200, None), now).uses, ActionsRunnersMessage::UnlimitedUses);
+        assert_eq!(TokenRow::new(&token(Some(0), 200, None), now).uses, ActionsRunnersMessage::UsedUp);
+        assert_eq!(TokenRow::new(&token(Some(1), 50, None), now).uses, ActionsRunnersMessage::Expired);
+        assert_eq!(TokenRow::new(&token(Some(1), 200, Some(Timestamp(90))), now).uses, ActionsRunnersMessage::Revoked);
         assert!(!TokenRow::new(&token(Some(1), 50, None), now).usable);
         let issued = IssuedToken::new("rbrg_x".into(), "https://git.example.com", Some("linux, arm64"));
         assert_eq!(

@@ -34,6 +34,7 @@ mod run_text;
 pub use run::{ArtifactRow, DeploymentView, JobRow, RunPage, RunSummary, SummaryView, job_rows};
 pub use run_text::RunText;
 pub mod environment_text;
+mod runners_text;
 mod settings_text;
 pub mod ui_text;
 

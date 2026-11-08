@@ -1,10 +1,13 @@
 {% extends "admin/layout.html" %}
-{% import "admin/components.html" as admin %}
 {% import "macros.html" as ui %}
 {% block admin_content %}
-{% call admin::heading("Runners", "Instance runners take jobs from the owners an administrator allows, or from every owner with instance_runners_for_all.") %}{% endcall %}
+{% let t = crate::views::actions::ui_text::UiText::new(*page.locale) %}
 {#- hx-history="false": a registration token is shown here once and must not be cached. -#}
-<div hx-history="false">
+<div hx-history="false" lang="{{ page.locale.tag() }}" dir="{{ page.locale.direction().as_str() }}">
+  <div class="mb-5">
+    <h2 class="text-xl font-semibold tracking-tight">{% call ui::localized(t.get(rbit_localization::ActionsRunnersMessage::Title)) %}{% endcall %}</h2>
+    <p class="mt-1 text-[13px] text-ink-muted">{% call ui::localized(t.admin_runners_intro()) %}{% endcall %}</p>
+  </div>
   {% include "actions/runners_section.html" %}
 </div>
 {% endblock %}
