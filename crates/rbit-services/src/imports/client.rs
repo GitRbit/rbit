@@ -31,7 +31,6 @@ use std::{
 use rbit_core::{
     Timestamp,
     import::{ImportSource, SourceKind},
-    network::is_internal_address,
 };
 use reqwest::{
     StatusCode,
@@ -41,6 +40,7 @@ use serde::de::DeserializeOwned;
 use tokio::{io::AsyncRead, sync::mpsc};
 use tokio_util::sync::CancellationToken;
 
+use crate::outbound::refuses_literal;
 use crate::webhooks::delivery::{GuardedResolver, install_crypto_provider};
 
 /// Sent as `User-Agent` (GitHub requires one).
@@ -118,11 +118,8 @@ impl SourceClient {
                 return attempt.error("redirect to an unsupported scheme");
             }
             // Names are checked by the resolver; address literals never reach it.
-            if !allow_private && let Some(host) = url.host_str() {
-                let literal = host.trim_start_matches('[').trim_end_matches(']');
-                if literal.parse::<std::net::IpAddr>().is_ok_and(is_internal_address) {
-                    return attempt.error("redirect to an internal address");
-                }
+            if refuses_literal(url, allow_private) {
+                return attempt.error("redirect to an internal address");
             }
             attempt.follow()
         });
@@ -160,19 +157,6 @@ impl SourceClient {
         url.starts_with(&format!("{}/", self.source.api_base)) || url == self.source.api_base
     }
 
-    /// Refuses address literals that are internal (names are checked when connecting).
-    fn check_literal(&self, url: &reqwest::Url) -> Result<(), SourceError> {
-        if self.allow_private {
-            return Ok(());
-        }
-        let host = url.host_str().unwrap_or_default();
-        let literal = host.trim_start_matches('[').trim_end_matches(']');
-        if literal.parse::<std::net::IpAddr>().is_ok_and(is_internal_address) {
-            return Err(SourceError::Network(format!("{host} is not a public address")));
-        }
-        Ok(())
-    }
-
     /// Sends `request` (rebuilt for every attempt), waiting out rate limits and retrying
     /// server errors. Non-success statuses become errors.
     async fn send(&self, client: &reqwest::Client, build: impl Fn() -> reqwest::RequestBuilder) -> Result<reqwest::Response, SourceError> {
@@ -180,7 +164,10 @@ impl SourceClient {
         loop {
             attempt += 1;
             let request = build().build().map_err(|e| SourceError::Invalid(e.to_string()))?;
-            self.check_literal(request.url())?;
+            // Internal address literals are refused here; names are checked when connecting.
+            if refuses_literal(request.url(), self.allow_private) {
+                return Err(SourceError::Network(format!("{} is not a public address", request.url().host_str().unwrap_or_default())));
+            }
             let what = request.url().path().to_owned();
             let response = tokio::select! {
                 () = self.cancel.cancelled() => return Err(SourceError::Cancelled),

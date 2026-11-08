@@ -114,7 +114,7 @@ pub struct RefusedAddress {
     host: String,
 }
 
-/// Resolves names with the system resolver and drops internal addresses (unless allowed).
+/// Resolves names with [`crate::outbound::lookup`] and drops internal addresses (unless allowed).
 #[derive(Debug, Clone, Copy)]
 pub struct GuardedResolver {
     allow_private: bool,
@@ -136,7 +136,7 @@ impl Resolve for GuardedResolver {
         let guard = *self;
         let host = name.as_str().to_owned();
         Box::pin(async move {
-            let resolved = tokio::net::lookup_host((host.as_str(), 0)).await?;
+            let resolved = crate::outbound::lookup(&host, 0).await?;
             let permitted = guard.permitted(resolved);
             if permitted.is_empty() {
                 return Err(Box::new(RefusedAddress { host }) as Box<dyn std::error::Error + Send + Sync>);

@@ -154,7 +154,7 @@ impl MirrorService {
     /// Checks that every address of the upstream's host is public (unless private
     /// addresses are allowed).
     async fn check_upstream(&self, url: &MirrorUrl) -> Result<ResolvedHost, ServiceError> {
-        crate::push_mirrors::check_public_host(url.host(), url.port(), self.inner.ctx.config.mirrors.allow_private_addresses)
+        crate::outbound::check_public_host(url.host(), url.port(), self.inner.ctx.config.mirrors.allow_private_addresses)
             .await
             .map_err(ServiceError::Invalid)
     }

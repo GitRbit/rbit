@@ -32,6 +32,7 @@ pub mod mirrors;
 pub mod notification_email;
 pub mod notifications;
 pub mod orgs;
+mod outbound;
 mod password_work;
 pub mod preferences;
 pub mod profiles;

@@ -59,9 +59,7 @@ use self::{
     client::SourceClient,
     job::{Job, JobServices},
 };
-use crate::{
-    CreateRepository, LfsService, ReleaseService, RepositoryService, ServiceContext, ServiceError, push_mirrors::check_public_host,
-};
+use crate::{CreateRepository, LfsService, ReleaseService, RepositoryService, ServiceContext, ServiceError, outbound::check_public_host};
 
 /// How long [`ImportService::shutdown`] waits for running imports to record their end.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
