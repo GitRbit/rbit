@@ -22,7 +22,6 @@ admin/settings.html
 admin/users.html
 contributions.html
 contributions_body.html
-email/unsubscribe.html
 error.html
 issues/filters.html
 issues/labels.html
@@ -35,7 +34,6 @@ issues/new.html
 issues/rows.html
 issues/show.html
 issues/sidebar.html
-notifications/inbox.html
 offline.html
 org/header.html
 org/members.html

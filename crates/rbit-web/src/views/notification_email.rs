@@ -5,6 +5,7 @@
 use askama::Template;
 use askama_web::WebTemplate;
 use rbit_core::config::{EmailDelivery, EmailPreference, MAX_DIGEST_HOUR};
+use rbit_localization::shell::inbox::InboxMessage;
 use rbit_services::notification_email::EmailSettings;
 
 use crate::views::{
@@ -165,12 +166,14 @@ pub struct UnsubscribePage {
 
 impl UnsubscribePage {
     pub fn new(page: Page, state: UnsubscribeState, action: String) -> Self {
-        let title = match state {
-            UnsubscribeState::Confirm { .. } => "Stop notification emails",
-            UnsubscribeState::Done { .. } => "Notification emails are off",
-            UnsubscribeState::Invalid => "This link is not valid",
-        };
-        Self { page: page.titled(title), state, action, settings_url: SettingsSection::Notifications.url() }
+        let title = page
+            .text(match state {
+                UnsubscribeState::Confirm { .. } => InboxMessage::StopEmails,
+                UnsubscribeState::Done { .. } => InboxMessage::EmailsOff,
+                UnsubscribeState::Invalid => InboxMessage::LinkNotValid,
+            })
+            .to_string();
+        Self { page: page.with_catalog_content().titled(title), state, action, settings_url: SettingsSection::Notifications.url() }
     }
 }
 

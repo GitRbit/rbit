@@ -5,6 +5,7 @@
 use askama::Template;
 use askama_web::WebTemplate;
 use rbit_core::{IssueKind, IssueState, StateReason};
+use rbit_localization::shell::inbox::{InboxMessage, ThreadState};
 use rbit_services::notifications::Notification;
 
 use crate::{
@@ -22,7 +23,7 @@ pub struct NotificationRow {
     pub icon: &'static str,
     /// A token utility for the icon.
     pub icon_class: &'static str,
-    pub state_label: &'static str,
+    pub state_label: InboxMessage<'static>,
     pub reason: &'static str,
     pub when: String,
     pub when_iso: String,
@@ -33,14 +34,17 @@ pub struct NotificationRow {
 
 impl NotificationRow {
     pub fn new(notification: &Notification) -> Self {
-        let (icon, icon_class, state_label) = match (notification.kind, notification.state, notification.state_reason) {
-            (IssueKind::Issue, IssueState::Open, _) => ("circle-dot", "text-success", "Open issue"),
-            (IssueKind::Issue, IssueState::Closed, Some(StateReason::NotPlanned)) => ("circle-slash", "text-ink-muted", "Closed issue"),
-            (IssueKind::Issue, IssueState::Closed, _) => ("circle-check", "text-ink-muted", "Closed issue"),
-            (IssueKind::Pull, IssueState::Open, _) => ("git-pull-request", "text-success", "Open pull request"),
-            (IssueKind::Pull, IssueState::Closed, Some(StateReason::Merged)) => ("git-merge", "text-ink", "Merged pull request"),
-            (IssueKind::Pull, IssueState::Closed, _) => ("git-pull-request-closed", "text-ink-muted", "Closed pull request"),
+        let (icon, icon_class, state) = match (notification.kind, notification.state, notification.state_reason) {
+            (IssueKind::Issue, IssueState::Open, _) => ("circle-dot", "text-success", ThreadState::OpenIssue),
+            (IssueKind::Issue, IssueState::Closed, Some(StateReason::NotPlanned)) => {
+                ("circle-slash", "text-ink-muted", ThreadState::ClosedIssue)
+            }
+            (IssueKind::Issue, IssueState::Closed, _) => ("circle-check", "text-ink-muted", ThreadState::ClosedIssue),
+            (IssueKind::Pull, IssueState::Open, _) => ("git-pull-request", "text-success", ThreadState::OpenPull),
+            (IssueKind::Pull, IssueState::Closed, Some(StateReason::Merged)) => ("git-merge", "text-ink", ThreadState::MergedPull),
+            (IssueKind::Pull, IssueState::Closed, _) => ("git-pull-request-closed", "text-ink-muted", ThreadState::ClosedPull),
         };
+        let state_label = InboxMessage::State(state);
         let base = format!("/notifications/{}", notification.id);
         Self {
             title: notification.title.clone(),

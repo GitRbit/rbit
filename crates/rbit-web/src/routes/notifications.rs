@@ -67,8 +67,9 @@ async fn inbox(
         previous_url: (inbox.page > 1).then(|| page_url(inbox.page - 1)),
         next_url: (inbox.page < page_count).then(|| page_url(inbox.page + 1)),
     };
+    let title = page.text(rbit_localization::shell::inbox::InboxMessage::Notifications).to_string();
     Ok(InboxPage {
-        page: page.titled("Notifications"),
+        page: page.titled(title),
         groups: group(&inbox.notifications),
         showing_all,
         unread_url: "/notifications".to_owned(),
