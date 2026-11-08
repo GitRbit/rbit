@@ -120,6 +120,11 @@ impl DocumentCache {
         html
     }
 
+    /// The stored rendering of `source` at `base`, if any, marking it recently used.
+    pub fn cached(&self, source: &str, base: &DocumentBase) -> Option<String> {
+        (source.len() >= MIN_SOURCE_BYTES).then(|| self.lookup(&Self::key(source, base))).flatten().map(|html| html.to_string())
+    }
+
     fn lookup(&self, key: &Key) -> Option<Arc<str>> {
         let mut state = self.lock();
         state.clock += 1;

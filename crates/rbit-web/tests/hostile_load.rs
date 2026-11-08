@@ -8,4 +8,5 @@ mod diffs;
 mod fixture;
 mod highlighting;
 mod logs;
+mod markdown;
 mod passwords;

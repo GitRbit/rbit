@@ -14,10 +14,7 @@ use crate::{
     AppState,
     error::{WebError, WebResult},
     extract::Viewer,
-    render::{
-        references::{RefContext, render_issue_markdown},
-        render_markdown,
-    },
+    render::references::{RefContext, render_issue_markdown},
     urls::{DocumentBase, RepoUrls},
 };
 
@@ -57,19 +54,17 @@ async fn preview(
             return Err(WebError::BadRequest("Markdown preview is too large".to_owned()));
         }
         let path = FilePath::parse(&form.path).map_err(|error| WebError::BadRequest(error.to_string()))?;
-        render_markdown(&form.content, Some(&DocumentBase::new(urls, revision, path.parent())))
+        state.documents.document(form.content, DocumentBase::new(urls, revision, path.parent())).await?
     } else {
         let body = IssueText::body(&form.body).map_err(|error| WebError::BadRequest(error.to_string()))?;
         let refs = state.services.references.resolve(&repo, &[body.as_str()]).await?;
-        render_issue_markdown(
-            body.as_str(),
-            &RefContext {
-                base: DocumentBase::new(urls, repo.repo.repo.default_branch.clone(), ""),
-                owner: repo.repo.owner.name.to_string(),
-                repo: repo.repo.repo.name.to_string(),
-                refs,
-            },
-        )
+        let context = RefContext {
+            base: DocumentBase::new(urls, repo.repo.repo.default_branch.clone(), ""),
+            owner: repo.repo.owner.name.to_string(),
+            repo: repo.repo.repo.name.to_string(),
+            refs,
+        };
+        state.documents.render(body.as_str().to_owned(), move |source| render_issue_markdown(source, &context)).await?
     };
     Ok((
         [(header::CACHE_CONTROL, "private, no-store")],

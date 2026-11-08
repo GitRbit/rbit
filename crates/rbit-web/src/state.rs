@@ -6,7 +6,7 @@ use rbit_core::Config;
 use rbit_services::Services;
 use rbit_transport::ProcessTransport;
 
-use crate::render::Highlighter;
+use crate::render::{Highlighter, document_jobs::DocumentJobs};
 
 /// Cheaply cloneable handle (one `Arc`) to everything handlers need.
 #[derive(Debug, Clone)]
@@ -18,6 +18,8 @@ pub struct AppStateInner {
     pub services: Services,
     pub transport: ProcessTransport,
     pub highlighter: Highlighter,
+    /// Admission for rendering untrusted documents on request paths.
+    pub documents: DocumentJobs,
     pub monitoring: Arc<crate::monitoring::Monitor>,
     /// The executable subscribes before serving; embedded hosts can leave this unsupported.
     pub restart: tokio::sync::watch::Sender<bool>,
@@ -32,6 +34,7 @@ impl AppState {
             services,
             transport,
             highlighter: Highlighter::new(),
+            documents: DocumentJobs::default(),
             monitoring: crate::monitoring::Monitor::new(),
             restart,
         }))

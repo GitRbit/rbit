@@ -7,8 +7,9 @@ use rbit_services::ServiceError;
 use std::fmt::Write;
 
 use crate::{
+    AppState,
     error::{WebError, WebResult},
-    render::{is_markdown, render_markdown},
+    render::is_markdown,
     urls::{DocumentBase, RepoUrls},
     views::{
         pagination::ListQuery,
@@ -202,7 +203,7 @@ pub(super) async fn load(
     path: &str,
     entries: &[TreeEntry],
     query: &super::TreeQuery,
-    max_bytes: usize,
+    state: &AppState,
 ) -> WebResult<(Vec<RepositoryDocument>, Option<ReadmeView>)> {
     let listing_query = query.listing();
     let candidates = discover(reader, commit, path, entries).await.map_err(ServiceError::from)?;
@@ -225,11 +226,12 @@ pub(super) async fn load(
         })
         .collect();
     let readme = if let Some(selected) = selected {
+        let max_bytes = state.services.repositories.max_render_bytes();
         let blob = reader.blob(commit.to_owned(), selected.path.clone(), max_bytes).await.map_err(ServiceError::from)?;
         let (html, markdown) = if let Some(text) = blob.text() {
             let markdown = is_markdown(&selected.name);
             let base = DocumentBase::new(urls.clone(), commit, super::parent_path(&selected.path));
-            (if markdown { render_markdown(text, Some(&base)) } else { super::escape(text) }, markdown)
+            (if markdown { state.documents.document(text.to_owned(), base).await? } else { super::escape(text) }, markdown)
         } else {
             (
                 if blob.data.is_none() {

@@ -1,6 +1,7 @@
 //! Turning repository content into safe HTML.
 
 mod document_cache;
+pub mod document_jobs;
 mod highlight;
 mod highlight_cache;
 mod markdown;

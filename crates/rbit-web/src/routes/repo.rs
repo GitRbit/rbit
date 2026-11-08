@@ -18,7 +18,7 @@ use crate::{
     AppState,
     error::{WebError, WebResult},
     extract::Viewer,
-    render::{format_size, is_markdown, render_markdown},
+    render::{format_size, is_markdown},
     urls::{DocumentBase, RepoUrls, encode_path},
     views::{
         collaborators::CollaboratorAccess,
@@ -298,16 +298,8 @@ pub async fn tree(
         let (revision, path) = ctx.reader.split_revision_path(rest).await.map_err(ServiceError::from)?;
         let view = ctx.reader.tree(revision, path.clone()).await.map_err(ServiceError::from)?;
         let urls = RepoUrls::new(&owner, &repo);
-        let (documents, readme) = repository_documents::load(
-            &ctx.reader,
-            &urls,
-            &view.commit.id,
-            &path,
-            &view.entries,
-            &query,
-            state.services.repositories.max_render_bytes(),
-        )
-        .await?;
+        let (documents, readme) =
+            repository_documents::load(&ctx.reader, &urls, &view.commit.id, &path, &view.entries, &query, &state).await?;
         return Ok(RepositoryDocumentsFragment { page, document_scope: urls.home(), documents, readme }.into_response());
     }
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
@@ -333,16 +325,8 @@ async fn render_tree(
         tokio::join!(listing, language_bar(state, &loaded, &commit_id), latest_release(state, &loaded));
     let collaborator = collaborator_access(viewer, &loaded);
     let view = listing.map_err(ServiceError::from)?;
-    let (documents, readme) = repository_documents::load(
-        reader,
-        &loaded.urls,
-        &view.commit.id,
-        &path,
-        &view.entries,
-        &query,
-        state.services.repositories.max_render_bytes(),
-    )
-    .await?;
+    let (documents, readme) =
+        repository_documents::load(reader, &loaded.urls, &view.commit.id, &path, &view.entries, &query, state).await?;
 
     let urls = &loaded.urls;
     let filtered = matching_entries(&view.entries, &listing_query.q);
@@ -511,7 +495,7 @@ pub async fn blob(
         None => BlobContent::Binary,
         Some(text) if is_markdown(&name) => {
             let base = DocumentBase::new(loaded.urls.clone(), revision.clone(), parent_path(&path));
-            BlobContent::Markdown(render_markdown(&text, Some(&base)))
+            BlobContent::Markdown(state.documents.document(text, base).await?)
         }
         Some(text) => BlobContent::Code(state.highlighter.highlight_lines_cached(&view.id, &name, text).await?),
     };
