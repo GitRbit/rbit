@@ -211,7 +211,8 @@ pub(crate) const REPOSITORY_PAGE: &str = concat!(
     page_mirror!("last_error", "mirror_last_error"),
     page_mirror!("created_at", "mirror_created_at"),
     "(SELECT COUNT(*) FROM issues WHERE repo_id = page.id AND kind = 'issue' AND state = 'open') AS open_issues, \
-     (SELECT COUNT(*) FROM issues WHERE repo_id = page.id AND kind = 'pull' AND state = 'open') AS open_pulls \
+     (SELECT COUNT(*) FROM issues WHERE repo_id = page.id AND kind = 'pull' AND state = 'open') AS open_pulls, \
+     EXISTS (SELECT 1 FROM wiki_repositories WHERE repo_id = page.id AND enabled = 1) AS wiki_enabled \
      FROM repositories page \
      WHERE page.owner_id = (SELECT id FROM accounts WHERE name = ?1) AND page.name = ?2"
 );
@@ -239,6 +240,7 @@ struct RepositoryPageRow {
     mirror_created_at: Option<i64>,
     open_issues: i64,
     open_pulls: i64,
+    wiki_enabled: bool,
 }
 
 /// Everything a repository page's header needs, read by [`RepositoryStore::find_page`].
@@ -259,6 +261,8 @@ pub struct RepositoryPage {
     pub mirror: Option<Mirror>,
     pub open_issues: u64,
     pub open_pulls: u64,
+    /// The repository's wiki is switched on.
+    pub wiki_enabled: bool,
 }
 
 /// The parent of a fork, as [`RepositoryPage`] names it.
@@ -320,6 +324,7 @@ impl TryFrom<RepositoryPageRow> for RepositoryPage {
             mirror,
             open_issues: count(row.open_issues),
             open_pulls: count(row.open_pulls),
+            wiki_enabled: row.wiki_enabled,
         })
     }
 }

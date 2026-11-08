@@ -74,8 +74,10 @@ pub struct RepoHeader {
     /// `/{owner}/{repo}/settings/actions`, when the instance has Actions and the viewer
     /// administers the repository: the settings page links it as a card.
     pub actions_settings_url: Option<String>,
+    /// `/{owner}/{repo}/wiki`, when the wiki is on (or for administrators, to turn it on).
+    pub wiki_url: Option<String>,
     /// `"code"`, `"issues"`, `"pulls"`, `"commits"`, `"branches"`, `"tags"`, `"releases"`
-    /// or `"activity"`, `"actions"`, `"settings"`; compared in `repo/subnav.html`.
+    /// or `"activity"`, `"actions"`, `"wiki"`, `"settings"`; compared in `repo/subnav.html`.
     pub active_tab: &'static str,
 }
 

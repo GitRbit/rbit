@@ -98,6 +98,8 @@ pub struct RepoHeaderData {
     pub parent: Option<ForkParent>,
     pub mirror: Option<Mirror>,
     pub open_counts: OpenCounts,
+    /// The repository's wiki is switched on.
+    pub wiki_enabled: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -138,7 +140,18 @@ impl RepositoryService {
         let name = name.strip_suffix(".git").unwrap_or(name);
         let viewer_is_admin = viewer.is_some_and(|user| user.is_admin);
         let page = self.store.find_page(owner, name, viewer.map(User::id), viewer_is_admin).await?.ok_or(ServiceError::NotFound)?;
-        let RepositoryPage { repo, grants, star_count, starred_by_viewer, readable_forks, parent, mirror, open_issues, open_pulls } = page;
+        let RepositoryPage {
+            repo,
+            grants,
+            star_count,
+            starred_by_viewer,
+            readable_forks,
+            parent,
+            mirror,
+            open_issues,
+            open_pulls,
+            wiki_enabled,
+        } = page;
         let grants = page_grants(viewer, &repo, grants);
         let ctx = self.context(viewer, repo, grants)?;
         let parent = match parent {
@@ -155,6 +168,7 @@ impl RepositoryService {
             parent,
             mirror,
             open_counts: OpenCounts { issues: open_issues, pulls: open_pulls },
+            wiki_enabled,
         };
         Ok((ctx, header))
     }

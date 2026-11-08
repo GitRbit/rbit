@@ -110,6 +110,7 @@ pub(super) struct RepoPage {
     open_counts: OpenCounts,
     // Actions: interface and secrets (U).
     actions_on: bool,
+    wiki_on: bool,
 }
 
 impl RepoPage {
@@ -140,6 +141,7 @@ impl RepoPage {
             mirror: header.mirror,
             open_counts: header.open_counts,
             actions_on: actions_on?,
+            wiki_on: header.wiki_enabled,
         })
     }
 

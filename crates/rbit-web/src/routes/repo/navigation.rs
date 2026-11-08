@@ -48,6 +48,9 @@ impl RepoPage {
             actions_url: self.actions_on.then(|| format!("{}/actions", self.urls.home())),
             actions_settings_url: (state.services.actions.is_some() && self.ctx.access.can_admin())
                 .then(|| format!("{}/settings/actions", self.urls.home())),
+            // Administrators see the tab of a turned-off wiki: it is where they turn it on.
+            wiki_url: (self.wiki_on || (self.ctx.access.can_admin() && !repo.repo.is_archived()))
+                .then(|| format!("{}/wiki", self.urls.home())),
             active_tab,
         }
     }

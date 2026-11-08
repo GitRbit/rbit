@@ -33,6 +33,9 @@
     <a class="tab" data-repo-tab="tags" data-preload="visible" href="{{ header.tags_url }}" {% if header.active_tab == "tags" %}aria-current="page"{% endif %}>{% call ui::localized(rbit_localization::RepoNavLabel::Tags.text(page.locale)) %}{% endcall %}</a>
     <a class="tab" data-repo-tab="releases" data-preload="visible" href="{{ header.releases_url }}" {% if header.active_tab == "releases" %}aria-current="page"{% endif %}>{% call ui::localized(rbit_localization::RepoNavLabel::Releases.text(page.locale)) %}{% endcall %}</a>
     <a class="tab" data-repo-tab="activity" data-preload="visible" href="{{ header.activity_url }}" {% if header.active_tab == "activity" %}aria-current="page"{% endif %}>{% call ui::localized(rbit_localization::RepoNavLabel::Activity.text(page.locale)) %}{% endcall %}</a>
+    {% if let Some(wiki_url) = header.wiki_url %}
+    <a class="tab" data-repo-tab="wiki" data-preload="visible" href="{{ wiki_url }}" {% if header.active_tab == "wiki" %}aria-current="page"{% endif %}>{% call ui::localized(rbit_localization::Catalog::new(page.locale.clone()).localized(rbit_localization::WikiMessage::Tab)) %}{% endcall %}</a>
+    {% endif %}
     {% if let Some(actions_url) = header.actions_url %}
     <a class="tab" data-repo-tab="actions" data-preload="visible" href="{{ actions_url }}" {% if header.active_tab == "actions" %}aria-current="page"{% endif %}>{% call ui::localized(rbit_localization::RepoNavLabel::Actions.text(page.locale)) %}{% endcall %}</a>
     {% endif %}
