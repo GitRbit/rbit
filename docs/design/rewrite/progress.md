@@ -160,6 +160,18 @@ HTMX enhancements, request-token replay, Git clone/push ingress, managed-writer 
 recovery integration, wiki objects (data_dir/wikis) in backup/restore, transfer/deletion lifecycle, measured budgets,
 translations beyond English, and browser accessibility acceptance.
 
+The repository/filesystem part of the third group (case aliases, traversal,
+reparse points, archive links, LFS object scope and upload cancellation) and the
+plan's §8 "Git and filesystem" row now have hostile-input tests against real
+repositories, described in the [security contracts](security-contracts.md#repositoryfilesystem-group-status).
+They found and fixed five defects: archives ran repository filter drivers, local
+fetches followed repository-rewritten `ext::`/`ssh://` transports, automatic gc
+ran repository hooks, case aliases of packed branches and tags bypassed the
+compare-and-swap on Windows and macOS, and browser edits silently dropped paths
+Git skips. With the outbound-network paragraph above, every item of the third group
+now has hostile-input tests; the Git transports under hostile configuration remain
+outside this claim.
+
 Security activation, remaining Wiki lifecycle/media/ingress work, remaining feature retirement,
 full localization, paired performance, bounded build retention and release-platform
 gates remain open. Earlier evidence below is historical.

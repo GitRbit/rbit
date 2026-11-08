@@ -110,4 +110,26 @@ Not covered:
 - Commit and compare diffs have no concurrency admission. Their blocking work is bounded per request by the file, byte, line and 500 ms per-file limits.
 - Mermaid renders in the browser.
 - Timing claims come from debug builds on one Windows machine.
+
+### Repository/filesystem group status
+
+The repository and filesystem part of the third group (case aliases, path traversal, reparse points, archive links, LFS object scope and upload cancellation) holds for the production code paths in `rbit-git`, the Wiki object writer and the LFS and archive services and routes. DNS pinning and redirect/proxy policy are covered by the [outbound network group status](#outbound-network-group-status); with both statuses, every item of the third group has hostile-input tests, within the limits each one states. Tests use real temporary repositories and the `git` CLI. Each repository-configuration scenario first shows that plain `git` runs the planted command, then shows that rbit's code path does not.
+
+- `crates/rbit-git/tests/hostile_config.rs`: a planted filter driver and `core.attributesFile` under `git archive`; `url.<base>.insteadOf` rewritten to `ext::` or `ssh://` with `protocol.*.allow=always` and `core.sshCommand`, under edit, merge and pull-request fetches; `core.hooksPath`, the repository's own `hooks` directory and `core.fsmonitor`, under `gc --auto`, commit-graph writes, `update-ref` and reads.
+- `crates/rbit-git/tests/hostile_refs.rs`: reference names containing `..`, absolute paths, empty parts, NUL, control characters, leading `-`, NTFS streams (`:`), 8.3 short names (`~1`) and Git revision syntax are refused by edits, tags, `HEAD` and repository creation, and nothing is written. Windows device names either fail or read back as real references, and on Windows they fail. Case aliases of a packed branch or tag are refused on Windows and macOS and stay distinct elsewhere. Six concurrent edits, branch creations or tag creations of different commits release together through a barrier, and exactly one wins.
+- `crates/rbit-git/tests/hostile_paths.rs`: edit paths that would be options are committed as names, and NTFS spellings of `.git` refuse the whole edit. Trees with `..`, `/` or `.git` entry names fail the archive download. Symlinks are archived as links and never as the host file they point to. Moving and deleting a repository with planted directory links (symlinks on Unix, junctions on Windows) leaves their targets intact. A browser upload cancelled mid-stream leaves no object or lock.
+- `crates/rbit-git/tests/wiki_objects.rs`: a junction as the Wiki root (Windows) and a link at the fan-out directory of a new loose object are refused, and nothing is written outside the root.
+- `crates/rbit-services/tests/lfs.rs` and `crates/rbit-web/tests/hostile_downloads.rs`: an LFS upload cancelled mid-stream leaves no temporary file, object, row or lock. Transfer tokens replayed on other objects, repositories or accounts are refused. Uppercase, truncated, extended, NUL-suffixed, traversing and sharded object ids are client errors that return no content. Archive revisions that look like options, paths or revision expressions return 404, and an archive download never runs the repository's filter.
+
+Five defects were found and fixed. `git archive` ran filter drivers from repository configuration, so archives now run on an object overlay with rbit's own configuration. Local Git commands accepted any transport a repository's `insteadOf` named, so only `file` is now allowed unless a remote operation widens it. `git gc --auto` ran repository hooks. On case-insensitive filesystems, creating a case alias of a packed branch or tag replaced it, bypassing its compare-and-swap. Browser edits dropped paths that `git update-index` skips with "Ignoring path". Earlier coverage remains in `crates/rbit-git/tests/{edit,merge,archive,pinned,remote}.rs`, `crates/rbit-services/src/uploads.rs`, `crates/rbit-web/src/routes/lfs/tests.rs` and the protection tests.
+
+Not covered:
+- the smart-HTTP and SSH transports (`rbit-transport`, `rbit-ssh`) under hostile repository configuration;
+- `receive-pack`'s own handling of case aliases on unprotected branches;
+- runner artifact and cache extraction;
+- release-file cancellation beyond the existing tests;
+- hostile concurrent replacement of filesystem links.
+
+The case-alias check reads the references before writing, so an alias that a Git client creates between that read and the write is not excluded.
+
 The initial kernel tests cover worker lifetime and admission only. Full protocol, storage, security and migration parity remain pending in the corresponding ledger entries.
