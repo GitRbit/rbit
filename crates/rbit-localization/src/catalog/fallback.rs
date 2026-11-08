@@ -1,0 +1,119 @@
+//! Message families that a locale may leave untranslated.
+//!
+//! English is the complete source catalog: every family writes its English text, and a
+//! translated catalog adds entries only for the messages it has translated. A lookup
+//! in a locale without an entry returns the English text and says so, so a template
+//! can mark exactly that text `lang="en"` while translated text carries no wrapper.
+//! The diagnostic catalogs (`en-XA`, `ar-XB`) derive from English and never fall back.
+use std::fmt::{self, Write};
+
+use super::{Catalog, LocalizedText};
+use crate::Locale;
+
+/// Writes one message: catalog wording through [`MessageWriter::literal`], untrusted
+/// values through [`MessageWriter::argument`] so diagnostic catalogs can isolate them.
+#[derive(Debug)]
+pub struct MessageWriter {
+    catalog: Catalog,
+    output: String,
+}
+
+impl MessageWriter {
+    /// Catalog wording; expanded by the expansion diagnostic.
+    pub fn literal(&mut self, text: &str) {
+        self.catalog.literal(&mut self.output, text);
+    }
+
+    /// An interpolated value (a name, an environment, a list), copied as plain text.
+    pub fn argument(&mut self, value: &str) {
+        self.catalog.argument(&mut self.output, value);
+    }
+
+    /// An integer, written with ASCII digits.
+    pub fn number(&mut self, value: u64) {
+        let _ = write!(self.output, "{value}");
+    }
+
+    fn finish(self) -> LocalizedText {
+        self.catalog.finish(self.output)
+    }
+}
+
+/// A typed message family whose only required catalog is English.
+///
+/// Adding a variant needs nothing but its English arm: [`MessageFamily::translate`]
+/// defaults to "not translated" for every other locale, which then falls back.
+pub trait MessageFamily: Copy {
+    /// Stable catalog identifier, independent of wording and arguments.
+    fn id(self) -> &'static str;
+
+    /// The complete English source text.
+    fn english(self, text: &mut MessageWriter);
+
+    /// Writes this message in `locale` and returns `true`, or returns `false` when the
+    /// locale has no translation yet. Only real translated locales reach this method.
+    fn translate(self, locale: Locale, text: &mut MessageWriter) -> bool {
+        let _ = (locale, text);
+        false
+    }
+}
+
+/// Text for presentation, and whether it is the English fallback of an untranslated
+/// message. Plain Unicode text, escaped by templates like [`LocalizedText`].
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Localized {
+    text: LocalizedText,
+    fallback: bool,
+}
+
+impl Localized {
+    /// Text that exists only in English (a core relative timestamp, say), shown in a page
+    /// rendered for `locale`: a fallback wherever that locale is a real translation.
+    pub fn english_only(text: String, locale: Locale) -> Self {
+        Self { text: LocalizedText(text.into()), fallback: !derives_from_english(locale) }
+    }
+
+    /// The text to display.
+    pub fn as_str(&self) -> &str {
+        self.text.as_str()
+    }
+
+    /// `true` when the page's locale has no translation and this is the English text.
+    pub const fn fallback(&self) -> bool {
+        self.fallback
+    }
+}
+
+impl fmt::Display for Localized {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.text.as_str())
+    }
+}
+
+/// English itself and the diagnostic catalogs built from it.
+const fn derives_from_english(locale: Locale) -> bool {
+    matches!(locale, Locale::English | Locale::PseudoExpanded | Locale::PseudoRtl)
+}
+
+impl Catalog {
+    /// Formats a family message in this catalog's locale, falling back to English.
+    pub fn localized<M: MessageFamily>(self, message: M) -> Localized {
+        localize(self, message)
+    }
+}
+
+/// Kept apart from the `Catalog` type, whose cumulative definition has a size budget.
+fn localize<M: MessageFamily>(catalog: Catalog, message: M) -> Localized {
+    if !derives_from_english(catalog.locale) {
+        let mut translated = MessageWriter { catalog, output: String::new() };
+        if message.translate(catalog.locale, &mut translated) {
+            return Localized { text: translated.finish(), fallback: false };
+        }
+        let mut english = MessageWriter { catalog: Catalog::new(Locale::English), output: String::new() };
+        message.english(&mut english);
+        return Localized { text: english.finish(), fallback: true };
+    }
+    let mut english = MessageWriter { catalog, output: String::new() };
+    message.english(&mut english);
+    Localized { text: english.finish(), fallback: false }
+}

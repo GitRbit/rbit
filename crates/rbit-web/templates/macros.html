@@ -2,6 +2,13 @@
 
 {#- Lucide-style 24px stroke icons, inlined so they inherit `currentColor` and need no requests.
     Glyphs pointing along the reading direction get `dir-icon` and mirror in RTL (direction.css). -#}
+{#- Catalog text that may be the English fallback of an untranslated message
+    (rbit_localization::Localized): only fallback text is marked English, and it keeps
+    the page direction. Translated text gets no wrapper. -#}
+{% macro localized(value) -%}
+{%- if value.fallback() %}<span lang="en">{{ value }}</span>{% else %}{{ value }}{% endif -%}
+{%- endmacro %}
+
 {% macro icon(name, class) %}
 <svg class="{{ class }}{% if name == "chevron-right" || name == "chevron-left" || name == "log-out" %} dir-icon{% endif %}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 {%- if name == "folder" -%}

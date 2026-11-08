@@ -19,8 +19,10 @@ mod spanish;
 pub use language::LanguageMessage;
 mod chrome;
 pub use chrome::{ChromeDisplay, ChromeMessage};
+mod fallback;
 pub use display::LocalizedDisplay;
 use display::{PAGE_OF_SEPARATOR, PAGE_PREFIX, STARS_SUFFIX, SUBTITLE_PREFIX, SUBTITLE_SUFFIX};
+pub use fallback::{Localized, MessageFamily, MessageWriter};
 
 /// Typed visibility selector. Adapters map domain values without localized strings.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
