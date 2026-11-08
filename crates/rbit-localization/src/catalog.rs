@@ -43,6 +43,8 @@ pub use repo::{
     RepoCreateMessage, RepoEditLabel, RepoEditMessage, RepoHistoryLabel, RepoHistoryMessage, RepoNavLabel, RepoNavMessage,
     RepoSettingsLabel, RepoSettingsMessage,
 };
+mod wiki;
+pub use wiki::WikiMessage;
 
 /// Typed visibility selector. Adapters map domain values without localized strings.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
