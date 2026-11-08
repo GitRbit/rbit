@@ -4,12 +4,12 @@
 <section class="auth-shell">
   <header class="auth-head">
     <span class="tile text-success">{% call ui::icon("check", "size-5") %}{% endcall %}</span>
-    <h1 class="auth-title">Password changed</h1>
+    <h1 class="auth-title">{% call ui::text(page, rbit_localization::shell::recovery::RecoveryMessage::PasswordChanged) %}{% endcall %}</h1>
   </header>
 
   <div class="card">
-    <p class="text-[13px] text-ink-muted">Your new password is set. Use it the next time you sign in.</p>
-    <a href="/login" class="btn btn-primary btn-lg mt-6 w-full">Sign in</a>
+    <p class="text-[13px] text-ink-muted">{% call ui::text(page, rbit_localization::shell::recovery::RecoveryMessage::PasswordChangedText) %}{% endcall %}</p>
+    <a href="/login" class="btn btn-primary btn-lg mt-6 w-full">{% call ui::text(page, rbit_localization::shell::recovery::RecoveryMessage::SignIn) %}{% endcall %}</a>
   </div>
 </section>
 {% endblock %}

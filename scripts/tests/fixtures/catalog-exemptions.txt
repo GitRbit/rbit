@@ -64,10 +64,6 @@ pulls/review_form.html
 pulls/review_thread.html
 pulls/reviewers.html
 pulls/show.html
-recovery/forgot.html
-recovery/reset.html
-recovery/reset_complete.html
-recovery/verify.html
 releases/card.html
 releases/form.html
 releases/list.html

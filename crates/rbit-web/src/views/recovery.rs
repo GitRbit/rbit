@@ -5,8 +5,15 @@
 
 use askama::Template;
 use askama_web::WebTemplate;
+use rbit_localization::shell::recovery::RecoveryMessage;
 
 use crate::views::{components::FormError, layout::Page};
+
+/// `page` titled with a recovery message.
+fn titled(page: Page, title: RecoveryMessage<'_>) -> Page {
+    let title = page.text(title).to_string();
+    page.with_catalog_content().titled(title)
+}
 
 /// `/password/forgot`: asks for an address, then confirms a link may have been sent.
 #[derive(Debug, Template, WebTemplate)]
@@ -25,7 +32,13 @@ pub struct ForgotPasswordPage {
 
 impl ForgotPasswordPage {
     pub fn new(page: Page, email_available: bool) -> Self {
-        Self { page: page.titled("Reset your password"), error: FormError::default(), email: String::new(), sent: false, email_available }
+        Self {
+            page: titled(page, RecoveryMessage::ResetTitle),
+            error: FormError::default(),
+            email: String::new(),
+            sent: false,
+            email_available,
+        }
     }
 
     #[must_use]
@@ -53,17 +66,17 @@ pub enum LinkProblem {
 }
 
 impl LinkProblem {
-    pub const fn title(self) -> &'static str {
+    pub const fn title(self) -> RecoveryMessage<'static> {
         match self {
-            Self::Invalid => "This link has expired",
-            Self::Suspended => "This account is suspended",
+            Self::Invalid => RecoveryMessage::LinkExpired,
+            Self::Suspended => RecoveryMessage::AccountSuspended,
         }
     }
 
-    pub const fn message(self) -> &'static str {
+    pub const fn message(self) -> RecoveryMessage<'static> {
         match self {
-            Self::Invalid => "Password reset links work once and expire after an hour. Request a new one to continue.",
-            Self::Suspended => "Its password can't be reset. Contact an administrator.",
+            Self::Invalid => RecoveryMessage::ResetLinkExpiredText,
+            Self::Suspended => RecoveryMessage::AccountSuspendedText,
         }
     }
 
@@ -91,7 +104,7 @@ pub struct ResetPasswordPage {
 impl ResetPasswordPage {
     pub fn form(page: Page, token: &str, username: String, min_password_length: usize) -> Self {
         Self {
-            page: page.titled("Choose a new password"),
+            page: titled(page, RecoveryMessage::ChooseNewPassword),
             error: FormError::default(),
             action: format!("/password/reset/{token}"),
             username,
@@ -103,7 +116,7 @@ impl ResetPasswordPage {
 
     pub fn problem(page: Page, problem: LinkProblem, email_available: bool) -> Self {
         Self {
-            page: page.titled(problem.title()),
+            page: titled(page, problem.title()),
             error: FormError::default(),
             action: String::new(),
             username: String::new(),
@@ -129,7 +142,7 @@ pub struct ResetCompletePage {
 
 impl ResetCompletePage {
     pub fn new(page: Page) -> Self {
-        Self { page: page.titled("Password changed") }
+        Self { page: titled(page, RecoveryMessage::PasswordChanged) }
     }
 }
 
@@ -144,11 +157,11 @@ pub struct VerifyEmailPage {
 
 impl VerifyEmailPage {
     pub fn verified(page: Page, address: String) -> Self {
-        Self { page: page.titled("Email address verified"), verified_address: Some(address) }
+        Self { page: titled(page, RecoveryMessage::EmailVerified), verified_address: Some(address) }
     }
 
     pub fn invalid(page: Page) -> Self {
-        Self { page: page.titled("This link has expired"), verified_address: None }
+        Self { page: titled(page, RecoveryMessage::LinkExpired), verified_address: None }
     }
 
     /// Where to go next: the account settings when signed in, sign-in otherwise.
@@ -156,8 +169,8 @@ impl VerifyEmailPage {
         if self.page.is_signed_in() { "/settings/account" } else { "/login" }
     }
 
-    pub fn continue_label(&self) -> &'static str {
-        if self.page.is_signed_in() { "Go to account settings" } else { "Sign in" }
+    pub fn continue_label(&self) -> RecoveryMessage<'static> {
+        if self.page.is_signed_in() { RecoveryMessage::GoToAccountSettings } else { RecoveryMessage::SignIn }
     }
 }
 
