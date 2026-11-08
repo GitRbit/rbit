@@ -163,6 +163,40 @@ fn linked_object_root_is_rejected_without_creating_a_marker_outside_root() {
     assert!(!outside.path().join("wiki-store-v1").exists());
 }
 
+#[cfg(windows)]
+#[test]
+fn junction_object_root_is_rejected_without_creating_a_marker_outside_root() {
+    let directory = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let link = directory.path().join("linked");
+    crate::hostile_support::link_directory(outside.path(), &link);
+    assert!(matches!(WikiObjects::open(&link, store(1), budget()), Err(WikiObjectError::Binding)));
+    assert!(!outside.path().join("wiki-store-v1").exists());
+}
+
+/// A link (a junction on Windows) planted at the fan-out directory a new loose object
+/// would be written to: the write is refused and nothing lands outside the root.
+#[tokio::test]
+async fn linked_object_fan_out_is_refused_without_writing_outside_root() {
+    let directory = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let objects = WikiObjects::open(directory.path(), store(1), budget()).unwrap();
+    let first = objects.prepare(request("first", None)).await.unwrap();
+    let fan_out = directory.path().join("7/1.git/objects");
+    let (text, prefix) = (0..10_000)
+        .map(|n| format!("hostile fan-out {n}"))
+        .map(|text| {
+            let id = gix::objs::compute_hash(gix::hash::Kind::Sha1, gix::objs::Kind::Blob, text.as_bytes()).unwrap();
+            (text, id.to_hex().to_string()[..2].to_owned())
+        })
+        .find(|(_, prefix)| !fan_out.join(prefix).exists())
+        .unwrap();
+    crate::hostile_support::link_directory(outside.path(), &fan_out.join(&prefix));
+    assert!(matches!(objects.prepare(request(&text, Some(first))).await, Err(WikiObjectError::Binding)));
+    assert_eq!(std::fs::read_dir(outside.path()).unwrap().count(), 0, "no object was written through the link");
+    assert_eq!(objects.read_page(store(1), &page(first)).await.unwrap().as_str(), "first");
+}
+
 #[tokio::test]
 async fn incarnation_marker_refuses_copied_foreign_scope_and_unmarked_legacy_layout() {
     let directory = tempfile::tempdir().unwrap();

@@ -1,5 +1,5 @@
 //! Compare exact kind/wire bytes before any write into an existing object ID.
-use super::WikiObjectError;
+use super::{WikiObjectError, layout};
 use gix::objs::WriteTo;
 use std::io::{self, Write};
 
@@ -43,6 +43,13 @@ fn present(repo: &gix::Repository, id: gix::ObjectId, object: &impl WriteTo) -> 
     Ok(true)
 }
 
+/// A loose object lands in `objects/<first two hex digits>`; an observed link there (or a
+/// Windows junction) would place it outside the wiki root, so it is refused first.
+fn fan_out_without_links(repo: &gix::Repository, id: gix::ObjectId) -> Result<(), WikiObjectError> {
+    let hex = id.to_hex().to_string();
+    layout::no_links(&repo.git_dir().join("objects").join(&hex[..2]))
+}
+
 /// Caller MUST hold the cooperating root lock and exclusive wiki scope across the
 /// absent check and write. This prevents the low-level persist replacement race.
 /// Existing equal objects are reused without calling any gix write method.
@@ -59,6 +66,7 @@ pub(super) fn object(repo: &gix::Repository, object: impl WriteTo) -> Result<gix
     if u64::try_from(encoded.len()).ok() != Some(object.size()) {
         return Err(WikiObjectError::Format);
     }
+    fan_out_without_links(repo, id)?;
     let written = gix::objs::Write::write_buf_with_known_id(&repo.objects, object.kind(), encoded.as_slice(), id)
         .map_err(crate::GitError::backend)?;
     // Return the wire buffer before read-back, so the repository can reuse it.
@@ -77,6 +85,7 @@ pub(super) fn blob(repo: &gix::Repository, bytes: &[u8]) -> Result<gix::ObjectId
     if present(repo, id, &object)? {
         return Ok(id);
     }
+    fan_out_without_links(repo, id)?;
     let written =
         gix::objs::Write::write_buf_with_known_id(&repo.objects, gix::objs::Kind::Blob, bytes, id).map_err(crate::GitError::backend)?;
     if written != id || !present(repo, id, &object)? {

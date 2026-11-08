@@ -1,5 +1,6 @@
 //! Shared fixtures of the hostile-input tests: real repositories built with the `git`
-//! CLI and command markers that prove whether a configured command ran.
+//! CLI, command markers that prove whether a configured command ran, and directory links
+//! (symlinks on Unix, junctions on Windows) that point out of a root.
 
 use std::{
     path::{Path, PathBuf},
@@ -144,6 +145,20 @@ impl Marker {
     pub fn reset(&self) {
         let _ = std::fs::remove_file(&self.path);
         let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+/// Makes `link` a directory link to `target`: a symlink on Unix, a junction on Windows
+/// (which needs no privilege).
+pub fn link_directory(target: &Path, link: &Path) {
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(target, link).unwrap();
+    #[cfg(windows)]
+    {
+        // `cmd` reads a forward slash as a switch.
+        let native = |path: &Path| path.to_string_lossy().replace('/', "\\");
+        let status = Command::new("cmd").args(["/C", "mklink", "/J"]).arg(native(link)).arg(native(target)).output().unwrap();
+        assert!(status.status.success(), "mklink /J failed: {}", String::from_utf8_lossy(&status.stderr));
     }
 }
 
