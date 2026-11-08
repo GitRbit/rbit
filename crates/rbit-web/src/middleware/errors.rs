@@ -42,7 +42,8 @@ pub async fn error_pages(State(state): State<AppState>, request: Request, next: 
         return moved_permanently(&method, &location);
     }
     // The error page's own text comes from the catalog, so its content follows the locale.
-    let mut error = ErrorPage { page: Page::new(&state, viewer.user(), &path).with_theme(theme).with_locale(locale), info };
+    let mut error =
+        ErrorPage { page: Page::new(&state, viewer.user(), &path).with_theme(theme).with_locale(locale).with_catalog_content(), info };
     let title = error.title().to_string();
     error.page = error.page.titled(title);
     render_error_response(response, error)

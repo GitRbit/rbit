@@ -8,7 +8,7 @@
 use std::fmt::{self, Write};
 
 use super::{Catalog, LocalizedText};
-use crate::Locale;
+use crate::locale::Locale;
 
 /// Writes one message: catalog wording through [`MessageWriter::literal`], untrusted
 /// values through [`MessageWriter::argument`] so diagnostic catalogs can isolate them.
@@ -64,13 +64,14 @@ pub trait MessageFamily: Copy {
 pub struct Localized {
     text: LocalizedText,
     fallback: bool,
+    locale: Locale,
 }
 
 impl Localized {
     /// Text that exists only in English (a core relative timestamp, say), shown in a page
     /// rendered for `locale`: a fallback wherever that locale is a real translation.
     pub fn english_only(text: String, locale: Locale) -> Self {
-        Self { text: LocalizedText(text.into()), fallback: !derives_from_english(locale) }
+        Self { text: LocalizedText(text.into()), fallback: !derives_from_english(locale), locale }
     }
 
     /// The text to display.
@@ -81,6 +82,20 @@ impl Localized {
     /// `true` when the page's locale has no translation and this is the English text.
     pub const fn fallback(&self) -> bool {
         self.fallback
+    }
+
+    /// The `lang` a template declares around this text: `en` for a fallback; the locale's
+    /// own tag for a translation in a locale whose original families still render English
+    /// (a page built on them may surround the text with `lang="en"`); otherwise `None`,
+    /// as the text is in the page's language.
+    pub const fn marked_lang(&self) -> Option<&'static str> {
+        if self.fallback {
+            Some(Locale::English.tag())
+        } else if self.locale.has_original_catalog() {
+            None
+        } else {
+            Some(self.locale.tag())
+        }
     }
 }
 
@@ -107,13 +122,13 @@ fn localize<M: MessageFamily>(catalog: Catalog, message: M) -> Localized {
     if !derives_from_english(catalog.locale) {
         let mut translated = MessageWriter { catalog, output: String::new() };
         if message.translate(catalog.locale, &mut translated) {
-            return Localized { text: translated.finish(), fallback: false };
+            return Localized { text: translated.finish(), fallback: false, locale: catalog.locale };
         }
         let mut english = MessageWriter { catalog: Catalog::new(Locale::English), output: String::new() };
         message.english(&mut english);
-        return Localized { text: english.finish(), fallback: true };
+        return Localized { text: english.finish(), fallback: true, locale: catalog.locale };
     }
     let mut english = MessageWriter { catalog, output: String::new() };
     message.english(&mut english);
-    Localized { text: english.finish(), fallback: false }
+    Localized { text: english.finish(), fallback: false, locale: catalog.locale }
 }

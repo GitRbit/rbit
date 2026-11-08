@@ -1,7 +1,7 @@
 {% extends "settings/layout.html" %}
 {% block settings_content %}
 {% let text = self.labels() %}
-<section id="language" lang="{{ page.locale.tag() }}" dir="{{ page.locale.direction().as_str() }}" aria-labelledby="language-title">
+<section id="language" lang="{{ page.content_locale.tag() }}" dir="{{ page.content_locale.direction().as_str() }}" aria-labelledby="language-title">
   <h2 id="language-title" class="text-xl font-semibold tracking-tight">{{ text.title }}</h2>
   <p class="mt-2 text-[13px] leading-relaxed text-ink-muted">{{ text.coverage }}</p>
   {% if saved %}<p class="mt-4 text-[13px] text-success" role="status">{{ text.saved }}</p>{% endif %}

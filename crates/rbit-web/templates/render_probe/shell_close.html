@@ -5,15 +5,15 @@
     <div class="mx-auto flex min-h-12 flex-wrap max-w-[96rem] items-center justify-between gap-4 px-4 text-xs text-ink-faint sm:px-6">
       <p class="flex min-w-0 items-center gap-2">
         {% if page.branding.show_powered_by %}{% call ui::brand_logo(page, "size-3.5 shrink-0 text-ink-muted", 14) %}{% endcall %}
-        <span class="truncate">{{ page.chrome().powered_by() }} <span class="text-ink-muted">rbit</span></span>{% endif %}
+        <span class="truncate"{% if let Some(lang) = page.chrome().lang() %} lang="{{ lang }}"{% endif %}>{{ page.chrome().powered_by() }} <span class="text-ink-muted">rbit</span></span>{% endif %}
         <span class="truncate">{{ page.branding.footer_text }}</span>
         {% if page.branding.show_version %}<span class="font-mono text-[11px]" dir="ltr">v{{ env!("CARGO_PKG_VERSION") }}</span>{% endif %}
-        <span data-update-notice="{{ page.updates.revision }};{{ page.updates.notice() }}" data-update-label="{{ page.chrome().update_available() }}">{% if let Some(release) = page.updates.release %}<a href="{{ release.url }}" class="link whitespace-nowrap" hx-boost="false" rel="noreferrer">{{ page.chrome().update_available() }}</a>{% endif %}</span>
+        <span{% if let Some(lang) = page.chrome().lang() %} lang="{{ lang }}"{% endif %} data-update-notice="{{ page.updates.revision }};{{ page.updates.notice() }}" data-update-label="{{ page.chrome().update_available() }}">{% if let Some(release) = page.updates.release %}<a href="{{ release.url }}" class="link whitespace-nowrap" hx-boost="false" rel="noreferrer">{{ page.chrome().update_available() }}</a>{% endif %}</span>
         {%- if let Some(elapsed) = crate::timing::elapsed() %}
         <!--render-time--><span class="hidden font-mono text-[11px] sm:inline" title="{{ page.chrome().timing_help() }}">· {{ page.chrome().rendered_in() }} <span data-render-time>{{ elapsed }}</span></span><!--/render-time-->
         {%- endif %}
       </p>
-      <nav class="flex max-w-full flex-wrap gap-x-4 gap-y-2 py-3" aria-label="{{ page.chrome().footer() }}">
+      <nav{% if let Some(lang) = page.chrome().lang() %} lang="{{ lang }}"{% endif %} class="flex max-w-full flex-wrap gap-x-4 gap-y-2 py-3" aria-label="{{ page.chrome().footer() }}">
         <a href="/explore" class="hover:text-ink">{{ page.chrome().explore() }}</a>
         {% if !page.branding.support_url.is_empty() %}<a href="{{ page.branding.support_url }}" hx-boost="false">{{ page.chrome().support() }}</a>{% endif %}
         {% if !page.branding.terms_url.is_empty() %}<a href="{{ page.branding.terms_url }}" hx-boost="false">{{ page.chrome().terms() }}</a>{% endif %}

@@ -161,3 +161,11 @@ fn spanish_picker_preserves_theme_identity_and_escapes_site_content() {
     assert!(!html.contains("Forge <script>"));
     assert!(html.contains("&#60;script&#62;"));
 }
+
+#[test]
+fn picker_in_a_locale_without_its_catalog_is_declared_english() {
+    let german = ThemePicker::new(&page(Theme::System).with_locale(rbit_localization::Locale::German));
+    let html = german.render().unwrap();
+    assert!(html.contains("<dialog class=\"tpk\" lang=\"en\" dir=\"ltr\" aria-label=\"Choose a theme\""));
+    assert!(html.contains("<span lang=\"en\">Pull requests</span>"), "family fallbacks stay marked");
+}

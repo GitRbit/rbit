@@ -5,7 +5,7 @@
     submit buttons of a theme form; each row's chip carries its own `data-theme`, so it renders
     in that theme's colours from the combined stylesheet linked here. Highlighting a row (the
     pointer or the arrow keys) shows it in the preview pane; choosing one applies it. -#}
-<dialog class="tpk" lang="{{ page.locale.tag() }}" dir="{{ page.locale.direction().as_str() }}" aria-label="{{ labels.choose() }}" data-theme-dialog data-label-apply="{{ labels.apply() }}" data-label-applied="{{ labels.applied() }}" data-label-by="{{ labels.by() }}" data-label-credit="{{ labels.credit() }}" data-label-singular="{{ labels.theme_singular() }}" data-label-plural="{{ labels.theme_plural() }}" data-asset-version="{{ asset_version }}">
+<dialog class="tpk" lang="{{ page.original_locale().tag() }}" dir="{{ page.original_locale().direction().as_str() }}" aria-label="{{ labels.choose() }}" data-theme-dialog data-label-apply="{{ labels.apply() }}" data-label-applied="{{ labels.applied() }}" data-label-by="{{ labels.by() }}" data-label-credit="{{ labels.credit() }}" data-label-singular="{{ labels.theme_singular() }}" data-label-plural="{{ labels.theme_plural() }}" data-asset-version="{{ asset_version }}">
   <link rel="stylesheet" href="{{ stylesheet }}">
   <div class="tpk-head">
     <div class="tpk-search">

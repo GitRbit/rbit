@@ -10,6 +10,12 @@ impl PageChrome {
         Self { catalog: Catalog::new(locale) }
     }
 
+    /// `Some("en")` where these labels are the English text of a locale the original chrome
+    /// catalog does not cover: the header and footer declare it, the document does not.
+    pub const fn lang(&self) -> Option<&'static str> {
+        if self.catalog.locale().has_original_catalog() { None } else { Some(Locale::English.tag()) }
+    }
+
     pub fn skip(&self) -> LocalizedText {
         self.catalog.chrome(Message::Skip)
     }

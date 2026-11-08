@@ -72,12 +72,20 @@ impl Page {
         }
     }
 
-    /// The supported document language and direction for this request.
+    /// The supported document language and direction for this request, for a page whose
+    /// content comes from the original exhaustive families (Explore, Actions, language
+    /// settings): in a locale they do not cover, that content is English, and so is `<main>`.
     #[must_use]
     pub fn with_locale(mut self, locale: Locale) -> Self {
         self.locale = locale;
-        self.content_locale = locale;
+        self.content_locale = if locale.has_original_catalog() { locale } else { Locale::English };
         self
+    }
+
+    /// The language of text from the original exhaustive families on this page: the
+    /// document's, or English where those families have no catalog for it.
+    pub const fn original_locale(&self) -> Locale {
+        if self.locale.has_original_catalog() { self.locale } else { Locale::English }
     }
 
     #[must_use]
@@ -228,5 +236,23 @@ mod tests {
         assert!(html.contains("Update available"));
         assert!(html.contains("https://github.com/GitRbit/rbit/releases/tag/v99.0.0"));
         assert!(!html.contains(&format!("v{}", env!("CARGO_PKG_VERSION"))));
+    }
+
+    #[test]
+    fn chrome_of_a_locale_without_its_original_catalog_is_marked_english() {
+        use rbit_localization::Locale;
+        let german = Fixture { page: crate::views::test_support::page("/").with_locale(Locale::German) }.render().unwrap();
+        assert!(german.contains("<html lang=\"de\" dir=\"ltr\" data-catalog-key=\"1.de\""));
+        assert!(german.contains("<a href=\"#main\" lang=\"en\""));
+        assert!(german.contains("<header lang=\"en\""));
+        assert!(german.contains("<main id=\"main\" lang=\"en\""), "the original families' content is English");
+        assert!(german.contains("<nav lang=\"en\" class=\"flex max-w-full"));
+        assert!(german.contains(">Skip to content</a>"));
+        let errors = crate::views::test_support::page("/").with_locale(Locale::Japanese).with_catalog_content();
+        assert_eq!(errors.content_locale, Locale::Japanese, "catalog pages keep their own language");
+        let spanish = Fixture { page: crate::views::test_support::page("/").with_locale(Locale::Spanish) }.render().unwrap();
+        assert!(spanish.contains("<header data-document-catalog=\"1.es\""));
+        assert!(spanish.contains("<main id=\"main\" lang=\"es\""));
+        assert!(!spanish.contains("<header lang") && !spanish.contains("<nav lang") && !spanish.contains("<a href=\"#main\" lang"));
     }
 }

@@ -73,7 +73,7 @@
         <label class="label" for="token-lifetime">{% call ui::localized(t.get(rbit_localization::ActionsRunnersMessage::ExpiresAfter)) %}{% endcall %}</label>
         <div class="relative">
           <select class="input cursor-pointer appearance-none pe-9" id="token-lifetime" name="lifetime">
-            {% for choice in section.lifetimes %}<option value="{{ choice.value }}"{% if t.get(*choice.label).fallback() %} lang="en"{% endif %}>{{ t.get(*choice.label) }}</option>{% endfor %}
+            {% for choice in section.lifetimes %}<option value="{{ choice.value }}"{% if let Some(lang) = t.get(*choice.label).marked_lang() %} lang="{{ lang }}"{% endif %}>{{ t.get(*choice.label) }}</option>{% endfor %}
           </select>
           {% call ui::icon("chevron-down", "pointer-events-none absolute inset-e-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
         </div>
