@@ -15,9 +15,10 @@
 //!   deleted.
 //! * The answer is `{cancel: true}` from the moment the job is cancelled — by then the
 //!   token is already dead (§11.11). Calls about a task that already stopped change
-//!   nothing and are answered the same way, and so are calls about a task whose job a
-//!   rerun gave to a newer task: its outputs are dropped and its result leaves the job
-//!   alone.
+//!   nothing; one without a result — its runner still runs a task the server stopped, as
+//!   the sweeper does — is answered `{cancel: true}`, a resent final call as before. Calls
+//!   about a task whose job a rerun gave to a newer task are answered `{cancel: true}`:
+//!   its outputs are dropped and its result leaves the job alone.
 //!
 //! The server side of the runner protocol (stream S) owns this file.
 
@@ -49,7 +50,13 @@ impl ActionsService {
         }
         let job = store.job(task.job_id).await?.ok_or_else(|| RunnerError::not_found("there is no such task"))?;
         if task.status.is_done() {
-            return Ok(TaskStateResponse { cancel: job.status == Status::Cancelled || task.status == Status::Cancelled });
+            // A call without a result comes from a runner that still runs a task the server
+            // stopped (the sweeper failed it, its runner was removed): the lease is gone, so
+            // the runner must stop. A resent final call is answered as before.
+            let stopped_under_runner = request.result.is_none();
+            return Ok(TaskStateResponse {
+                cancel: stopped_under_runner || job.status == Status::Cancelled || task.status == Status::Cancelled,
+            });
         }
         let now = Timestamp::now();
         store.heartbeat(id, now).await?;
