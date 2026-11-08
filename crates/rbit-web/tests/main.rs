@@ -20,6 +20,7 @@ mod actions_pages;
 // Actions: settings API.
 mod actions_permissions;
 mod actions_settings;
+mod actions_settings_localization;
 // Actions: S.
 mod actions_runner;
 mod actions_runner_pages;
