@@ -130,6 +130,38 @@ async fn backup_reports_repositories_missing_from_disk() {
     let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(backup.join("manifest.json")).unwrap()).unwrap();
     assert_eq!(manifest["repositories"], 1);
     assert_eq!(manifest["missing_repositories"].as_array().unwrap().len(), 1);
+    // The snapshot leaves the repository out too, so a restore never refers to it.
+    let restored = Database::open(&backup.join("rbit.db")).await.unwrap();
+    let repos = restored.admin().list_repositories(rbit_storage::sqlite::admin::ListFilter { search: "", limit: 10, offset: 0 }).await;
+    assert_eq!(repos.unwrap().total, 1);
+    restored.close().await;
+}
+
+/// The rows of `table` in the backup's database (`SQLite` identifiers are fixed here).
+async fn rows(backup: &Path, table: &str) -> i64 {
+    use sqlx::{ConnectOptions, Connection};
+    let mut connection =
+        sqlx::sqlite::SqliteConnectOptions::new().filename(backup.join("rbit.db")).read_only(true).connect().await.unwrap();
+    let count = sqlx::query_scalar(sqlx::AssertSqlSafe(format!("SELECT COUNT(*) FROM {table}"))).fetch_one(&mut connection).await.unwrap();
+    connection.close().await.unwrap();
+    count
+}
+
+#[tokio::test]
+async fn a_release_file_deleted_before_its_copy_leaves_no_row_behind() {
+    let dir = tempfile::tempdir().unwrap();
+    let data_dir = dir.path().join("data");
+    populate(&data_dir).await;
+    // What a backup sees when the release is deleted between its snapshot and the copy.
+    std::fs::remove_file(attach_release_file(&data_dir).await).unwrap();
+    let backup = dir.path().join("backup");
+
+    let output = rbit(&data_dir, &["backup", "--output", backup.to_str().unwrap()]);
+    assert!(output.status.success(), "backup failed: {}", String::from_utf8_lossy(&output.stderr));
+    let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(backup.join("manifest.json")).unwrap()).unwrap();
+    assert_eq!(manifest["missing_attachments"].as_array().unwrap().len(), 1);
+    assert_eq!(rows(&backup, "release_assets").await, 0, "the row of the missing file is left out");
+    assert_eq!(rows(&backup, "releases").await, 1, "the release itself stays");
 }
 
 #[tokio::test]
@@ -238,4 +270,5 @@ async fn backup_includes_lfs_objects() {
 
     let copied = backup.join(object.strip_prefix(&data_dir).unwrap());
     assert_eq!(std::fs::read(&copied).unwrap(), b"large file content");
+    assert_eq!(rows(&backup, "lfs_objects").await, 1, "the missing object's row is left out");
 }

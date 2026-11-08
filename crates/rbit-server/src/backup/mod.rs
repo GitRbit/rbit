@@ -21,14 +21,16 @@
 //! 2. The repositories listed *in that snapshot* are then mirrored through Git's own pack
 //!    protocol (`--no-local`), which reads each repository's refs and the objects they
 //!    reach consistently even during a push or `git gc`. A repository created after the
-//!    snapshot is not included; one deleted after it is reported as missing.
+//!    snapshot is not included; one deleted after it is reported as missing and left out
+//!    of the snapshot too.
 //! 3. The stored files listed in the snapshot are copied ([`inventory`]): release files,
 //!    Git LFS objects, workflow artifacts and cache entries are written once (an upload is
 //!    renamed into place only when complete) and never changed, so a plain copy is
 //!    consistent. A finished job's log is compressed and never changes either; a running
 //!    job's log only grows past the line count the snapshot records, and one finished
 //!    since is decompressed back. Uploads in progress and files the snapshot does not know
-//!    are skipped; files deleted in between are reported as missing.
+//!    are skipped; files deleted in between are reported as missing, and their rows are
+//!    removed from the snapshot ([`prune`]) so a restore never refers to them.
 //! 4. The secret key file is copied, when it lives in the data directory (the default).
 //!    Without it the credentials sealed in the database (TOTP seeds, webhook and push
 //!    mirror secrets, saved SMTP and OIDC secrets) cannot be read after a restore. A key
@@ -63,6 +65,7 @@ use self::durable::{create_private_dir, create_private_file, write_private};
 mod copy;
 mod durable;
 mod inventory;
+mod prune;
 
 /// Bumped whenever the layout of a backup directory changes (2: release attachments,
 /// 3: Git LFS objects, 4: the secret key file, 5: Actions artifacts, caches and logs).
@@ -163,6 +166,7 @@ pub async fn create(config: &Config, output: &Path) -> anyhow::Result<Manifest> 
     let repositories = copy::copy_repositories(&config.repository.git_binary, &storage, &target, &inventory.repositories).await?;
     let blobs = copy::copy_blobs(&config.storage.data_dir, output, &inventory.blobs).await?;
     let secret_key = copy_secret_key(config, &output.join(SECRET_KEY_FILE)).await?;
+    prune::prune(&snapshot, &repositories, &blobs).await?;
     let actions_key = config.actions.secrets_key_path(&config.storage);
 
     let manifest = Manifest {
