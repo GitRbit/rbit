@@ -32,6 +32,12 @@ pub enum Command {
         #[arg(long, short)]
         output: PathBuf,
     },
+    /// Restore a backup into the configured data directory, which must be empty.
+    Restore {
+        /// The backup directory written by `rbit backup`.
+        #[arg(long)]
+        from: PathBuf,
+    },
     /// Manage user accounts.
     User {
         #[command(subcommand)]

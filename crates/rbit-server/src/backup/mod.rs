@@ -40,8 +40,9 @@
 //! 5. Everything written so far is synced to disk ([`durable::sync_tree`]): neither
 //!    `VACUUM INTO` nor a clone nor a file copy syncs what it writes, and the manifest
 //!    must never reach the disk before the files it vouches for.
-//! 6. `manifest.json` records the format, version, time and counts. It is written to a
-//!    synced temporary file, renamed into place and its directory synced.
+//! 6. `manifest.json` records the format, version, time, counts and the database's
+//!    SHA-256. It is written to a synced temporary file, renamed into place and its
+//!    directory synced. [`restore`] puts a backup back into service.
 //!
 //! The backup directory is created private to its owner (0700) and the database, key and
 //! manifest are written 0600 on Unix: they hold password hashes and the sealing key.
@@ -66,6 +67,7 @@ mod copy;
 mod durable;
 mod inventory;
 mod prune;
+pub mod restore;
 
 /// Bumped whenever the layout of a backup directory changes (2: release attachments,
 /// 3: Git LFS objects, 4: the secret key file, 5: Actions artifacts, caches and logs).
@@ -119,6 +121,9 @@ pub struct Manifest {
     #[serde(default)]
     pub actions_secrets_key: String,
     pub kv_store: String,
+    /// SHA-256 of [`Self::database`] as written, in hex (format 5 and later).
+    #[serde(default)]
+    pub database_sha256: Option<String>,
 }
 
 pub async fn run(config: Config, output: PathBuf) -> anyhow::Result<()> {
@@ -167,6 +172,7 @@ pub async fn create(config: &Config, output: &Path) -> anyhow::Result<Manifest> 
     let blobs = copy::copy_blobs(&config.storage.data_dir, output, &inventory.blobs).await?;
     let secret_key = copy_secret_key(config, &output.join(SECRET_KEY_FILE)).await?;
     prune::prune(&snapshot, &repositories, &blobs).await?;
+    let (_, database_digest) = rbit_services::file_digest::sha256(&snapshot).await?;
     let actions_key = config.actions.secrets_key_path(&config.storage);
 
     let manifest = Manifest {
@@ -190,6 +196,7 @@ pub async fn create(config: &Config, output: &Path) -> anyhow::Result<Manifest> 
         secret_key,
         actions_secrets_key: format!("not included: kept at {}; back it up separately", actions_key.display()),
         kv_store: "not included: it holds only sessions and caches, which are rebuilt".to_owned(),
+        database_sha256: Some(rbit_services::file_digest::hex(&database_digest)),
     };
     durable::sync_tree(output).await?;
     durable::publish(&output.join("manifest.json"), &serde_json::to_vec_pretty(&manifest)?).await?;

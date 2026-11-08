@@ -18,6 +18,7 @@ pub mod error;
 pub mod events;
 // Milestone 3: external sign-in (O).
 pub mod external_auth;
+pub mod file_digest;
 pub mod forks;
 pub mod insights;
 mod insights_recent;

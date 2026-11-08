@@ -55,6 +55,7 @@ pub mod reviews;
 mod rows;
 mod schema;
 pub mod server_secrets;
+pub mod snapshot;
 pub mod ssh_keys;
 // Milestone 3: commit statuses (S).
 pub mod stars;

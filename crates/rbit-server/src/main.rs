@@ -4,6 +4,7 @@
 //! rbit [--config rbit.toml] serve          # run the web server (default)
 //! rbit migrate                               # apply database migrations and exit
 //! rbit backup --output DIR                  # write a consistent backup to a new directory
+//! rbit restore --from DIR                   # restore a backup into an empty data directory
 //! rbit user create <name> <email> [--admin]  # create an account (password from stdin)
 //!
 //! rbit auth login --hostname https://git.example.com --with-token < token
@@ -104,15 +105,22 @@ async fn run(cli: Cli) -> anyhow::Result<bool> {
     telemetry::init();
     // `RUSTIT_CONFIG` is the variable's name from before the rename to rbit.
     let file = cli.config.or_else(|| std::env::var_os("RUSTIT_CONFIG").map(std::path::PathBuf::from));
+    let command = cli.command.unwrap_or(Command::Serve);
+    if let Command::Restore { from } = command {
+        // Never opens the database of the directory it restores into.
+        let config = config::load_deployment(file.as_deref())?;
+        return backup::restore::run(config, from).await.map(|()| false);
+    }
     let config = config::load(file.as_deref()).await?;
+    backup::restore::refuse_interrupted(&config)?;
 
-    match cli.command.unwrap_or(Command::Serve) {
+    match command {
         Command::Serve => serve::run(config).await,
         Command::Migrate => serve::migrate(config).await.map(|()| false),
         Command::Backup { output } => backup::run(config, output).await.map(|()| false),
         Command::User { command: UserCommand::Create { username, email, admin } } => {
             serve::create_user(config, username, email, admin).await.map(|()| false)
         }
-        Command::Client(_) => unreachable!("handled before the configuration is loaded"),
+        Command::Client(_) | Command::Restore { .. } => unreachable!("handled before the configuration is loaded"),
     }
 }

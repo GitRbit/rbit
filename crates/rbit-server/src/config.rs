@@ -18,7 +18,9 @@ pub(crate) use sources::ConfigSources;
 pub async fn load(file: Option<&Path>) -> anyhow::Result<Config> {
     let sources = ConfigSources::parse(file)?;
     let locator = sources.deployment();
-    let saved = if locator.storage.sqlite_path().exists() && sources.reads_saved_configuration() {
+    // What an interrupted restore left is never opened; the command then refuses it.
+    let readable = locator.storage.sqlite_path().exists() && !crate::backup::restore::interrupted(&locator.storage.data_dir);
+    let saved = if readable && sources.reads_saved_configuration() {
         let database = rbit_storage::Database::open_with_key_file(&locator.storage.sqlite_path(), &locator.storage.secret_key_path())
             .await
             .context("cannot read admin configuration")?;
@@ -29,6 +31,12 @@ pub async fn load(file: Option<&Path>) -> anyhow::Result<Config> {
         None
     };
     sources.finish(saved)
+}
+
+/// The configuration without the administrator settings saved in the database, for
+/// `rbit restore`, which must not open the database of the directory it restores into.
+pub fn load_deployment(file: Option<&Path>) -> anyhow::Result<Config> {
+    ConfigSources::parse(file)?.finish(None)
 }
 
 /// `RBIT_AUTH__PROVIDERS__…` (and the legacy `RUSTIT_` spelling) without the prefix,
