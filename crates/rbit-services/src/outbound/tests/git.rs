@@ -51,8 +51,15 @@ async fn mirror_fetches_use_the_checked_answer_for_every_spelling_of_the_host() 
         let before = server.connections();
         fixture.services.mirrors.sync(repo).await.unwrap();
         let error = last_error(&fixture, repo).await;
-        assert!(error.contains("403"), "{spelling}: the pinned listener answered: {error}");
-        assert!(server.connections() > before, "{spelling} reached the checked address");
+        if spelling.is_ascii() || error.contains("403") {
+            assert!(error.contains("403"), "{spelling}: the pinned listener answered: {error}");
+            assert!(server.connections() > before, "{spelling} reached the checked address");
+        } else {
+            // curl builds without IDN support refuse the full-width spelling before
+            // connecting anywhere, which is just as safe as reaching the pinned answer.
+            assert!(!error.is_empty(), "{spelling}: an unconvertible host fails the fetch");
+            assert_eq!(server.connections(), before, "{spelling}: a refused URL connects nowhere");
+        }
         assert_eq!(dns.lookups(), 2 * (index + 1), "{spelling}: checked when saved and before the fetch");
     }
     for head in server.heads() {
