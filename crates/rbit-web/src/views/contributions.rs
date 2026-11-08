@@ -1,6 +1,7 @@
 //! Shared, server-rendered contribution calendar for accounts and repositories.
 use askama::Template;
 use askama_web::WebTemplate;
+use rbit_localization::Locale;
 use rbit_services::contributions::Contributions;
 use time::{Date, Duration, Month, OffsetDateTime};
 
@@ -21,6 +22,8 @@ pub struct ContributionCalendar {
     pub quarters: Vec<ContributionQuarter>,
     pub scope: &'static str,
     pub tab: &'static str,
+    /// The calendar's language; English until the embedding page opts in.
+    pub locale: Locale,
 }
 
 #[derive(Debug, Clone)]
@@ -67,7 +70,20 @@ impl ContributionCalendar {
             quarters: Vec::new(),
             scope,
             tab,
+            locale: Locale::English,
         }
+    }
+
+    /// A repository's calendar, in the page's language.
+    pub fn repository(year: Option<i32>, locale: Locale) -> Self {
+        Self::new(year, "Commits on this repository's configured default branch.", "").with_locale(locale)
+    }
+
+    /// The calendar in the page's language.
+    #[must_use]
+    pub const fn with_locale(mut self, locale: Locale) -> Self {
+        self.locale = locale;
+        self
     }
 
     /// Keep history scans outside the main page response. Explicit calendar requests

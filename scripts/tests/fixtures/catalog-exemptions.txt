@@ -19,8 +19,6 @@ admin/restart.html
 admin/set_password.html
 admin/settings.html
 admin/users.html
-contributions.html
-contributions_body.html
 issues/filters.html
 issues/labels.html
 issues/list.html
