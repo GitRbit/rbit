@@ -9,6 +9,7 @@
 use askama::Template;
 use askama_web::WebTemplate;
 use rbit_core::Account;
+use rbit_localization::settings::access::{AccessMessage, AccessText};
 
 use crate::views::{
     components::{Avatar, FormError, SettingsCard},
@@ -64,7 +65,10 @@ impl TransferPage {
     pub fn new(page: Page, header: RepoHeader, suggestions: &[Account], free_entry: bool) -> Self {
         let full_name = format!("{}/{}", header.owner, header.name);
         let mut transfer = Self {
-            page: page.titled(format!("Transfer · {full_name}")),
+            page: {
+                let title = AccessText::TransferTitle(&full_name).text(&page.locale);
+                page.titled(title.as_str())
+            },
             settings_url: header.settings_url.clone(),
             action_url: format!("{}/transfer", header.settings_url),
             owners: suggestions

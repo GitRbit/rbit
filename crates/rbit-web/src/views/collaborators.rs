@@ -9,6 +9,7 @@
 use askama::Template;
 use askama_web::WebTemplate;
 use rbit_core::membership::{Collaborator, Permission, TeamGrant};
+use rbit_localization::settings::access::{AccessMessage, AccessText};
 
 use crate::views::{
     components::{Avatar, FormError, SettingsCard},
@@ -79,6 +80,7 @@ pub struct CollaboratorRow {
     pub remove_url: String,
     /// This row is the viewer (offers "Leave" instead of "Remove").
     pub is_viewer: bool,
+    /// The date the collaborator was added, e.g. `Oct 15, 2026`.
     pub added: String,
     pub added_iso: String,
 }
@@ -98,7 +100,7 @@ impl CollaboratorRow {
             permission_url: format!("{row_url}/permission"),
             remove_url: format!("{row_url}/remove"),
             is_viewer: user.name.as_str().eq_ignore_ascii_case(viewer),
-            added: format!("Added {}", collaborator.added_at.date()),
+            added: collaborator.added_at.date(),
             added_iso: collaborator.added_at.iso8601(),
         }
     }
@@ -169,7 +171,10 @@ impl CollaboratorsPage {
         let full_name = format!("{}/{}", header.owner, header.name);
         let add_url = format!("{}/collaborators", header.settings_url);
         Self {
-            page: page.titled(format!("Collaborators · {full_name}")),
+            page: {
+                let title = AccessText::CollaboratorsTitle(&full_name).text(&page.locale);
+                page.titled(title.as_str())
+            },
             collaborators: collaborators.iter().map(|c| CollaboratorRow::new(c, &add_url, viewer)).collect(),
             teams: teams.iter().map(|grant| TeamGrantRow::new(grant, &header.owner)).collect(),
             teams_url: format!("/{}/teams", header.owner),

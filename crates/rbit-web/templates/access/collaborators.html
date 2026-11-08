@@ -4,23 +4,23 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <div class="mx-auto max-w-3xl">
-  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">Settings</a></p>
-  <h1 class="mt-1 text-xl font-semibold tracking-tight">Collaborators</h1>
-  <p class="mt-1 text-[13px] text-ink-muted">People added here get access to <span class="text-ink">{{ full_name }}</span> directly{% if is_org %}, whether or not they belong to the organization{% endif %}.</p>
+  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">{% call ui::localized(AccessMessage::Settings.text(page.locale)) %}{% endcall %}</a></p>
+  <h1 class="mt-1 text-xl font-semibold tracking-tight">{% call ui::localized(AccessMessage::Collaborators.text(page.locale)) %}{% endcall %}</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">{% call ui::localized(AccessMessage::IntroLead.text(page.locale)) %}{% endcall %} <span class="text-ink">{{ full_name }}</span> {% call ui::localized(AccessMessage::IntroDirectly.text(page.locale)) %}{% endcall %}{% if is_org %}{% call ui::localized(AccessMessage::IntroOrganization.text(page.locale)) %}{% endcall %}{% endif %}{% call ui::localized(AccessMessage::IntroTail.text(page.locale)) %}{% endcall %}</p>
 
   <form method="post" action="{{ add_url }}" class="box mt-6" novalidate>
     <div class="box-header">
-      <h2 class="text-[13px] font-medium">Add a collaborator</h2>
+      <h2 class="text-[13px] font-medium">{% call ui::localized(AccessMessage::AddCollaborator.text(page.locale)) %}{% endcall %}</h2>
     </div>
     <div class="p-4">
       {% call ui::form_error(error) %}{% endcall %}
       <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem_auto] sm:items-end">
         <div>
-          <label class="label" for="collaborator-username">Username</label>
+          <label class="label" for="collaborator-username">{% call ui::localized(AccessMessage::Username.text(page.locale)) %}{% endcall %}</label>
           <input class="input" id="collaborator-username" name="username" value="{{ form.username }}" maxlength="39" autocapitalize="none" autocomplete="off" spellcheck="false" required>
         </div>
         <div>
-          <label class="label" for="collaborator-permission">Permission</label>
+          <label class="label" for="collaborator-permission">{% call ui::localized(AccessMessage::Permission.text(page.locale)) %}{% endcall %}</label>
           <div class="relative">
             <select class="input cursor-pointer appearance-none pe-9" id="collaborator-permission" name="permission">
               {% for option in form.options %}
@@ -30,7 +30,7 @@
             {% call ui::icon("chevron-down", "pointer-events-none absolute inset-e-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
           </div>
         </div>
-        <button class="btn btn-primary h-10 w-full sm:h-9 sm:w-auto" type="submit">Add</button>
+        <button class="btn btn-primary h-10 w-full sm:h-9 sm:w-auto" type="submit">{% call ui::localized(AccessMessage::Add.text(page.locale)) %}{% endcall %}</button>
       </div>
       <ul class="hint space-y-0.5">
         {% for option in form.options %}<li><span class="text-ink">{{ option.label }}</span> · {{ option.description }}</li>{% endfor %}
@@ -40,12 +40,12 @@
 
   <section class="mt-6" aria-labelledby="people-title">
     <div class="mb-3 flex h-8 items-center justify-between">
-      <h2 id="people-title" class="text-[13px] font-medium text-ink-muted">People</h2>
+      <h2 id="people-title" class="text-[13px] font-medium text-ink-muted">{% call ui::localized(AccessMessage::People.text(page.locale)) %}{% endcall %}</h2>
       {% if !collaborators.is_empty() %}<span class="text-xs text-ink-faint">{{ collaborators.len() }}</span>{% endif %}
     </div>
     <div class="box">
       {% if collaborators.is_empty() %}
-      {% call ui::empty_state("users", "No collaborators", "Add someone by username to give them access to this repository.") %}{% endcall %}
+      {% call ui::empty_state("users", AccessMessage::NoCollaborators.text(page.locale), AccessMessage::NoCollaboratorsText.text(page.locale)) %}{% endcall %}
       {% else %}
       <ul>
         {% for row in collaborators %}
@@ -53,13 +53,13 @@
           <a href="{{ row.url }}" class="flex min-w-0 flex-1 items-center gap-3">
             {% call ui::avatar(row.avatar, "size-8 text-[11px]") %}{% endcall %}
             <span class="min-w-0">
-              <span class="block truncate font-medium">{{ row.label }}{% if row.is_viewer %} <span class="font-normal text-ink-faint">(you)</span>{% endif %}</span>
-              <span class="block truncate text-xs text-ink-muted">{{ row.name }} · <time datetime="{{ row.added_iso }}">{{ row.added }}</time></span>
+              <span class="block truncate font-medium">{{ row.label }}{% if row.is_viewer %} <span class="font-normal text-ink-faint">{% call ui::localized(AccessMessage::You.text(page.locale)) %}{% endcall %}</span>{% endif %}</span>
+              <span class="block truncate text-xs text-ink-muted">{{ row.name }} · <time datetime="{{ row.added_iso }}">{% call ui::localized(AccessText::Added(row.added).text(page.locale)) %}{% endcall %}</time></span>
             </span>
           </a>
           <div class="flex w-full shrink-0 items-center justify-end gap-2 sm:w-auto">
             <form method="post" action="{{ row.permission_url }}" class="flex items-center gap-2">
-              <label class="sr-only" for="permission-{{ loop.index }}">Permission for {{ row.name }}</label>
+              <label class="sr-only" for="permission-{{ loop.index }}">{% call ui::localized(AccessText::PermissionFor(row.name).text(page.locale)) %}{% endcall %}</label>
               <div class="relative">
                 <select class="input h-8 cursor-pointer appearance-none pe-8 text-[13px] sm:h-8" id="permission-{{ loop.index }}" name="permission">
                   {% for option in row.options %}
@@ -68,13 +68,13 @@
                 </select>
                 {% call ui::icon("chevron-down", "pointer-events-none absolute inset-e-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
               </div>
-              <button class="btn" type="submit" aria-label="Save permission for {{ row.name }}">Save</button>
+              <button class="btn" type="submit" aria-label="{{ AccessText::SavePermissionFor(row.name).text(page.locale) }}">{% call ui::localized(AccessMessage::Save.text(page.locale)) %}{% endcall %}</button>
             </form>
             <form method="post" action="{{ row.remove_url }}">
               {% if row.is_viewer %}
-              <button class="btn" type="submit">Leave</button>
+              <button class="btn" type="submit">{% call ui::localized(AccessMessage::Leave.text(page.locale)) %}{% endcall %}</button>
               {% else %}
-              <button class="btn" type="submit" aria-label="Remove {{ row.name }}">Remove</button>
+              <button class="btn" type="submit" aria-label="{{ AccessText::RemoveLabel(row.name).text(page.locale) }}">{% call ui::localized(AccessMessage::Remove.text(page.locale)) %}{% endcall %}</button>
               {% endif %}
             </form>
           </div>
@@ -88,12 +88,12 @@
   {% if is_org %}
   <section class="mt-6" aria-labelledby="teams-title">
     <div class="mb-3 flex h-8 items-center justify-between">
-      <h2 id="teams-title" class="text-[13px] font-medium text-ink-muted">Teams</h2>
-      <a class="text-xs text-ink-muted hover:text-ink" href="{{ teams_url }}">Manage teams</a>
+      <h2 id="teams-title" class="text-[13px] font-medium text-ink-muted">{% call ui::localized(AccessMessage::Teams.text(page.locale)) %}{% endcall %}</h2>
+      <a class="text-xs text-ink-muted hover:text-ink" href="{{ teams_url }}">{% call ui::localized(AccessMessage::ManageTeams.text(page.locale)) %}{% endcall %}</a>
     </div>
     <div class="box">
       {% if teams.is_empty() %}
-      {% call ui::empty_state("users", "No teams", "Grant a team access from the team's page; its members then get that permission here.") %}{% endcall %}
+      {% call ui::empty_state("users", AccessMessage::NoTeams.text(page.locale), AccessMessage::NoTeamsText.text(page.locale)) %}{% endcall %}
       {% else %}
       <ul>
         {% for team in teams %}
