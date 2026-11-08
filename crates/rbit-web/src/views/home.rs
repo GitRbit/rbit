@@ -4,6 +4,7 @@ use askama::Template;
 use askama_web::WebTemplate;
 #[cfg(test)]
 use rbit_core::{RepoSort, repository::ArchivedFilter};
+use rbit_localization::shell::home::HomeMessage;
 use rbit_services::instance::PublicCounts;
 
 use crate::views::{
@@ -26,7 +27,8 @@ pub struct LandingPage {
 pub struct Stat {
     /// Formatted with thousands separators, e.g. `12,345`.
     pub value: String,
-    pub label: &'static str,
+    /// The figure's noun, singular or plural by the count.
+    pub label: HomeMessage<'static>,
 }
 
 impl LandingPage {
@@ -34,9 +36,9 @@ impl LandingPage {
     pub fn stats(&self) -> [Stat; 3] {
         let counts = &self.counts;
         [
-            stat(counts.public_repositories, "Repository", "Repositories"),
-            stat(counts.users, "User", "Users"),
-            stat(counts.organizations, "Organization", "Organizations"),
+            stat(counts.public_repositories, HomeMessage::RepositoryCount(counts.public_repositories)),
+            stat(counts.users, HomeMessage::UserCount(counts.users)),
+            stat(counts.organizations, HomeMessage::OrganizationCount(counts.organizations)),
         ]
     }
 
@@ -47,8 +49,8 @@ impl LandingPage {
     }
 }
 
-fn stat(count: i64, singular: &'static str, plural: &'static str) -> Stat {
-    Stat { value: group_thousands(count), label: if count == 1 { singular } else { plural } }
+fn stat(count: i64, label: HomeMessage<'static>) -> Stat {
+    Stat { value: group_thousands(count), label }
 }
 
 /// `1234567` -> `1,234,567`.
@@ -209,8 +211,9 @@ mod tests {
     #[test]
     fn stats_use_singular_labels_for_one() {
         let stats = landing(1, 2, 0).stats();
-        let labels: Vec<_> = stats.iter().map(|stat| (stat.value.as_str(), stat.label)).collect();
-        assert_eq!(labels, [("1", "Repository"), ("2", "Users"), ("0", "Organizations")]);
+        let page = page();
+        let labels: Vec<_> = stats.iter().map(|stat| format!("{} {}", stat.value, page.text(stat.label))).collect();
+        assert_eq!(labels, ["1 Repository", "2 Users", "0 Organizations"]);
     }
 
     #[test]

@@ -17,6 +17,7 @@ use axum::{
     routing::get,
 };
 use rbit_core::{IssueKind, issue_query::IssueQuery};
+use rbit_localization::shell::home::{HomeMessage, Involvement};
 use rbit_services::issues::DashboardRelation;
 use serde::Deserialize;
 
@@ -49,7 +50,11 @@ async fn pulls(
 }
 
 async fn show(state: &AppState, user: &rbit_core::User, page: Page, params: Params, kind: IssueKind) -> WebResult<DashboardPage> {
-    let (base, title) = if kind == IssueKind::Pull { ("/pulls", "Pull requests") } else { ("/issues", "Issues") };
+    let (base, title) = if kind == IssueKind::Pull {
+        ("/pulls", page.text(HomeMessage::PullRequests))
+    } else {
+        ("/issues", page.text(HomeMessage::Issues))
+    };
     let relation = match params.view.as_deref().unwrap_or("created") {
         "created" => DashboardRelation::Created,
         "assigned" => DashboardRelation::Assigned,
@@ -69,12 +74,13 @@ async fn show(state: &AppState, user: &rbit_core::User, page: Page, params: Para
     };
     let mut tabs = Vec::new();
     for (view, label) in [
-        (DashboardRelation::Created, "Created by me"),
-        (DashboardRelation::Assigned, "Assigned"),
-        (DashboardRelation::Mentioned, "Mentioned"),
-        (DashboardRelation::ReviewRequested, "Review requested"),
+        (DashboardRelation::Created, Involvement::Created),
+        (DashboardRelation::Assigned, Involvement::Assigned),
+        (DashboardRelation::Mentioned, Involvement::Mentioned),
+        (DashboardRelation::ReviewRequested, Involvement::ReviewRequested),
     ] {
         if kind == IssueKind::Pull || view != DashboardRelation::ReviewRequested {
+            let label = page.text(HomeMessage::InvolvementTab(label));
             tabs.push(DashboardTab { label, url: url(view, &typed, 1), active: view == relation });
         }
     }
@@ -104,7 +110,7 @@ async fn show(state: &AppState, user: &rbit_core::User, page: Page, params: Para
     let open_query = query.with_state(rbit_core::issue_query::StateFilter::Open).to_string();
     let closed_query = query.with_state(rbit_core::issue_query::StateFilter::Closed).to_string();
     Ok(DashboardPage {
-        page: page.titled(title),
+        page: page.titled(title.to_string()),
         title,
         base,
         view: relation.as_str(),

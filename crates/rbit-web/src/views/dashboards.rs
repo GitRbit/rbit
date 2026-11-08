@@ -2,10 +2,11 @@
 use super::{components::Pagination, issues::IssueRow, layout::Page};
 use askama::Template;
 use askama_web::WebTemplate;
+use rbit_localization::Localized;
 
 #[derive(Debug)]
 pub struct DashboardTab {
-    pub label: &'static str,
+    pub label: Localized,
     pub url: String,
     pub active: bool,
 }
@@ -18,7 +19,7 @@ pub struct DashboardRow {
 #[template(path = "home/threads.html")]
 pub struct DashboardPage {
     pub page: Page,
-    pub title: &'static str,
+    pub title: Localized,
     pub base: &'static str,
     pub view: &'static str,
     pub query: String,
