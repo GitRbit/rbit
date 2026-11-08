@@ -10,6 +10,7 @@ mod locale;
 mod negotiation;
 mod pseudo;
 
+pub use catalog::shell;
 pub use catalog::{
     ActionsDisplay, ActionsEnvironmentMessage, ActionsJobMessage, ActionsMessage, ActionsOverviewMessage, ActionsRunnersMessage,
     ActionsSecretsMessage, ActionsSettingsMessage, Catalog, ChromeDisplay, ChromeMessage, JobDisplay, LanguageMessage, Localized,
