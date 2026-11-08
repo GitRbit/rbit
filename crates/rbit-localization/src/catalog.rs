@@ -22,9 +22,11 @@ pub use chrome::{ChromeDisplay, ChromeMessage};
 mod fallback;
 pub use fallback::{Localized, MessageFamily, MessageWriter};
 mod run_page;
+pub use run_page::RunPageMessage;
+mod settings_nav;
 pub use display::LocalizedDisplay;
 use display::{PAGE_OF_SEPARATOR, PAGE_PREFIX, STARS_SUFFIX, SUBTITLE_PREFIX, SUBTITLE_SUFFIX};
-pub use run_page::RunPageMessage;
+pub use settings_nav::SettingsNavMessage;
 
 /// Typed visibility selector. Adapters map domain values without localized strings.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

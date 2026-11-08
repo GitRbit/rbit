@@ -16,7 +16,7 @@ const DEFAULT_EXPIRY: Option<u32> = Some(30);
 const NEVER_EXPIRES: &str = "never";
 
 mod navigation;
-pub use navigation::{SettingsLink, SettingsSection};
+pub use navigation::{SettingsLink, SettingsSection, title as navigation_title};
 mod language;
 pub use language::LanguagePage;
 

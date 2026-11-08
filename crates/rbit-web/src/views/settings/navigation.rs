@@ -1,4 +1,6 @@
 //! Settings sections and native navigation, independent of feature forms.
+use rbit_localization::{Catalog, Locale, Localized, SettingsNavMessage};
+
 // ------------------------------------------------------------------ settings shell
 
 /// A settings area, listed in the left-hand navigation of `settings/layout.html`.
@@ -46,6 +48,20 @@ impl SettingsSection {
         }
     }
 
+    const fn message(self) -> SettingsNavMessage {
+        match self {
+            Self::Profile => SettingsNavMessage::Profile,
+            Self::Account => SettingsNavMessage::Account,
+            Self::Appearance => SettingsNavMessage::Appearance,
+            Self::Language => SettingsNavMessage::Language,
+            Self::Security => SettingsNavMessage::Security,
+            Self::SshKeys => SettingsNavMessage::SshKeys,
+            Self::AccessTokens => SettingsNavMessage::AccessTokens,
+            Self::Notifications => SettingsNavMessage::Notifications,
+            Self::Actions => SettingsNavMessage::Actions,
+        }
+    }
+
     /// Where the section lives; also the redirect target after a successful form post.
     pub const fn url(self) -> &'static str {
         match self {
@@ -67,6 +83,7 @@ impl SettingsSection {
             .iter()
             .map(|&section| SettingsLink {
                 label: section.label(),
+                message: section.message(),
                 url: section.url(),
                 is_active: section == self,
                 needs_actions: section == Self::Actions,
@@ -77,11 +94,27 @@ impl SettingsSection {
 
 #[derive(Debug, Clone)]
 pub struct SettingsLink {
+    /// English label, for tests and logs; pages show [`SettingsLink::text`].
     pub label: &'static str,
+    message: SettingsNavMessage,
     pub url: &'static str,
     pub is_active: bool,
     // Actions: interface and secrets (U).
     /// Shown only on an instance with Actions ([`crate::views::layout::Page::has_actions`]): the navigation is
     /// built without the request, and `settings/layout.html` leaves the link out otherwise.
     pub needs_actions: bool,
+}
+
+impl SettingsLink {
+    /// The label in the page's language, or its English fallback.
+    #[allow(clippy::trivially_copy_pass_by_ref, reason = "Askama passes the page locale by reference")]
+    pub fn text(&self, locale: &Locale) -> Localized {
+        Catalog::new(*locale).localized(self.message)
+    }
+}
+
+/// The settings navigation's heading in the page's language.
+#[allow(clippy::trivially_copy_pass_by_ref, reason = "Askama passes the page locale by reference")]
+pub fn title(locale: &Locale) -> Localized {
+    Catalog::new(*locale).localized(SettingsNavMessage::Settings)
 }

@@ -2,7 +2,7 @@
 //! back to English wherever a locale has not translated it.
 use std::collections::BTreeSet;
 
-use rbit_localization::{Catalog, Locale, MessageFamily, RunPageMessage};
+use rbit_localization::{Catalog, Locale, MessageFamily, RunPageMessage, SettingsNavMessage};
 
 const LOCALES: [Locale; 4] = [Locale::English, Locale::Spanish, Locale::PseudoExpanded, Locale::PseudoRtl];
 
@@ -63,4 +63,31 @@ fn deployment_text_chooses_the_verb_by_job_count() {
     assert_eq!(one.as_str(), "deploy deploys to prod, whose reviewers must approve it first.");
     let two = english.localized(RunPageMessage::DeploymentJobs { jobs: "deploy, smoke", count: 2, environment: "prod" });
     assert_eq!(two.as_str(), "deploy, smoke deploy to prod, whose reviewers must approve it first.");
+}
+
+#[test]
+fn settings_navigation_keys_exist_and_translate_only_what_spanish_has() {
+    use SettingsNavMessage as M;
+    let all = [
+        M::Settings,
+        M::Profile,
+        M::Account,
+        M::Appearance,
+        M::Language,
+        M::Security,
+        M::SshKeys,
+        M::AccessTokens,
+        M::Notifications,
+        M::Actions,
+    ];
+    check_family(&all, 10);
+    let spanish = Catalog::new(Locale::Spanish);
+    for (message, expected) in [(M::Settings, "Configuración"), (M::Profile, "Perfil")] {
+        let text = spanish.localized(message);
+        assert_eq!(text.as_str(), expected);
+        assert!(!text.fallback(), "{message:?} reuses the shell's Spanish entry");
+    }
+    let keys = spanish.localized(M::SshKeys);
+    assert_eq!(keys.as_str(), "SSH keys");
+    assert!(keys.fallback());
 }
