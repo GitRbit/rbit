@@ -2,6 +2,11 @@
 
 use askama::Template;
 use askama_web::WebTemplate;
+use axum::http::StatusCode;
+use rbit_localization::{
+    Localized,
+    shell::pages::{Failure, PageMessage},
+};
 
 use crate::{error::ErrorInfo, views::layout::Page};
 
@@ -10,6 +15,44 @@ use crate::{error::ErrorInfo, views::layout::Page};
 pub struct ErrorPage {
     pub page: Page,
     pub info: ErrorInfo,
+}
+
+impl ErrorPage {
+    /// The failure the status stands for, when the catalog names it.
+    const fn failure(&self) -> Option<Failure> {
+        Some(match self.info.status {
+            StatusCode::NOT_FOUND => Failure::NotFound,
+            StatusCode::FORBIDDEN => Failure::Forbidden,
+            StatusCode::BAD_REQUEST => Failure::BadRequest,
+            StatusCode::TOO_MANY_REQUESTS => Failure::SlowDown,
+            StatusCode::SERVICE_UNAVAILABLE => Failure::Unavailable,
+            StatusCode::INTERNAL_SERVER_ERROR => Failure::Internal,
+            _ => return None,
+        })
+    }
+
+    /// The heading in the page's language, or the handler's English title.
+    pub fn title(&self) -> Localized {
+        match self.failure() {
+            Some(failure) => self.page.text(PageMessage::ErrorTitle(failure)),
+            None => Localized::english_only(self.info.title.to_owned(), self.page.content_locale),
+        }
+    }
+
+    /// The explanation: catalog text for the fixed messages, otherwise the handler's
+    /// own English message.
+    pub fn message(&self) -> Localized {
+        let fixed = match self.failure() {
+            Some(Failure::NotFound) => Some(PageMessage::NotFoundText),
+            Some(Failure::Unavailable) if self.info.message == crate::error::UNAVAILABLE_MESSAGE => Some(PageMessage::UnavailableText),
+            Some(Failure::Internal) if self.info.message == crate::error::INTERNAL_MESSAGE => Some(PageMessage::InternalText),
+            _ => None,
+        };
+        match fixed {
+            Some(message) => self.page.text(message),
+            None => Localized::english_only(self.info.message.clone(), self.page.content_locale),
+        }
+    }
 }
 
 #[cfg(test)]

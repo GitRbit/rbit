@@ -12,6 +12,8 @@ use rbit_services::ServiceError;
 
 /// One public message for exhausted and closed password work, without account details.
 pub(crate) const UNAVAILABLE_MESSAGE: &str = "The service is temporarily unavailable. Try again shortly.";
+/// The public message for an internal error; the details are only logged.
+pub(crate) const INTERNAL_MESSAGE: &str = "An unexpected error occurred. It has been logged.";
 
 #[derive(Debug, thiserror::Error)]
 pub enum WebError {
@@ -83,7 +85,7 @@ impl IntoResponse for WebError {
         let message = match &self {
             Self::Internal(source) => {
                 tracing::error!(error = %source, "request failed");
-                "An unexpected error occurred. It has been logged.".to_owned()
+                INTERNAL_MESSAGE.to_owned()
             }
             Self::NotFound => "The page you were looking for doesn't exist, or you don't have access to it.".to_owned(),
             Self::Unavailable { .. } => UNAVAILABLE_MESSAGE.to_owned(),

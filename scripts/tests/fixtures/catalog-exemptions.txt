@@ -3,7 +3,6 @@
 # once it shows only catalog text. The guard is final when this list is empty.
 access/collaborators.html
 access/transfer.html
-account/profile.html
 admin/audit.html
 admin/components.html
 admin/configuration.html
@@ -22,7 +21,6 @@ admin/settings.html
 admin/users.html
 contributions.html
 contributions_body.html
-error.html
 issues/filters.html
 issues/labels.html
 issues/list.html
@@ -34,7 +32,6 @@ issues/new.html
 issues/rows.html
 issues/show.html
 issues/sidebar.html
-offline.html
 org/header.html
 org/members.html
 org/new.html

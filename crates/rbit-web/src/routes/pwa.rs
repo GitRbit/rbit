@@ -91,7 +91,9 @@ fn worker_response(version: &str) -> Response {
 pub async fn offline(State(state): State<AppState>) -> OfflinePage {
     // The service worker persists this page across sign-outs and account switches.
     // It must never contain the requesting account's navigation or preferences.
-    OfflinePage { page: Page::new(&state, None, "/offline").titled("Offline") }
+    let page = Page::new(&state, None, "/offline");
+    let title = page.text(rbit_localization::shell::pages::PageMessage::Offline).to_string();
+    OfflinePage { page: page.titled(title) }
 }
 
 /// The colours `base.html` links the branding sheet with (`?color=…&text=…`).

@@ -41,8 +41,11 @@ pub async fn error_pages(State(state): State<AppState>, request: Request, next: 
     {
         return moved_permanently(&method, &location);
     }
-    let page = Page::new(&state, viewer.user(), &path).with_theme(theme).with_document_locale(locale).titled(info.title);
-    render_error_response(response, ErrorPage { page, info })
+    // The error page's own text comes from the catalog, so its content follows the locale.
+    let mut error = ErrorPage { page: Page::new(&state, viewer.user(), &path).with_theme(theme).with_locale(locale), info };
+    let title = error.title().to_string();
+    error.page = error.page.titled(title);
+    render_error_response(response, error)
 }
 
 /// Replaces the body without discarding protocol headers such as `Retry-After`.

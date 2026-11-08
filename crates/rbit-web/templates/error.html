@@ -7,11 +7,11 @@
 <section class="auth-shell sm:py-20" hx-history="false">
   <div class="card flex flex-col items-center text-center">
     <span class="tile font-mono text-[13px] font-medium" dir="ltr">{{ info.status.as_u16() }}</span>
-    <h1 class="mt-5 text-lg font-semibold tracking-tight">{{ info.title }}</h1>
-    <p class="mt-1.5 max-w-xs text-[13px] text-ink-muted text-balance">{{ info.message }}</p>
+    <h1 class="mt-5 text-lg font-semibold tracking-tight">{% call ui::localized(self.title()) %}{% endcall %}</h1>
+    <p class="mt-1.5 max-w-xs text-[13px] text-ink-muted text-balance">{% call ui::localized(self.message()) %}{% endcall %}</p>
     <div class="mt-6 flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
-      <a href="/" class="btn btn-primary">Go home</a>
-      <a href="/explore" class="btn">{% call ui::icon("compass", "size-3.5") %}{% endcall %}Explore</a>
+      <a href="/" class="btn btn-primary">{% call ui::text(page, rbit_localization::shell::pages::PageMessage::GoHome) %}{% endcall %}</a>
+      <a href="/explore" class="btn">{% call ui::icon("compass", "size-3.5") %}{% endcall %}{% call ui::text(page, rbit_localization::shell::pages::PageMessage::Explore) %}{% endcall %}</a>
     </div>
   </div>
 </section>
