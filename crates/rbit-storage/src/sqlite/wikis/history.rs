@@ -2,7 +2,10 @@
 use super::{WikiCatalogStore, rows};
 use crate::StorageError;
 use rbit_core::Timestamp;
-use rbit_wikis::reading::{WikiHistory, WikiHistoryEntry, WikiHistoryRequest};
+use rbit_wikis::{
+    change::WikiChange,
+    reading::{WikiHistory, WikiHistoryEntry, WikiHistoryRequest},
+};
 
 #[derive(sqlx::FromRow)]
 struct HistoryRow {
@@ -11,6 +14,8 @@ struct HistoryRow {
     path: String,
     title: String,
     at: i64,
+    author: Option<String>,
+    change: Option<String>,
 }
 
 impl WikiCatalogStore {
@@ -31,7 +36,7 @@ impl WikiCatalogStore {
         // an indexed range, not a nullable-OR filter that scans newer history first.
         let upper = request.before.map_or(head.generation.get(), |before| before.get() - 1).min(head.generation.get());
         let selected: Vec<HistoryRow> = sqlx::query_as(
-            "SELECT h.generation,v.revision,h.path,h.title,v.created_at AS at FROM wiki_page_revisions h \
+            "SELECT h.generation,v.revision,h.path,h.title,v.created_at AS at,v.author,v.change FROM wiki_page_revisions h \
              JOIN wiki_revisions v ON v.repo_id=h.repo_id AND v.generation=h.generation \
              WHERE h.repo_id=?1 AND h.page_id=?2 AND h.generation<=?3 \
              ORDER BY h.generation DESC LIMIT ?4",
@@ -46,7 +51,15 @@ impl WikiCatalogStore {
         let has_more = selected.len() > usize::from(request.limit.get());
         for row in selected.into_iter().take(usize::from(request.limit.get())) {
             let (path, title) = rows::names(row.path, row.title)?;
-            entries.push(WikiHistoryEntry { head: rows::head(row.generation, &row.revision)?, path, title, at: Timestamp(row.at) });
+            let change = row.change.as_deref().map(|code| WikiChange::from_code(code).ok_or_else(rows::corrupt)).transpose()?;
+            entries.push(WikiHistoryEntry {
+                head: rows::head(row.generation, &row.revision)?,
+                path,
+                title,
+                at: Timestamp(row.at),
+                author: row.author,
+                change,
+            });
         }
         let next = if has_more { entries.last().map(|entry| entry.head.generation) } else { None };
         Ok(Some(WikiHistory { entries, next }))

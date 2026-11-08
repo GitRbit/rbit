@@ -62,6 +62,9 @@ pub struct WikiHistoryEntry {
     pub title: crate::WikiTitle,
     pub path: WikiPath,
     pub at: Timestamp,
+    /// Display name recorded at publication; not an account reference or ACL fact.
+    pub author: Option<String>,
+    pub change: Option<crate::change::WikiChange>,
 }
 
 #[derive(Debug)]

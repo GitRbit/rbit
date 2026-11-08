@@ -5,6 +5,7 @@
 //! consumes trusted current repository facts; persistence must enforce its own atomic
 //! CAS and permission/archive checks. Explicit adapters own storage/native work.
 
+pub mod change;
 pub mod commands;
 mod content;
 mod identity;
