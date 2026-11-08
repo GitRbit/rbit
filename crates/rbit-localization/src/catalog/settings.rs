@@ -104,6 +104,7 @@ pub mod access;
 pub mod account;
 pub mod admin;
 pub mod admin_pages;
+pub mod cards;
 pub mod config;
 pub mod keys;
 pub mod org;

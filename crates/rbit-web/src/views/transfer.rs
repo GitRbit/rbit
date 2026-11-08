@@ -22,8 +22,8 @@ pub fn danger_zone_cards(header: &RepoHeader) -> Vec<SettingsCard> {
     vec![SettingsCard {
         url: format!("{}/transfer", header.settings_url),
         icon: "transfer",
-        title: "Transfer ownership",
-        description: "Move this repository to another user or organization. Its URL changes.",
+        title: rbit_localization::settings::cards::CardMessage::Transfer,
+        description: rbit_localization::settings::cards::CardMessage::TransferText,
     }]
 }
 

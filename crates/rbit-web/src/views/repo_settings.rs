@@ -83,8 +83,8 @@ fn settings_cards(header: &RepoHeader) -> Vec<SettingsCard> {
     let mut cards = vec![SettingsCard {
         url: format!("{}/keys", header.settings_url),
         icon: "server",
-        title: "Deploy keys",
-        description: "SSH keys that give a server or CI job access to this repository only.",
+        title: rbit_localization::settings::cards::CardMessage::DeployKeys,
+        description: rbit_localization::settings::cards::CardMessage::DeployKeysText,
     }];
     cards.extend(collaborators::repo_settings_cards(header));
     cards.extend(webhooks::repo_settings_cards(header));

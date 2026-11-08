@@ -28,8 +28,8 @@ pub fn org_settings_cards(settings_url: &str) -> Vec<SettingsCard> {
     vec![SettingsCard {
         url: format!("{org_url}/teams"),
         icon: "users",
-        title: "Teams",
-        description: "Group members and give each group its own access to repositories.",
+        title: rbit_localization::settings::cards::CardMessage::Teams,
+        description: rbit_localization::settings::cards::CardMessage::TeamsText,
     }]
 }
 

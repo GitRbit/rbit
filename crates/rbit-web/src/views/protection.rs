@@ -31,8 +31,8 @@ pub fn repo_settings_cards(header: &RepoHeader) -> Vec<SettingsCard> {
     vec![SettingsCard {
         url: rules_url(header),
         icon: "shield",
-        title: "Branch protection",
-        description: "Keep important branches from being force-pushed, deleted or pushed to without a pull request.",
+        title: rbit_localization::settings::cards::CardMessage::Protection,
+        description: rbit_localization::settings::cards::CardMessage::ProtectionText,
     }]
 }
 

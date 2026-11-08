@@ -131,8 +131,8 @@ pub struct SettingsCard {
     /// One of the icons `ui::settings_card` knows: `server`, `users`, `webhook`,
     /// `refresh`, `transfer`; anything else shows the generic settings icon.
     pub icon: &'static str,
-    pub title: &'static str,
-    pub description: &'static str,
+    pub title: rbit_localization::settings::cards::CardMessage,
+    pub description: rbit_localization::settings::cards::CardMessage,
 }
 
 impl FormError {

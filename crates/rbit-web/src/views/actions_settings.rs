@@ -38,8 +38,8 @@ pub fn repo_settings_cards(header: &RepoHeader) -> Vec<SettingsCard> {
         .map(|url| SettingsCard {
             url: url.clone(),
             icon: "zap",
-            title: "Actions",
-            description: "Run workflows on pushes and pull requests, with the secrets and variables they use.",
+            title: rbit_localization::settings::cards::CardMessage::Actions,
+            description: rbit_localization::settings::cards::CardMessage::RepoActions,
         })
         .collect()
 }
@@ -50,8 +50,8 @@ pub fn org_settings_cards(settings_url: &str) -> Vec<SettingsCard> {
     vec![SettingsCard {
         url: format!("{settings_url}/actions"),
         icon: "zap",
-        title: "Actions",
-        description: "Secrets and variables for the workflows of every repository of this organization.",
+        title: rbit_localization::settings::cards::CardMessage::Actions,
+        description: rbit_localization::settings::cards::CardMessage::OrgActions,
     }]
 }
 

@@ -29,8 +29,8 @@ pub fn repo_settings_cards(header: &RepoHeader) -> Vec<SettingsCard> {
     vec![SettingsCard {
         url: format!("{}/hooks", header.settings_url),
         icon: "webhook",
-        title: "Webhooks",
-        description: "Notify other services when code is pushed, releases are published and more.",
+        title: rbit_localization::settings::cards::CardMessage::Webhooks,
+        description: rbit_localization::settings::cards::CardMessage::RepoWebhooks,
     }]
 }
 
@@ -40,8 +40,8 @@ pub fn org_settings_cards(settings_url: &str) -> Vec<SettingsCard> {
     vec![SettingsCard {
         url: format!("{settings_url}/hooks"),
         icon: "webhook",
-        title: "Webhooks",
-        description: "Notify other services about events in every repository of this organization.",
+        title: rbit_localization::settings::cards::CardMessage::Webhooks,
+        description: rbit_localization::settings::cards::CardMessage::OrgWebhooks,
     }]
 }
 

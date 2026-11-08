@@ -21,8 +21,8 @@ pub fn repo_settings_cards(header: &RepoHeader) -> Vec<SettingsCard> {
     vec![SettingsCard {
         url: format!("{}/mirror", header.settings_url),
         icon: "refresh",
-        title: "Mirror",
-        description: "Upstream, fetch interval and the outcome of the last fetch.",
+        title: rbit_localization::settings::cards::CardMessage::Mirror,
+        description: rbit_localization::settings::cards::CardMessage::MirrorText,
     }]
 }
 

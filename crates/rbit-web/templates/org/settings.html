@@ -53,7 +53,7 @@
     </div>
   </form>
 
-  {% for card in cards %}{% call ui::settings_card(card) %}{% endcall %}{% endfor %}
+  {% for card in cards %}{% call ui::settings_card(card, page.locale) %}{% endcall %}{% endfor %}
 
   <form method="post" action="{{ delete_url }}" class="box mt-8 border-danger/40" novalidate>
     <div class="box-header">

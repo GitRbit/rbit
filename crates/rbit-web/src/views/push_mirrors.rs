@@ -17,8 +17,8 @@ pub fn repo_settings_cards(header: &RepoHeader) -> Vec<SettingsCard> {
     vec![SettingsCard {
         url: format!("{}/push-mirrors", header.settings_url),
         icon: "refresh",
-        title: "Push mirrors",
-        description: "Remotes that receive this repository's branches and tags after every push.",
+        title: rbit_localization::settings::cards::CardMessage::PushMirrors,
+        description: rbit_localization::settings::cards::CardMessage::PushMirrorsText,
     }]
 }
 

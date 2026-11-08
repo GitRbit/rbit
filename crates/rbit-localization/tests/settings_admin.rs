@@ -1,4 +1,4 @@
-//! The English-only administration families: every key
+//! The English-only administration families and the settings index cards: every key
 //! renders its English text and falls back to it, marked, in Spanish.
 use std::{collections::BTreeSet, fmt::Debug};
 
@@ -7,6 +7,7 @@ use rbit_localization::{
     settings::{
         admin::{AdminMessage, AdminText, DashboardMessage, MonitoringMessage},
         admin_pages::{AdminPageMessage, AdminPageText, InstanceSettingsMessage},
+        cards::CardMessage,
     },
 };
 
@@ -48,14 +49,16 @@ fn administration_keys_render_in_english_and_fall_back_in_spanish() {
         AdminText::SetPasswordFor("alice"),
         AdminText::DeletePageTitle("alice"),
     ]));
-    ids.extend(check(&[
-        AdminPageText::ShareSecurely(12),
-        AdminPageText::ReplacesPassword("alice"),
-        AdminPageText::DeleteUserTail("3"),
-    ]));
+    ids.extend(check(&[AdminPageText::ShareSecurely(12), AdminPageText::ReplacesPassword("alice"), AdminPageText::DeleteUserTail("3")]));
     let distinct: BTreeSet<_> = ids.iter().collect();
     assert_eq!(distinct.len(), ids.len(), "every administration key is distinct");
     assert!(ids.iter().all(|id| id.starts_with("admin.")));
+}
+
+#[test]
+fn settings_cards_render_in_english_and_fall_back_in_spanish() {
+    let ids = check(CardMessage::ALL);
+    assert_eq!(ids.iter().collect::<BTreeSet<_>>().len(), ids.len());
 }
 
 #[test]

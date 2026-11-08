@@ -22,8 +22,8 @@ pub fn repo_settings_cards(header: &RepoHeader) -> Vec<SettingsCard> {
     vec![SettingsCard {
         url: format!("{}/collaborators", header.settings_url),
         icon: "users",
-        title: "Collaborators",
-        description: "People and teams with access to this repository, and what each may do.",
+        title: rbit_localization::settings::cards::CardMessage::Collaborators,
+        description: rbit_localization::settings::cards::CardMessage::CollaboratorsText,
     }]
 }
 
