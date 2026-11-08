@@ -7,7 +7,7 @@
 //!   `[imports] allow_private_addresses` no request (API, release file, LFS object) reaches
 //!   an internal address, also after DNS changes; address literals are checked before
 //!   sending, and proxy environment variables are ignored.
-//! * API requests never follow redirects. Downloads follow at most
+//! * API requests never follow redirects. Downloads follow fewer than
 //!   [`MAX_DOWNLOAD_REDIRECTS`] (GitHub serves release files from another host), each hop
 //!   checked like the first; the HTTP client drops the `Authorization` header when a
 //!   redirect leaves the original host.
@@ -47,7 +47,7 @@ use crate::webhooks::delivery::{GuardedResolver, install_crypto_provider};
 pub const USER_AGENT: &str = concat!("rbit-Importer/", env!("CARGO_PKG_VERSION"));
 /// Items per page requested (GitHub's maximum; Gitea caps it at its own maximum).
 pub const PER_PAGE: u32 = 100;
-/// Redirects a download may follow.
+/// URLs a download may visit: the redirect that would reach this many fails.
 pub const MAX_DOWNLOAD_REDIRECTS: usize = 5;
 /// Attempts per request when the server fails or a rate limit makes us wait.
 const MAX_ATTEMPTS: u32 = 5;

@@ -9,6 +9,9 @@
 //! * [`refuses_literal`] classifies address literals, which never reach a resolver.
 //! * [`read_prefix`] reads a response body up to a limit and stops at the first byte past
 //!   it, so a hostile server cannot make rbit buffer an unbounded body.
+//!
+//! Unit tests answer the names they register with [`scripted`]; every other name, and
+//! every name outside tests, goes to the system resolver.
 
 use std::{
     io,
@@ -18,8 +21,17 @@ use std::{
 use rbit_core::network::is_internal_address;
 use rbit_git::remote::ResolvedHost;
 
+#[cfg(test)]
+pub(crate) mod scripted;
+#[cfg(test)]
+mod tests;
+
 /// Resolves `host` (a name, never an address literal) to socket addresses on `port`.
 pub(crate) async fn lookup(host: &str, port: u16) -> io::Result<Vec<SocketAddr>> {
+    #[cfg(test)]
+    if let Some(answer) = scripted::answer(host, port) {
+        return answer;
+    }
     Ok(tokio::net::lookup_host((host, port)).await?.collect())
 }
 
@@ -80,22 +92,4 @@ pub(crate) async fn read_prefix(response: &mut reqwest::Response, limit: usize) 
         bytes.extend_from_slice(&chunk);
     }
     Ok(Prefix { bytes, truncated: false })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn internal_hosts_are_refused_unless_allowed() {
-        assert!(check_public_host("127.0.0.1", 443, false).await.is_err());
-        assert!(check_public_host("::1", 443, false).await.is_err());
-        assert!(check_public_host("10.1.2.3", 443, false).await.is_err());
-        assert!(check_public_host("127.0.0.1", 443, true).await.is_ok());
-        assert!(check_public_host("93.184.216.34", 443, false).await.is_ok());
-        for host in ["2130706433", "0x7f000001", "127.1", "0177.0.0.1"] {
-            assert!(check_public_host(host, 443, false).await.is_err(), "{host}");
-            assert!(check_public_host(host, 443, true).await.is_ok(), "{host}");
-        }
-    }
 }
