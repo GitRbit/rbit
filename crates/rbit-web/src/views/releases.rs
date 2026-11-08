@@ -124,6 +124,14 @@ impl LatestRelease {
     }
 }
 
+/// The release form's document title: a new release, or editing the release of `tag`.
+pub fn form_title(page: &Page, tag: Option<&str>) -> String {
+    match tag {
+        None => super::repo_text::text(page, rbit_localization::ReleaseLabel::NewRelease).to_string(),
+        Some(tag) => super::repo_text::text(page, rbit_localization::ReleaseMessage::EditTitle { tag }).to_string(),
+    }
+}
+
 #[derive(Debug, Template, WebTemplate)]
 #[template(path = "releases/list.html")]
 pub struct ReleasesPage {

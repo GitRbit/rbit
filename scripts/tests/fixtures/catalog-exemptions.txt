@@ -54,10 +54,6 @@ pulls/review_form.html
 pulls/review_thread.html
 pulls/reviewers.html
 pulls/show.html
-releases/card.html
-releases/form.html
-releases/list.html
-releases/show.html
 settings/account.html
 settings/appearance.html
 settings/keys.html

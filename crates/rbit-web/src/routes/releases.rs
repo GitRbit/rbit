@@ -1,8 +1,6 @@
 //! Releases: `/{owner}/{repo}/releases`, `/releases/tag/{tag}`, `/releases/new`, editing.
 //!
-//! File uploads and downloads are not here: see [`file_routes`].
-//!
-//! Milestone 2 workstream R (repository essentials) owns this file.
+//! File uploads and downloads are not here: see [`file_routes`]. Milestone 2 workstream R (repository essentials) owns this file.
 //!
 //! Merged into the page router, so its routes get sessions, CSRF protection, security
 //! headers and error pages automatically. Readers see published releases; writers also
@@ -23,6 +21,7 @@ use futures_util::TryStreamExt;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use rbit_core::{User, release::ReleaseId};
 use rbit_git::RefKind;
+use rbit_localization::{ReleaseLabel, ReleaseMessage};
 use rbit_services::{
     ServiceError,
     releases::{ReleaseDetail, ReleaseInput, human_bytes},
@@ -40,7 +39,8 @@ use crate::{
     views::{
         components::{FormError, Pagination},
         layout::Page,
-        releases::{ReleaseCard, ReleaseForm, ReleaseFormPage, ReleasePage, ReleasesPage},
+        releases::{ReleaseCard, ReleaseForm, ReleaseFormPage, ReleasePage, ReleasesPage, form_title},
+        repo_text,
     },
 };
 
@@ -119,7 +119,7 @@ async fn list(
         next_url: (listing.page < listing.page_count()).then(|| page_url(listing.page + 1)),
     };
     Ok(ReleasesPage {
-        page: page.titled(format!("Releases · {}", loaded.ctx.repo.full_name())),
+        page: repo_text::titled(page, ReleaseLabel::Releases, &loaded.ctx.repo.full_name()),
         header: loaded.header(&state, "releases"),
         releases: listing.releases.iter().map(|detail| ReleaseCard::new(detail, latest.as_ref(), urls)).collect(),
         pagination,
@@ -146,8 +146,8 @@ async fn show(
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let detail = state.services.releases.by_tag(&loaded.ctx, &tag).await?;
     let notice = match (query.uploaded, query.removed) {
-        (Some(name), _) => Some(format!("Uploaded {name}.")),
-        (None, Some(name)) => Some(format!("Removed {name}.")),
+        (Some(name), _) => Some(repo_text::text(&page, ReleaseMessage::Uploaded { name: &name }).to_string()),
+        (None, Some(name)) => Some(repo_text::text(&page, ReleaseMessage::Removed { name: &name }).to_string()),
         (None, None) => None,
     };
     release_page(&state, &loaded, page, &detail, notice, FormError::default()).await
@@ -231,8 +231,8 @@ async fn form_page(
     let urls = &loaded.urls;
     let branches = loaded.refs().iter().filter(|r| r.kind == RefKind::Branch).map(|r| r.name.clone()).collect();
     let (title, action_url, cancel_url) = match editing {
-        None => ("New release".to_owned(), format!("{}/new", urls.releases()), urls.releases()),
-        Some((id, _)) => (format!("Edit {}", form.tag), urls.release_action(id.0, "edit"), urls.release(&form.tag)),
+        None => (form_title(&page, None), format!("{}/new", urls.releases()), urls.releases()),
+        Some((id, _)) => (form_title(&page, Some(&form.tag)), urls.release_action(id.0, "edit"), urls.release(&form.tag)),
     };
     Ok(ReleaseFormPage {
         page: page.titled(format!("{title} · {}", loaded.ctx.repo.full_name())),
