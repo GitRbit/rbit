@@ -118,6 +118,16 @@ rendering in English, marked as such, until a translator adds it. `SettingsNavMe
 shows a partial translation: its Spanish arm reuses the shell's existing Spanish
 labels and leaves the other sections to fall back.
 
+The account settings, administration, organization, access, branch protection and
+webhook pages use English-only families in the `settings` module (`settings::keys`,
+`settings::admin` and so on). The `labels!` macro there declares a family of fixed
+labels from one `Variant = "key" => "English",` line each, and `messages!` one with
+arguments. Every family offers `text(&locale)`, which templates call with the page
+locale. Sentences that wrap a link or a machine value in markup are split at that
+markup into separate keys. To translate one of these families, give its
+`MessageFamily` implementation a `translate` method: the macros generate that
+implementation, so extend the macro with a translation table or write the family out.
+
 ## First-slice integration and future catalogs
 
 The HTTP adapter should pass Catalog/Locale to presentation; set both HTML `lang` and
