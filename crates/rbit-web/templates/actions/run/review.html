@@ -1,33 +1,32 @@
   {% if awaiting_approval %}
-  <div class="mt-6 rounded-(--radius-ui) border border-warning/40 px-3 py-3 text-[13px]" role="status" lang="en" dir="ltr">
-    <p class="flex items-start gap-2 font-medium">{% call ui::icon("shield", "mt-px size-4 shrink-0 text-warning") %}{% endcall %}This run waits for approval</p>
-    <p class="mt-1 text-ink-muted">It comes from a fork or from someone without write access. Its workflow may run code you have not reviewed, so a writer has to approve it first. Even approved, it runs with a read-only token and without secrets or variables.</p>
+  <div class="mt-6 rounded-(--radius-ui) border border-warning/40 px-3 py-3 text-[13px]" role="status">
+    <p class="flex items-start gap-2 font-medium">{% call ui::icon("shield", "mt-px size-4 shrink-0 text-warning") %}{% endcall %}<span>{% call ui::localized(text.approval_title) %}{% endcall %}</span></p>
+    <p class="mt-1 text-ink-muted">{% call ui::localized(text.approval_explanation) %}{% endcall %}</p>
     {% if can_write %}
     <form data-run-review="approval" method="post" action="{{ approve_url }}" class="mt-3 flex flex-wrap items-center gap-3">
-      <label class="flex min-h-11 items-center gap-2"><input class="accent-(--ink)" type="checkbox" name="trust_author" value="true">Always run this author's pull requests without approval</label>
-      <button class="btn btn-primary h-10 sm:h-9" type="submit">{% call ui::icon("play", "size-3.5") %}{% endcall %}Approve and run</button>
+      <label class="flex min-h-11 items-center gap-2"><input class="accent-(--ink)" type="checkbox" name="trust_author" value="true">{% call ui::localized(text.trust_author) %}{% endcall %}</label>
+      <button class="btn btn-primary h-10 sm:h-9" type="submit">{% call ui::icon("play", "size-3.5") %}{% endcall %}{% call ui::localized(text.approve_and_run) %}{% endcall %}</button>
     </form>
     {% endif %}
   </div>
   {% else if run.untrusted %}
-  <p lang="en" dir="ltr" class="mt-6 flex items-start gap-2 text-[13px] text-ink-muted">{% call ui::icon("lock", "mt-px size-4 shrink-0") %}{% endcall %}<span>This run comes from a fork or an outside author: it has a read-only token and no secrets or variables{% if let Some(approver) = run.approved_by %}, and was approved by {{ approver }}{% endif %}.</span></p>
+  <p class="mt-6 flex items-start gap-2 text-[13px] text-ink-muted">{% call ui::icon("lock", "mt-px size-4 shrink-0") %}{% endcall %}<span>{% call ui::localized(text.untrusted(run.approved_by.as_deref())) %}{% endcall %}</span></p>
   {% endif %}
 
   {% for deployment in deployments %}
-  <div class="mt-6 rounded-(--radius-ui) border border-warning/40 px-3 py-3 text-[13px]" role="status" lang="en" dir="ltr">
-    <p class="flex items-start gap-2 font-medium">{% call ui::icon("shield", "mt-px size-4 shrink-0 text-warning") %}{% endcall %}<span>Waiting for review: <span class="font-mono" dir="ltr">{{ deployment.environment }}</span></span></p>
-    <p class="mt-1 text-ink-muted">{{ deployment.jobs }} {% if deployment.jobs.contains(", ") %}deploy{% else %}deploys{% endif %} to {{ deployment.environment }}, whose reviewers must approve it first.</p>
+  <div class="mt-6 rounded-(--radius-ui) border border-warning/40 px-3 py-3 text-[13px]" role="status">
+    <p class="flex items-start gap-2 font-medium">{% call ui::icon("shield", "mt-px size-4 shrink-0 text-warning") %}{% endcall %}<span>{% call ui::localized(text.deployment_waiting) %}{% endcall %} <span class="font-mono" dir="ltr">{{ deployment.environment }}</span></span></p>
+    <p class="mt-1 text-ink-muted">{% call ui::localized(text.deployment_jobs(deployment)) %}{% endcall %}</p>
     {% if deployment.can_review %}
     <form data-run-review="deployment" method="post" action="{{ review_url }}" class="mt-3">
       <input type="hidden" name="environment" value="{{ deployment.environment }}">
-      <label class="label" for="review-{{ loop.index }}">Comment <span class="font-normal text-ink-faint">(optional)</span></label>
+      <label class="label" for="review-{{ loop.index }}">{% call ui::localized(text.comment) %}{% endcall %} <span class="font-normal text-ink-faint">{% call ui::localized(text.optional) %}{% endcall %}</span></label>
       <textarea class="input h-20 resize-y py-2" id="review-{{ loop.index }}" name="comment" rows="2"></textarea>
       <div class="mt-3 flex flex-wrap gap-2">
-        <button class="btn btn-primary h-10 sm:h-9" type="submit" name="decision" value="approve">{% call ui::icon("play", "size-3.5") %}{% endcall %}Approve and deploy</button>
-        <button class="btn h-10 sm:h-9" type="submit" name="decision" value="reject">Reject</button>
+        <button class="btn btn-primary h-10 sm:h-9" type="submit" name="decision" value="approve">{% call ui::icon("play", "size-3.5") %}{% endcall %}{% call ui::localized(text.approve_and_deploy) %}{% endcall %}</button>
+        <button class="btn h-10 sm:h-9" type="submit" name="decision" value="reject">{% call ui::localized(text.reject) %}{% endcall %}</button>
       </div>
     </form>
     {% endif %}
   </div>
   {% endfor %}
-

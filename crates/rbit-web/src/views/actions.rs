@@ -94,6 +94,19 @@ pub const fn event_label(event: RunEvent) -> &'static str {
     }
 }
 
+/// The event as the catalogs name it; the same words as [`event_label`] in English.
+pub const fn event_message(event: RunEvent) -> rbit_localization::OverviewControlMessage {
+    use rbit_localization::OverviewControlMessage as Control;
+    match event {
+        RunEvent::Push => Control::Push,
+        RunEvent::PullRequest => Control::PullRequest,
+        RunEvent::WorkflowDispatch => Control::Manual,
+        RunEvent::Schedule => Control::Schedule,
+        RunEvent::WorkflowRun => Control::WorkflowRun,
+        RunEvent::RepositoryDispatch => Control::Dispatch,
+    }
+}
+
 /// How long something took: from its start to its end, or to now while it runs.
 fn elapsed(started: Option<Timestamp>, finished: Option<Timestamp>) -> Option<String> {
     let started = started?;
@@ -259,7 +272,7 @@ mod tests {
         let order: Vec<(&str, usize)> = rows.iter().map(|row| (row.name.as_str(), row.depth)).collect();
         assert_eq!(order, [("build", 0), ("lint", 0), ("test", 1), ("deploy", 2)]);
         assert_eq!(rows[0].url, "/a/b/actions/runs/7/jobs/3");
-        assert_eq!(rows[3].needs, "needs test, lint");
+        assert_eq!(rows[3].needs, "test, lint");
         assert!(rows[0].can_rerun && !rows[2].can_rerun, "only finished jobs run again");
         assert!(job_rows(&jobs, 7, &urls, false).iter().all(|row| !row.can_rerun));
     }

@@ -25,6 +25,21 @@ pub struct JobText {
     pub step_not_started: LocalizedText,
 }
 
+/// A state's label in the catalog's locale, for job rows and the run heading alike.
+pub(super) fn state_label(catalog: Catalog, look: &StateLook) -> LocalizedText {
+    catalog.job(match look.key {
+        "success" => Message::Success,
+        "failure" => Message::Failure,
+        "cancelled" => Message::Cancelled,
+        "skipped" => Message::Skipped,
+        "queued" => Message::Queued,
+        "running" => Message::Running,
+        "waiting" => Message::Waiting,
+        "approval" => Message::Approval,
+        _ => Message::WorkflowError,
+    })
+}
+
 /// Same state key/icon/tone; only its plain, automatically escaped label changes.
 #[derive(Debug)]
 pub struct LocalizedState {
@@ -67,18 +82,7 @@ impl JobText {
     }
 
     pub fn look(&self, look: &StateLook) -> LocalizedState {
-        let message = match look.key {
-            "success" => Message::Success,
-            "failure" => Message::Failure,
-            "cancelled" => Message::Cancelled,
-            "skipped" => Message::Skipped,
-            "queued" => Message::Queued,
-            "running" => Message::Running,
-            "waiting" => Message::Waiting,
-            "approval" => Message::Approval,
-            _ => Message::WorkflowError,
-        };
-        LocalizedState { key: look.key, tone: look.tone, label: self.catalog.job(message), locale: self.catalog.locale() }
+        LocalizedState { key: look.key, tone: look.tone, label: state_label(self.catalog, look), locale: self.catalog.locale() }
     }
 }
 

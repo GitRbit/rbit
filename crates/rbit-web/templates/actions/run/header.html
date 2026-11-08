@@ -7,12 +7,12 @@
         {{ run.title }} <span class="font-normal text-ink-muted">#{{ run.number }}</span>
       </h1>
       <p class="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-ink-muted">
-        <span lang="en">{{ run.look.label }}</span>
-        <span aria-hidden="true">·</span><span lang="en">{{ run.event }}</span>
+        <span>{{ text.state(run.look) }}</span>
+        <span aria-hidden="true">·</span><span>{{ text.event(run.event_message) }}</span>
         {% if let Some(actor) = run.actor %}
         <span aria-hidden="true">·</span><span>{{ text.triggered_by }} <bdi>{{ actor }}</bdi></span>
         {% endif %}
-        <span aria-hidden="true">·</span><time lang="en" dir="ltr" datetime="{{ run.when_iso }}">{{ run.when }}</time>
+        <span aria-hidden="true">·</span><time datetime="{{ run.when_iso }}">{% call ui::localized(text.english(run.when)) %}{% endcall %}</time>
       </p>
     </div>
     {% if can_write %}

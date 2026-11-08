@@ -53,6 +53,7 @@ pub async fn show(
         .map(|pending| DeploymentView {
             environment: pending.environment.name,
             jobs: pending.jobs.iter().map(|job| job.name.as_str()).collect::<Vec<_>>().join(", "),
+            job_count: u64::try_from(pending.jobs.len()).unwrap_or(u64::MAX),
             // Reviewers need only read access, but nothing changes in an archived repository.
             can_review: pending.can_review && !loaded.ctx.repo.repo.is_archived(),
         })

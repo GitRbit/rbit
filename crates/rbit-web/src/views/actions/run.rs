@@ -1,6 +1,6 @@
 //! Run presentation: existing job ordering, metadata, review, artifacts and summaries.
 
-use super::{ActionsUrls, StateLook, elapsed, event_label, name_of, short_ref};
+use super::{ActionsUrls, StateLook, elapsed, event_label, event_message, name_of, short_ref};
 use crate::views::{layout::Page, repo::RepoHeader};
 use askama::Template;
 use askama_web::WebTemplate;
@@ -17,7 +17,7 @@ pub struct JobRow {
     pub url: String,
     pub look: StateLook,
     pub duration: Option<String>,
-    /// "needs build, lint"; empty without `needs`.
+    /// "build, lint": the jobs it needs; empty without `needs`.
     pub needs: String,
     /// 0 for jobs without `needs`, then one more than the deepest job needed.
     pub depth: usize,
@@ -60,7 +60,7 @@ pub fn job_rows(jobs: &[Job], number: i64, urls: &ActionsUrls, can_write: bool) 
             url: urls.job(number, job.id.0),
             look: StateLook::of(job.status),
             duration: elapsed(job.started_at, job.finished_at),
-            needs: if job.needs.is_empty() { String::new() } else { format!("needs {}", job.needs.join(", ")) },
+            needs: job.needs.join(", "),
             depth: level,
             indent: ["", "w-4", "w-8", "w-12", "w-16"][level.min(4)],
             rerun_url: format!("{}/rerun", urls.job(number, job.id.0)),
@@ -80,6 +80,8 @@ pub struct RunSummary {
     pub workflow: String,
     pub workflow_url: String,
     pub event: &'static str,
+    /// The event in the page's language.
+    pub event_message: rbit_localization::OverviewControlMessage,
     pub reference: String,
     pub sha: String,
     pub short_sha: String,
@@ -104,6 +106,7 @@ impl RunSummary {
             workflow: run.workflow_name.clone(),
             workflow_url: urls.workflow(&run.workflow_path),
             event: event_label(run.event),
+            event_message: event_message(run.event),
             reference: short_ref(&run.reference),
             sha: run.sha.clone(),
             short_sha: run.sha.chars().take(7).collect(),
@@ -156,6 +159,8 @@ pub struct DeploymentView {
     pub environment: String,
     /// "deploy, smoke test".
     pub jobs: String,
+    /// How many jobs `jobs` names.
+    pub job_count: u64,
     pub can_review: bool,
 }
 

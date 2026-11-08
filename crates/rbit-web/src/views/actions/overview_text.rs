@@ -1,6 +1,6 @@
 //! Plain localized overview labels, prepared once per render.
 use rbit_localization::{
-    ActionsMessage, ActionsOverviewMessage, Catalog, Locale, LocalizedText, OverviewControlDisplay, OverviewControlMessage,
+    ActionsMessage, ActionsOverviewMessage, Catalog, Locale, Localized, LocalizedText, OverviewControlDisplay, OverviewControlMessage,
 };
 
 #[derive(Debug)]
@@ -41,6 +41,11 @@ impl OverviewText {
     #[allow(clippy::trivially_copy_pass_by_ref, reason = "match Askama's borrowed enum field argument")]
     pub const fn option(&self, message: &OverviewControlMessage) -> OverviewControlDisplay {
         self.catalog.overview_control(*message)
+    }
+
+    /// Text that only exists in English, such as a relative timestamp.
+    pub fn english(&self, text: &str) -> Localized {
+        Localized::english_only(text.to_owned(), self.catalog.locale())
     }
 
     pub fn new(locale: Locale, count: usize) -> Self {

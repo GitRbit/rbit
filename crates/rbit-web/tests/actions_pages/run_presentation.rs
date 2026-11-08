@@ -189,3 +189,37 @@ async fn rtl_and_expanded_run_headers_use_existing_locale_negotiation_and_cache_
         }
     }
 }
+
+/// The run section of the run page at `url`, as the owner sees it in `language`.
+async fn run_section(fixture: &Fixture, url: &str, language: &str) -> String {
+    let request = Request::builder()
+        .uri(url)
+        .header(header::HOST, "localhost:3000")
+        .header(header::COOKIE, &fixture.owner)
+        .header(header::ACCEPT_LANGUAGE, language)
+        .body(Body::empty())
+        .unwrap();
+    let response = fixture.router.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = String::from_utf8(to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+    body.split("<section id=\"run\"").nth(1).unwrap().to_owned()
+}
+
+#[tokio::test]
+async fn untranslated_review_text_is_marked_english_only_where_it_falls_back() {
+    let fixture = Fixture::new().await;
+    let labels = vec!["ubuntu-latest".to_owned()];
+    let jobs = [build_job(&labels)];
+    let run =
+        seed(&fixture, Seed { title: "Fork review", jobs: &jobs, start: RunStart::AwaitingApproval, trusted: false, error: None }).await;
+    let url = format!("/alice/rocket/actions/runs/{}", run.number);
+    let spanish = run_section(&fixture, &url, "es").await;
+    for fallback in ["This run waits for approval", "Approve and run"] {
+        assert!(spanish.contains(&format!("<span lang=\"en\">{fallback}</span>")), "{fallback} falls back: {spanish}");
+    }
+    assert!(spanish.contains("envío") && !spanish.contains("<span lang=\"en\">envío"), "translated text has no wrapper");
+    assert!(!spanish.contains("lang=\"en\" dir=\"ltr\""), "no hard-coded English islands remain");
+    let english = run_section(&fixture, &url, "en").await;
+    assert!(english.contains("This run waits for approval") && english.contains("Approve and run"));
+    assert!(!english.contains("<span lang=\"en\">"), "English pages never wrap their own text");
+}

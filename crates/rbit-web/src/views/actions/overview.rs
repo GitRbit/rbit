@@ -1,5 +1,5 @@
 //! Existing Actions overview rows, filter choices, workflow navigation and polling policy.
-use super::{ActionsUrls, DispatchFormView, StateLook, elapsed, event_label, name_of, short_ref};
+use super::{ActionsUrls, DispatchFormView, StateLook, elapsed, event_label, event_message, name_of, short_ref};
 use crate::views::{layout::Page, repo::RepoHeader};
 use askama::Template;
 use askama_web::WebTemplate;
@@ -19,6 +19,8 @@ pub struct RunRow {
     pub number: i64,
     pub workflow: String,
     pub event: &'static str,
+    /// The event in the page's language.
+    pub event_message: Control,
     pub reference: String,
     pub actor: Option<String>,
     pub when: String,
@@ -37,6 +39,7 @@ impl RunRow {
             number: run.number,
             workflow: run.workflow_name.clone(),
             event: event_label(run.event),
+            event_message: event_message(run.event),
             reference: short_ref(&run.reference),
             actor: name_of(people, run.trigger_actor.or(run.actor)),
             when: run.created_at.relative(),
@@ -81,18 +84,7 @@ impl RunFilters {
     pub fn new(action: String, branch: &str, actor: &str, event: Option<RunEvent>, status: Option<Status>) -> Self {
         let events = RunEvent::ALL
             .into_iter()
-            .map(|option| FilterOption {
-                value: option.as_str(),
-                label: match option {
-                    RunEvent::Push => Control::Push,
-                    RunEvent::PullRequest => Control::PullRequest,
-                    RunEvent::WorkflowDispatch => Control::Manual,
-                    RunEvent::Schedule => Control::Schedule,
-                    RunEvent::WorkflowRun => Control::WorkflowRun,
-                    RunEvent::RepositoryDispatch => Control::Dispatch,
-                },
-                selected: event == Some(option),
-            })
+            .map(|option| FilterOption { value: option.as_str(), label: event_message(option), selected: event == Some(option) })
             .collect();
         let statuses = Status::ALL
             .into_iter()

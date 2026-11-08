@@ -21,7 +21,7 @@
           <a class="block break-words text-[13px] font-medium hover:underline hover:underline-offset-4" href="{{ run.url }}">{{ run.title }}</a>
           <p class="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-ink-muted">
             <span><bdi>{{ run.workflow }}</bdi> #{{ run.number }}</span>
-            <span aria-hidden="true">·</span><span lang="en">{{ run.event }}</span>
+            <span aria-hidden="true">·</span><span>{{ text.option(run.event_message) }}</span>
             {% if !run.reference.is_empty() %}
             <span aria-hidden="true">·</span><bdi class="break-all font-mono">{{ run.reference }}</bdi>
             {% endif %}
@@ -32,7 +32,7 @@
           {% endif %}
         </div>
         <div class="shrink-0 text-end text-xs text-ink-faint">
-          <time class="block whitespace-nowrap" lang="en" dir="ltr" datetime="{{ run.when_iso }}">{{ run.when }}</time>
+          <time class="block whitespace-nowrap" datetime="{{ run.when_iso }}">{% call ui::localized(text.english(run.when)) %}{% endcall %}</time>
           {% if let Some(duration) = run.duration %}
           <span class="mt-1 flex items-center justify-end gap-1 whitespace-nowrap tabular-nums">
             {% call ui::icon("clock", "size-3") %}{% endcall %}{{ duration }}
