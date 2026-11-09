@@ -68,6 +68,7 @@ pub mod secrets;
 pub mod settings;
 pub mod statuses;
 pub mod sweeper;
+mod task_leases;
 pub mod tasks;
 pub mod tokens;
 mod trigger_inputs;

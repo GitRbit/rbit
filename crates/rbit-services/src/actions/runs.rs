@@ -26,7 +26,10 @@
 //!
 //! Workstream T (triggers and runs) owns this file.
 
-use rbit_actions::trust::{Isolation, RunTrust};
+use rbit_actions::{
+    scheduling::{self, Member, Start},
+    trust::{Isolation, RunTrust},
+};
 use rbit_core::{
     Account, AccountId, IssueNumber, RepoId, Timestamp, User,
     actions::{PermissionLevel, Run, RunEvent, RunId, Status, TokenPermissions},
@@ -51,8 +54,6 @@ use crate::{
 pub const MAX_ERROR_BYTES: usize = 2048;
 /// Longest stored name, title, path or concurrency group, in characters.
 const MAX_TEXT_CHARS: usize = 1024;
-/// Longest runner label a job may ask for, in characters.
-const MAX_JOB_LABEL_CHARS: usize = 255;
 
 // Actions: metrics.
 /// Why a workflow has no plan: the error its workflow-error run shows, and its kind (the
@@ -95,12 +96,8 @@ pub struct Trigger<'a> {
     pub inputs: Option<&'a str>,
 }
 
-/// What one event may still start (§11.8).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Allowance {
-    pub runs: u32,
-    pub jobs: u32,
-}
+/// What one event may still start (§11.8; `rbit_actions::scheduling`).
+pub use rbit_actions::scheduling::Allowance;
 
 impl ActionsService {
     /// The allowance of one event, from `[actions] max_runs_per_event` and
@@ -127,32 +124,19 @@ impl ActionsService {
             tracing::debug!(repo = %trigger.repo.full_name(), workflow = %candidate.path, "the workflow is disabled; no run");
             return Ok(None);
         }
-        if allowance.runs == 0 {
+        if !allowance.take_run() {
             tracing::warn!(repo = %trigger.repo.full_name(), workflow = %candidate.path, "an event may start at most {} runs; skipped", self.config().max_runs_per_event);
             return Ok(None);
         }
-        allowance.runs -= 1;
         let plan = match candidate.outcome {
             Ok(plan) => plan,
             Err(problem) => {
                 return self.record_error(trigger, &candidate.path, &candidate.name, problem.reason, &problem.message).await.map(Some);
             }
         };
-        let jobs = u32::try_from(plan.jobs.len()).unwrap_or(u32::MAX);
-        if jobs > allowance.jobs {
-            let max = self.config().max_jobs_per_event;
-            let error = format!("{}: this event already started its share of jobs; one event may start at most {max}", candidate.path);
-            return self.record_error(trigger, &candidate.path, &candidate.name, ErrorKind::Limit, &error).await.map(Some);
-        }
-        allowance.jobs -= jobs;
-        if let Some(label) =
-            plan.jobs.iter().flat_map(|job| &job.runs_on).find(|label| label.is_empty() || label.chars().count() > MAX_JOB_LABEL_CHARS)
-        {
-            let error = format!(
-                "{}: `runs-on` label `{}` must be 1 to {MAX_JOB_LABEL_CHARS} characters",
-                candidate.path,
-                truncate_chars(label, 64)
-            );
+        let admitted = scheduling::check_jobs(&candidate.path, plan.jobs.len(), allowance, self.config().max_jobs_per_event)
+            .and_then(|()| scheduling::check_labels(&candidate.path, plan.jobs.iter().flat_map(|job| &job.runs_on).map(String::as_str)));
+        if let Err(error) = admitted {
             return self.record_error(trigger, &candidate.path, &candidate.name, ErrorKind::Limit, &error).await.map(Some);
         }
         let group = plan.concurrency.as_ref().map(|(group, cancel)| (namespaced_group(trigger, group), *cancel));
@@ -164,9 +148,7 @@ impl ActionsService {
             let waiting = self.ctx().database.actions_runs().count_waiting(trigger.repo.repo.id).await?;
             let starting = u64::try_from(plan.jobs.iter().filter(|job| job.needs.is_empty()).count()).unwrap_or(u64::MAX);
             let max = u64::from(self.config().max_waiting_jobs_per_repository);
-            if waiting + starting > max {
-                let error =
-                    format!("{}: the repository already has {waiting} jobs waiting for a runner; at most {max} may wait", candidate.path);
+            if let Err(error) = scheduling::check_waiting(&candidate.path, waiting, starting, max) {
                 return self.record_error(trigger, &candidate.path, &candidate.name, ErrorKind::Limit, &error).await.map(Some);
             }
             match &group {
@@ -238,21 +220,18 @@ impl ActionsService {
     /// already exists.
     async fn enter_group(&self, repo: RepoId, group: &str, cancel_in_progress: bool, own: Option<RunId>) -> Result<RunStart, ServiceError> {
         let store = self.ctx().database.actions_runs();
-        let mut busy = false;
-        for other in store.unfinished_in_group(repo, group).await? {
-            if Some(other.id) == own || (other.status == Status::AwaitingApproval && !cancel_in_progress) {
-                continue;
-            }
-            if cancel_in_progress || other.status == Status::Blocked {
-                if let Some(settled) = store.cancel_run(repo, other.id, Timestamp::now()).await? {
-                    tracing::info!(repo = repo.0, run = other.id.0, group, "workflow run cancelled by its concurrency group");
-                    self.followed_up(&settled).await?;
-                }
-            } else {
-                busy = true;
+        let others = members(&store.unfinished_in_group(repo, group).await?);
+        let entry = scheduling::enter_group(&others, own, cancel_in_progress);
+        for other in entry.cancel {
+            if let Some(settled) = store.cancel_run(repo, other, Timestamp::now()).await? {
+                tracing::info!(repo = repo.0, run = other.0, group, "workflow run cancelled by its concurrency group");
+                self.followed_up(&settled).await?;
             }
         }
-        Ok(if busy { RunStart::HeldForConcurrency } else { RunStart::Runnable })
+        Ok(match entry.start {
+            Start::Runnable => RunStart::Runnable,
+            Start::HeldForConcurrency => RunStart::HeldForConcurrency,
+        })
     }
 
     /// Follows up a transition of a run's jobs (see the module documentation). Call it
@@ -291,13 +270,10 @@ impl ActionsService {
     async fn release_next(&self, repo: RepoId, group: &str) -> Result<(), ServiceError> {
         let _decisions = self.inner.groups.lock().await;
         let store = self.ctx().database.actions_runs();
-        let unfinished = store.unfinished_in_group(repo, group).await?;
-        if unfinished.iter().any(|run| !matches!(run.status, Status::Blocked | Status::AwaitingApproval)) {
-            return Ok(());
-        }
-        let Some(next) = unfinished.iter().find(|run| run.status == Status::Blocked) else { return Ok(()) };
-        if let Some(settled) = store.release_run(repo, next.id, Timestamp::now()).await? {
-            tracing::info!(repo = repo.0, run = next.id.0, group, "held workflow run released");
+        let unfinished = members(&store.unfinished_in_group(repo, group).await?);
+        let Some(next) = scheduling::next_to_release(&unfinished) else { return Ok(()) };
+        if let Some(settled) = store.release_run(repo, next, Timestamp::now()).await? {
+            tracing::info!(repo = repo.0, run = next.0, group, "held workflow run released");
             self.followed_up(&settled).await?;
         }
         Ok(())
@@ -422,6 +398,20 @@ impl ActionsService {
     pub(super) fn audit(&self) -> AuditService {
         AuditService::from_store(self.ctx().database.audit())
     }
+}
+
+/// A group's unfinished runs as the concurrency decisions see them, in the store's order.
+fn members(runs: &[Run]) -> Vec<(RunId, Member)> {
+    runs.iter()
+        .map(|run| {
+            let member = match run.status {
+                Status::AwaitingApproval => Member::AwaitingApproval,
+                Status::Blocked => Member::Held,
+                _ => Member::Active,
+            };
+            (run.id, member)
+        })
+        .collect()
 }
 
 /// Acting on runs needs write access; readers learn the run exists, others do not.

@@ -13,7 +13,7 @@ pub use rbit_actions::artifacts::ArtifactUpload as Upload;
 use rbit_actions::artifacts::{ArtifactLimits, ArtifactStorage, latest_per_name};
 use rbit_core::{
     Timestamp, User,
-    actions::{Artifact, ArtifactId, Job, RunId, Task},
+    actions::{Artifact, ArtifactId, RunId},
 };
 use tokio::io::AsyncRead;
 
@@ -39,31 +39,6 @@ impl ActionsService {
     /// Where artifact `artifact`'s file is.
     pub(super) fn artifact_path(&self, artifact: &Artifact) -> PathBuf {
         self.artifacts_dir().join(artifact.run_id.0.to_string()).join(format!("{}.tar.gz", artifact.id.0))
-    }
-
-    /// Task `id` of `runner`, running.
-    pub(super) async fn running_task(&self, runner: &CachedRunner, id: rbit_core::actions::TaskId) -> Result<Task, RunnerError> {
-        let task = self.ctx().database.actions_runs().task(id).await?.ok_or_else(|| RunnerError::not_found("there is no such task"))?;
-        if task.runner_id != Some(runner.id) {
-            return Err(RunnerError::forbidden("this task belongs to another runner"));
-        }
-        if task.status.is_done() {
-            return Err(RunnerError::conflict("the task has ended"));
-        }
-        Ok(task)
-    }
-
-    /// Task `id` of `runner` while it holds its job's lease: running, and the job's current
-    /// attempt (a task left behind by a rerun would otherwise file under the new one).
-    /// Uploads check it before and again after their body.
-    pub(super) async fn leased_task(&self, runner: &CachedRunner, id: rbit_core::actions::TaskId) -> Result<(Task, Job), RunnerError> {
-        let task = self.running_task(runner, id).await?;
-        let job = self.ctx().database.actions_runs().job(task.job_id).await?;
-        let job = job.ok_or_else(|| RunnerError::not_found("there is no such job"))?;
-        if job.task_id != Some(task.id) {
-            return Err(RunnerError::conflict("the job has been rerun; this task no longer belongs to it"));
-        }
-        Ok((task, job))
     }
 
     /// Stores what `body` uploads as artifact `upload.name` of task `task`'s run.
