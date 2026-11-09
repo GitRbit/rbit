@@ -17,7 +17,7 @@ export function serverEnvironment(options, inherited = process.env) {
     ...clean, RUST_LOG:"warn", RBIT_SERVER__BIND:`127.0.0.1:${options.port}`,
     RBIT_SERVER__PUBLIC_URL:options.baseUrl, RBIT_STORAGE__DATA_DIR:options.dataDir,
     RBIT_MAIL__TRANSPORT:"log", RBIT_SSH__ENABLED:"false", RBIT_ACTIONS__ENABLED:"false",
-    RBIT_UPDATES__CHECK_FOR_UPDATES:"false", RBIT_SECURITY__RATE_LIMIT:"true",
+    RBIT_UPDATES__CHECK_FOR_UPDATES:"false", RBIT_SECURITY__RATE_LIMIT:options.rateLimit === false ? "false" : "true",
     ...(token ? { RBIT_SECURITY__SETUP_TOKEN:token } : {}),
   };
 }

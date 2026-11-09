@@ -23,7 +23,9 @@ test("configuration rejects incomparable or unsafe inputs and defaults to releas
   assert.equal(serveOptions([], root).profile, "release");
   assert.equal(serveOptions(["--source-revision", "327354d"], root).declaredSourceRevision, "327354d");
   assert.equal(serveOptions(["--profile", "debug", "--port", "3011"], root).port, 3011);
-  for (const args of [["--profile", "fast"], ["--port", "0"], ["--port", "1e2"], ["--unknown", "value"], ["--port"]]) assert.throws(() => serveOptions(args, root));
+  assert.equal(serveOptions([], root).rateLimit, true);
+  assert.equal(serveOptions(["--isolated", "true", "--rate-limit", "false"], root).rateLimit, false);
+  for (const args of [["--rate-limit", "false"], ["--isolated", "true", "--rate-limit", "no"], ["--profile", "fast"], ["--port", "0"], ["--port", "1e2"], ["--unknown", "value"], ["--port"]]) assert.throws(() => serveOptions(args, root));
   assert.equal(validateConfig(config()).rounds, 6);
   for (const url of ["https://example.com", "http://example.com", "http://user@localhost:3005", "http://localhost/path"]) {
     const input = config(); input.variants[0].baseUrl = url;
@@ -99,6 +101,45 @@ test("CLI records every warmup/sample and refuses mismatched profiles", async (t
   assert.equal((await readFile(join(dir, `${input.output}.jsonl`), "utf8")).trim().split("\n").length, 9);
   await writeFile(join(dir, "after.json"), JSON.stringify({ ...metadata, profile: "debug" }));
   await assert.rejects(promisify(execFile)(process.execPath, [join(import.meta.dirname, "measure.mjs"), file]), /matching declared/);
+});
+
+test("per-round paths are distinct cold samples and sign-in samples keep the form private", async (t) => {
+  const paths = ["/c/1", "/c/2", "/c/3", "/c/4"];
+  assert.throws(() => validateConfig({ ...config(), rounds: 3, warmups: 1, pages: [{ name: "cold", paths: paths.slice(0, 3) }] }), /cover every/);
+  assert.throws(() => validateConfig({ ...config(), rounds: 3, warmups: 1, pages: [{ name: "cold", paths: ["/c/1", "/c/1", "/c/2", "/c/3"] }] }), /distinct/);
+  assert.throws(() => validateConfig({ ...config(), pages: [{ name: "cold", path: "/c/1", paths }] }), /invalid/);
+  assert.throws(() => validateConfig({ ...config(), pages: [{ name: "signin", path: "/login", mode: "signin" }] }), /private credentials/);
+  const dir = await mkdtemp(join(tmpdir(), "rbit-perf-cold-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const seen = [];
+  const base = await server(t, (request, response) => {
+    let body = "";
+    request.on("data", (chunk) => { body += chunk; });
+    request.on("end", () => {
+      seen.push(`${request.method} ${request.url}`);
+      if (request.method === "POST") {
+        const ok = new URLSearchParams(body).get("password") === "pw-7f3a9c";
+        response.writeHead(ok ? 303 : 200, ok ? { Location: "/", "Set-Cookie": "rbit_session=token; HttpOnly; Path=/" } : {});
+        response.end();
+        return;
+      }
+      response.writeHead(200, { "Content-Type": "text/html" }); response.end('<main id="main">fixture</main>');
+    });
+  });
+  await writeFile(join(dir, "credentials.txt"), "perf:pw-7f3a9c\n");
+  const input = { ...config(), rounds: 3, warmups: 1, pages: [{ name: "cold", paths }, { name: "signin", path: "/login", mode: "signin" }] };
+  input.variants.forEach((variant) => { variant.baseUrl = base; variant.credentialsFile = "credentials.txt"; });
+  for (const variant of input.variants) await writeFile(join(dir, variant.metadata), JSON.stringify({ baseUrl: base, profile: "release", executableSha256: "synthetic-test-only" }));
+  await writeFile(join(dir, "config.json"), JSON.stringify(input));
+  await promisify(execFile)(process.execPath, [join(import.meta.dirname, "measure.mjs"), join(dir, "config.json")]);
+  const raw = await readFile(join(dir, input.output), "utf8");
+  const report = JSON.parse(raw);
+  assert.equal(report.valid, true);
+  const cold = report.samples.filter((sample) => sample.page === "cold");
+  assert.deepEqual(cold.map((sample) => new URL(sample.url).pathname), ["/c/1", "/c/1", "/c/2", "/c/2", "/c/3", "/c/3", "/c/4", "/c/4"]);
+  assert.equal(report.samples.filter((sample) => sample.page === "signin" && sample.status === 303).length, 8);
+  assert.equal(seen.filter((line) => line === "POST /login").length, 10, "two session sign-ins and eight timed ones");
+  assert.equal(raw.includes("pw-7f3a9c"), false, "the password never reaches the report");
 });
 
 test("a truncated response rejects and leaves no request timeout keeping Node alive", async (t) => {

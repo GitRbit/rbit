@@ -101,6 +101,8 @@ test("isolated launcher refuses private configs and ignores inherited applicatio
   assert.equal(env.RBIT_SERVER__BIND,"127.0.0.1:3305");assert.equal(env.RBIT_STORAGE__DATA_DIR,options.dataDir);
   assert.equal(env.RBIT_SSH__ENABLED,"false");assert.equal(env.RBIT_UPDATES__CHECK_FOR_UPDATES,"false");
   assert.equal(env.RBIT_PERF_SETUP_TOKEN_FILE,undefined);
+  assert.equal(env.RBIT_SECURITY__RATE_LIMIT,"true");
+  assert.equal(serverEnvironment({...options,rateLimit:false},{RBIT_PERF_SETUP_TOKEN_FILE:setup}).RBIT_SECURITY__RATE_LIMIT,"false");
   await writeFile(join(directory,"rbit.toml"),"private configuration");
   assert.throws(()=>serverEnvironment(options,{}),/private application config/);
 });

@@ -6,7 +6,7 @@ import http from "node:http";
 import { StringDecoder } from "node:string_decoder";
 import { DEFAULT_PAGE_MARKER, streamingMarker, validateMarker } from "./http-marker.mjs";
 import { renderHeaderMs, viewHeaderMs, footerSsrMs } from "./http-timing.mjs";
-import { sessionCookie, publicConfiguration } from "./http-auth.mjs";
+import { sessionCookie, signInSample, publicConfiguration } from "./http-auth.mjs";
 import { cpus, freemem, platform, release, totalmem } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,11 +38,17 @@ export function validateConfig(input) {
   }
   if (!Array.isArray(config.pages) || config.pages.length === 0) throw new Error("pages are required");
   const pages = new Set();
+  const validPath = (path) => typeof path === "string" && path.startsWith("/") && !path.startsWith("//") && !/[\\#\r\n]/.test(path);
   for (const page of config.pages) {
-    if (!page.name || pages.has(page.name) || typeof page.path !== "string" || !page.path.startsWith("/") || page.path.startsWith("//") || /[\\#\r\n]/.test(page.path)) throw new Error("invalid or duplicate page");
+    // `paths` gives every warmup and measured round its own path (both variants share it),
+    // so each request misses caches keyed by the path's content: a cold render per sample.
+    const paths = page.paths ?? [page.path];
+    if (!page.name || pages.has(page.name) || (page.paths !== undefined && page.path !== undefined) || !Array.isArray(paths) || !paths.length || !paths.every(validPath)) throw new Error("invalid or duplicate page");
+    if (page.paths !== undefined && (new Set(paths).size !== paths.length || paths.length < config.warmups + config.rounds || page.mode === "revalidate")) throw new Error("per-round paths must be distinct and cover every warmup and round");
     pages.add(page.name);
     validateMarker(page.contains === undefined ? DEFAULT_PAGE_MARKER : page.contains);
-    if (page.mode !== undefined && !["document", "partial", "preload", "revalidate"].includes(page.mode)) throw new Error("invalid page mode");
+    if (page.mode !== undefined && !["document", "partial", "preload", "revalidate", "signin"].includes(page.mode)) throw new Error("invalid page mode");
+    if (page.mode === "signin" && (authenticated !== 2 || page.paths !== undefined || page.path !== "/login")) throw new Error("signin pages post to /login with both variants' private credentials");
     if (page.status !== undefined && ![200, 204, 304].includes(page.status)) throw new Error("expected status must be 200, 204 or 304");
     if (page.status === 304 && page.mode !== "revalidate") throw new Error("304 cases must use revalidate mode");
     if (page.requireFooter !== undefined && typeof page.requireFooter !== "boolean") throw new Error("invalid requireFooter");
@@ -146,10 +152,13 @@ async function main() {
         for (const page of config.pages) {
           for (const index of orderForRound([0, 1], round)) {
             const variant = config.variants[index];
+            const path = page.paths ? page.paths[(phase === "warmup" ? 0 : config.warmups) + round] : page.path;
             const sample = { phase, round: round + 1, variant: variant.name, page: page.name, startedAt: new Date().toISOString() };
             try {
               const options = { ...config, cookie: cookies[index], requireViewTiming: variant.requireViewTiming };
-              if (page.mode === "revalidate") {
+              if (page.mode === "signin") {
+                Object.assign(sample, await signInSample(new URL(path, variant.baseUrl), relative(variant.credentialsFile), options, agents[index]));
+              } else if (page.mode === "revalidate") {
                 const key = `${index}:${page.path}`;
                 if (!validators.has(key)) {
                   const prime = await requestSample(new URL(page.path, variant.baseUrl), { ...page, mode: "document", status: 200 }, options, agents[index]);
@@ -160,7 +169,7 @@ async function main() {
                 }
                 options.ifNoneMatch = validators.get(key);
               }
-              Object.assign(sample, await requestSample(new URL(page.path, variant.baseUrl), page, options, agents[index]));
+              if (page.mode !== "signin") Object.assign(sample, await requestSample(new URL(path, variant.baseUrl), page, options, agents[index]));
             }
             catch (error) { Object.assign(sample, { valid: false, errors: [error.message] }); }
             report.samples.push(sample);

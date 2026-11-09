@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 import { serverEnvironment } from "./server-environment.mjs";
 
 export function serveOptions(argv, root) {
-  const options = { profile: "release", port: "3005", executable: "", "build-record": "", "target-dir": "", "data-dir": "target/perf/data", metadata: "", "source-revision": "", "source-dir": ".", isolated: "false" };
+  const options = { profile: "release", port: "3005", executable: "", "build-record": "", "target-dir": "", "data-dir": "target/perf/data", metadata: "", "source-revision": "", "source-dir": ".", isolated: "false", "rate-limit": "true" };
   for (let i = 0; i < argv.length; i += 2) {
     const key = argv[i].slice(2);
     if (!argv[i].startsWith("--") || !Object.hasOwn(options, key) || !argv[i + 1] || argv[i + 1].startsWith("--")) {
@@ -20,12 +20,14 @@ export function serveOptions(argv, root) {
     options[key] = argv[i + 1];
   }
   if (!["false", "true"].includes(options.isolated)) throw new Error("isolated must be true or false");
+  // Isolated runs keep throttles on; turn them off only for seeding or timed sign-ins.
+  if (!["false", "true"].includes(options["rate-limit"]) || (options["rate-limit"] === "false" && options.isolated !== "true")) throw new Error("rate-limit must be true or false, and needs --isolated true");
   if (!["release", "debug"].includes(options.profile)) throw new Error("profile must be release or debug");
   if (!/^\d+$/.test(options.port) || Number(options.port) < 1 || Number(options.port) > 65535) throw new Error("invalid port");
   if ([options.executable, options["build-record"], options["target-dir"]].filter(Boolean).length > 1) throw new Error("Select exactly one executable, build record or legacy target directory");
   const port = Number(options.port);
   return {
-    profile: options.profile, port, isolated: options.isolated === "true",
+    profile: options.profile, port, isolated: options.isolated === "true", rateLimit: options["rate-limit"] === "true",
     executable: options.executable ? resolve(root, options.executable) : options["target-dir"] ? resolve(root, options["target-dir"], options.profile, process.platform === "win32" ? "rbit.exe" : "rbit") : null,
     buildRecord: options["build-record"] ? resolve(root, options["build-record"]) : null,
     dataDir: resolve(root, options["data-dir"]),

@@ -48,6 +48,7 @@ credentials.
 | `serve.mjs` | Runs an exact already-built executable or helper build record, with configurable port/data directories, binary hash and raw server log. Never compiles. |
 | `measure.mjs` | Alternating paired HTTP samples with warmups, raw JSON/JSONL evidence and distribution summaries. No browser automation. |
 | `harness.test.mjs` | Tests configuration, ordering, HTTP validation, output capture and browser validity guards. |
+| `content.mjs` | Builds and seeds `perf/perf-content`: Markdown, issue and pull request lists, per-commit cold documents ([below](#paired-http-measurements)). |
 | `seed.mjs` | Signs up the test account `perf`, creates `perf/perf-fixture`, pushes both branches over HTTP and opens pull request #1. Rerunnable. |
 | `scroll-probe.js` | Evaluated in the page: DOM size, navigation timing, a rAF-driven scroll sweep, scrollbar-drag jumps, blank-line sampling, long animation frames, layout shifts. |
 | `trace.mjs` | Headless Edge: a DevTools trace of a scroll sweep per page, main-thread time per phase (style, layout, pre-paint, paint, `content-visibility` intersection checks, …). |
@@ -256,6 +257,24 @@ an intentional decline, and `contains` to override the default `id="main"` HTML 
 These modes provide server response evidence only: request counts from actual preload
 behavior come from the dedicated preloader tests or a visible browser network capture.
 Never present a fast `204` as faster rendering of the corresponding `200` page.
+
+A page with `paths` instead of `path` lists one distinct path per warmup and measured
+round (at least `warmups + rounds`); both variants request the same path in a round.
+With per-commit paths every sample misses the Markdown, highlighting and directory caches,
+so it measures a cold render rather than a warm cache hit. `mode: "signin"` (path
+`/login`, authenticated configurations only) times a complete first-factor sign-in per
+sample: password verification and a new session. The form body is never recorded. The
+sign-in throttle refuses repeated sign-ins, so time them on servers launched with
+`serve.mjs --isolated true --rate-limit false` (both variants alike); isolated launches
+otherwise keep every throttle on.
+
+`content.mjs build` makes a second deterministic repository: Markdown READMEs and guides
+(including list and quote nesting deeper than the renderer's flattening bound), a `cold`
+branch of 64 commits that each rewrite `docs/cold.md` and `src/cold.rs`, and 24 topic
+branches. `content.mjs seed BASE-URL` pushes it as `perf/perf-content` with the seeded
+account, opens 120 issues with Markdown bodies, 40 comments on issue #1 and 24 pull
+requests, and writes `content.json` (the `cold` commit ids for per-round paths) beside
+the repository. Run it after `seed.mjs`, on the seed server, before copying the data.
 
 ## SQLite contention workload
 
