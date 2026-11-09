@@ -12,6 +12,7 @@ pub mod contributions;
 pub mod discovery;
 pub mod edits;
 pub mod forks;
+pub mod imports;
 pub mod lfs;
 pub mod mirrors;
 pub mod push_mirrors;
