@@ -30,6 +30,7 @@ pub use notification_inbox::NotificationInboxStore;
 mod repository_creation;
 mod repository_forks;
 pub use repository_forks::{ForkCreationStore, ForkReadStore};
+mod repository_aliases;
 mod repository_discovery;
 pub mod sealing;
 pub mod sqlite;

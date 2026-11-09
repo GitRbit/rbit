@@ -1,6 +1,7 @@
 //! Request-local alias access without a cloned store or service locator.
 use super::{OwnedRepository, RepoContext, RepositoryService, ServiceError, User, repo_access, viewer_grants};
 use rbit_repositories::aliases::AliasPort;
+use rbit_storage::RepositoryStore;
 
 #[derive(Debug)]
 pub(super) struct AliasView<'a> {
@@ -9,13 +10,11 @@ pub(super) struct AliasView<'a> {
 }
 
 impl AliasPort for AliasView<'_> {
+    type Addresses = RepositoryStore;
     type Error = ServiceError;
     type Opened = RepoContext;
-    async fn find_current(&self, owner: &str, name: &str) -> Result<Option<OwnedRepository>, Self::Error> {
-        Ok(self.service.store.find_by_path(owner, name).await?)
-    }
-    async fn find_old(&self, owner: &str, name: &str) -> Result<Option<OwnedRepository>, Self::Error> {
-        Ok(self.service.store.find_by_old_path(owner, name).await?)
+    fn addresses(&self) -> &RepositoryStore {
+        &self.service.store
     }
     async fn open(&self, repository: OwnedRepository) -> Result<RepoContext, Self::Error> {
         self.service.open_found(self.viewer, repository).await

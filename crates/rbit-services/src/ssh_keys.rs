@@ -12,6 +12,7 @@
 //! certificates and unknown algorithms are refused.
 
 use rbit_core::{PushSource, RepoAccess, RepoId, Timestamp, User, repository::OwnedRepository};
+use rbit_repositories::aliases::RepositoryAliases;
 /// The stored keys, re-exported so callers need not depend on the storage layer.
 pub use rbit_storage::sqlite::ssh_keys::{DeployKey, DeployKeyId, SshKey, SshKeyId};
 use rbit_storage::{
@@ -245,12 +246,8 @@ impl SshKeyService {
         let SshIdentity::Deploy { repo: key_repo, read_only, .. } = identity else {
             return Err(ServiceError::NotFound);
         };
-        let name = name.strip_suffix(".git").unwrap_or(name);
         let store = self.ctx.database.repositories();
-        let repo = match store.find_by_path(owner, name).await? {
-            Some(repo) => repo,
-            None => store.find_by_old_path(owner, name).await?.ok_or(ServiceError::NotFound)?,
-        };
+        let repo = RepositoryAliases::resolve(&store, owner, name).await?.ok_or(ServiceError::NotFound)?;
         if repo.repo.id != key_repo.repo.id {
             return Err(ServiceError::NotFound);
         }

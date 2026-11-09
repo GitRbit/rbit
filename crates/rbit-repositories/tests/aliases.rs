@@ -3,7 +3,7 @@ use rbit_contracts::{AccountId, RepoId, Timestamp};
 use rbit_identity_models::{Account, AccountKind};
 use rbit_repositories::{
     OwnedRepository, Repository, Visibility,
-    aliases::{AliasPort, RepositoryAliases},
+    aliases::{AliasPort, RepositoryAddresses, RepositoryAliases},
 };
 use std::{
     future::{Future, ready},
@@ -53,9 +53,8 @@ impl Port {
         self.calls.lock().unwrap().push(call);
     }
 }
-impl AliasPort for Port {
+impl RepositoryAddresses for Port {
     type Error = &'static str;
-    type Opened = RepoId;
     fn find_current(&self, owner: &str, name: &str) -> impl Future<Output = Result<Option<OwnedRepository>, Self::Error>> + Send {
         self.record(format!("current:{owner}/{name}"));
         ready(Ok(self.current.then(repository)))
@@ -63,6 +62,14 @@ impl AliasPort for Port {
     fn find_old(&self, owner: &str, name: &str) -> impl Future<Output = Result<Option<OwnedRepository>, Self::Error>> + Send {
         self.record(format!("old:{owner}/{name}"));
         ready(Ok(self.old.then(repository)))
+    }
+}
+impl AliasPort for Port {
+    type Addresses = Self;
+    type Error = &'static str;
+    type Opened = RepoId;
+    fn addresses(&self) -> &Self {
+        self
     }
     fn open(&self, repo: OwnedRepository) -> impl Future<Output = Result<RepoId, Self::Error>> + Send {
         self.record("open".into());
@@ -103,4 +110,13 @@ fn unpolled_alias_commands_do_no_lookup_work() {
     drop(RepositoryAliases::open(&port, "alice", "project"));
     drop(RepositoryAliases::moved_to(&port, "alice", "project"));
     assert_eq!(*port.calls.lock().unwrap(), Vec::<String>::new());
+}
+#[test]
+fn resolve_prefers_the_current_address_and_makes_no_permission_decision() {
+    let port = Port { current: true, old: true, ..Port::default() };
+    assert_eq!(run(RepositoryAliases::resolve(&port, "alice", "project.git")).unwrap().map(|found| found.repo.id), Some(RepoId(9)));
+    assert_eq!(*port.calls.lock().unwrap(), ["current:alice/project"]);
+    let port = Port::default();
+    assert!(run(RepositoryAliases::resolve(&port, "alice", "project")).unwrap().is_none());
+    assert_eq!(*port.calls.lock().unwrap(), ["current:alice/project", "old:alice/project"]);
 }

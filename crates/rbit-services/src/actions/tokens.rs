@@ -35,6 +35,7 @@ use rbit_core::{
     actions::{JobId, PermissionLevel, RunId, RunTrust, TaskId, TokenPermissions, token_permissions},
     protection::Refusal,
 };
+use rbit_repositories::aliases::RepositoryAliases;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, ReadBuf};
 
 use super::ActionsService;
@@ -138,12 +139,8 @@ impl ActionsService {
 
     /// Opens `owner/name` with `own` access when it is the task's repository.
     async fn open_as_task(&self, grant: &TaskGrant, owner: &str, name: &str, own: RepoAccess) -> Result<RepoContext, ServiceError> {
-        let name = name.strip_suffix(".git").unwrap_or(name);
         let store = self.ctx().database.repositories();
-        let repo = match store.find_by_path(owner, name).await? {
-            Some(repo) => repo,
-            None => store.find_by_old_path(owner, name).await?.ok_or(ServiceError::NotFound)?,
-        };
+        let repo = RepositoryAliases::resolve(&store, owner, name).await?.ok_or(ServiceError::NotFound)?;
         let public = if repo.repo.visibility.is_public() { RepoAccess::Read } else { RepoAccess::None };
         let access = if repo.repo.id == grant.repo { own.max(public) } else { public };
         if !access.can_read() {

@@ -57,6 +57,7 @@ use rbit_core::{
     lfs::{LfsOid, LfsOperation},
     repository::OwnedRepository,
 };
+use rbit_repositories::aliases::RepositoryAliases;
 use rbit_storage::sqlite::lfs::LfsStore;
 use tokio::{
     io::AsyncRead,
@@ -222,12 +223,8 @@ impl LfsService {
     /// another repository or the holder may no longer read it.
     pub async fn open_granted(&self, grant: LfsGrant, owner: &str, name: &str) -> Result<Granted, ServiceError> {
         let ctx = &self.inner.ctx;
-        let name = name.strip_suffix(".git").unwrap_or(name);
         let store = ctx.database.repositories();
-        let repo = match store.find_by_path(owner, name).await? {
-            Some(repo) => repo,
-            None => store.find_by_old_path(owner, name).await?.ok_or(ServiceError::NotFound)?,
-        };
+        let repo = RepositoryAliases::resolve(&store, owner, name).await?.ok_or(ServiceError::NotFound)?;
         if repo.repo.id != grant.repo {
             return Err(ServiceError::NotFound);
         }
