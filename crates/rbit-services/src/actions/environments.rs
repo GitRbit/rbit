@@ -22,11 +22,12 @@
 
 use rbit_actions::{
     environments::{self as rules, DeploymentGate, ProtectedBranches, RefPolicy, ReviewRefusal, Reviewer},
+    scheduling::requests::{self, ReviewSelection},
     secrets::open_environment_secrets,
 };
 use rbit_core::{
     RepoAccess, RepoId, Timestamp, User,
-    actions::{BranchPolicy, Environment, Job, ReviewDecision, Run, SecretScope},
+    actions::{BranchPolicy, Environment, Job, JobId, ReviewDecision, Run, SecretScope},
 };
 use rbit_storage::sqlite::actions_environments::EnvironmentChanges;
 
@@ -214,24 +215,21 @@ impl ActionsService {
         comment: &str,
     ) -> Result<(), ServiceError> {
         repo.ensure_writable()?;
-        if comment.chars().count() > 65_536 {
-            return Err(ServiceError::Invalid("the comment is too long".to_owned()));
-        }
+        requests::check_review_comment(comment).map_err(|why| ServiceError::Invalid(why.to_owned()))?;
         let pending = self.pending_deployments(Some(actor), repo, run).await?;
-        let mut jobs = Vec::new();
-        for name in environments {
-            let Some(deployment) = pending.iter().find(|pending| pending.environment.name.eq_ignore_ascii_case(name)) else {
-                return Err(ServiceError::Invalid(format!("no job of this run waits for {name}")));
-            };
-            may_review(actor, repo, run, &deployment.environment)?;
-            jobs.extend(deployment.jobs.iter().map(|job| job.id));
-        }
-        if jobs.is_empty() {
-            return Err(ServiceError::Invalid("choose an environment to review".to_owned()));
-        }
+        let waiting: Vec<(&str, Vec<JobId>)> =
+            pending.iter().map(|pending| (pending.environment.name.as_str(), pending.jobs.iter().map(|job| job.id).collect())).collect();
+        let review = |name: &str| match pending.iter().find(|pending| pending.environment.name == name) {
+            Some(deployment) => may_review(actor, repo, run, &deployment.environment),
+            None => Ok(()),
+        };
+        let jobs = requests::review_selection(environments, &waiting, review).map_err(|refused| match refused {
+            ReviewSelection::Invalid(message) => ServiceError::Invalid(message),
+            ReviewSelection::Refused(error) => error,
+        })?;
         let store = self.ctx().database.actions_runs();
         let Some(settled) = store.review_jobs(run.id, &jobs, actor.id(), decision, comment.trim(), Timestamp::now()).await? else {
-            return Err(ServiceError::Invalid("these jobs no longer wait for review".to_owned()));
+            return Err(ServiceError::Invalid(requests::NO_LONGER_REVIEWING.to_owned()));
         };
         self.settled(&settled).await?;
         let action = match decision {

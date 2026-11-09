@@ -29,6 +29,8 @@ use rbit_core::{
 use rbit_storage::sqlite::actions_runs::StepUpdate;
 use rbit_workflow::protocol::{MAX_OUTPUT_BYTES, StepStatus, TaskResult, TaskStateRequest, TaskStateResponse};
 
+use rbit_actions::scheduling::leases;
+
 use super::{
     ActionsService,
     runners::{CachedRunner, RunnerError},
@@ -45,18 +47,13 @@ impl ActionsService {
         request.validate().map_err(|error| RunnerError::bad_request(error.message))?;
         let store = self.ctx().database.actions_runs();
         let task = store.task(id).await?.ok_or_else(|| RunnerError::not_found("there is no such task"))?;
-        if task.runner_id != Some(runner.id) {
-            return Err(RunnerError::forbidden("this task belongs to another runner"));
-        }
+        leases::owned(task.runner_id.map(|id| id.0), runner.id.0).map_err(|refusal| RunnerError::forbidden(refusal.message()))?;
         let job = store.job(task.job_id).await?.ok_or_else(|| RunnerError::not_found("there is no such task"))?;
         if task.status.is_done() {
-            // A call without a result comes from a runner that still runs a task the server
-            // stopped (the sweeper failed it, its runner was removed): the lease is gone, so
-            // the runner must stop. A resent final call is answered as before.
-            let stopped_under_runner = request.result.is_none();
-            return Ok(TaskStateResponse {
-                cancel: stopped_under_runner || job.status == Status::Cancelled || task.status == Status::Cancelled,
-            });
+            // `rbit_actions::scheduling::leases::ended_task_cancels`: a stopped task's runner stops.
+            let cancel =
+                leases::ended_task_cancels(request.result.is_some(), job.status == Status::Cancelled, task.status == Status::Cancelled);
+            return Ok(TaskStateResponse { cancel });
         }
         let now = Timestamp::now();
         store.heartbeat(id, now).await?;

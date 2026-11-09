@@ -240,22 +240,10 @@ impl ActionsService {
             return Ok(Ok(true));
         }
         let jobs = self.run_jobs_with_outputs(run).await?;
-        let mut outer = run_inputs;
-        for level in &template.calls {
-            if let Some(condition) = &level.condition {
-                let contexts = level_contexts(level, github, vars, &outer, &jobs);
-                let status = ExprStatus::of_needs(level.needs.values().map(|source| need(source, &jobs, github, vars).result));
-                let outcome = rbit_workflow::expr::Condition::parse(condition)
-                    .and_then(|condition| condition.evaluate(&contexts.with_status(status)));
-                match outcome {
-                    Ok(true) => {}
-                    Ok(false) => return Ok(Ok(false)),
-                    Err(error) => return Ok(Err(format!("`{}`: `if`: {error}", level.name))),
-                }
-            }
-            outer.clone_from(&level.inputs);
-        }
-        Ok(Ok(true))
+        Ok(rbit_actions::scheduling::jobs::calls_allow(&template.calls, run_inputs, |level, outer| {
+            let status = ExprStatus::of_needs(level.needs.values().map(|source| need(source, &jobs, github, vars).result));
+            level_contexts(level, github, vars, outer, &jobs).with_status(status)
+        }))
     }
 
     /// Every job of `run` by key, with its status and outputs, instances together.
@@ -323,7 +311,7 @@ fn level_contexts(
         .iter()
         .map(|(name, source)| {
             let needed = need(source, jobs, github, vars);
-            (name.clone(), json!({ "result": result_name(needed.result), "outputs": needed.outputs }))
+            (name.clone(), json!({ "result": rbit_actions::scheduling::jobs::result_name(needed.result), "outputs": needed.outputs }))
         })
         .collect();
     let strategy = level.strategy;
@@ -374,7 +362,7 @@ pub(super) fn need(source: &NeedSource, jobs: &RunJobs, github: &Map<String, Val
                 .iter()
                 .map(|(id, inner)| {
                     let needed = need(inner, jobs, github, vars);
-                    (id.clone(), json!({ "result": result_name(needed.result), "outputs": needed.outputs }))
+                    (id.clone(), json!({ "result": rbit_actions::scheduling::jobs::result_name(needed.result), "outputs": needed.outputs }))
                 })
                 .collect();
             let contexts = ContextMap::new().with("jobs", context).with("github", github.clone()).with("vars", vars.clone());
@@ -388,15 +376,6 @@ pub(super) fn need(source: &NeedSource, jobs: &RunJobs, github: &Map<String, Val
         }
     };
     Needed { result, outputs }
-}
-
-const fn result_name(result: JobResult) -> &'static str {
-    match result {
-        JobResult::Success => "success",
-        JobResult::Failure => "failure",
-        JobResult::Cancelled => "cancelled",
-        JobResult::Skipped => "skipped",
-    }
 }
 
 /// Whether `job` waits for the server to decide calls' `if:`.

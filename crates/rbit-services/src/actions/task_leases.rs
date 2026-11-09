@@ -47,7 +47,7 @@ fn refused(refusal: Refusal) -> RunnerError {
     match refusal {
         Refusal::NoTask | Refusal::NoJob => RunnerError::not_found(refusal.message()),
         Refusal::OtherRunner => RunnerError::forbidden(refusal.message()),
-        Refusal::Ended | Refusal::Rerun => RunnerError::conflict(refusal.message()),
+        Refusal::Ended | Refusal::Rerun | Refusal::LogClosed => RunnerError::conflict(refusal.message()),
     }
 }
 

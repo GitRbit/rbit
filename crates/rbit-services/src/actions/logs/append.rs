@@ -7,7 +7,10 @@ use crate::{
     ActionsService, ServiceError,
     actions::runners::{CachedRunner, RunnerError},
 };
-use rbit_actions::logs::{Append, accept_append, split_body};
+use rbit_actions::{
+    logs::{Append, accept_append, split_body},
+    scheduling::leases,
+};
 use rbit_core::actions::{Job, LogState, Task, TaskId};
 use rbit_workflow::protocol::{LogsResponse, MAX_LOG_LINE_BYTES};
 use std::{
@@ -38,12 +41,9 @@ impl ActionsService {
         let mut checked = lock.lock().await;
         let store = self.ctx().database.actions_runs();
         let task = store.task(id).await?.ok_or_else(|| RunnerError::not_found("there is no such task"))?;
-        if task.runner_id != Some(runner.id) {
-            return Err(RunnerError::forbidden("this task belongs to another runner"));
-        }
-        if task.status.is_done() || task.log_state != LogState::Live {
-            return Err(RunnerError::conflict("the task has ended; its log is closed"));
-        }
+        leases::owned(task.runner_id.map(|id| id.0), runner.id.0).map_err(|refusal| RunnerError::forbidden(refusal.message()))?;
+        leases::log_open(task.status.is_done(), task.log_state == LogState::Live)
+            .map_err(|refusal| RunnerError::conflict(refusal.message()))?;
         let current = u64::try_from(task.log_lines).unwrap_or_default();
         let skip = match accept_append(from, current, lines.len()) {
             Append::Gap { current } => return Err(RunnerError::log_gap(current)),

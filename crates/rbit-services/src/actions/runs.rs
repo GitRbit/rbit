@@ -27,7 +27,7 @@
 //! Workstream T (triggers and runs) owns this file.
 
 use rbit_actions::{
-    scheduling::{self, Member, Start},
+    scheduling::{self, Member, Start, requests},
     trust::{Isolation, RunTrust},
 };
 use rbit_core::{
@@ -291,7 +291,7 @@ impl ActionsService {
         let repo_id = repo.repo.repo.id;
         store.find_run(repo_id, id).await?.ok_or(ServiceError::NotFound)?;
         let Some(settled) = store.cancel_run(repo_id, id, Timestamp::now()).await? else {
-            return Err(ServiceError::Invalid("the run has already finished".to_owned()));
+            return Err(ServiceError::Invalid(requests::ALREADY_FINISHED.to_owned()));
         };
         tracing::info!(repo = %repo.repo.full_name(), run = id.0, by = %actor.name(), "workflow run cancelled");
         self.settled(&settled).await?;
@@ -313,12 +313,7 @@ impl ActionsService {
         {
             return Err(ServiceError::NotFound);
         }
-        if run.is_workflow_error() {
-            return Err(ServiceError::Invalid("a workflow error has no jobs to run again".to_owned()));
-        }
-        if !run.status.is_done() {
-            return Err(ServiceError::Invalid("only a finished run can be run again".to_owned()));
-        }
+        requests::check_rerun(run.is_workflow_error(), run.status.is_done()).map_err(|why| ServiceError::Invalid(why.to_owned()))?;
         let awaits = self.awaits_approval(&repo.repo, &run).await?;
         let decisions = self.inner.groups.lock().await;
         let start = match (&run.concurrency_group, awaits) {
@@ -329,7 +324,7 @@ impl ActionsService {
         let settled = store.rerun(repo_id, id, which, start, Timestamp::now()).await?;
         drop(decisions);
         let Some(settled) = settled else {
-            return Err(ServiceError::Invalid("no job of the run matches".to_owned()));
+            return Err(ServiceError::Invalid(requests::NO_MATCHING_JOB.to_owned()));
         };
         store.set_trigger_actor(id, actor.id()).await?;
         tracing::info!(repo = %repo.repo.full_name(), run = id.0, by = %actor.name(), ?which, "workflow run started again");
@@ -347,9 +342,7 @@ impl ActionsService {
         let store = self.ctx().database.actions_runs();
         let repo_id = repo.repo.repo.id;
         let run = store.find_run(repo_id, id).await?.ok_or(ServiceError::NotFound)?;
-        if run.status != Status::AwaitingApproval {
-            return Err(ServiceError::Invalid("the run does not wait for approval".to_owned()));
-        }
+        requests::check_approval(run.status == Status::AwaitingApproval).map_err(|why| ServiceError::Invalid(why.to_owned()))?;
         let decisions = self.inner.groups.lock().await;
         let hold = match &run.concurrency_group {
             Some(group) => self.enter_group(repo_id, group, run.cancel_in_progress, Some(id)).await? == RunStart::HeldForConcurrency,
@@ -358,7 +351,7 @@ impl ActionsService {
         let settled = store.approve_run(repo_id, id, actor.id(), hold, Timestamp::now()).await?;
         drop(decisions);
         let Some(settled) = settled else {
-            return Err(ServiceError::Invalid("the run does not wait for approval".to_owned()));
+            return Err(ServiceError::Invalid(requests::NOT_AWAITING_APPROVAL.to_owned()));
         };
         self.followed_up(&settled).await?;
         let full_name = repo.repo.full_name();

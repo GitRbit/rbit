@@ -23,18 +23,14 @@
 //!
 //! The join workstream (J) owns this file.
 
-use std::collections::BTreeSet;
-
+use rbit_actions::scheduling::jobs::{self, JobState, Verdict};
 use rbit_core::{
     Timestamp,
     actions::{Job, JobId, Run, Status},
 };
 use rbit_storage::sqlite::actions_runs::{Decision, Settled};
-use rbit_workflow::{
-    expr::{Condition, ContextMap, Status as ExprStatus},
-    spec::{JobResult, JobTemplate},
-};
-use serde_json::{Map, Value, json};
+use rbit_workflow::{expr::ContextMap, spec::JobTemplate};
+use serde_json::{Map, Value};
 
 use super::ActionsService;
 use crate::ServiceError;
@@ -95,17 +91,16 @@ impl ActionsService {
             tracing::info!(run = run.id.0, job = %job.key, ?decision, "job condition decided");
             return Ok(store.decide(job.id, decision, Timestamp::now()).await?);
         }
-        let planned = match self.plan_from_needs(run, job, template).await? {
-            Ok(planned) if !planned.is_empty() => planned,
-            Ok(_) => {
-                tracing::info!(run = run.id.0, job = %job.key, "a job planned from its needs has an empty matrix; it is skipped");
-                return Ok(store.decide(job.id, Decision::Skip, Timestamp::now()).await?);
-            }
-            Err(error) => {
+        let planned = self.plan_from_needs(run, job, template).await?;
+        if let Some(verdict) = jobs::deferred_verdict(&planned) {
+            if let Err(error) = &planned {
                 tracing::warn!(run = run.id.0, job = %job.key, %error, "a job cannot be planned from its needs; it fails");
-                return Ok(store.decide(job.id, Decision::Fail, Timestamp::now()).await?);
+            } else {
+                tracing::info!(run = run.id.0, job = %job.key, "a job planned from its needs has an empty matrix; it is skipped");
             }
-        };
+            return Ok(store.decide(job.id, recorded(verdict), Timestamp::now()).await?);
+        }
+        let Ok(planned) = planned else { return Ok(None) };
         let rows = super::runs::JobRows::new(&planned);
         let settled = match store.expand(job.id, &rows.jobs(&planned), self.limits().max_run_jobs, Timestamp::now()).await {
             Ok(settled) => settled,
@@ -155,14 +150,11 @@ impl ActionsService {
         }
         let (github, vars) = self.call_contexts(run).await?;
         let inputs = self.run_inputs(run).await?;
-        Ok(match self.call_conditions(run, template, &github, &vars, inputs).await? {
-            Ok(true) => None,
-            Ok(false) => Some(Decision::Skip),
-            Err(error) => {
-                tracing::warn!(run = run.id.0, %error, "a calling job's condition cannot be evaluated; the job fails");
-                Some(Decision::Fail)
-            }
-        })
+        let outcome = self.call_conditions(run, template, &github, &vars, inputs).await?;
+        if let Err(error) = &outcome {
+            tracing::warn!(run = run.id.0, %error, "a calling job's condition cannot be evaluated; the job fails");
+        }
+        Ok(jobs::calls_verdict(&outcome).map(recorded))
     }
 
     /// The run's own `inputs` (a dispatch's), as a map.
@@ -176,18 +168,15 @@ impl ActionsService {
     /// `condition` of `job` against the server's contexts.
     async fn evaluate_condition(&self, run: &Run, job: &Job, template: &JobTemplate, condition: &str) -> Result<Decision, ServiceError> {
         let contexts = self.condition_contexts(run, job, template).await?;
-        let outcome = Condition::parse(condition).and_then(|condition| condition.evaluate(&contexts));
-        Ok(match outcome {
-            Ok(true) => Decision::Run,
-            Ok(false) => Decision::Skip,
-            Err(error) => {
-                tracing::warn!(run = run.id.0, job = %job.key, %error, "a job condition cannot be evaluated; the job fails");
-                Decision::Fail
-            }
-        })
+        let (verdict, error) = jobs::condition_verdict(condition, &contexts);
+        if let Some(error) = error {
+            tracing::warn!(run = run.id.0, job = %job.key, %error, "a job condition cannot be evaluated; the job fails");
+        }
+        Ok(recorded(verdict))
     }
 
-    /// The contexts a job-level `if:` may read (§12.4, second row of the table).
+    /// The contexts a job-level `if:` may read (`rbit_actions::scheduling::jobs::condition_contexts`),
+    /// read in the order the server always read them.
     async fn condition_contexts(&self, run: &Run, job: &Job, template: &JobTemplate) -> Result<ContextMap, ServiceError> {
         let mut github = match self.task_context(run, job).await? {
             Value::Object(github) => github,
@@ -199,52 +188,36 @@ impl ActionsService {
         // Actions: reusable workflows. A called job's inputs are its workflow's.
         let inputs = self.run_inputs(run).await?;
         let inputs = if template.calls.is_empty() {
-            Value::Object(inputs)
+            inputs
         } else {
-            Value::Object(self.call_inputs(run, template, &github, &vars, inputs).await?.unwrap_or_default())
+            self.call_inputs(run, template, &github, &vars, inputs).await?.unwrap_or_default()
         };
         let needs = self.needs(run, template).await?;
-        let status = ExprStatus::of_needs(needs.values().map(|needed| needed.result));
-        let needs: Map<String, Value> = needs
-            .into_iter()
-            .map(|(key, needed)| (key, json!({ "result": result_name(needed.result), "outputs": needed.outputs })))
-            .collect();
-        let strategy = template.strategy;
-        Ok(ContextMap::new()
-            .with("github", Value::Object(github))
-            .with("inputs", inputs)
-            .with("vars", Value::Object(vars))
-            .with("matrix", Value::Object(template.matrix.clone()))
-            .with(
-                "strategy",
-                json!({
-                    "fail-fast": strategy.fail_fast,
-                    "job-index": strategy.job_index,
-                    "job-total": strategy.job_total,
-                    "max-parallel": strategy.max_parallel.unwrap_or(strategy.job_total),
-                }),
-            )
-            .with("needs", Value::Object(needs))
-            .with_status(status))
+        Ok(jobs::condition_contexts(github, inputs, vars, template, needs))
     }
 
     /// Cancels the unfinished matrix siblings of every failed job of run `id` whose strategy
     /// keeps `fail-fast` on.
     async fn fail_fast(&self, id: rbit_core::actions::RunId) -> Result<Option<Settled>, ServiceError> {
         let store = self.ctx().database.actions_runs();
-        let jobs = store.jobs(id).await?;
-        let failed: BTreeSet<&str> = jobs.iter().filter(|job| job.status == Status::Failure).map(|job| job.key.as_str()).collect();
+        let all = store.jobs(id).await?;
+        let states: Vec<JobState<'_, usize>> = all
+            .iter()
+            .enumerate()
+            .map(|(index, job)| JobState { id: index, key: &job.key, failed: job.status == Status::Failure, done: job.status.is_done() })
+            .collect();
         let mut cancel = Vec::new();
-        for key in failed {
-            let siblings: Vec<&Job> = jobs.iter().filter(|job| job.key == key).collect();
-            let unfinished: Vec<JobId> = siblings.iter().filter(|job| !job.status.is_done()).map(|job| job.id).collect();
-            if unfinished.is_empty() {
-                continue;
-            }
-            let Some(template) = self.template(siblings[0]).await? else { continue };
-            if template.strategy.fail_fast && template.strategy.job_total > 1 {
-                tracing::info!(run = id.0, job = key, cancelled = unfinished.len(), "a matrix job failed; fail-fast cancels its siblings");
-                cancel.extend(unfinished);
+        for candidate in jobs::fail_fast_candidates(&states) {
+            let Some(template) = self.template(&all[candidate.first]).await? else { continue };
+            if jobs::fail_fast_applies(&template) {
+                let key = candidate.key;
+                tracing::info!(
+                    run = id.0,
+                    job = key,
+                    cancelled = candidate.unfinished.len(),
+                    "a matrix job failed; fail-fast cancels its siblings"
+                );
+                cancel.extend(candidate.unfinished.iter().map(|&index| all[index].id));
             }
         }
         Ok(store.cancel_jobs(id, &cancel, Timestamp::now()).await?)
@@ -272,12 +245,11 @@ impl ActionsService {
     }
 }
 
-/// `needs.<id>.result` as written in workflows.
-const fn result_name(result: JobResult) -> &'static str {
-    match result {
-        JobResult::Success => "success",
-        JobResult::Failure => "failure",
-        JobResult::Cancelled => "cancelled",
-        JobResult::Skipped => "skipped",
+/// A verdict as the store records it.
+const fn recorded(verdict: Verdict) -> Decision {
+    match verdict {
+        Verdict::Run => Decision::Run,
+        Verdict::Skip => Decision::Skip,
+        Verdict::Fail => Decision::Fail,
     }
 }
