@@ -24,6 +24,7 @@ import { checkIssuesRetirement } from "./issues-retirement.mjs";
 import { checkPullsRetirement } from "./pulls-retirement.mjs";
 import { checkReviewThreadsRetirement } from "./review-threads-retirement.mjs";
 import { checkNotificationsMailRetirement } from "./notifications-mail-retirement.mjs";
+import { checkAccessPolicyRetirement } from "./access-policy-retirement.mjs";
 import { checkCollaborationFeatures, checkCollaborationGraphs } from "./collaboration-features.mjs";
 import { checkUnifiedModelBoundary } from "./identity-model-boundary.mjs";
 import { checkInventoryCompileIsolation } from "./inventory-isolation.mjs";
@@ -196,6 +197,7 @@ export function check(root) {
     ...checkIdentityFeatures(metadata), ...checkIdentityRetirement(files), ...checkAccessRetirement(files), ...checkIdentityModelGraphs(root), ...checkIdentityTokenGraph(root), ...checkIdentitySessionGraph(root), ...checkInventoryGraph(root),
     ...checkProtectionRetirement(files),
     ...checkCollaboratorsRetirement(files),
+    ...checkAccessPolicyRetirement(files),
     ...checkCollaborationFeatures(metadata), ...checkCollaborationGraphs(root),
     ...checkRepositoryTransferRetirement(files),
     ...checkRepositoryForksRetirement(files),
