@@ -26,8 +26,6 @@ pub trait AdministrationRepository: Sync {
 
     fn user_id(user: &Self::User) -> Self::Id;
     fn user_name(user: &Self::User) -> &str;
-    /// `owner/name`.
-    fn repository_name(repo: &Self::Repository) -> String;
 
     fn list_users(&self, filter: ListFilter<'_>) -> impl Future<Output = Result<Listing<Self::User>, Self::Error>> + Send;
     fn find_user(&self, id: Self::Id) -> impl Future<Output = Result<Option<Self::User>, Self::Error>> + Send;
@@ -42,6 +40,4 @@ pub trait AdministrationRepository: Sync {
     fn list_organizations(&self, filter: ListFilter<'_>) -> impl Future<Output = Result<Listing<Self::Organization>, Self::Error>> + Send;
     fn list_repositories(&self, filter: ListFilter<'_>) -> impl Future<Output = Result<Listing<Self::Repository>, Self::Error>> + Send;
     fn find_repository(&self, id: Self::RepoId) -> impl Future<Output = Result<Option<Self::Repository>, Self::Error>> + Send;
-    /// Whether the repository's metadata was deleted.
-    fn delete_repository(&self, id: Self::RepoId) -> impl Future<Output = Result<bool, Self::Error>> + Send;
 }

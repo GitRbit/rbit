@@ -103,19 +103,6 @@ impl<'a, P: AdministrationRepository> Administration<'a, P> {
         require_site_admin::<P::Error, _>(actor)?;
         self.port.find_repository(id).await?.ok_or(AccessError::NotFound)
     }
-
-    /// Deletes a repository's metadata; `confirmation` must repeat `owner/name` exactly.
-    /// The caller removes it from disk.
-    pub async fn delete_repository(&self, actor: &Actor<P::Id>, id: P::RepoId, confirmation: &str) -> Outcome<P::Repository, P> {
-        let repo = self.repository(actor, id).await?;
-        if confirmation.trim() != P::repository_name(&repo) {
-            return Err(invalid("type the repository's full name exactly to confirm".to_owned()));
-        }
-        if !self.port.delete_repository(id).await? {
-            return Err(AccessError::NotFound);
-        }
-        Ok(repo)
-    }
 }
 
 fn invalid<E>(message: String) -> AccessError<E> {

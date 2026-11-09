@@ -27,10 +27,6 @@ impl AdministrationRepository for AdminStore {
         user.user.name().as_str()
     }
 
-    fn repository_name(repo: &OwnedRepository) -> String {
-        repo.full_name()
-    }
-
     fn list_users(&self, filter: ListFilter<'_>) -> impl Future<Output = Result<Listing<UserRecord>, StorageError>> + Send {
         AdminStore::list_users(self, filter)
     }
@@ -69,9 +65,5 @@ impl AdministrationRepository for AdminStore {
 
     fn find_repository(&self, id: RepoId) -> impl Future<Output = Result<Option<OwnedRepository>, StorageError>> + Send {
         AdminStore::find_repository(self, id)
-    }
-
-    fn delete_repository(&self, id: RepoId) -> impl Future<Output = Result<bool, StorageError>> + Send {
-        AdminStore::delete_repository(self, id)
     }
 }

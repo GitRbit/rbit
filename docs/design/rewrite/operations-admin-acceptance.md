@@ -32,8 +32,11 @@ monitoring dashboard and graceful restart are genuinely server-owned. They move 
 
 - `Administration` over the `AdministrationRepository` port: site administrators only;
   no demoting, suspending or deleting oneself; the last-administrator refusal message;
-  exact username and `owner/name` confirmations; the sole-owner organisation refusal.
-  Deleting a user returns the repositories the caller must remove from disk and announce.
+  the exact username confirmation; the sole-owner organisation refusal. Deleting a user
+  returns the repositories the caller must remove from disk and announce. Repository
+  deletion (the `owner/name` confirmation and metadata-first order) stays with
+  `rbit_repositories::settings::AdminRepositoryDeletion`; `AdminService` reaches it after
+  `Administration::repository` has checked the administrator and loaded the repository.
 - `ListQuery`, `Paged`, `Listing`, `ListFilter`, `PAGE_SIZE` and `MAX_SEARCH_LEN`: search
   trimming and capping, 1-based pages and page arithmetic. `rbit_services::admin` and
   `rbit_storage::sqlite::admin` re-export them at their old paths.

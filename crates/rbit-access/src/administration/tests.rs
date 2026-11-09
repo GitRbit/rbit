@@ -49,9 +49,6 @@ impl AdministrationRepository for Store {
     fn user_name(user: &u32) -> &str {
         ["", "u1", "u2", "u3", "u4", "u5"][usize::try_from(*user).unwrap()]
     }
-    fn repository_name(_: &u32) -> String {
-        "alice/rocket".to_owned()
-    }
     async fn list_users(&self, filter: ListFilter<'_>) -> Result<Listing<u32>, &'static str> {
         Ok(Listing { items: vec![u32::try_from(filter.offset).unwrap()], total: 61 })
     }
@@ -82,10 +79,6 @@ impl AdministrationRepository for Store {
     async fn find_repository(&self, id: u32) -> Result<Option<u32>, &'static str> {
         Ok((id == 7).then_some(id))
     }
-    async fn delete_repository(&self, id: u32) -> Result<bool, &'static str> {
-        self.writes.lock().unwrap().push("delete_repository");
-        Ok(id == 7)
-    }
 }
 
 fn admin(id: u32) -> Actor<u32> {
@@ -106,7 +99,7 @@ fn only_site_administrators_administer() {
     let user = Actor { id: ALICE, site_admin: false };
     assert!(matches!(ready(rules.users(&user, &ListQuery::default())), Err(AccessError::Forbidden)));
     assert!(matches!(ready(rules.set_admin(&user, ALICE, true)), Err(AccessError::Forbidden)));
-    assert!(matches!(ready(rules.delete_repository(&user, 7, "alice/rocket")), Err(AccessError::Forbidden)));
+    assert!(matches!(ready(rules.repository(&user, 7)), Err(AccessError::Forbidden)));
     assert!(matches!(ready(rules.user(&admin(ROOT), 9)), Err(AccessError::NotFound)));
     assert_eq!(*store.writes.lock().unwrap(), Vec::<&str>::new(), "refused actors never reach a write");
 }
@@ -137,9 +130,6 @@ fn deletions_need_exact_confirmation_and_no_orphaned_organisations() {
     let free = Store::new(&[ROOT]);
     let deleted = ready(Administration::new(&free).delete_user(&admin(ROOT), ALICE, "u3")).unwrap();
     assert_eq!((deleted.user, deleted.repositories), (ALICE, vec![(7, "rocket".to_owned())]));
-    let refused = message(ready(rules.delete_repository(&admin(ROOT), 7, "alice/Rocket")));
-    assert_eq!(refused, "type the repository's full name exactly to confirm");
-    assert_eq!(ready(rules.delete_repository(&admin(ROOT), 7, " alice/rocket ")).unwrap(), 7);
 }
 
 #[test]
