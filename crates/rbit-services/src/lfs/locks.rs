@@ -19,8 +19,8 @@ use rbit_storage::{StorageError, sqlite::lfs::LockFilter};
 use super::LfsService;
 use crate::{RepoContext, ServiceError};
 
-/// Locks per page when the client does not ask for fewer.
-pub const MAX_LOCKS_PER_PAGE: u32 = 100;
+pub use rbit_repositories::lfs::MAX_LOCKS_PER_PAGE;
+use rbit_repositories::lfs::{self as rules, LockIdFilter};
 
 /// The query parameters of `GET …/locks`, exactly as sent.
 #[derive(Debug, Clone, Default)]
@@ -55,35 +55,25 @@ pub enum LockCreated {
 }
 
 fn page_size(limit: Option<u32>) -> u32 {
-    limit.unwrap_or(MAX_LOCKS_PER_PAGE).clamp(1, MAX_LOCKS_PER_PAGE)
+    rules::page_size(limit)
 }
 
 fn parse_cursor(cursor: Option<&str>) -> Result<Option<LfsLockId>, ServiceError> {
-    match cursor.filter(|c| !c.is_empty()) {
-        None => Ok(None),
-        Some(cursor) => {
-            cursor.parse().map(|id| Some(LfsLockId(id))).map_err(|_| ServiceError::Invalid("the cursor is not valid".to_owned()))
-        }
-    }
+    Ok(rules::parse_cursor(cursor).map_err(ServiceError::Invalid)?.map(LfsLockId))
 }
 
 /// The user who may change locks: write access and an account.
 fn locker<'a>(repo: &RepoContext, user: Option<&'a User>) -> Result<&'a User, ServiceError> {
-    match user {
-        Some(user) if repo.access.can_write() => Ok(user),
-        _ => Err(ServiceError::Forbidden),
-    }
+    rules::locker(repo.access.can_write(), user).ok_or(ServiceError::Forbidden)
 }
 
 impl LfsService {
     /// One page of `repo`'s locks matching `query`. A malformed lock id matches nothing.
     pub async fn list_locks(&self, repo: &RepoContext, query: &LockQuery) -> Result<LockPage, ServiceError> {
-        let id = match query.id.as_deref().filter(|id| !id.is_empty()) {
-            None => None,
-            Some(id) => match id.parse() {
-                Ok(id) => Some(LfsLockId(id)),
-                Err(_) => return Ok(LockPage { locks: Vec::new(), next_cursor: None }),
-            },
+        let id = match rules::list_lock_id(query.id.as_deref()) {
+            LockIdFilter::Any => None,
+            LockIdFilter::Id(id) => Some(LfsLockId(id)),
+            LockIdFilter::Malformed => return Ok(LockPage { locks: Vec::new(), next_cursor: None }),
         };
         let limit = page_size(query.limit);
         let filter = LockFilter {
@@ -142,7 +132,7 @@ impl LfsService {
         let id = id.parse().map(LfsLockId).map_err(|_| ServiceError::NotFound)?;
         let repo_id = repo.repo.repo.id;
         let lock = self.db().find_lock(repo_id, id).await?.ok_or(ServiceError::NotFound)?;
-        if lock.owner.id != user.id() && !(force && repo.access.can_admin()) {
+        if !rules::may_unlock(lock.owner.id, user, force, repo.access.can_admin()) {
             return Err(ServiceError::Forbidden);
         }
         if !self.db().delete_lock(repo_id, id).await? {
@@ -155,12 +145,7 @@ impl LfsService {
 
 /// Trims the one extra lock fetched beyond `limit` and returns the cursor for the next page.
 fn next_cursor(locks: &mut Vec<LfsLock>, limit: u32) -> Option<String> {
-    let limit = usize::try_from(limit).unwrap_or(usize::MAX);
-    if locks.len() <= limit {
-        return None;
-    }
-    locks.truncate(limit);
-    locks.last().map(|lock| lock.id.0.to_string())
+    rules::next_cursor(locks, limit, |lock| lock.id.0)
 }
 
 #[cfg(test)]

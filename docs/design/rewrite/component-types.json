@@ -40,6 +40,7 @@
         "lib::forks::effects::ForkEffects",
         "lib::edits::EditView",
         "lib::admin::repository_deletion::DeletionEffects",
+        "lib::lfs::batch_view::BatchView",
         "lib::forks::reading::ParentAccess",
         "lib::external_auth::original::OriginalExternalSignIn",
         "lib::external_auth::original::Completion",

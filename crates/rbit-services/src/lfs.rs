@@ -37,6 +37,7 @@
 //! repository has linked for [`ORPHAN_GRACE`] ([`LfsService::prune_orphans`]). Deleting a
 //! repository unlinks its objects (the links cascade).
 
+mod batch_view;
 pub mod locks;
 pub mod tokens;
 
@@ -57,7 +58,10 @@ use rbit_core::{
     lfs::{LfsOid, LfsOperation},
     repository::OwnedRepository,
 };
-use rbit_repositories::aliases::RepositoryAliases;
+use rbit_repositories::{
+    aliases::RepositoryAliases,
+    lfs::{self as rules, BatchItem, LfsRefusal, ObjectDecision, Verification},
+};
 use rbit_storage::sqlite::lfs::LfsStore;
 use tokio::{
     io::AsyncRead,
@@ -76,8 +80,7 @@ use crate::{DomainEvent, RepoContext, ServiceContext, ServiceError, releases::hu
 /// How long an object no repository links any more is kept before maintenance removes it
 /// (a client that was told an object exists has this long to fetch it).
 pub const ORPHAN_GRACE: Duration = Duration::from_hours(24);
-/// Most objects one batch request may name.
-pub const MAX_BATCH_OBJECTS: usize = 1000;
+pub use rbit_repositories::lfs::MAX_BATCH_OBJECTS;
 /// How long [`LfsService::shutdown`] waits for background work.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 /// Interrupted uploads older than this are swept at start-up.
@@ -277,49 +280,41 @@ impl LfsService {
         operation: LfsOperation,
         objects: &[BatchRequestObject],
     ) -> Result<Vec<BatchObject>, ServiceError> {
-        if operation.is_write() {
-            if !repo.access.can_write() {
-                return Err(ServiceError::Forbidden);
-            }
-            repo.ensure_writable()?;
-        }
-        if objects.len() > MAX_BATCH_OBJECTS {
-            return Err(ServiceError::Invalid(format!("a batch can name at most {MAX_BATCH_OBJECTS} objects")));
-        }
-        let valid: Vec<LfsOid> = objects.iter().filter_map(|object| LfsOid::parse(&object.oid).ok()).collect();
-        let mut linked = self.db().linked_objects(repo.repo.repo.id, &valid).await?;
-        let mut network = None;
-        let max = self.max_object_bytes();
-
+        let write = operation.is_write();
+        rules::admit_transfer(write, repo.access.can_write(), repo.repo.repo.is_archived(), objects.len()).map_err(|r| self.refused(r))?;
+        let items: Vec<BatchItem<'_>> = objects.iter().map(|object| BatchItem { oid: &object.oid, size: object.size }).collect();
+        let view = batch_view::BatchView { service: self, repo, viewer, network: std::sync::Mutex::new(None) };
+        let decisions = rules::decide_batch(&view, write, &items, self.max_object_bytes()).await?;
         let mut answers = Vec::with_capacity(objects.len());
-        for object in objects {
-            let mut response_size = object.size;
-            let outcome = match (LfsOid::parse(&object.oid), u64::try_from(object.size)) {
-                (Err(error), _) => BatchOutcome::Invalid(error.to_string()),
-                (_, Err(_)) => BatchOutcome::Invalid("the size cannot be negative".to_owned()),
-                (Ok(oid), Ok(size)) => {
-                    if !linked.contains_key(&oid)
-                        && let Some(found) = self.through_network(repo, viewer, &oid, &mut network).await?
-                    {
-                        linked.insert(oid.clone(), found);
-                    }
-                    match (operation, linked.get(&oid).copied()) {
-                        (LfsOperation::Download, Some(stored)) => {
-                            response_size = i64::try_from(stored).map_err(ServiceError::internal)?;
-                            BatchOutcome::Download(self.issue(repo, subject, operation, Some((&oid, stored))))
-                        }
-                        (LfsOperation::Download, None) => BatchOutcome::Missing,
-                        (LfsOperation::Upload, Some(stored)) if stored == size && self.bytes_present(&oid).await => BatchOutcome::Present,
-                        (LfsOperation::Upload, _) if size > max => {
-                            BatchOutcome::TooLarge(format!("objects can be at most {}", human_bytes(max)))
-                        }
-                        (LfsOperation::Upload, _) => BatchOutcome::Upload(self.issue(repo, subject, operation, Some((&oid, size)))),
-                    }
+        for (object, decision) in objects.iter().zip(decisions) {
+            let mut size = object.size;
+            let outcome = match decision {
+                ObjectDecision::Invalid(message) => BatchOutcome::Invalid(message),
+                ObjectDecision::Download { oid, stored } => {
+                    size = i64::try_from(stored).map_err(ServiceError::internal)?;
+                    BatchOutcome::Download(self.issue(repo, subject, operation, Some((&oid, stored))))
                 }
+                ObjectDecision::Missing => BatchOutcome::Missing,
+                ObjectDecision::Present => BatchOutcome::Present,
+                ObjectDecision::TooLarge => BatchOutcome::TooLarge(self.too_large()),
+                ObjectDecision::Upload { oid, size } => BatchOutcome::Upload(self.issue(repo, subject, operation, Some((&oid, size)))),
             };
-            answers.push(BatchObject { oid: object.oid.clone(), size: response_size, outcome });
+            answers.push(BatchObject { oid: object.oid.clone(), size, outcome });
         }
         Ok(answers)
+    }
+
+    fn too_large(&self) -> String {
+        format!("objects can be at most {}", human_bytes(self.max_object_bytes()))
+    }
+
+    fn refused(&self, refusal: LfsRefusal) -> ServiceError {
+        match refusal {
+            LfsRefusal::Forbidden => ServiceError::Forbidden,
+            LfsRefusal::Archived => ServiceError::Archived,
+            LfsRefusal::Invalid(message) => ServiceError::Invalid(message),
+            LfsRefusal::TooLarge => ServiceError::Invalid(self.too_large()),
+        }
     }
 
     /// Whether the bytes of `oid` are on disk (a row without bytes needs a new upload).
@@ -372,14 +367,8 @@ impl LfsService {
         size: u64,
         mut body: impl AsyncRead + Unpin + Send,
     ) -> Result<(), ServiceError> {
-        if !repo.access.can_write() {
-            return Err(ServiceError::Forbidden);
-        }
-        repo.ensure_writable()?;
-        let max = self.max_object_bytes();
-        if size > max {
-            return Err(ServiceError::Invalid(format!("objects can be at most {}", human_bytes(max))));
-        }
+        rules::admit_store(repo.access.can_write(), repo.repo.repo.is_archived(), size, self.max_object_bytes())
+            .map_err(|refusal| self.refused(refusal))?;
         let tmp_dir = self.tmp_dir();
         tokio::fs::create_dir_all(&tmp_dir).await.map_err(ServiceError::internal)?;
         let tmp = tmp_dir.join(format!("{}.part", random_hex()?));
@@ -390,13 +379,8 @@ impl LfsService {
                 return Err(ServiceError::internal(error));
             }
         };
-        let refusal = match received.as_ref() {
-            None => Some(format!("the upload is larger than the announced {size} bytes")),
-            Some(upload) if upload.size != size => Some(format!("received {} bytes, but the object has {size}", upload.size)),
-            Some(upload) if LfsOid::from_digest(upload.digest) != *oid => Some("the content does not match the object id".to_owned()),
-            Some(_) => None,
-        };
-        if let Some(refusal) = refusal {
+        let checked = received.as_ref().map(|upload| (upload.size, LfsOid::from_digest(upload.digest) == *oid));
+        if let Some(refusal) = rules::upload_refusal(size, checked) {
             remove_quietly(&tmp).await;
             return Err(ServiceError::Invalid(refusal));
         }
@@ -442,10 +426,11 @@ impl LfsService {
 
     /// The basic transfer's verify step: `oid` is linked to `repo` with `size` bytes.
     pub async fn verify(&self, repo: &RepoContext, oid: &LfsOid, size: u64) -> Result<(), ServiceError> {
-        match self.db().linked_objects(repo.repo.repo.id, std::slice::from_ref(oid)).await?.get(oid) {
-            Some(stored) if *stored == size => Ok(()),
-            Some(stored) => Err(ServiceError::Invalid(format!("the object has {stored} bytes, not {size}"))),
-            None => Err(ServiceError::NotFound),
+        let stored = self.db().linked_objects(repo.repo.repo.id, std::slice::from_ref(oid)).await?.get(oid).copied();
+        match rules::verify_stored(stored, size) {
+            Verification::Verified => Ok(()),
+            Verification::Mismatch(message) => Err(ServiceError::Invalid(message)),
+            Verification::Missing => Err(ServiceError::NotFound),
         }
     }
 
