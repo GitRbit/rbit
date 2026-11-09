@@ -11,7 +11,7 @@
 //!   strictly parsed `owner/repo[.git]` path, and Git LFS's `git-lfs-authenticate`
 //!   (a signed header for the HTTP LFS API). No shell is ever started, no PTY, X11,
 //!   agent or port forwarding is granted; `ssh git@host` just prints a greeting.
-//! * **Authorisation**: identical to Git over HTTP. User keys go through
+//! * **Authorisation** (`access`, per command): identical to Git over HTTP. User keys go through
 //!   `RepositoryService::open`; deploy keys reach only their repository, read-only
 //!   unless they were allowed to write. The repository path on disk always comes from
 //!   the database (`RepoContext::disk_path`), never from the command.
@@ -24,6 +24,7 @@
 //!
 //! Start it with [`start`]; stop it with [`RunningSshServer::shutdown`].
 
+mod access;
 pub mod command;
 pub mod host_key;
 mod server;

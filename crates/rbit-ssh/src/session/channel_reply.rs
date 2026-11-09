@@ -73,7 +73,7 @@ pub(super) fn finish_with_git_error(
         let PendingChannel { channel, _slot, .. } = pending;
         let (_input, writer) = channel.split();
         let mut stdout = writer.make_writer();
-        let packet = rbit_transport::pkt_line::encode(&format!("ERR {message}\n"));
+        let packet = rbit_transport::pkt_line::error(&message);
         let _ = stdout.write_all(&packet).await;
         let _ = stdout.flush().await;
         let _ = writer.exit_status(FAILURE).await;

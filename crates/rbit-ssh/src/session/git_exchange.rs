@@ -1,11 +1,15 @@
 //! Owned Git exchanges retain admission slots through process and effect cleanup.
 
-use super::{FAILURE, GitCommand, PendingChannel, STDERR, internal};
-use crate::server::Shared;
+use super::{FAILURE, GitCommand, PendingChannel, STDERR};
+use crate::{
+    access::{internal, read_only_deploy_key},
+    server::Shared,
+};
 use rbit_services::{ConcurrencySlot, PendingPush, RepoContext, protection::PushActor, ssh_keys::SshIdentity};
 use rbit_transport::{
     ProcessControl, ProcessIo, ReceiveOptions, Service, TransportError,
     receive::{self, CommandLimits, Intercept},
+    refused_push::{PushRefusal, push_refusal},
 };
 use russh::ChannelMsg;
 use std::{
@@ -185,22 +189,25 @@ where
                 }
             };
             if deploy_key && !ctx.access.can_write() {
-                let reason = format!("this deploy key is read-only; it cannot push to {}", ctx.repo.full_name());
+                let reason = read_only_deploy_key(&ctx.repo.full_name());
                 for refusal in &mut verdict.refusals {
                     refusal.reason.clone_from(&reason);
                 }
             }
             if verdict.is_refused() {
                 tokio::select! { error = control.stopped() => return Err(error), () = receive::drain(input) => {} };
-                let report = receive::refusal(&commands, &verdict.refusals);
-                if report.is_empty() {
-                    let message = receive::refusal_message(&verdict.refusals).replace('\n', "\r\n");
-                    controlled_io(control, stderr.write_all(format!("ERROR: push declined\r\n{message}").as_bytes())).await?;
-                    return refused(FAILURE);
+                match push_refusal(&commands, &verdict.refusals) {
+                    PushRefusal::Explanation(message) => {
+                        let message = message.replace('\n', "\r\n");
+                        controlled_io(control, stderr.write_all(format!("ERROR: push declined\r\n{message}").as_bytes())).await?;
+                        return refused(FAILURE);
+                    }
+                    PushRefusal::Report(report) => {
+                        controlled_io(control, stdout.write_all(&report)).await?;
+                        // Like a declining pre-receive hook: git reports and exits successfully.
+                        return refused(0);
+                    }
                 }
-                controlled_io(control, stdout.write_all(&report)).await?;
-                // Like a declining pre-receive hook: git reports and exits successfully.
-                return refused(0);
             }
             (Box::new(input), ReceiveOptions { deny_non_fast_forwards: verdict.deny_non_fast_forwards })
         }

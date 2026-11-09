@@ -9,7 +9,7 @@
 //! Fetches run `git upload-pack` interactively. Pushes run in two steps, like smart HTTP:
 //! the server sends the ref advertisement itself, the push gate reads the client's
 //! command list and asks `ProtectionService::check_push` (after the access, mirror and
-//! old-name checks of [`Connection::authorize`]), and only then does
+//! old-name checks of [`crate::access::authorize`]), and only then does
 //! `git receive-pack --stateless-rpc` run on the replayed input.
 //!
 //! `git-lfs-authenticate <repo> <upload|download>` (Git LFS) prints the repository's LFS
@@ -28,7 +28,7 @@ use std::{
     },
 };
 
-use rbit_services::{RepoContext, ServiceError, ThrottleScope, lfs::TokenSubject, ssh_keys::SshIdentity};
+use rbit_services::{ThrottleScope, lfs::TokenSubject, ssh_keys::SshIdentity};
 use rbit_transport::is_safe_protocol_header;
 use russh::{
     Channel, ChannelId, ChannelOpenFailure, Pty,
@@ -38,6 +38,7 @@ use russh::{
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::{
+    access::{self, KEY_NO_LONGER_AUTHORIZED, internal, same_key_holder},
     command::{self, GitCommand, LfsAuthenticate},
     server::Shared,
 };
@@ -115,48 +116,10 @@ impl Connection {
     /// and load current account permissions before each one; key deletion and admin
     /// demotion must also affect already connected clients.
     async fn current_identity(&self, previous: &SshIdentity) -> Result<SshIdentity, String> {
-        let refused = || "this SSH key is no longer authorized; reconnect with a valid key".to_owned();
+        let refused = || KEY_NO_LONGER_AUTHORIZED.to_owned();
         let fingerprint = self.fingerprint.as_deref().ok_or_else(refused)?;
         let current = self.shared.services.ssh_keys.find_by_fingerprint(fingerprint).await.map_err(|error| internal(&error))?;
         current.filter(|current| same_key_holder(previous, current)).ok_or_else(refused)
-    }
-
-    /// Opens the repository named by `command` with exactly the access HTTP would grant.
-    /// The error is the message shown to the client.
-    async fn authorize(&self, identity: &SshIdentity, command: &GitCommand, check_write_access: bool) -> Result<RepoContext, String> {
-        let services = &self.shared.services;
-        let full_name = command.full_name();
-        let opened = match identity {
-            SshIdentity::User { user, .. } => {
-                // The connection may have been authenticated before a suspension.
-                match services.accounts.is_suspended(user.id()).await {
-                    Ok(false) => {}
-                    Ok(true) => return Err("this account has been suspended".to_owned()),
-                    Err(error) => return Err(internal(&error)),
-                }
-                services.repositories.open_following_renames(Some(user), &command.owner, &command.repo).await
-            }
-            SshIdentity::Deploy { .. } => services.ssh_keys.open_for_deploy_key(identity, &command.owner, &command.repo).await,
-        };
-        let ctx = match opened {
-            Ok(ctx) => ctx,
-            Err(ServiceError::NotFound) => return Err(format!("repository {full_name} not found, or you do not have access to it")),
-            Err(error) => return Err(internal(&error)),
-        };
-        if check_write_access && command.service.is_write() && !ctx.access.can_write() {
-            return Err(match identity {
-                SshIdentity::Deploy { .. } => format!("this deploy key is read-only; it cannot push to {full_name}"),
-                SshIdentity::User { .. } => format!("you do not have permission to push to {full_name}"),
-            });
-        }
-        if command.service.is_write() {
-            match services.mirrors.is_mirror(ctx.repo.repo.id).await {
-                Ok(false) => {}
-                Ok(true) => return Err(rbit_services::mirrors::PUSH_REFUSED.to_owned()),
-                Err(error) => return Err(internal(&error)),
-            }
-        }
-        Ok(ctx)
     }
 
     /// Answers `git-lfs-authenticate`: `{href, header, expires_in}` for the HTTP LFS API,
@@ -166,7 +129,7 @@ impl Connection {
         if !lfs.enabled() {
             return Err("Git LFS is not enabled on this server".to_owned());
         }
-        let ctx = self.authorize(identity, &request.as_git_command(), true).await?;
+        let ctx = access::authorize(&self.shared.services, identity, &request.as_git_command(), true).await?;
         let subject = match identity {
             SshIdentity::User { user, .. } => TokenSubject::User(user.id()),
             SshIdentity::Deploy { key, .. } => TokenSubject::DeployKey(*key),
@@ -198,12 +161,6 @@ impl Connection {
             None => format!("{site} does not provide shell access.\r\n"),
         }
     }
-}
-
-/// Logs an unexpected error and returns the generic message shown to the client.
-fn internal(error: &ServiceError) -> String {
-    tracing::error!(%error, "SSH request failed");
-    "internal error; please try again later".to_owned()
 }
 
 impl Handler for Connection {
@@ -363,7 +320,7 @@ impl Handler for Connection {
         };
         // Let receive-pack read the command list before it refuses missing write access.
         // Some Git clients wait forever when an SSH server closes before advertising refs.
-        let ctx = match self.authorize(&identity, &command, false).await {
+        let ctx = match access::authorize(&self.shared.services, &identity, &command, false).await {
             Ok(ctx) => ctx,
             Err(message) => {
                 tracing::info!(peer = %self.peer, repo = %command.full_name(), service = %command.service, reason = %message, "SSH Git request refused");
@@ -381,17 +338,5 @@ impl Handler for Connection {
         session.channel_success(channel)?;
         let _ = self.shared.tasks.spawn(run_git(Arc::clone(&self.shared), identity, command, ctx, pending, process));
         Ok(())
-    }
-}
-
-/// A deleted key re-registered for another holder cannot turn an old authenticated
-/// connection into that holder's session.
-fn same_key_holder(previous: &SshIdentity, current: &SshIdentity) -> bool {
-    match (previous, current) {
-        (SshIdentity::User { key: old_key, user: old }, SshIdentity::User { key, user }) => old_key == key && old.id() == user.id(),
-        (SshIdentity::Deploy { key: old_key, repo: old, .. }, SshIdentity::Deploy { key, repo, .. }) => {
-            old_key == key && old.repo.id == repo.repo.id
-        }
-        _ => false,
     }
 }
