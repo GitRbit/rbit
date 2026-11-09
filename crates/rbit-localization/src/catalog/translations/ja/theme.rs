@@ -1,7 +1,9 @@
 //! Japanese (`ja`) entries for `catalog/theme.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 use crate::catalog::theme::ThemeMessage;
+use crate::catalog::theme::ThemeSentence;
 
 entries! { Ja:
     ThemeMessage => MessageWriter |text| {
@@ -28,7 +30,12 @@ entries! { Ja:
         ThemeMessage::Credit => text.literal("rbit に組み込み"),
         ThemeMessage::ThemeSingular => text.literal("テーマ"),
         ThemeMessage::ThemePlural => text.literal("テーマ"),
-        ThemeMessage::SearchPrefix => text.literal("検索"),
         ThemeMessage::OrApply => text.literal("または「適用」をクリック"),
+    }
+    ThemeSentence => RichWriter |text| {
+        ThemeSentence::Count { .. } => {
+            text.slot(0);
+            text.literal(" 個のテーマ");
+        }
     }
 }

@@ -1,7 +1,10 @@
 //! German (`de`) entries for `catalog/theme.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 use crate::catalog::theme::ThemeMessage;
+use crate::catalog::theme::ThemeSentence;
+use crate::plural::Plural;
 
 entries! { De:
     ThemeMessage => MessageWriter |text| {
@@ -28,7 +31,15 @@ entries! { De:
         ThemeMessage::Credit => text.literal("In rbit integriert"),
         ThemeMessage::ThemeSingular => text.literal("Design"),
         ThemeMessage::ThemePlural => text.literal("Designs"),
-        ThemeMessage::SearchPrefix => text.literal("Suchen in"),
         ThemeMessage::OrApply => text.literal("oder auf Übernehmen klicken"),
+    }
+    ThemeSentence => RichWriter |text| {
+        ThemeSentence::Count { count } => {
+            text.slot(0);
+            text.literal(match text.plural(count) {
+                Plural::One => " Design",
+                _ => " Designs",
+            });
+        }
     }
 }

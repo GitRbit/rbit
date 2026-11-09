@@ -1,6 +1,8 @@
 //! Spanish (`es`) entries for `catalog/settings/protection.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::protection::ProtectionSentence;
 use crate::catalog::settings::protection::{ProtectionMessage, ProtectionText, RuleBadge};
 use crate::plural::Plural;
 
@@ -9,10 +11,6 @@ entries! { Es:
         ProtectionMessage::TickToConfirm => text.literal("Marca la casilla para confirmar."),
         ProtectionMessage::Settings => text.literal("Configuración"),
         ProtectionMessage::Title => text.literal("Protección de ramas"),
-        ProtectionMessage::IntroLead => text.literal("Las reglas se aplican a cada envío a"),
-        ProtectionMessage::IntroTail => text.literal(
-            ", por HTTP y SSH, también a los administradores salvo que una regla les permita omitirla.",
-        ),
         ProtectionMessage::AddRule => text.literal("Añadir regla"),
         ProtectionMessage::Deleted => text.literal("Regla eliminada."),
         ProtectionMessage::Empty => text.literal("No hay ramas protegidas"),
@@ -140,5 +138,12 @@ entries! { Es:
         RuleBadge::StatusChecks => text.literal("Comprobaciones de estado"),
         RuleBadge::Restricted => text.literal("Restringida"),
         RuleBadge::AdminsBypass => text.literal("Los administradores pueden omitirla"),
+    }
+    ProtectionSentence => RichWriter |text| {
+        ProtectionSentence::Intro => {
+            text.literal("Las reglas se aplican a cada envío a ");
+            text.slot(0);
+            text.literal(", por HTTP y SSH, también a los administradores salvo que una regla les permita omitirla.");
+        }
     }
 }

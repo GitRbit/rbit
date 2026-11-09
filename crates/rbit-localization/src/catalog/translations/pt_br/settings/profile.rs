@@ -1,6 +1,8 @@
 //! Brazilian Portuguese (`pt-BR`) entries for `catalog/settings/profile.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::profile::GallerySentence;
 use crate::catalog::settings::profile::{
     AppearanceMessage, GalleryMessage, GalleryText, NotificationsMessage, NotificationsText, ProfileMessage,
 };
@@ -98,19 +100,23 @@ entries! { PtBr:
         GalleryMessage::BuiltIn => text.literal("Embutidos"),
         GalleryMessage::Classic => text.literal("rbit Classic"),
         GalleryMessage::Empty => text.literal("Nenhum tema corresponde à sua pesquisa."),
-        GalleryMessage::CreditLead => text.literal("Os temas tingidos são gerados a partir dos esquemas do"),
         GalleryMessage::CreditLink => text.literal("tinted-theming"),
-        GalleryMessage::CreditTail => {
-            text.literal("base16 e base24 (MIT); passe o mouse sobre um tema para ver o autor.");
-        }
         GalleryMessage::Licence => text.literal("Licença e créditos"),
-        GalleryMessage::LicenceTail => text.literal("."),
     }
     GalleryText => MessageWriter |text| {
         GalleryText::SearchCount(total) => {
             text.literal("Pesquisar ");
             text.number(total);
             text.literal(" temas");
+        }
+    }
+    GallerySentence => RichWriter |text| {
+        GallerySentence::Credit => {
+            text.literal("Os temas tingidos são gerados a partir dos esquemas do ");
+            text.slot(0);
+            text.literal(" base16 e base24 (MIT); passe o mouse sobre um tema para ver o autor. ");
+            text.slot(1);
+            text.literal(".");
         }
     }
 }

@@ -1,7 +1,9 @@
 //! French (`fr`) entries for `catalog/shell/recovery.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 use crate::catalog::shell::recovery::RecoveryMessage;
+use crate::catalog::shell::recovery::RecoverySentence;
 
 entries! { Fr:
     RecoveryMessage<'a> => MessageWriter |text| {
@@ -22,7 +24,6 @@ entries! { Fr:
         RecoveryMessage::TryAgainEnd => text.literal("."),
         RecoveryMessage::TryAgain => text.literal("réessayez"),
         RecoveryMessage::SendResetLink => text.literal("Envoyer le lien de réinitialisation"),
-        RecoveryMessage::RememberedIt => text.literal("Il vous est revenu\u{202f}?"),
         RecoveryMessage::RequestNewLink => text.literal("Demander un nouveau lien"),
         RecoveryMessage::NewLinkWithoutEmail => text.literal(
             "L’e-mail n’est pas disponible sur ce serveur\u{a0}: aucun nouveau lien ne peut donc être envoyé. Demandez à \
@@ -59,5 +60,11 @@ entries! { Fr:
         ),
         RecoveryMessage::GoToAccountSettings => text.literal("Accéder aux paramètres du compte"),
         RecoveryMessage::SignIn => text.literal("Se connecter"),
+    }
+    RecoverySentence => RichWriter |text| {
+        RecoverySentence::RememberedSignIn => {
+            text.literal("Il vous est revenu\u{202f}? ");
+            text.slot(0);
+        }
     }
 }

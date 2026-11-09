@@ -1,7 +1,10 @@
 //! Brazilian Portuguese (`pt-BR`) entries for `catalog/theme.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 use crate::catalog::theme::ThemeMessage;
+use crate::catalog::theme::ThemeSentence;
+use crate::plural::Plural;
 
 entries! { PtBr:
     ThemeMessage => MessageWriter |text| {
@@ -28,7 +31,15 @@ entries! { PtBr:
         ThemeMessage::Credit => text.literal("Integrado ao rbit"),
         ThemeMessage::ThemeSingular => text.literal("tema"),
         ThemeMessage::ThemePlural => text.literal("temas"),
-        ThemeMessage::SearchPrefix => text.literal("Pesquisar"),
         ThemeMessage::OrApply => text.literal("ou clique em Aplicar"),
+    }
+    ThemeSentence => RichWriter |text| {
+        ThemeSentence::Count { count } => {
+            text.slot(0);
+            text.literal(match text.plural(count) {
+                Plural::One => " tema",
+                _ => " temas",
+            });
+        }
     }
 }

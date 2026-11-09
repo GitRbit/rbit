@@ -1,7 +1,9 @@
 //! Simplified Chinese (`zh-Hans`) entries for `catalog/shell/recovery.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 use crate::catalog::shell::recovery::RecoveryMessage;
+use crate::catalog::shell::recovery::RecoverySentence;
 
 entries! { ZhHans:
     RecoveryMessage<'a> => MessageWriter |text| {
@@ -18,7 +20,6 @@ entries! { ZhHans:
         RecoveryMessage::TryAgainEnd => text.literal("。"),
         RecoveryMessage::TryAgain => text.literal("重试"),
         RecoveryMessage::SendResetLink => text.literal("发送重置链接"),
-        RecoveryMessage::RememberedIt => text.literal("想起来了？"),
         RecoveryMessage::RequestNewLink => text.literal("申请新链接"),
         RecoveryMessage::NewLinkWithoutEmail => {
             text.literal("此服务器无法发送邮件，因此不能发送新链接。请联系管理员为你设置新密码。");
@@ -52,5 +53,11 @@ entries! { ZhHans:
         }
         RecoveryMessage::GoToAccountSettings => text.literal("前往账户设置"),
         RecoveryMessage::SignIn => text.literal("登录"),
+    }
+    RecoverySentence => RichWriter |text| {
+        RecoverySentence::RememberedSignIn => {
+            text.literal("想起来了？");
+            text.slot(0);
+        }
     }
 }

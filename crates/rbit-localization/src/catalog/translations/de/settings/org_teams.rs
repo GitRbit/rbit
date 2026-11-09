@@ -1,6 +1,8 @@
 //! German (`de`) entries for `catalog/settings/org_teams.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::org_teams::TeamSentence;
 use crate::catalog::settings::org_teams::{TeamMessage, TeamText};
 use crate::plural::Plural;
 
@@ -13,9 +15,6 @@ entries! { De:
         ),
         TeamMessage::OneMember => text.literal("1 Mitglied"),
         TeamMessage::OneRepository => text.literal("1 Repository"),
-        TeamMessage::NameHintLead => text.literal("Buchstaben, Ziffern,"),
-        TeamMessage::NameHintAnd => text.literal("und"),
-        TeamMessage::NameHintTail => text.literal("; wird in der Adresse des Teams verwendet."),
         TeamMessage::CreateTeam => text.literal("Team erstellen"),
         TeamMessage::TeamSettings => text.literal("Team-Einstellungen"),
         TeamMessage::RenameHint => text.literal("Eine Umbenennung ändert die Adresse des Teams."),
@@ -81,6 +80,17 @@ entries! { De:
         TeamText::SettingsTitle(team) => {
             text.literal("Einstellungen · ");
             text.argument(team);
+        }
+    }
+    TeamSentence => RichWriter |text| {
+        TeamSentence::NameHint => {
+            text.literal("Buchstaben, Ziffern, ");
+            text.slot(0);
+            text.literal(", ");
+            text.slot(1);
+            text.literal(" und ");
+            text.slot(2);
+            text.literal("; wird in der Adresse des Teams verwendet.");
         }
     }
 }

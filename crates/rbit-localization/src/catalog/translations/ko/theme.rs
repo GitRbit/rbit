@@ -1,7 +1,9 @@
 //! Korean (`ko`) entries for `catalog/theme.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 use crate::catalog::theme::ThemeMessage;
+use crate::catalog::theme::ThemeSentence;
 
 entries! { Ko:
     ThemeMessage => MessageWriter |text| {
@@ -28,7 +30,13 @@ entries! { Ko:
         ThemeMessage::Credit => text.literal("rbit 기본 제공"),
         ThemeMessage::ThemeSingular => text.literal("테마"),
         ThemeMessage::ThemePlural => text.literal("테마"),
-        ThemeMessage::SearchPrefix => text.literal("검색:"),
         ThemeMessage::OrApply => text.literal("또는 적용 클릭"),
+    }
+    ThemeSentence => RichWriter |text| {
+        ThemeSentence::Count { .. } => {
+            text.literal("테마 ");
+            text.slot(0);
+            text.literal("개");
+        }
     }
 }

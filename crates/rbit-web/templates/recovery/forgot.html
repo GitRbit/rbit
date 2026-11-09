@@ -34,6 +34,7 @@
     {% endif %}
   </div>
 
-  <p class="auth-aside">{% call ui::text(page, rbit_localization::shell::recovery::RecoveryMessage::RememberedIt) %}{% endcall %} <a href="/login" class="link">{% call ui::text(page, rbit_localization::shell::recovery::RecoveryMessage::SignIn) %}{% endcall %}</a></p>
+  {% let remembered = rbit_localization::shell::recovery::RecoverySentence::RememberedSignIn.rich(page.locale) %}
+  <p class="auth-aside"{% if remembered.fallback() %} lang="en"{% endif %}>{% for part in remembered.parts() %}{% if part.is_slot(0) %}<a href="/login" class="link">{% call ui::text(page, rbit_localization::shell::recovery::RecoveryMessage::SignIn) %}{% endcall %}</a>{% else %}{{ part.text() }}{% endif %}{% endfor %}</p>
 </section>
 {% endblock %}

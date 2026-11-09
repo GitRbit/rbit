@@ -1,6 +1,8 @@
 //! Russian (`ru`) entries for `catalog/settings/org_teams.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::org_teams::TeamSentence;
 use crate::catalog::settings::org_teams::{TeamMessage, TeamText};
 use crate::plural::Plural;
 
@@ -11,9 +13,6 @@ entries! { Ru:
         TeamMessage::NoTeamsText => text.literal("Команды объединяют участников в группы и дают каждой группе свой доступ к репозиториям."),
         TeamMessage::OneMember => text.literal("1 участник"),
         TeamMessage::OneRepository => text.literal("1 репозиторий"),
-        TeamMessage::NameHintLead => text.literal("Буквы, цифры,"),
-        TeamMessage::NameHintAnd => text.literal("и"),
-        TeamMessage::NameHintTail => text.literal("; используется в адресе команды."),
         TeamMessage::CreateTeam => text.literal("Создать команду"),
         TeamMessage::TeamSettings => text.literal("Настройки команды"),
         TeamMessage::RenameHint => text.literal("Переименование меняет адрес команды."),
@@ -72,6 +71,17 @@ entries! { Ru:
         TeamText::SettingsTitle(team) => {
             text.literal("Настройки · ");
             text.argument(team);
+        }
+    }
+    TeamSentence => RichWriter |text| {
+        TeamSentence::NameHint => {
+            text.literal("Буквы, цифры, ");
+            text.slot(0);
+            text.literal(", ");
+            text.slot(1);
+            text.literal(" и ");
+            text.slot(2);
+            text.literal("; используется в адресе команды.");
         }
     }
 }

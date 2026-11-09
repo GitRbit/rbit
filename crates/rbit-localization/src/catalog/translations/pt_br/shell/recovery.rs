@@ -1,7 +1,9 @@
 //! Brazilian Portuguese (`pt-BR`) entries for `catalog/shell/recovery.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 use crate::catalog::shell::recovery::RecoveryMessage;
+use crate::catalog::shell::recovery::RecoverySentence;
 
 entries! { PtBr:
     RecoveryMessage<'a> => MessageWriter |text| {
@@ -28,7 +30,6 @@ entries! { PtBr:
         RecoveryMessage::TryAgainEnd => text.literal("."),
         RecoveryMessage::TryAgain => text.literal("tente novamente"),
         RecoveryMessage::SendResetLink => text.literal("Enviar link de redefinição"),
-        RecoveryMessage::RememberedIt => text.literal("Lembrou?"),
         RecoveryMessage::RequestNewLink => text.literal("Solicitar um novo link"),
         RecoveryMessage::NewLinkWithoutEmail => {
             text.literal(
@@ -75,5 +76,11 @@ entries! { PtBr:
         }
         RecoveryMessage::GoToAccountSettings => text.literal("Ir para as configurações da conta"),
         RecoveryMessage::SignIn => text.literal("Entrar"),
+    }
+    RecoverySentence => RichWriter |text| {
+        RecoverySentence::RememberedSignIn => {
+            text.literal("Lembrou? ");
+            text.slot(0);
+        }
     }
 }

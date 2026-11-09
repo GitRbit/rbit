@@ -1,6 +1,8 @@
 //! Russian (`ru`) entries for `catalog/settings/protection.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::protection::ProtectionSentence;
 use crate::catalog::settings::protection::{ProtectionMessage, ProtectionText, RuleBadge};
 use crate::plural::Plural;
 
@@ -9,8 +11,6 @@ entries! { Ru:
         ProtectionMessage::TickToConfirm => text.literal("Поставьте флажок для подтверждения."),
         ProtectionMessage::Settings => text.literal("Настройки"),
         ProtectionMessage::Title => text.literal("Защита веток"),
-        ProtectionMessage::IntroLead => text.literal("Правила применяются к каждой отправке в"),
-        ProtectionMessage::IntroTail => text.literal(" по HTTP и SSH, в том числе для администраторов, если правило не позволяет им его обходить."),
         ProtectionMessage::AddRule => text.literal("Добавить правило"),
         ProtectionMessage::Deleted => text.literal("Правило удалено."),
         ProtectionMessage::Empty => text.literal("Защищённых веток нет"),
@@ -112,5 +112,12 @@ entries! { Ru:
         RuleBadge::StatusChecks => text.literal("Проверки статуса"),
         RuleBadge::Restricted => text.literal("Ограничено"),
         RuleBadge::AdminsBypass => text.literal("Обход для администраторов"),
+    }
+    ProtectionSentence => RichWriter |text| {
+        ProtectionSentence::Intro => {
+            text.literal("Правила применяются к каждой отправке в ");
+            text.slot(0);
+            text.literal(" по HTTP и SSH, в том числе для администраторов, если правило не позволяет им его обходить.");
+        }
     }
 }

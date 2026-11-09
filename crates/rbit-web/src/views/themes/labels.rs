@@ -1,6 +1,9 @@
 //! Lazy compiled labels for the shared picker. Templates show each through `ui::localized`,
 //! which marks an untranslated label `lang="en"`.
-use rbit_localization::{Catalog, Locale, Localized, ThemeMessage as Message, ThemePreviewMessage as Preview};
+use std::borrow::Borrow;
+
+use rbit_localization::settings::profile::GalleryText;
+use rbit_localization::{Catalog, Locale, Localized, Rich, ThemeMessage as Message, ThemePreviewMessage as Preview, ThemeSentence};
 
 #[derive(Debug, Clone, Copy)]
 pub struct PickerLabels(Catalog);
@@ -77,8 +80,13 @@ impl PickerLabels {
     pub fn theme_plural(self) -> Localized {
         self.0.localized(Message::ThemePlural)
     }
-    pub fn search_prefix(self) -> Localized {
-        self.0.localized(Message::SearchPrefix)
+    /// The search field's placeholder: the whole sentence, with the count in place.
+    pub fn search_count(self, total: impl Borrow<usize>) -> Localized {
+        GalleryText::SearchCount(u64::try_from(*total.borrow()).unwrap_or(u64::MAX)).text(&self.0.locale())
+    }
+    /// How many themes are shown; slot 0 is the count.
+    pub fn count(self, shown: impl Borrow<usize>) -> Rich {
+        ThemeSentence::Count { count: u64::try_from(*shown.borrow()).unwrap_or(u64::MAX) }.rich(self.0.locale())
     }
     pub fn or_apply(self) -> Localized {
         self.0.localized(Message::OrApply)

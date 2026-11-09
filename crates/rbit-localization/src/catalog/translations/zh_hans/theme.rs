@@ -1,7 +1,9 @@
 //! Simplified Chinese (`zh-Hans`) entries for `catalog/theme.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 use crate::catalog::theme::ThemeMessage;
+use crate::catalog::theme::ThemeSentence;
 
 entries! { ZhHans:
     ThemeMessage => MessageWriter |text| {
@@ -28,7 +30,12 @@ entries! { ZhHans:
         ThemeMessage::Credit => text.literal("rbit 内置"),
         ThemeMessage::ThemeSingular => text.literal("个主题"),
         ThemeMessage::ThemePlural => text.literal("个主题"),
-        ThemeMessage::SearchPrefix => text.literal("搜索"),
         ThemeMessage::OrApply => text.literal("或点击“应用”"),
+    }
+    ThemeSentence => RichWriter |text| {
+        ThemeSentence::Count { .. } => {
+            text.slot(0);
+            text.literal(" 个主题");
+        }
     }
 }

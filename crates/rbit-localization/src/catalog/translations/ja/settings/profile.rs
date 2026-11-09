@@ -1,6 +1,8 @@
 //! Japanese (`ja`) entries for `catalog/settings/profile.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::profile::GallerySentence;
 use crate::catalog::settings::profile::{
     AppearanceMessage, GalleryMessage, GalleryText, NotificationsMessage, NotificationsText, ProfileMessage,
 };
@@ -68,16 +70,21 @@ entries! { Ja:
         GalleryMessage::BuiltIn => text.literal("組み込み"),
         GalleryMessage::Classic => text.literal("rbit Classic"),
         GalleryMessage::Empty => text.literal("検索に一致するテーマはありません。"),
-        GalleryMessage::CreditLead => text.literal("Tinted テーマは"),
         GalleryMessage::CreditLink => text.literal("tinted-theming"),
-        GalleryMessage::CreditTail => text.literal("の base16 および base24 スキーム（MIT）から生成されています。テーマにカーソルを合わせると作者が表示されます。"),
         GalleryMessage::Licence => text.literal("ライセンスとクレジット"),
-        GalleryMessage::LicenceTail => text.literal(""),
     }
     GalleryText => MessageWriter |text| {
         GalleryText::SearchCount(total) => {
             text.number(total);
             text.literal(" 個のテーマを検索");
+        }
+    }
+    GallerySentence => RichWriter |text| {
+        GallerySentence::Credit => {
+            text.literal("Tinted テーマは ");
+            text.slot(0);
+            text.literal(" の base16 および base24 スキーム（MIT）から生成されています。テーマにカーソルを合わせると作者が表示されます。");
+            text.slot(1);
         }
     }
 }

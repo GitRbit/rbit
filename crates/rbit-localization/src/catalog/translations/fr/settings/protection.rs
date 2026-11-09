@@ -1,6 +1,8 @@
 //! French (`fr`) entries for `catalog/settings/protection.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::protection::ProtectionSentence;
 use crate::catalog::settings::protection::{ProtectionMessage, ProtectionText, RuleBadge};
 use crate::plural::Plural;
 
@@ -9,10 +11,6 @@ entries! { Fr:
         ProtectionMessage::TickToConfirm => text.literal("Cochez la case pour confirmer."),
         ProtectionMessage::Settings => text.literal("Paramètres"),
         ProtectionMessage::Title => text.literal("Protection des branches"),
-        ProtectionMessage::IntroLead => text.literal("Les règles s’appliquent à chaque push vers"),
-        ProtectionMessage::IntroTail => text.literal(
-            ", en HTTP et en SSH, administrateurs compris, sauf si une règle leur permet de la contourner.",
-        ),
         ProtectionMessage::AddRule => text.literal("Ajouter une règle"),
         ProtectionMessage::Deleted => text.literal("Règle supprimée."),
         ProtectionMessage::Empty => text.literal("Aucune branche protégée"),
@@ -144,5 +142,12 @@ entries! { Fr:
         RuleBadge::StatusChecks => text.literal("Vérifications de statut"),
         RuleBadge::Restricted => text.literal("Restreint"),
         RuleBadge::AdminsBypass => text.literal("Contournement admin"),
+    }
+    ProtectionSentence => RichWriter |text| {
+        ProtectionSentence::Intro => {
+            text.literal("Les règles s’appliquent à chaque push vers ");
+            text.slot(0);
+            text.literal(", en HTTP et en SSH, administrateurs compris, sauf si une règle leur permet de la contourner.");
+        }
     }
 }

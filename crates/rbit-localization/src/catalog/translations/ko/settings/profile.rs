@@ -1,6 +1,8 @@
 //! Korean (`ko`) entries for `catalog/settings/profile.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::profile::GallerySentence;
 use crate::catalog::settings::profile::{
     AppearanceMessage, GalleryMessage, GalleryText, NotificationsMessage, NotificationsText, ProfileMessage,
 };
@@ -68,17 +70,23 @@ entries! { Ko:
         GalleryMessage::BuiltIn => text.literal("기본 제공"),
         GalleryMessage::Classic => text.literal("rbit Classic"),
         GalleryMessage::Empty => text.literal("검색과 일치하는 테마가 없습니다."),
-        GalleryMessage::CreditLead => text.literal("Tinted 테마는"),
         GalleryMessage::CreditLink => text.literal("tinted-theming"),
-        GalleryMessage::CreditTail => text.literal("프로젝트의 base16 및 base24 스킴(MIT)에서 생성되었습니다. 테마에 마우스를 올리면 작성자를 볼 수 있습니다."),
         GalleryMessage::Licence => text.literal("라이선스 및 출처"),
-        GalleryMessage::LicenceTail => text.literal("."),
     }
     GalleryText => MessageWriter |text| {
         GalleryText::SearchCount(total) => {
             text.literal("테마 ");
             text.number(total);
             text.literal("개 검색");
+        }
+    }
+    GallerySentence => RichWriter |text| {
+        GallerySentence::Credit => {
+            text.literal("Tinted 테마는 ");
+            text.slot(0);
+            text.literal(" 프로젝트의 base16 및 base24 스킴(MIT)에서 생성되었습니다. 테마에 마우스를 올리면 작성자를 볼 수 있습니다. ");
+            text.slot(1);
+            text.literal(".");
         }
     }
 }

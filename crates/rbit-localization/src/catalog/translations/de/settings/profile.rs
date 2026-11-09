@@ -1,6 +1,8 @@
 //! German (`de`) entries for `catalog/settings/profile.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::profile::GallerySentence;
 use crate::catalog::settings::profile::{
     AppearanceMessage, GalleryMessage, GalleryText, NotificationsMessage, NotificationsText, ProfileMessage,
 };
@@ -94,18 +96,22 @@ entries! { De:
         GalleryMessage::BuiltIn => text.literal("Integriert"),
         GalleryMessage::Classic => text.literal("rbit Classic"),
         GalleryMessage::Empty => text.literal("Keine Designs entsprechen Ihrer Suche."),
-        GalleryMessage::CreditLead => text.literal("Getönte Designs werden aus den base16- und base24-Schemata (MIT) von"),
         GalleryMessage::CreditLink => text.literal("tinted-theming"),
-        GalleryMessage::CreditTail => text.literal(
-            "erzeugt; fahren Sie mit der Maus über ein Design, um seinen Autor zu sehen.",
-        ),
         GalleryMessage::Licence => text.literal("Lizenz und Danksagungen"),
-        GalleryMessage::LicenceTail => text.literal("."),
     }
     GalleryText => MessageWriter |text| {
         GalleryText::SearchCount(total) => {
             text.number(total);
             text.literal(" Designs durchsuchen");
+        }
+    }
+    GallerySentence => RichWriter |text| {
+        GallerySentence::Credit => {
+            text.literal("Getönte Designs werden aus den base16- und base24-Schemata (MIT) von ");
+            text.slot(0);
+            text.literal(" erzeugt; fahren Sie mit der Maus über ein Design, um seinen Autor zu sehen. ");
+            text.slot(1);
+            text.literal(".");
         }
     }
 }

@@ -1,6 +1,8 @@
 //! Japanese (`ja`) entries for `catalog/settings/org_teams.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::org_teams::TeamSentence;
 use crate::catalog::settings::org_teams::{TeamMessage, TeamText};
 
 entries! { Ja:
@@ -10,9 +12,6 @@ entries! { Ja:
         TeamMessage::NoTeamsText => text.literal("チームはメンバーをグループにまとめ、グループごとにリポジトリへのアクセス権を付与します。"),
         TeamMessage::OneMember => text.literal("メンバー 1 人"),
         TeamMessage::OneRepository => text.literal("リポジトリ 1 件"),
-        TeamMessage::NameHintLead => text.literal("英字、数字、"),
-        TeamMessage::NameHintAnd => text.literal("および"),
-        TeamMessage::NameHintTail => text.literal("が使用できます。チームのアドレスに使われます。"),
         TeamMessage::CreateTeam => text.literal("チームを作成"),
         TeamMessage::TeamSettings => text.literal("チームの設定"),
         TeamMessage::RenameHint => text.literal("名前を変更すると、チームのアドレスも変わります。"),
@@ -63,6 +62,17 @@ entries! { Ja:
         TeamText::SettingsTitle(team) => {
             text.literal("設定 · ");
             text.argument(team);
+        }
+    }
+    TeamSentence => RichWriter |text| {
+        TeamSentence::NameHint => {
+            text.literal("英字、数字、");
+            text.slot(0);
+            text.literal("、");
+            text.slot(1);
+            text.literal(" および ");
+            text.slot(2);
+            text.literal(" が使用できます。チームのアドレスに使われます。");
         }
     }
 }

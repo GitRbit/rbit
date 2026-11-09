@@ -15,7 +15,7 @@ mod display;
 mod language;
 mod theme;
 pub use language::LanguageMessage;
-pub use theme::ThemeMessage;
+pub use theme::{ThemeMessage, ThemeSentence};
 mod chrome;
 pub use chrome::{ChromeDisplay, ChromeMessage, ChromeSentence};
 mod fallback;

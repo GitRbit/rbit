@@ -10,7 +10,7 @@
   <div class="tpk-head">
     <div class="tpk-search">
       {% call ui::icon("search", "size-4 shrink-0 text-ink-faint") %}{% endcall %}
-      <input type="search" placeholder="{{ labels.search_prefix() }} {{ total }} {{ labels.theme_plural() }}" aria-label="{{ labels.search() }}" role="combobox" aria-expanded="true" aria-controls="tpk-list" aria-autocomplete="list" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="100" data-tpk-search>
+      <input type="search" placeholder="{{ labels.search_count(total) }}" aria-label="{{ labels.search() }}" role="combobox" aria-expanded="true" aria-controls="tpk-list" aria-autocomplete="list" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="100" data-tpk-search>
       <kbd class="kbd hidden sm:inline">Esc</kbd>
       <button class="btn btn-ghost btn-icon -me-2 sm:hidden" type="button" aria-label="{{ labels.close() }}" data-tpk-close>{% call ui::icon("x", "size-4") %}{% endcall %}</button>
     </div>
@@ -21,7 +21,7 @@
         <button type="button" data-tpk-variant="light" aria-pressed="false">{% call ui::localized(labels.light()) %}{% endcall %}</button>
         <button type="button" data-tpk-variant="colorblind" aria-pressed="false">{% call ui::localized(labels.colorblind()) %}{% endcall %}</button>
       </div>
-      <p class="ms-auto text-xs text-ink-faint" data-tpk-count aria-live="polite">{{ total }} {% call ui::localized(labels.theme_plural()) %}{% endcall %}</p>
+      {% let count = labels.count(total) %}<p class="ms-auto text-xs text-ink-faint" data-tpk-count aria-live="polite"{% if count.fallback() %} lang="en"{% endif %}>{% for part in count.parts() %}{% if part.is_slot(0) %}{{ total }}{% else %}{{ part.text() }}{% endif %}{% endfor %}</p>
     </div>
   </div>
 

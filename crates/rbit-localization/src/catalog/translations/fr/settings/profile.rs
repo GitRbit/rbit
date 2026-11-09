@@ -1,6 +1,8 @@
 //! French (`fr`) entries for `catalog/settings/profile.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::profile::GallerySentence;
 use crate::catalog::settings::profile::{
     AppearanceMessage, GalleryMessage, GalleryText, NotificationsMessage, NotificationsText, ProfileMessage,
 };
@@ -89,13 +91,8 @@ entries! { Fr:
         GalleryMessage::BuiltIn => text.literal("Intégrés"),
         GalleryMessage::Classic => text.literal("rbit Classic"),
         GalleryMessage::Empty => text.literal("Aucun thème ne correspond à votre recherche."),
-        GalleryMessage::CreditLead => text.literal("Les thèmes Tinted sont générés à partir des schémas"),
         GalleryMessage::CreditLink => text.literal("tinted-theming"),
-        GalleryMessage::CreditTail => text.literal(
-            "base16 et base24 (MIT)\u{202f}; survolez un thème pour voir son auteur.",
-        ),
         GalleryMessage::Licence => text.literal("Licence et crédits"),
-        GalleryMessage::LicenceTail => text.literal("."),
     }
     GalleryText => MessageWriter |text| {
         GalleryText::SearchCount(total) => {
@@ -105,6 +102,15 @@ entries! { Fr:
                 Plural::One => " thème",
                 _ => " thèmes",
             });
+        }
+    }
+    GallerySentence => RichWriter |text| {
+        GallerySentence::Credit => {
+            text.literal("Les thèmes Tinted sont générés à partir des schémas ");
+            text.slot(0);
+            text.literal(" base16 et base24 (MIT)\u{202f}; survolez un thème pour voir son auteur. ");
+            text.slot(1);
+            text.literal(".");
         }
     }
 }

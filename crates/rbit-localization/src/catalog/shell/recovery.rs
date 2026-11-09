@@ -13,7 +13,6 @@ pub enum RecoveryMessage<'a> {
     TryAgain,
     TryAgainEnd,
     SendResetLink,
-    RememberedIt,
     RequestNewLink,
     NewLinkWithoutEmail,
     ChooseNewPassword,
@@ -49,7 +48,6 @@ impl MessageFamily for RecoveryMessage<'_> {
             Self::TryAgain => "recovery.forgot.try-again",
             Self::TryAgainEnd => "recovery.forgot.try-again-end",
             Self::SendResetLink => "recovery.forgot.submit",
-            Self::RememberedIt => "recovery.forgot.remembered",
             Self::RequestNewLink => "recovery.reset.request-new-link",
             Self::NewLinkWithoutEmail => "recovery.reset.no-email",
             Self::ChooseNewPassword => "recovery.reset.title",
@@ -91,7 +89,6 @@ impl MessageFamily for RecoveryMessage<'_> {
             Self::TryAgain => "try again",
             Self::TryAgainEnd => ".",
             Self::SendResetLink => "Send reset link",
-            Self::RememberedIt => "Remembered it?",
             Self::RequestNewLink => "Request a new link",
             Self::NewLinkWithoutEmail => {
                 "Email is not available on this server, so a new link can't be sent. Ask an administrator to set a new \
@@ -120,6 +117,41 @@ impl MessageFamily for RecoveryMessage<'_> {
     }
 
     fn translate(self, locale: crate::locale::Locale, text: &mut MessageWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
+    }
+}
+
+/// Recovery sentences that embed markup; the template renders each slot.
+#[derive(Clone, Copy, Debug)]
+pub enum RecoverySentence {
+    /// Under the reset form. Slot 0: the sign-in link, worded by `RecoveryMessage::SignIn`.
+    RememberedSignIn,
+}
+
+impl RecoverySentence {
+    /// This sentence in `locale`, or its English text marked as a fallback.
+    pub fn rich(self, locale: impl std::borrow::Borrow<crate::Locale>) -> crate::catalog::collab::rich::Rich {
+        crate::catalog::collab::rich::render(*locale.borrow(), self)
+    }
+}
+
+impl crate::catalog::collab::rich::RichFamily for RecoverySentence {
+    fn id(self) -> &'static str {
+        match self {
+            Self::RememberedSignIn => "recovery.forgot.remembered",
+        }
+    }
+
+    fn english(self, text: &mut crate::catalog::collab::rich::RichWriter) {
+        match self {
+            Self::RememberedSignIn => {
+                text.literal("Remembered it? ");
+                text.slot(0);
+            }
+        }
+    }
+
+    fn translate(self, locale: crate::Locale, text: &mut crate::catalog::collab::rich::RichWriter) -> bool {
         crate::catalog::translations::write(self, locale, text)
     }
 }

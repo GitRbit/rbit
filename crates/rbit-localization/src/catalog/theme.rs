@@ -27,7 +27,6 @@ pub enum ThemeMessage {
     Credit,
     ThemeSingular,
     ThemePlural,
-    SearchPrefix,
     OrApply,
 }
 impl ThemeMessage {
@@ -57,7 +56,6 @@ impl ThemeMessage {
             Self::Credit => "themes.picker.credit",
             Self::ThemeSingular => "themes.picker.theme-singular",
             Self::ThemePlural => "themes.picker.theme-plural",
-            Self::SearchPrefix => "themes.picker.search-prefix",
             Self::OrApply => "themes.picker.or-apply",
         }
     }
@@ -90,7 +88,6 @@ impl ThemeMessage {
             Self::Credit => "Built into rbit",
             Self::ThemeSingular => "theme",
             Self::ThemePlural => "themes",
-            Self::SearchPrefix => "Search",
             Self::OrApply => "or click Apply",
         }
     }
@@ -110,6 +107,41 @@ impl MessageFamily for ThemeMessage {
     }
 
     fn translate(self, locale: Locale, text: &mut MessageWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
+    }
+}
+
+/// Theme picker sentences that embed markup; the template renders each slot.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ThemeSentence {
+    /// How many themes are shown. Slot 0: the count, as digits.
+    Count { count: u64 },
+}
+
+impl ThemeSentence {
+    /// This sentence in `locale`, or its English text marked as a fallback.
+    pub fn rich(self, locale: impl std::borrow::Borrow<Locale>) -> crate::catalog::collab::rich::Rich {
+        crate::catalog::collab::rich::render(*locale.borrow(), self)
+    }
+}
+
+impl crate::catalog::collab::rich::RichFamily for ThemeSentence {
+    fn id(self) -> &'static str {
+        match self {
+            Self::Count { .. } => "themes.picker.count",
+        }
+    }
+
+    fn english(self, text: &mut crate::catalog::collab::rich::RichWriter) {
+        match self {
+            Self::Count { count } => {
+                text.slot(0);
+                text.literal(if count == 1 { " theme" } else { " themes" });
+            }
+        }
+    }
+
+    fn translate(self, locale: Locale, text: &mut crate::catalog::collab::rich::RichWriter) -> bool {
         crate::catalog::translations::write(self, locale, text)
     }
 }

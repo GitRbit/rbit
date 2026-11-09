@@ -1,6 +1,8 @@
 //! Japanese (`ja`) entries for `catalog/settings/protection.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::protection::ProtectionSentence;
 use crate::catalog::settings::protection::{ProtectionMessage, ProtectionText, RuleBadge};
 
 entries! { Ja:
@@ -8,8 +10,6 @@ entries! { Ja:
         ProtectionMessage::TickToConfirm => text.literal("確認のためチェックボックスをオンにしてください。"),
         ProtectionMessage::Settings => text.literal("設定"),
         ProtectionMessage::Title => text.literal("ブランチ保護"),
-        ProtectionMessage::IntroLead => text.literal("ルールは"),
-        ProtectionMessage::IntroTail => text.literal("へのすべてのプッシュに、HTTP と SSH のどちらでも適用されます。ルールでバイパスが許可されていない限り、管理者も対象です。"),
         ProtectionMessage::AddRule => text.literal("ルールを追加"),
         ProtectionMessage::Deleted => text.literal("ルールを削除しました。"),
         ProtectionMessage::Empty => text.literal("保護ブランチはありません"),
@@ -108,5 +108,12 @@ entries! { Ja:
         RuleBadge::StatusChecks => text.literal("ステータスチェック"),
         RuleBadge::Restricted => text.literal("制限あり"),
         RuleBadge::AdminsBypass => text.literal("管理者はバイパス可"),
+    }
+    ProtectionSentence => RichWriter |text| {
+        ProtectionSentence::Intro => {
+            text.literal("ルールは ");
+            text.slot(0);
+            text.literal(" へのすべてのプッシュに、HTTP と SSH のどちらでも適用されます。ルールでバイパスが許可されていない限り、管理者も対象です。");
+        }
     }
 }

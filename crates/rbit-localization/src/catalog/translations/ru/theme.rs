@@ -1,7 +1,10 @@
 //! Russian (`ru`) entries for `catalog/theme.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 use crate::catalog::theme::ThemeMessage;
+use crate::catalog::theme::ThemeSentence;
+use crate::plural::Plural;
 
 entries! { Ru:
     ThemeMessage => MessageWriter |text| {
@@ -28,7 +31,16 @@ entries! { Ru:
         ThemeMessage::Credit => text.literal("Встроена в rbit"),
         ThemeMessage::ThemeSingular => text.literal("тема"),
         ThemeMessage::ThemePlural => text.literal("тем"),
-        ThemeMessage::SearchPrefix => text.literal("Поиск среди"),
         ThemeMessage::OrApply => text.literal("или нажмите «Применить»"),
+    }
+    ThemeSentence => RichWriter |text| {
+        ThemeSentence::Count { count } => {
+            text.slot(0);
+            text.literal(match text.plural(count) {
+                Plural::One => " тема",
+                Plural::Few => " темы",
+                _ => " тем",
+            });
+        }
     }
 }

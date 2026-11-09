@@ -1,7 +1,10 @@
 //! Spanish (`es`) entries for `catalog/theme.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 use crate::catalog::theme::ThemeMessage;
+use crate::catalog::theme::ThemeSentence;
+use crate::plural::Plural;
 
 entries! { Es:
     ThemeMessage => MessageWriter |text| {
@@ -28,7 +31,15 @@ entries! { Es:
         ThemeMessage::Credit => text.literal("Integrado en rbit"),
         ThemeMessage::ThemeSingular => text.literal("tema"),
         ThemeMessage::ThemePlural => text.literal("temas"),
-        ThemeMessage::SearchPrefix => text.literal("Buscar"),
         ThemeMessage::OrApply => text.literal("o pulsa Aplicar"),
+    }
+    ThemeSentence => RichWriter |text| {
+        ThemeSentence::Count { count } => {
+            text.slot(0);
+            text.literal(match text.plural(count) {
+                Plural::One => " tema",
+                _ => " temas",
+            });
+        }
     }
 }

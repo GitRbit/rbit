@@ -1,6 +1,8 @@
 //! French (`fr`) entries for `catalog/settings/org_teams.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::org_teams::TeamSentence;
 use crate::catalog::settings::org_teams::{TeamMessage, TeamText};
 use crate::plural::Plural;
 
@@ -13,9 +15,6 @@ entries! { Fr:
         ),
         TeamMessage::OneMember => text.literal("1\u{a0}membre"),
         TeamMessage::OneRepository => text.literal("1\u{a0}dépôt"),
-        TeamMessage::NameHintLead => text.literal("Lettres, chiffres,"),
-        TeamMessage::NameHintAnd => text.literal("et"),
-        TeamMessage::NameHintTail => text.literal("\u{202f}; utilisé dans l’adresse de l’équipe."),
         TeamMessage::CreateTeam => text.literal("Créer l’équipe"),
         TeamMessage::TeamSettings => text.literal("Paramètres de l’équipe"),
         TeamMessage::RenameHint => text.literal("Renommer l’équipe change son adresse."),
@@ -76,6 +75,17 @@ entries! { Fr:
         TeamText::SettingsTitle(team) => {
             text.literal("Paramètres · ");
             text.argument(team);
+        }
+    }
+    TeamSentence => RichWriter |text| {
+        TeamSentence::NameHint => {
+            text.literal("Lettres, chiffres, ");
+            text.slot(0);
+            text.literal(", ");
+            text.slot(1);
+            text.literal(" et ");
+            text.slot(2);
+            text.literal("\u{202f}; utilisé dans l’adresse de l’équipe.");
         }
     }
 }

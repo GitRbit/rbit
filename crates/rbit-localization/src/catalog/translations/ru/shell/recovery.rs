@@ -1,7 +1,9 @@
 //! Russian (`ru`) entries for `catalog/shell/recovery.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 use crate::catalog::shell::recovery::RecoveryMessage;
+use crate::catalog::shell::recovery::RecoverySentence;
 
 entries! { Ru:
     RecoveryMessage<'a> => MessageWriter |text| {
@@ -14,7 +16,6 @@ entries! { Ru:
         RecoveryMessage::TryAgainEnd => text.literal("."),
         RecoveryMessage::TryAgain => text.literal("попробуйте ещё раз"),
         RecoveryMessage::SendResetLink => text.literal("Отправить ссылку для сброса"),
-        RecoveryMessage::RememberedIt => text.literal("Вспомнили пароль?"),
         RecoveryMessage::RequestNewLink => text.literal("Запросить новую ссылку"),
         RecoveryMessage::NewLinkWithoutEmail => text.literal("Электронная почта на этом сервере недоступна, поэтому новую ссылку отправить нельзя. Попросите администратора задать вам новый пароль."),
         RecoveryMessage::ChooseNewPassword => text.literal("Выберите новый пароль"),
@@ -42,5 +43,11 @@ entries! { Ru:
         RecoveryMessage::VerifyLinkExpiredText => text.literal("Ссылки для подтверждения одноразовые, действуют два дня и перестают работать при смене адреса. Войдите и отправьте новую из настроек учётной записи."),
         RecoveryMessage::GoToAccountSettings => text.literal("Перейти к настройкам учётной записи"),
         RecoveryMessage::SignIn => text.literal("Войти"),
+    }
+    RecoverySentence => RichWriter |text| {
+        RecoverySentence::RememberedSignIn => {
+            text.literal("Вспомнили пароль? ");
+            text.slot(0);
+        }
     }
 }

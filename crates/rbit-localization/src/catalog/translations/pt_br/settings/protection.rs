@@ -1,6 +1,8 @@
 //! Brazilian Portuguese (`pt-BR`) entries for `catalog/settings/protection.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::protection::ProtectionSentence;
 use crate::catalog::settings::protection::{ProtectionMessage, ProtectionText, RuleBadge};
 use crate::plural::Plural;
 
@@ -9,12 +11,6 @@ entries! { PtBr:
         ProtectionMessage::TickToConfirm => text.literal("Marque a caixa para confirmar."),
         ProtectionMessage::Settings => text.literal("Configurações"),
         ProtectionMessage::Title => text.literal("Proteção de branches"),
-        ProtectionMessage::IntroLead => text.literal("As regras se aplicam a todo push para"),
-        ProtectionMessage::IntroTail => {
-            text.literal(
-                ", por HTTP e SSH, inclusive de administradores, a menos que uma regra permita que eles a ignorem.",
-            );
-        }
         ProtectionMessage::AddRule => text.literal("Adicionar regra"),
         ProtectionMessage::Deleted => text.literal("Regra excluída."),
         ProtectionMessage::Empty => text.literal("Nenhum branch protegido"),
@@ -157,5 +153,12 @@ entries! { PtBr:
         RuleBadge::StatusChecks => text.literal("Verificações de status"),
         RuleBadge::Restricted => text.literal("Restrito"),
         RuleBadge::AdminsBypass => text.literal("Administradores podem ignorar"),
+    }
+    ProtectionSentence => RichWriter |text| {
+        ProtectionSentence::Intro => {
+            text.literal("As regras se aplicam a todo push para ");
+            text.slot(0);
+            text.literal(", por HTTP e SSH, inclusive de administradores, a menos que uma regra permita que eles a ignorem.");
+        }
     }
 }

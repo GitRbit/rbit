@@ -1,7 +1,9 @@
 //! Japanese (`ja`) entries for `catalog/shell/recovery.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 use crate::catalog::shell::recovery::RecoveryMessage;
+use crate::catalog::shell::recovery::RecoverySentence;
 
 entries! { Ja:
     RecoveryMessage<'a> => MessageWriter |text| {
@@ -22,7 +24,6 @@ entries! { Ja:
         RecoveryMessage::TryAgainEnd => text.literal("。"),
         RecoveryMessage::TryAgain => text.literal("もう一度お試しください"),
         RecoveryMessage::SendResetLink => text.literal("リセットリンクを送信"),
-        RecoveryMessage::RememberedIt => text.literal("パスワードを思い出しましたか？"),
         RecoveryMessage::RequestNewLink => text.literal("新しいリンクをリクエスト"),
         RecoveryMessage::NewLinkWithoutEmail => text.literal(
             "このサーバーではメールを利用できないため、新しいリンクを送信できません。管理者に新しいパスワードの設定を依頼してください。",
@@ -58,5 +59,11 @@ entries! { Ja:
         ),
         RecoveryMessage::GoToAccountSettings => text.literal("アカウント設定へ"),
         RecoveryMessage::SignIn => text.literal("サインイン"),
+    }
+    RecoverySentence => RichWriter |text| {
+        RecoverySentence::RememberedSignIn => {
+            text.literal("パスワードを思い出しましたか？");
+            text.slot(0);
+        }
     }
 }

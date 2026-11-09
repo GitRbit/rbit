@@ -1,6 +1,8 @@
 //! Korean (`ko`) entries for `catalog/settings/protection.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::protection::ProtectionSentence;
 use crate::catalog::settings::protection::{ProtectionMessage, ProtectionText, RuleBadge};
 
 entries! { Ko:
@@ -8,8 +10,6 @@ entries! { Ko:
         ProtectionMessage::TickToConfirm => text.literal("확인하려면 체크 상자를 선택하세요."),
         ProtectionMessage::Settings => text.literal("설정"),
         ProtectionMessage::Title => text.literal("브랜치 보호"),
-        ProtectionMessage::IntroLead => text.literal("규칙은"),
-        ProtectionMessage::IntroTail => text.literal("에 대한 모든 푸시(HTTP 및 SSH)에 적용되며, 규칙에서 우회를 허용하지 않는 한 관리자에게도 적용됩니다."),
         ProtectionMessage::AddRule => text.literal("규칙 추가"),
         ProtectionMessage::Deleted => text.literal("규칙을 삭제했습니다."),
         ProtectionMessage::Empty => text.literal("보호된 브랜치 없음"),
@@ -108,5 +108,12 @@ entries! { Ko:
         RuleBadge::StatusChecks => text.literal("상태 검사"),
         RuleBadge::Restricted => text.literal("제한됨"),
         RuleBadge::AdminsBypass => text.literal("관리자 우회"),
+    }
+    ProtectionSentence => RichWriter |text| {
+        ProtectionSentence::Intro => {
+            text.literal("규칙은 ");
+            text.slot(0);
+            text.literal("에 대한 모든 푸시(HTTP 및 SSH)에 적용되며, 규칙에서 우회를 허용하지 않는 한 관리자에게도 적용됩니다.");
+        }
     }
 }

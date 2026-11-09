@@ -1,6 +1,8 @@
 //! German (`de`) entries for `catalog/settings/protection.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::protection::ProtectionSentence;
 use crate::catalog::settings::protection::{ProtectionMessage, ProtectionText, RuleBadge};
 use crate::plural::Plural;
 
@@ -9,10 +11,6 @@ entries! { De:
         ProtectionMessage::TickToConfirm => text.literal("Setzen Sie zur Bestätigung das Häkchen."),
         ProtectionMessage::Settings => text.literal("Einstellungen"),
         ProtectionMessage::Title => text.literal("Branch-Schutz"),
-        ProtectionMessage::IntroLead => text.literal("Regeln gelten für jeden Push nach"),
-        ProtectionMessage::IntroTail => text.literal(
-            ", über HTTP und SSH, auch für Administratoren, sofern eine Regel ihnen keine Umgehung erlaubt.",
-        ),
         ProtectionMessage::AddRule => text.literal("Regel hinzufügen"),
         ProtectionMessage::Deleted => text.literal("Regel gelöscht."),
         ProtectionMessage::Empty => text.literal("Keine geschützten Branches"),
@@ -139,5 +137,12 @@ entries! { De:
         RuleBadge::StatusChecks => text.literal("Statusprüfungen"),
         RuleBadge::Restricted => text.literal("Eingeschränkt"),
         RuleBadge::AdminsBypass => text.literal("Admins dürfen umgehen"),
+    }
+    ProtectionSentence => RichWriter |text| {
+        ProtectionSentence::Intro => {
+            text.literal("Regeln gelten für jeden Push nach ");
+            text.slot(0);
+            text.literal(", über HTTP und SSH, auch für Administratoren, sofern eine Regel ihnen keine Umgehung erlaubt.");
+        }
     }
 }

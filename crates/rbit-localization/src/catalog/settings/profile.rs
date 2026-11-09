@@ -76,11 +76,8 @@ labels! {
         BuiltIn = "built-in" => "Built in",
         Classic = "classic" => "rbit Classic",
         Empty = "empty" => "No themes match your search.",
-        CreditLead = "credit-lead" => "Tinted themes are generated from the",
         CreditLink = "credit-link" => "tinted-theming",
-        CreditTail = "credit-tail" => "base16 and base24 schemes (MIT); hover a theme to see its author.",
         Licence = "licence" => "Licence and credits",
-        LicenceTail = "licence-tail" => ".",
     }
 }
 
@@ -88,5 +85,43 @@ messages! {
     /// Theme gallery text with arguments.
     GalleryText, "settings.appearance.gallery" {
         SearchCount(total: u64) = "search-count" => ["Search ", (total), " themes"],
+    }
+}
+
+/// Theme gallery sentences that embed markup; the template renders each slot.
+#[derive(Clone, Copy, Debug)]
+pub enum GallerySentence {
+    /// Under the gallery. Slot 0: the tinted-theming link, worded by `GalleryMessage::CreditLink`; slot 1: the licence link, worded by `GalleryMessage::Licence`.
+    Credit,
+}
+
+impl GallerySentence {
+    /// This sentence in `locale`, or its English text marked as a fallback.
+    pub fn rich(self, locale: impl std::borrow::Borrow<crate::Locale>) -> crate::catalog::collab::rich::Rich {
+        crate::catalog::collab::rich::render(*locale.borrow(), self)
+    }
+}
+
+impl crate::catalog::collab::rich::RichFamily for GallerySentence {
+    fn id(self) -> &'static str {
+        match self {
+            Self::Credit => "settings.appearance.gallery.credit",
+        }
+    }
+
+    fn english(self, text: &mut crate::catalog::collab::rich::RichWriter) {
+        match self {
+            Self::Credit => {
+                text.literal("Tinted themes are generated from the ");
+                text.slot(0);
+                text.literal(" base16 and base24 schemes (MIT); hover a theme to see its author. ");
+                text.slot(1);
+                text.literal(".");
+            }
+        }
+    }
+
+    fn translate(self, locale: crate::Locale, text: &mut crate::catalog::collab::rich::RichWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
     }
 }

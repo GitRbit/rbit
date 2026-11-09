@@ -1,7 +1,9 @@
 //! German (`de`) entries for `catalog/shell/recovery.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 use crate::catalog::shell::recovery::RecoveryMessage;
+use crate::catalog::shell::recovery::RecoverySentence;
 
 entries! { De:
     RecoveryMessage<'a> => MessageWriter |text| {
@@ -25,7 +27,6 @@ entries! { De:
         RecoveryMessage::TryAgainEnd => text.literal("."),
         RecoveryMessage::TryAgain => text.literal("versuchen Sie es erneut"),
         RecoveryMessage::SendResetLink => text.literal("Link zum Zurücksetzen senden"),
-        RecoveryMessage::RememberedIt => text.literal("Wieder eingefallen?"),
         RecoveryMessage::RequestNewLink => text.literal("Neuen Link anfordern"),
         RecoveryMessage::NewLinkWithoutEmail => text.literal(
             "E-Mail ist auf diesem Server nicht verfügbar, daher kann kein neuer Link gesendet werden. Bitten Sie \
@@ -66,5 +67,11 @@ entries! { De:
         ),
         RecoveryMessage::GoToAccountSettings => text.literal("Zu den Kontoeinstellungen"),
         RecoveryMessage::SignIn => text.literal("Anmelden"),
+    }
+    RecoverySentence => RichWriter |text| {
+        RecoverySentence::RememberedSignIn => {
+            text.literal("Wieder eingefallen? ");
+            text.slot(0);
+        }
     }
 }

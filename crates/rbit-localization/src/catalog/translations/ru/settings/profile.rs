@@ -1,6 +1,8 @@
 //! Russian (`ru`) entries for `catalog/settings/profile.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::profile::GallerySentence;
 use crate::catalog::settings::profile::{
     AppearanceMessage, GalleryMessage, GalleryText, NotificationsMessage, NotificationsText, ProfileMessage,
 };
@@ -69,11 +71,8 @@ entries! { Ru:
         GalleryMessage::BuiltIn => text.literal("Встроенные"),
         GalleryMessage::Classic => text.literal("rbit Classic"),
         GalleryMessage::Empty => text.literal("Нет тем, соответствующих запросу."),
-        GalleryMessage::CreditLead => text.literal("Темы Tinted созданы на основе схем base16 и base24 проекта"),
         GalleryMessage::CreditLink => text.literal("tinted-theming"),
-        GalleryMessage::CreditTail => text.literal("(MIT); наведите указатель на тему, чтобы увидеть её автора."),
         GalleryMessage::Licence => text.literal("Лицензия и благодарности"),
-        GalleryMessage::LicenceTail => text.literal("."),
     }
     GalleryText => MessageWriter |text| {
         GalleryText::SearchCount(total) => {
@@ -84,6 +83,15 @@ entries! { Ru:
                 Plural::One => "темы",
                 _ => "тем",
             });
+        }
+    }
+    GallerySentence => RichWriter |text| {
+        GallerySentence::Credit => {
+            text.literal("Темы Tinted созданы на основе схем base16 и base24 проекта ");
+            text.slot(0);
+            text.literal(" (MIT); наведите указатель на тему, чтобы увидеть её автора. ");
+            text.slot(1);
+            text.literal(".");
         }
     }
 }

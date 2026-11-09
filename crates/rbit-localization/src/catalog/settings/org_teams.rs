@@ -9,9 +9,6 @@ labels! {
         NoTeamsText = "empty-text" => "Teams group members and give each group its own access to repositories.",
         OneMember = "one-member" => "1 member",
         OneRepository = "one-repository" => "1 repository",
-        NameHintLead = "name-hint-lead" => "Letters, digits,",
-        NameHintAnd = "name-hint-and" => "and",
-        NameHintTail = "name-hint-tail" => "; used in the team's address.",
         CreateTeam = "create" => "Create team",
         TeamSettings = "settings.title" => "Team settings",
         RenameHint = "settings.rename-hint" => "Renaming changes the team's address.",
@@ -44,5 +41,45 @@ messages! {
         TeamsTitle(org: &'a str) = "page-title" => ["Teams · ", {org}],
         NewTeamTitle(org: &'a str) = "new.page-title" => ["New team · ", {org}],
         SettingsTitle(team: &'a str) = "settings.page-title" => ["Settings · ", {team}],
+    }
+}
+
+/// Team page sentences that embed markup; the template renders each slot.
+#[derive(Clone, Copy, Debug)]
+pub enum TeamSentence {
+    /// Under the team name field. Slots 0, 1 and 2: the characters `-`, `_` and `.`.
+    NameHint,
+}
+
+impl TeamSentence {
+    /// This sentence in `locale`, or its English text marked as a fallback.
+    pub fn rich(self, locale: impl std::borrow::Borrow<crate::Locale>) -> crate::catalog::collab::rich::Rich {
+        crate::catalog::collab::rich::render(*locale.borrow(), self)
+    }
+}
+
+impl crate::catalog::collab::rich::RichFamily for TeamSentence {
+    fn id(self) -> &'static str {
+        match self {
+            Self::NameHint => "org.teams.name-hint",
+        }
+    }
+
+    fn english(self, text: &mut crate::catalog::collab::rich::RichWriter) {
+        match self {
+            Self::NameHint => {
+                text.literal("Letters, digits, ");
+                text.slot(0);
+                text.literal(", ");
+                text.slot(1);
+                text.literal(" and ");
+                text.slot(2);
+                text.literal("; used in the team's address.");
+            }
+        }
+    }
+
+    fn translate(self, locale: crate::Locale, text: &mut crate::catalog::collab::rich::RichWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
     }
 }

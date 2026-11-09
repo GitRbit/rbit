@@ -1,7 +1,10 @@
 //! French (`fr`) entries for `catalog/theme.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 use crate::catalog::theme::ThemeMessage;
+use crate::catalog::theme::ThemeSentence;
+use crate::plural::Plural;
 
 entries! { Fr:
     ThemeMessage => MessageWriter |text| {
@@ -28,7 +31,15 @@ entries! { Fr:
         ThemeMessage::Credit => text.literal("Intégré à rbit"),
         ThemeMessage::ThemeSingular => text.literal("thème"),
         ThemeMessage::ThemePlural => text.literal("thèmes"),
-        ThemeMessage::SearchPrefix => text.literal("Rechercher parmi"),
         ThemeMessage::OrApply => text.literal("ou cliquez sur Appliquer"),
+    }
+    ThemeSentence => RichWriter |text| {
+        ThemeSentence::Count { count } => {
+            text.slot(0);
+            text.literal(match text.plural(count) {
+                Plural::One => " thème",
+                _ => " thèmes",
+            });
+        }
     }
 }

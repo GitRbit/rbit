@@ -7,8 +7,6 @@ labels! {
         TickToConfirm = "tick-to-confirm" => "Tick the box to confirm.",
         Settings = "settings" => "Settings",
         Title = "title" => "Branch protection",
-        IntroLead = "list.intro-lead" => "Rules apply to every push to",
-        IntroTail = "list.intro-tail" => ", over HTTP and SSH, administrators included unless a rule lets them bypass it.",
         AddRule = "add-rule" => "Add rule",
         Deleted = "list.deleted" => "Rule deleted.",
         Empty = "list.empty-title" => "No protected branches",
@@ -123,6 +121,42 @@ impl MessageFamily for RuleBadge {
     }
 
     fn translate(self, locale: crate::locale::Locale, text: &mut MessageWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
+    }
+}
+
+/// Branch protection sentences that embed markup; the template renders each slot.
+#[derive(Clone, Copy, Debug)]
+pub enum ProtectionSentence {
+    /// Under the rule list's title. Slot 0: the repository's full name.
+    Intro,
+}
+
+impl ProtectionSentence {
+    /// This sentence in `locale`, or its English text marked as a fallback.
+    pub fn rich(self, locale: impl std::borrow::Borrow<crate::Locale>) -> crate::catalog::collab::rich::Rich {
+        crate::catalog::collab::rich::render(*locale.borrow(), self)
+    }
+}
+
+impl crate::catalog::collab::rich::RichFamily for ProtectionSentence {
+    fn id(self) -> &'static str {
+        match self {
+            Self::Intro => "settings.protection.list.intro",
+        }
+    }
+
+    fn english(self, text: &mut crate::catalog::collab::rich::RichWriter) {
+        match self {
+            Self::Intro => {
+                text.literal("Rules apply to every push to ");
+                text.slot(0);
+                text.literal(", over HTTP and SSH, administrators included unless a rule lets them bypass it.");
+            }
+        }
+    }
+
+    fn translate(self, locale: crate::Locale, text: &mut crate::catalog::collab::rich::RichWriter) -> bool {
         crate::catalog::translations::write(self, locale, text)
     }
 }

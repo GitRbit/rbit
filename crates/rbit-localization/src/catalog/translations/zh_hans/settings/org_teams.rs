@@ -1,6 +1,8 @@
 //! Simplified Chinese (`zh-Hans`) entries for `catalog/settings/org_teams.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::org_teams::TeamSentence;
 use crate::catalog::settings::org_teams::{TeamMessage, TeamText};
 
 entries! { ZhHans:
@@ -10,9 +12,6 @@ entries! { ZhHans:
         TeamMessage::NoTeamsText => text.literal("团队将成员分组，并为每个组分别授予仓库访问权限。"),
         TeamMessage::OneMember => text.literal("1 位成员"),
         TeamMessage::OneRepository => text.literal("1 个仓库"),
-        TeamMessage::NameHintLead => text.literal("可使用字母、数字、"),
-        TeamMessage::NameHintAnd => text.literal("和"),
-        TeamMessage::NameHintTail => text.literal("；用于团队的地址。"),
         TeamMessage::CreateTeam => text.literal("创建团队"),
         TeamMessage::TeamSettings => text.literal("团队设置"),
         TeamMessage::RenameHint => text.literal("重命名会更改团队的地址。"),
@@ -63,6 +62,17 @@ entries! { ZhHans:
         TeamText::SettingsTitle(team) => {
             text.literal("设置 · ");
             text.argument(team);
+        }
+    }
+    TeamSentence => RichWriter |text| {
+        TeamSentence::NameHint => {
+            text.literal("可使用字母、数字、");
+            text.slot(0);
+            text.literal("、");
+            text.slot(1);
+            text.literal(" 和 ");
+            text.slot(2);
+            text.literal("；用于团队的地址。");
         }
     }
 }

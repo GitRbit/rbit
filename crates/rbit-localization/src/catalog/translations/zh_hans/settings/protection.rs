@@ -1,6 +1,8 @@
 //! Simplified Chinese (`zh-Hans`) entries for `catalog/settings/protection.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::protection::ProtectionSentence;
 use crate::catalog::settings::protection::{ProtectionMessage, ProtectionText, RuleBadge};
 
 entries! { ZhHans:
@@ -8,8 +10,6 @@ entries! { ZhHans:
         ProtectionMessage::TickToConfirm => text.literal("请勾选复选框以确认。"),
         ProtectionMessage::Settings => text.literal("设置"),
         ProtectionMessage::Title => text.literal("分支保护"),
-        ProtectionMessage::IntroLead => text.literal("规则适用于通过 HTTP 和 SSH 对"),
-        ProtectionMessage::IntroTail => text.literal("的每次推送，包括管理员，除非规则允许其绕过。"),
         ProtectionMessage::AddRule => text.literal("添加规则"),
         ProtectionMessage::Deleted => text.literal("规则已删除。"),
         ProtectionMessage::Empty => text.literal("没有受保护分支"),
@@ -115,5 +115,12 @@ entries! { ZhHans:
         RuleBadge::StatusChecks => text.literal("状态检查"),
         RuleBadge::Restricted => text.literal("受限"),
         RuleBadge::AdminsBypass => text.literal("管理员可绕过"),
+    }
+    ProtectionSentence => RichWriter |text| {
+        ProtectionSentence::Intro => {
+            text.literal("规则适用于通过 HTTP 和 SSH 对 ");
+            text.slot(0);
+            text.literal(" 的每次推送，包括管理员，除非规则允许其绕过。");
+        }
     }
 }

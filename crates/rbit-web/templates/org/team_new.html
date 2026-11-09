@@ -14,7 +14,8 @@
       {% call ui::form_error(error) %}{% endcall %}
       <label class="label" for="team-name">{% call ui::localized(OrgMessage::Name.text(page.locale)) %}{% endcall %}</label>
       <input class="input font-mono text-[13px] sm:max-w-72" dir="ltr" id="team-name" name="name" value="{{ form.name }}" maxlength="50" autocapitalize="none" autocomplete="off" spellcheck="false" pattern="[A-Za-z0-9._\-]+" required>
-      <p class="hint">{% call ui::localized(TeamMessage::NameHintLead.text(page.locale)) %}{% endcall %} <span class="font-mono" dir="ltr">-</span>, <span class="font-mono" dir="ltr">_</span> {% call ui::localized(TeamMessage::NameHintAnd.text(page.locale)) %}{% endcall %} <span class="font-mono" dir="ltr">.</span>{% call ui::localized(TeamMessage::NameHintTail.text(page.locale)) %}{% endcall %}</p>
+      {% let hint = rbit_localization::settings::org_teams::TeamSentence::NameHint.rich(page.locale) %}
+      <p class="hint"{% if hint.fallback() %} lang="en"{% endif %}>{% for part in hint.parts() %}{% if part.is_slot(0) %}<span class="font-mono" dir="ltr">-</span>{% else if part.is_slot(1) %}<span class="font-mono" dir="ltr">_</span>{% else if part.is_slot(2) %}<span class="font-mono" dir="ltr">.</span>{% else %}{{ part.text() }}{% endif %}{% endfor %}</p>
 
       <label class="label mt-5" for="team-description">{% call ui::localized(OrgMessage::Description.text(page.locale)) %}{% endcall %} <span class="font-normal text-ink-faint">{% call ui::localized(OrgMessage::Optional.text(page.locale)) %}{% endcall %}</span></label>
       <input class="input" id="team-description" name="description" value="{{ form.description }}" maxlength="350">

@@ -116,7 +116,6 @@ fn recovery_keys_render_and_translate() {
         M::NothingArrived,
         M::TryAgain,
         M::SendResetLink,
-        M::RememberedIt,
         M::RequestNewLink,
         M::NewLinkWithoutEmail,
         M::ChooseNewPassword,

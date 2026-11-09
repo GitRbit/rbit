@@ -1,7 +1,9 @@
 //! Spanish (`es`) entries for `catalog/shell/recovery.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 use crate::catalog::shell::recovery::RecoveryMessage;
+use crate::catalog::shell::recovery::RecoverySentence;
 
 entries! { Es:
     RecoveryMessage<'a> => MessageWriter |text| {
@@ -23,7 +25,6 @@ entries! { Es:
         RecoveryMessage::TryAgainEnd => text.literal("."),
         RecoveryMessage::TryAgain => text.literal("vuelve a intentarlo"),
         RecoveryMessage::SendResetLink => text.literal("Enviar enlace de restablecimiento"),
-        RecoveryMessage::RememberedIt => text.literal("¿La recordaste?"),
         RecoveryMessage::RequestNewLink => text.literal("Solicitar un enlace nuevo"),
         RecoveryMessage::NewLinkWithoutEmail => text.literal(
             "El correo electrónico no está disponible en este servidor, así que no se puede enviar un enlace nuevo. \
@@ -64,5 +65,11 @@ entries! { Es:
         ),
         RecoveryMessage::GoToAccountSettings => text.literal("Ir a la configuración de la cuenta"),
         RecoveryMessage::SignIn => text.literal("Iniciar sesión"),
+    }
+    RecoverySentence => RichWriter |text| {
+        RecoverySentence::RememberedSignIn => {
+            text.literal("¿La recordaste? ");
+            text.slot(0);
+        }
     }
 }

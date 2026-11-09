@@ -1,7 +1,9 @@
 //! Korean (`ko`) entries for `catalog/shell/recovery.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 use crate::catalog::shell::recovery::RecoveryMessage;
+use crate::catalog::shell::recovery::RecoverySentence;
 
 entries! { Ko:
     RecoveryMessage<'a> => MessageWriter |text| {
@@ -14,7 +16,6 @@ entries! { Ko:
         RecoveryMessage::TryAgainEnd => text.literal("."),
         RecoveryMessage::TryAgain => text.literal("다시 시도하세요"),
         RecoveryMessage::SendResetLink => text.literal("재설정 링크 보내기"),
-        RecoveryMessage::RememberedIt => text.literal("비밀번호가 기억나셨나요?"),
         RecoveryMessage::RequestNewLink => text.literal("새 링크 요청"),
         RecoveryMessage::NewLinkWithoutEmail => text.literal("이 서버에서는 이메일을 사용할 수 없어 새 링크를 보낼 수 없습니다. 관리자에게 새 비밀번호 설정을 요청하세요."),
         RecoveryMessage::ChooseNewPassword => text.literal("새 비밀번호 설정"),
@@ -41,5 +42,11 @@ entries! { Ko:
         RecoveryMessage::VerifyLinkExpiredText => text.literal("확인 링크는 한 번만 사용할 수 있으며 2일 후에 만료되고, 주소가 바뀌면 더 이상 작동하지 않습니다. 로그인한 후 계정 설정에서 새 링크를 보내세요."),
         RecoveryMessage::GoToAccountSettings => text.literal("계정 설정으로 이동"),
         RecoveryMessage::SignIn => text.literal("로그인"),
+    }
+    RecoverySentence => RichWriter |text| {
+        RecoverySentence::RememberedSignIn => {
+            text.literal("비밀번호가 기억나셨나요? ");
+            text.slot(0);
+        }
     }
 }

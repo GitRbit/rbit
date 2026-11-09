@@ -1,6 +1,8 @@
 //! Korean (`ko`) entries for `catalog/settings/org_teams.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::org_teams::TeamSentence;
 use crate::catalog::settings::org_teams::{TeamMessage, TeamText};
 
 entries! { Ko:
@@ -10,9 +12,6 @@ entries! { Ko:
         TeamMessage::NoTeamsText => text.literal("팀은 구성원을 묶고 각 그룹에 저장소에 대한 별도의 액세스 권한을 부여합니다."),
         TeamMessage::OneMember => text.literal("구성원 1명"),
         TeamMessage::OneRepository => text.literal("저장소 1개"),
-        TeamMessage::NameHintLead => text.literal("영문자, 숫자,"),
-        TeamMessage::NameHintAnd => text.literal("및"),
-        TeamMessage::NameHintTail => text.literal("을(를) 사용할 수 있으며, 팀 주소에 사용됩니다."),
         TeamMessage::CreateTeam => text.literal("팀 만들기"),
         TeamMessage::TeamSettings => text.literal("팀 설정"),
         TeamMessage::RenameHint => text.literal("이름을 바꾸면 팀 주소가 바뀝니다."),
@@ -63,6 +62,17 @@ entries! { Ko:
         TeamText::SettingsTitle(team) => {
             text.literal("설정 · ");
             text.argument(team);
+        }
+    }
+    TeamSentence => RichWriter |text| {
+        TeamSentence::NameHint => {
+            text.literal("영문자, 숫자, ");
+            text.slot(0);
+            text.literal(", ");
+            text.slot(1);
+            text.literal(" 및 ");
+            text.slot(2);
+            text.literal("을(를) 사용할 수 있으며, 팀 주소에 사용됩니다.");
         }
     }
 }

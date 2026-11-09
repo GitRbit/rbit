@@ -1,6 +1,8 @@
 //! Simplified Chinese (`zh-Hans`) entries for `catalog/settings/profile.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::profile::GallerySentence;
 use crate::catalog::settings::profile::{
     AppearanceMessage, GalleryMessage, GalleryText, NotificationsMessage, NotificationsText, ProfileMessage,
 };
@@ -74,17 +76,23 @@ entries! { ZhHans:
         GalleryMessage::BuiltIn => text.literal("内置"),
         GalleryMessage::Classic => text.literal("rbit Classic"),
         GalleryMessage::Empty => text.literal("没有符合搜索条件的主题。"),
-        GalleryMessage::CreditLead => text.literal("着色主题由"),
         GalleryMessage::CreditLink => text.literal("tinted-theming"),
-        GalleryMessage::CreditTail => text.literal("的 base16 和 base24 配色方案（MIT）生成；将鼠标悬停在主题上可查看其作者。"),
         GalleryMessage::Licence => text.literal("许可证和致谢"),
-        GalleryMessage::LicenceTail => text.literal("。"),
     }
     GalleryText => MessageWriter |text| {
         GalleryText::SearchCount(total) => {
             text.literal("搜索 ");
             text.number(total);
             text.literal(" 个主题");
+        }
+    }
+    GallerySentence => RichWriter |text| {
+        GallerySentence::Credit => {
+            text.literal("着色主题由 ");
+            text.slot(0);
+            text.literal(" 的 base16 和 base24 配色方案（MIT）生成；将鼠标悬停在主题上可查看其作者。");
+            text.slot(1);
+            text.literal("。");
         }
     }
 }

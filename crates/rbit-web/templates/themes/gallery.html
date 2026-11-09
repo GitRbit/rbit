@@ -44,8 +44,8 @@
     <p class="py-10 text-center text-[13px] text-ink-muted" data-theme-empty{% if !gallery.nothing_found %} hidden{% endif %}>{% call ui::localized(GalleryMessage::Empty.text(page.locale)) %}{% endcall %}</p>
   </form>
 
-  <p class="mt-10 border-t border-line pt-4 text-xs text-ink-faint">
-    {% call ui::localized(GalleryMessage::CreditLead.text(page.locale)) %}{% endcall %} <a class="link" href="https://github.com/tinted-theming/schemes">{% call ui::localized(GalleryMessage::CreditLink.text(page.locale)) %}{% endcall %}</a> {% call ui::localized(GalleryMessage::CreditTail.text(page.locale)) %}{% endcall %}
-    <a class="link" href="{{ gallery.licence_url }}" hx-boost="false">{% call ui::localized(GalleryMessage::Licence.text(page.locale)) %}{% endcall %}</a>{% call ui::localized(GalleryMessage::LicenceTail.text(page.locale)) %}{% endcall %}
+  {% let credit = rbit_localization::settings::profile::GallerySentence::Credit.rich(page.locale) %}
+  <p class="mt-10 border-t border-line pt-4 text-xs text-ink-faint"{% if credit.fallback() %} lang="en"{% endif %}>
+    {%- for part in credit.parts() %}{% if part.is_slot(0) %}<a class="link" href="https://github.com/tinted-theming/schemes">{% call ui::localized(GalleryMessage::CreditLink.text(page.locale)) %}{% endcall %}</a>{% else if part.is_slot(1) %}<a class="link" href="{{ gallery.licence_url }}" hx-boost="false">{% call ui::localized(GalleryMessage::Licence.text(page.locale)) %}{% endcall %}</a>{% else %}{{ part.text() }}{% endif %}{% endfor -%}
   </p>
 </div>
