@@ -23,6 +23,8 @@ flate2.workspace = true
 tar.workspace = true
 
 [dev-dependencies]
+# Log file tests run against a temporary directory.
+tempfile.workspace = true
 # Reads the zips the downloads write.
 zip.workspace = true
 

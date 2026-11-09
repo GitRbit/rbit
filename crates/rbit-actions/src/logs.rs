@@ -1,6 +1,8 @@
-//! Task log rules (§5.5, §11.10 and §12.6 of the Actions design): the masking pass, how an
-//! append by line offset is accepted, how a line is stored, and the byte budget. Files,
-//! the line index, gzip, retention and reads stay in the composition's adapter.
+//! Task logs (§5.5, §11.10 and §12.6 of the Actions design): the masking pass, how an
+//! append by line offset is accepted, how a line is stored, the byte budget, and the log
+//! files themselves through the [`TaskLogFiles`] port: write and sync ordering, crash
+//! recovery, gzip on finalisation, removal, window planning and reads. The composition
+//! maps the files to paths and records progress after the files are synced.
 //!
 //! * An append carries lines `from…` of the task's log, at most [`MAX_LINES_PER_CALL`]
 //!   ([`split_body`]). Lines the server already has are dropped, so a resend overlaps
@@ -12,11 +14,23 @@
 //! * The masker replaces every secret value, and every line of a multi-line one, of at
 //!   least [`MIN_MASKED_CHARS`] characters, longest match first ([`Masker`]).
 
+#[cfg(test)]
+mod file_tests;
+mod files;
 mod masking;
+mod reading;
+mod storage;
 #[cfg(test)]
 mod tests;
+mod window;
 
+pub use files::{LogFile, LogPart, TaskLogFiles};
 pub use masking::{MASK, MIN_MASKED_CHARS, Masker};
+pub use reading::{Representation, Snapshot, prepare, read_data, read_plans, read_window, read_windows, retryable};
+pub use storage::{GZIP_LEVEL, add_raw_log, append_lines, compress, log_file_name, remove};
+pub use window::{
+    LogLimits, LogRange, LogWindow, ReadWork, STEP_VIEW_BYTES, STEP_VIEW_LINES, WindowPlan, WindowRequest, durable_extent, plan,
+};
 
 /// Most lines one append may carry.
 pub const MAX_LINES_PER_CALL: usize = 10_000;

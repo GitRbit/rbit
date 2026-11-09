@@ -4224,6 +4224,7 @@ dependencies = [
  "rbit-workflow",
  "sha2 0.11.1",
  "tar",
+ "tempfile",
  "zeroize",
  "zip",
 ]
