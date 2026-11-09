@@ -21,10 +21,7 @@ use rbit_core::{
     AccountId, IssueKind, IssueNumber, IssueState, IssueText, IssueTitle, LabelId, MilestoneId, StateReason, TimelineEvent, Timestamp,
     User,
     config::AuthorMapping,
-    import::{
-        ImportCounts, ImportOptions, ImportPhase, MAX_IMPORT_WARNINGS, clean_message, label_color, parse_timestamp, truncate_bytes,
-        truncate_chars,
-    },
+    import::{ImportOptions, ImportPhase, parse_timestamp, truncate_bytes},
     issue::{MAX_TEXT_BYTES, MAX_TITLE_CHARS},
     lfs::LfsOid,
     mirror::MirrorUrl,
@@ -33,6 +30,11 @@ use rbit_core::{
 use rbit_git::{
     RefKind,
     remote::{Remote, fetch_import, lfs_pointers},
+};
+use rbit_repositories::imports::{
+    authors::{AuthorDirectory, AuthorMap, AuthorRule, SourceAuthor, attributed},
+    items::{self, Closing, Limits, lookup_key},
+    progress::{ImportProgress, phase_plan},
 };
 use rbit_storage::sqlite::{
     imports::ImportedPull,
@@ -51,16 +53,15 @@ use crate::{LfsService, ReleaseService, RepoContext, ServiceContext, ServiceErro
 
 /// Objects per LFS batch request.
 const LFS_BATCH: usize = 100;
-/// Progress is saved at least this often while items are imported.
-const SAVE_EVERY: u64 = 25;
 /// The user name sent with the token over Git and LFS (the token is the password).
 const TOKEN_USERNAME: &str = "x-access-token";
-/// Label colour for labels without a valid one.
-const DEFAULT_LABEL_COLOR: &str = "#ededed";
-/// Longest label name and description, and milestone title (rbit's limits).
-const MAX_LABEL_NAME: usize = 50;
-const MAX_LABEL_DESCRIPTION: usize = 100;
-const MAX_MILESTONE_TITLE: usize = 100;
+/// The text limits of threads and releases, which their features own.
+const LIMITS: Limits = Limits {
+    title_chars: MAX_TITLE_CHARS,
+    text_bytes: MAX_TEXT_BYTES,
+    release_name_chars: MAX_RELEASE_NAME_CHARS,
+    release_notes_chars: MAX_RELEASE_NOTES_CHARS,
+};
 
 /// Why an import stopped, as shown on its page.
 pub type Fatal = String;
@@ -83,11 +84,8 @@ pub struct Job {
     repo: RepoContext,
     importer: User,
     options: ImportOptions,
-    phase: ImportPhase,
-    counts: ImportCounts,
-    warnings: Vec<String>,
-    unsaved: u64,
-    authors: HashMap<String, Option<AccountId>>,
+    progress: ImportProgress,
+    authors: AuthorMap<AccountId>,
     labels: HashMap<String, LabelId>,
     milestones: HashMap<String, MilestoneId>,
 }
@@ -101,18 +99,20 @@ impl Job {
         importer: User,
         options: ImportOptions,
     ) -> Self {
+        let rule = match services.ctx.config.imports.author_mapping {
+            AuthorMapping::None => AuthorRule::None,
+            AuthorMapping::Email => AuthorRule::Email,
+            AuthorMapping::EmailOrUsername => AuthorRule::EmailOrUsername,
+        };
         Self {
             services,
             client,
             source,
             repo,
             importer,
+            authors: AuthorMap::new(rule),
             options,
-            phase: ImportPhase::Repository,
-            counts: ImportCounts::default(),
-            warnings: Vec::new(),
-            unsaved: 0,
-            authors: HashMap::new(),
+            progress: ImportProgress::default(),
             labels: HashMap::new(),
             milestones: HashMap::new(),
         }
@@ -130,25 +130,17 @@ impl Job {
     pub async fn run(&mut self) -> Result<(), Fatal> {
         self.enter(ImportPhase::Repository).await;
         self.copy_repository().await?;
-        if self.options.lfs && self.ctx().config.lfs.enabled {
-            self.enter(ImportPhase::Lfs).await;
-            self.copy_lfs().await.map_err(|e| e.to_string())?;
-        }
-        if self.options.labels {
-            self.enter(ImportPhase::Labels).await;
-            self.import_labels().await.map_err(|e| e.to_string())?;
-        }
-        if self.options.milestones {
-            self.enter(ImportPhase::Milestones).await;
-            self.import_milestones().await.map_err(|e| e.to_string())?;
-        }
-        if self.options.issues {
-            self.enter(ImportPhase::Issues).await;
-            self.import_issues().await.map_err(|e| e.to_string())?;
-        }
-        if self.options.releases {
-            self.enter(ImportPhase::Releases).await;
-            self.import_releases().await.map_err(|e| e.to_string())?;
+        for phase in phase_plan(self.options, self.ctx().config.lfs.enabled) {
+            self.enter(phase).await;
+            match phase {
+                ImportPhase::Lfs => self.copy_lfs().await,
+                ImportPhase::Labels => self.import_labels().await,
+                ImportPhase::Milestones => self.import_milestones().await,
+                ImportPhase::Issues => self.import_issues().await,
+                ImportPhase::Releases => self.import_releases().await,
+                ImportPhase::Repository | ImportPhase::Finished => Ok(()),
+            }
+            .map_err(|e| e.to_string())?;
         }
         self.save().await;
         Ok(())
@@ -157,34 +149,29 @@ impl Job {
     // ------------------------------------------------------------------ progress
 
     async fn enter(&mut self, phase: ImportPhase) {
-        self.phase = phase;
+        self.progress.enter(phase);
         self.save().await;
     }
 
     async fn save(&mut self) {
-        self.unsaved = 0;
+        self.progress.saved();
         let store = self.ctx().database.imports();
-        if let Err(error) = store.save_progress(self.repo_id(), self.phase, &self.counts, &self.warnings).await {
+        let progress = &self.progress;
+        if let Err(error) = store.save_progress(self.repo_id(), progress.phase, &progress.counts, &progress.warnings).await {
             tracing::warn!(%error, repo = %self.repo.repo.full_name(), "cannot save import progress");
         }
     }
 
     /// Counts one imported item and saves now and then.
     async fn tick(&mut self) {
-        self.unsaved += 1;
-        if self.unsaved >= SAVE_EVERY {
+        if self.progress.tick() {
             self.save().await;
         }
     }
 
     fn warn(&mut self, message: impl AsRef<str>) {
-        let message = clean_message(message.as_ref());
+        let message = self.progress.warn(message.as_ref());
         tracing::info!(repo = %self.repo.repo.full_name(), warning = %message, "import warning");
-        if self.warnings.len() < MAX_IMPORT_WARNINGS {
-            self.warnings.push(message);
-        } else {
-            self.counts.dropped_warnings += 1;
-        }
     }
 
     // ------------------------------------------------------------------ Git
@@ -282,8 +269,7 @@ impl Job {
             return Ok(());
         }
         let Ok(url) = self.clone_url() else { return Ok(()) };
-        let base = url.as_str().trim_end_matches('/');
-        let endpoint = format!("{}.git/info/lfs/objects/batch", base.strip_suffix(".git").unwrap_or(base));
+        let endpoint = items::lfs_batch_endpoint(url.as_str());
         let mut headers = HeaderMap::new();
         headers.insert(ACCEPT, HeaderValue::from_static("application/vnd.git-lfs+json"));
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/vnd.git-lfs+json"));
@@ -346,7 +332,7 @@ impl Job {
         };
         match self.services.lfs.store(&self.repo, &oid, object.size, download).await {
             Ok(()) => {
-                self.counts.lfs_objects += 1;
+                self.progress.counts.lfs_objects += 1;
                 self.tick().await;
             }
             Err(error) => self.warn(format!("Git LFS object {oid}: {}", user_message(&error))),
@@ -361,16 +347,15 @@ impl Job {
         let meta = self.ctx().database.issue_meta();
         let now = Timestamp::now();
         for label in labels {
-            let name = truncate_chars(label.name.trim(), MAX_LABEL_NAME).trim().to_owned();
-            if name.is_empty() || name.chars().any(char::is_control) {
-                self.warn(format!("label {:?} was skipped: its name is not valid here", label.name));
-                continue;
-            }
-            let fields = LabelFields {
-                color: label_color(&label.color).unwrap_or_else(|| DEFAULT_LABEL_COLOR.to_owned()),
-                description: truncate_chars(label.description.as_deref().unwrap_or_default().trim(), MAX_LABEL_DESCRIPTION).to_owned(),
-                name: name.clone(),
+            let item = match items::label(&label.name, &label.color, label.description.as_deref()) {
+                Ok(item) => item,
+                Err(warning) => {
+                    self.warn(warning);
+                    continue;
+                }
             };
+            let name = item.name.clone();
+            let fields = LabelFields { color: item.color, description: item.description, name: item.name };
             let created = match meta.create_label(self.repo_id(), &fields, now).await {
                 Ok(created) => Some(created),
                 Err(rbit_storage::StorageError::Conflict(_)) => meta.find_label_by_name(self.repo_id(), &name).await.ok().flatten(),
@@ -380,8 +365,8 @@ impl Job {
                 }
             };
             if let Some(created) = created {
-                self.labels.insert(name.to_lowercase(), created.id);
-                self.counts.labels += 1;
+                self.labels.insert(lookup_key(&name), created.id);
+                self.progress.counts.labels += 1;
                 self.tick().await;
             }
         }
@@ -392,16 +377,9 @@ impl Job {
         let milestones: Vec<api::Milestone> = self.client.all("/milestones", "state=all").await?;
         let meta = self.ctx().database.issue_meta();
         for milestone in milestones {
-            let title = truncate_chars(milestone.title.trim(), MAX_MILESTONE_TITLE).trim().to_owned();
-            if title.is_empty() {
-                continue;
-            }
-            let due_on = milestone.due_on.as_deref().and_then(parse_timestamp).map(|at| at.iso8601().chars().take(10).collect());
-            let fields = MilestoneFields {
-                title: title.clone(),
-                description: truncate_bytes(milestone.description.as_deref().unwrap_or_default(), MAX_TEXT_BYTES).to_owned(),
-                due_on,
-            };
+            let Some((title, description)) = items::milestone(&milestone.title, milestone.description.as_deref(), LIMITS) else { continue };
+            let due_on = milestone.due_on.as_deref().and_then(parse_timestamp).map(|at| items::due_date(&at.iso8601()));
+            let fields = MilestoneFields { title: title.clone(), description, due_on };
             let created_at = milestone.created_at.as_deref().and_then(parse_timestamp).unwrap_or_else(Timestamp::now);
             let created = match meta.create_milestone(self.repo_id(), &fields, created_at).await {
                 Ok(created) => created,
@@ -416,8 +394,8 @@ impl Job {
                     self.warn(format!("milestone {title} stays open: {}", user_message(&error.into())));
                 }
             }
-            self.milestones.insert(title.to_lowercase(), created.id);
-            self.counts.milestones += 1;
+            self.milestones.insert(lookup_key(&title), created.id);
+            self.progress.counts.milestones += 1;
             self.tick().await;
         }
         Ok(())
@@ -428,53 +406,15 @@ impl Job {
     /// The local account `user` maps to, if the instance maps authors at all.
     async fn author(&mut self, user: Option<&api::User>) -> Option<AccountId> {
         let user = user?;
-        let mapping = self.ctx().config.imports.author_mapping;
-        if mapping == AuthorMapping::None {
-            return None;
-        }
-        let key = user.login.to_lowercase();
-        if let Some(known) = self.authors.get(&key) {
-            return *known;
-        }
-        let store = self.ctx().database.imports();
-        let email = match user.email.clone().filter(|e| !e.is_empty()) {
-            Some(email) => Some(email),
-            None => self.client.user(&user.login).await.ok().and_then(|profile| profile.email).filter(|e| !e.is_empty()),
-        };
-        let mut found = match email {
-            Some(email) => store.user_with_verified_email(&email).await.ok().flatten(),
-            None => None,
-        };
-        if found.is_none() && mapping == AuthorMapping::EmailOrUsername {
-            found = store.user_named(&user.login).await.ok().flatten();
-        }
-        self.authors.insert(key, found);
-        found
+        let directory = Directory { client: &self.client, ctx: &self.services.ctx };
+        self.authors.resolve(&directory, &user.login, user.email.as_deref()).await
     }
 
-    /// `text` as written by `user`: unchanged when they map to a local account, otherwise
-    /// with a line naming and linking the original author (inside link text, so the
-    /// `@login` is never taken for a local mention).
+    /// `text` as written by `user` (see [`attributed`]).
     fn attributed(&self, text: &str, user: Option<&api::User>, mapped: bool) -> String {
-        if mapped {
-            return text.to_owned();
-        }
         let source = self.client.source();
-        let platform = source.kind.platform();
-        let (login, url) = match user {
-            Some(user) => {
-                let url = user
-                    .html_url
-                    .clone()
-                    .filter(|url| url.starts_with("https://") || url.starts_with("http://"))
-                    .unwrap_or_else(|| format!("{}/{}", source.web_base, user.login));
-                (user.login.as_str(), url)
-            }
-            None => ("ghost", format!("{}/ghost", source.web_base)),
-        };
-        let login: String = login.chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')).collect();
-        let url: String = url.chars().filter(|c| !c.is_whitespace() && !matches!(c, '(' | ')' | '<' | '>')).collect();
-        format!("*Originally by [@{login}]({url}) on {platform}.*\n\n{text}")
+        let author = user.map(|user| SourceAuthor { login: &user.login, html_url: user.html_url.as_deref() });
+        attributed(text, author, mapped, &source.web_base, source.kind.platform())
     }
 
     // ------------------------------------------------------------------ issues and pull requests
@@ -492,7 +432,7 @@ impl Job {
         // Threads created here meanwhile must not take a number the import still needs.
         let mut newest = self.client.pages("/issues", "state=all&sort=created&direction=desc");
         let newest: Vec<api::Issue> = newest.next().await?.unwrap_or_default();
-        let highest = newest.iter().map(|issue| issue.number).chain(pulls.keys().copied()).max();
+        let highest = items::highest_number(newest.iter().map(|issue| issue.number).chain(pulls.keys().copied()));
         if let Some(highest) = highest.and_then(IssueNumber::new)
             && let Err(error) = self.ctx().database.issues().reserve_numbers(self.repo_id(), highest).await
         {
@@ -516,7 +456,7 @@ impl Job {
         let Some(number) = IssueNumber::new(issue.number) else { return };
         let is_pull = issue.pull_request.is_some() || pull.is_some();
         if is_pull && pull.is_none() {
-            self.warn(format!("#{number}: the pull request's branches are unknown; skipped", number = number.get()));
+            self.warn(items::unknown_branches(number.get()));
             return;
         }
         let author = self.author(issue.user.as_ref()).await;
@@ -530,10 +470,7 @@ impl Job {
         if let Some(pull) = &pull {
             open_pull = self.open_pull_heads(number, pull).await;
             if issue.state == "open" && pull.merged_at.is_none() && open_pull.is_none() {
-                note = Some(format!(
-                    "\n\n*This pull request was open on {}; its commits were not available, so it was imported closed.*",
-                    self.client.source().kind.platform()
-                ));
+                note = Some(items::closed_pull_note(self.client.source().kind.platform()));
             }
         }
 
@@ -545,23 +482,20 @@ impl Job {
             Some(user) => self.author(Some(&user)).await,
             None => None,
         };
-        let closed = if let Some(at) = merged_at {
-            Some(ImportedClosing { at, reason: StateReason::Merged, by: merged_by })
-        } else if issue.state == "closed" || (is_pull && open_pull.is_none()) {
-            let reason = if issue.state_reason.as_deref() == Some("not_planned") || note.is_some() {
-                StateReason::NotPlanned
-            } else {
-                StateReason::Completed
-            };
-            Some(ImportedClosing { at: closed_at.unwrap_or(updated_at), reason, by: None })
-        } else {
-            None
+        let not_planned = issue.state_reason.as_deref() == Some("not_planned");
+        let closing =
+            items::closing(merged_at.is_some(), issue.state == "closed", is_pull && open_pull.is_none(), not_planned, note.is_some());
+        let at = closed_at.unwrap_or(updated_at);
+        let closed = match (closing, merged_at) {
+            (Closing::Merged, Some(merged)) => Some(ImportedClosing { at: merged, reason: StateReason::Merged, by: merged_by }),
+            (Closing::Completed, _) => Some(ImportedClosing { at, reason: StateReason::Completed, by: None }),
+            (Closing::NotPlanned, _) => Some(ImportedClosing { at, reason: StateReason::NotPlanned, by: None }),
+            (Closing::Open | Closing::Merged, _) => None,
         };
         let events = closing_events(closed.as_ref(), pull.as_ref());
 
-        let title = truncate_chars(issue.title.trim(), MAX_TITLE_CHARS);
-        let title: String = title.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
-        let title = IssueTitle::parse(&title).or_else(|_| IssueTitle::parse("(untitled)"));
+        let title = items::thread_title(&issue.title, LIMITS);
+        let title = IssueTitle::parse(&title).or_else(|_| IssueTitle::parse(items::UNTITLED));
         let body = issue.body.as_deref().unwrap_or_default();
         let mut text = self.attributed(body, issue.user.as_ref(), author.is_some());
         if let Some(note) = &note {
@@ -592,21 +526,21 @@ impl Job {
         let issue_id = match inserted {
             Ok(inserted) => inserted.id,
             Err(rbit_storage::StorageError::Conflict(_)) => {
-                self.warn(format!("#{} already exists here; skipped", number.get()));
+                self.warn(items::thread_exists(number.get()));
                 return;
             }
             Err(error) => {
                 tracing::warn!(%error, number = number.get(), "cannot import a thread");
-                self.warn(format!("#{} could not be imported", number.get()));
+                self.warn(items::thread_failed(number.get()));
                 return;
             }
         };
         if is_pull {
-            self.counts.pulls += 1;
+            self.progress.counts.pulls += 1;
         } else {
-            self.counts.issues += 1;
+            self.progress.counts.issues += 1;
         }
-        self.counts.comments += comment_count;
+        self.progress.counts.comments += comment_count;
         self.attach_metadata(issue_id, &issue, created_at).await;
     }
 
@@ -615,8 +549,7 @@ impl Job {
         let mut imported = Vec::with_capacity(comments.len());
         for comment in comments {
             let mapped = self.author(comment.user.as_ref()).await;
-            let body = comment.body.as_deref().unwrap_or_default();
-            let text = self.attributed(if body.trim().is_empty() { "*(no text)*" } else { body }, comment.user.as_ref(), mapped.is_some());
+            let text = self.attributed(items::comment_text(comment.body.as_deref()), comment.user.as_ref(), mapped.is_some());
             let Ok(body) = IssueText::comment(truncate_bytes(&text, MAX_TEXT_BYTES)) else { continue };
             let at = parse_timestamp(&comment.created_at).unwrap_or(fallback);
             let edited = comment.updated_at.as_deref().and_then(parse_timestamp).unwrap_or(at);
@@ -639,7 +572,7 @@ impl Job {
         merged_at: Option<Timestamp>,
         merged_by: Option<AccountId>,
     ) -> ImportedPull {
-        let merged = merged_at.map(|at| (at, pull.merge_commit_sha.clone().filter(|sha| is_full_id(sha))));
+        let merged = merged_at.map(|at| (at, items::merge_commit(pull.merge_commit_sha.as_deref())));
         match open {
             Some(open) => ImportedPull {
                 head_repo: open.same_repository.then_some(self.repo_id()),
@@ -652,9 +585,9 @@ impl Job {
             },
             None => ImportedPull {
                 head_repo: None,
-                head_branch: non_empty(&pull.head.name, "unknown"),
-                base_branch: non_empty(&pull.base.name, &self.repo.repo.repo.default_branch),
-                head_sha: if is_full_id(&pull.head.sha) { pull.head.sha.clone() } else { "0".repeat(40) },
+                head_branch: items::non_empty(&pull.head.name, "unknown"),
+                base_branch: items::non_empty(&pull.base.name, &self.repo.repo.repo.default_branch),
+                head_sha: items::history_head(&pull.head.sha),
                 is_draft: false,
                 merged,
                 merged_by,
@@ -665,14 +598,14 @@ impl Job {
     async fn attach_metadata(&mut self, issue_id: rbit_core::IssueId, issue: &api::Issue, at: Timestamp) {
         let meta = self.ctx().database.issue_meta();
         for label in &issue.labels {
-            if let Some(id) = self.labels.get(&label.name.trim().to_lowercase())
+            if let Some(id) = self.labels.get(&lookup_key(&label.name))
                 && let Err(error) = meta.add_label(issue_id, *id, at).await
             {
                 tracing::warn!(%error, "cannot label an imported thread");
             }
         }
         if let Some(milestone) = &issue.milestone
-            && let Some(id) = self.milestones.get(&milestone.title.trim().to_lowercase())
+            && let Some(id) = self.milestones.get(&lookup_key(&milestone.title))
             && let Err(error) = meta.set_milestone(issue_id, Some(*id)).await
         {
             tracing::warn!(%error, "cannot set the milestone of an imported thread");
@@ -696,7 +629,7 @@ impl Job {
         let head = reader.commit_id(format!("refs/pull/{}/head", number.get())).await.ok()?;
         reader.commit_id(format!("refs/heads/{}", pull.base.name)).await.ok()?;
         let source = self.client.source().full_name();
-        let same_repository = pull.head.repo.as_ref().is_some_and(|repo| repo.full_name.eq_ignore_ascii_case(&source))
+        let same_repository = items::same_repository(pull.head.repo.as_ref().map(|repo| repo.full_name.as_str()), &source)
             && reader.commit_id(format!("refs/heads/{}", pull.head.name)).await.is_ok();
         Some(OpenPull { head_sha: head, same_repository })
     }
@@ -715,25 +648,19 @@ impl Job {
 
     async fn import_release(&mut self, release: api::Release) -> Result<(), SourceError> {
         let store = self.ctx().database.releases();
-        let tag = release.tag_name.trim().to_owned();
-        if tag.is_empty() {
+        let Some((tag, name, notes)) = items::release(&release.tag_name, release.name.as_deref(), release.body.as_deref(), LIMITS) else {
             return Ok(());
-        }
+        };
         if store.find_by_tag(self.repo_id(), &tag).await.ok().flatten().is_some() {
-            self.warn(format!("release {tag} already exists here; skipped"));
+            self.warn(items::release_exists(&tag));
             return Ok(());
         }
         let author = self.author(release.author.as_ref()).await;
-        let name: String = truncate_chars(release.name.as_deref().unwrap_or_default().trim(), MAX_RELEASE_NAME_CHARS)
-            .chars()
-            .map(|c| if c.is_control() { ' ' } else { c })
-            .collect();
-        let notes = truncate_chars(release.body.as_deref().unwrap_or_default(), MAX_RELEASE_NOTES_CHARS);
         let new = NewRelease {
             repo_id: self.repo_id(),
             tag_name: &tag,
-            name: if name.trim().is_empty() { &tag } else { name.trim() },
-            notes,
+            name: &name,
+            notes: &notes,
             is_draft: release.draft,
             is_prerelease: release.prerelease,
             author_id: Some(author.unwrap_or_else(|| self.importer.id())),
@@ -743,7 +670,7 @@ impl Job {
             Ok(id) => id,
             Err(error) => {
                 tracing::warn!(%error, tag, "cannot import a release");
-                self.warn(format!("release {tag} could not be imported"));
+                self.warn(items::release_failed(&tag));
                 return Ok(());
             }
         };
@@ -752,7 +679,7 @@ impl Job {
         if let Err(error) = self.ctx().database.imports().backdate_release(id, created_at, published_at).await {
             tracing::warn!(%error, tag, "cannot keep a release's original dates");
         }
-        self.counts.releases += 1;
+        self.progress.counts.releases += 1;
         self.tick().await;
         for asset in release.assets {
             self.import_asset(id, &tag, asset).await?;
@@ -763,27 +690,18 @@ impl Job {
     async fn import_asset(&mut self, release: rbit_core::ReleaseId, tag: &str, asset: api::Asset) -> Result<(), SourceError> {
         let name = asset.name.clone();
         let max = self.ctx().config.releases.max_asset_bytes;
-        if asset.size > max {
-            self.warn(format!("release {tag}: {name} was skipped: it is larger than this instance allows"));
-            return Ok(());
-        }
-        if let Err(message) = validate_asset_name(&name) {
-            self.warn(format!("release {tag}: {name} was skipped: {message}"));
+        if let Some(refusal) = items::asset_refusal(tag, &name, asset.size, max, validate_asset_name(&name)) {
+            self.warn(refusal);
             return Ok(());
         }
         // GitHub: the API URL with `Accept: application/octet-stream` (works for private
         // repositories); Gitea: the download URL.
-        let (url, api_auth, accept) = match (&asset.url, &asset.browser_download_url) {
-            (Some(url), _) if self.client.source().kind != rbit_core::import::SourceKind::Gitea => {
-                (url.clone(), true, "application/octet-stream")
-            }
-            (_, Some(url)) => (url.clone(), true, "*/*"),
-            (Some(url), None) => (url.clone(), true, "application/octet-stream"),
-            (None, None) => {
-                self.warn(format!("release {tag}: {name} has no download URL"));
-                return Ok(());
-            }
+        let gitea = self.client.source().kind == rbit_core::import::SourceKind::Gitea;
+        let Some((url, accept)) = items::asset_download(gitea, asset.url.as_deref(), asset.browser_download_url.as_deref()) else {
+            self.warn(format!("release {tag}: {name} has no download URL"));
+            return Ok(());
         };
+        let (url, api_auth) = (url.to_owned(), true);
         let mut headers = HeaderMap::new();
         headers.insert(ACCEPT, HeaderValue::from_static(accept));
         let download = match self.client.download(&url, &headers, api_auth).await {
@@ -797,15 +715,16 @@ impl Job {
         let content_type = asset.content_type.clone().unwrap_or_default();
         let releases = self.services.releases.clone();
         match releases.upload_asset(&self.repo, &self.importer, release, &name, &content_type, download).await {
-            Ok(stored) if asset.size > 0 && stored.size != asset.size => {
-                self.warn(format!("release {tag}: {name} arrived with {} of {} bytes; removed", stored.size, asset.size));
-                if let Err(error) = releases.delete_asset(&self.repo, release, stored.id).await {
-                    tracing::warn!(%error, "cannot remove an incomplete imported release file");
+            Ok(stored) => {
+                if let Some(warning) = items::incomplete_asset(tag, &name, stored.size, asset.size) {
+                    self.warn(warning);
+                    if let Err(error) = releases.delete_asset(&self.repo, release, stored.id).await {
+                        tracing::warn!(%error, "cannot remove an incomplete imported release file");
+                    }
+                } else {
+                    self.progress.counts.assets += 1;
+                    self.tick().await;
                 }
-            }
-            Ok(_) => {
-                self.counts.assets += 1;
-                self.tick().await;
             }
             Err(error) => self.warn(format!("release {tag}: {name}: {}", user_message(&error))),
         }
@@ -818,10 +737,9 @@ impl Job {
 fn closing_events(closed: Option<&ImportedClosing>, pull: Option<&api::Pull>) -> Vec<ImportedEvent> {
     let Some(closing) = closed else { return Vec::new() };
     let event = match (closing.reason, pull) {
-        (StateReason::Merged, Some(pull)) => TimelineEvent::Merged {
-            commit: pull.merge_commit_sha.clone().filter(|sha| is_full_id(sha)).unwrap_or_else(|| pull.head.sha.clone()),
-            strategy: None,
-        },
+        (StateReason::Merged, Some(pull)) => {
+            TimelineEvent::Merged { commit: items::merged_event_commit(pull.merge_commit_sha.as_deref(), &pull.head.sha), strategy: None }
+        }
         (reason, _) => TimelineEvent::Closed { reason, commit: None, pull: None },
     };
     vec![ImportedEvent { actor: closing.by, event, at: closing.at }]
@@ -835,15 +753,6 @@ struct OpenPull {
     same_repository: bool,
 }
 
-/// A full 40-digit (or 64-digit) commit id.
-fn is_full_id(value: &str) -> bool {
-    matches!(value.len(), 40 | 64) && value.bytes().all(|b| b.is_ascii_hexdigit())
-}
-
-fn non_empty(value: &str, fallback: &str) -> String {
-    if value.trim().is_empty() { fallback.to_owned() } else { value.to_owned() }
-}
-
 /// A service error in words for a warning (internal details stay in the log).
 fn user_message(error: &ServiceError) -> String {
     match error {
@@ -855,14 +764,24 @@ fn user_message(error: &ServiceError) -> String {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// Author lookups for the feature's author map: the source's profile and local accounts.
+struct Directory<'a> {
+    client: &'a SourceClient,
+    ctx: &'a ServiceContext,
+}
 
-    #[test]
-    fn commit_ids_are_recognised() {
-        assert!(is_full_id(&"a".repeat(40)) && is_full_id(&"0".repeat(64)));
-        assert!(!is_full_id("abc") && !is_full_id(&"g".repeat(40)));
-        assert_eq!(non_empty(" ", "main"), "main");
+impl AuthorDirectory for Directory<'_> {
+    type Account = AccountId;
+
+    async fn source_email(&self, login: &str) -> Option<String> {
+        self.client.user(login).await.ok().and_then(|profile| profile.email)
+    }
+
+    async fn verified_email(&self, email: &str) -> Option<AccountId> {
+        self.ctx.database.imports().user_with_verified_email(email).await.ok().flatten()
+    }
+
+    async fn named(&self, login: &str) -> Option<AccountId> {
+        self.ctx.database.imports().user_named(login).await.ok().flatten()
     }
 }
