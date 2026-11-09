@@ -68,28 +68,11 @@ struct TeamGrantRow {
     created_at: i64,
 }
 
-/// A rule as written: everything but its id and timestamps.
-#[derive(Debug, Clone)]
-pub struct RuleInput {
-    pub pattern: BranchPattern,
-    pub settings: RuleSettings,
-    pub users: Vec<AccountId>,
-    pub teams: Vec<TeamId>,
-    /// Required status check contexts (milestone 3, S).
-    pub contexts: Vec<StatusContext>,
-}
+/// A rule as written; the shape is owned by `rbit-access`.
+pub type RuleInput = rbit_access::protection::RuleInput<AccountId, TeamId, StatusContext>;
 
 /// The result of [`BranchProtectionStore::create`] and [`BranchProtectionStore::update`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RuleChange {
-    Saved(ProtectionId),
-    /// Creating: the repository already has [`MAX_RULES`] rules.
-    TooManyRules,
-    /// Updating: there is no such rule in the repository.
-    NotFound,
-    /// An allowed team does not belong to the repository's organisation (nothing was saved).
-    TeamOutsideOrganization,
-}
+pub use rbit_access::protection::RuleChange;
 
 #[derive(Debug, Clone)]
 pub struct BranchProtectionStore {

@@ -1,6 +1,6 @@
 [package]
 name = "rbit-access"
-description = "Pure repository, organisation and team access decisions over trusted facts and storage ports."
+description = "Pure repository, organisation, team and branch protection decisions over trusted facts and storage ports."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,6 +8,7 @@ license.workspace = true
 
 [dependencies]
 serde.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true

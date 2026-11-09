@@ -31,8 +31,8 @@ pub const MAX_CONTEXT_CHARS: usize = 255;
 pub const MAX_DESCRIPTION_CHARS: usize = 140;
 /// Reports kept per commit and context (GitHub's limit); further ones are refused.
 pub const MAX_STATUSES_PER_CONTEXT: u32 = 1000;
-/// Most required contexts per branch protection rule.
-pub const MAX_REQUIRED_CONTEXTS: usize = 50;
+/// Most required contexts per branch protection rule; owned by the protection rules.
+pub use rbit_access::protection::MAX_REQUIRED_CONTEXTS;
 
 /// Database id of one status report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
