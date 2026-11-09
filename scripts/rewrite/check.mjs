@@ -30,6 +30,7 @@ import { checkActionsArtifactsCachesRetirement } from "./actions-artifacts-cache
 import { checkPresentationRetirement } from "./presentation-retirement.mjs";
 import { checkApiRetirement } from "./api-retirement.mjs";
 import { checkBackupRetirement } from "./backup-retirement.mjs";
+import { checkReleaseRetirement } from "./release-retirement.mjs";
 import { checkCollaborationFeatures, checkCollaborationGraphs } from "./collaboration-features.mjs";
 import { checkUnifiedModelBoundary } from "./identity-model-boundary.mjs";
 import { checkInventoryCompileIsolation } from "./inventory-isolation.mjs";
@@ -225,6 +226,7 @@ export function check(root) {
     ...checkPresentationRetirement(files),
     ...checkApiRetirement(files),
     ...checkBackupRetirement(files),
+    ...checkReleaseRetirement(root),
     ...checkPlatformBoundary(root, files), ...checkMigrations(root, baseline), ...checkLedger(root, ledger)] };
 }
 
