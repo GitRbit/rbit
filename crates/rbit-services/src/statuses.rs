@@ -27,6 +27,11 @@
 //!   combined state is [`rbit_core::status::combined_state`] over the latest status of
 //!   each context.
 //!
+//! These rules are decided by [`rbit_collaboration::statuses::StatusApplication`] over the
+//! `CommitStatusRepository` port, which the storage crate implements. This service is the
+//! composition adapter: it resolves references, parses reports, maps errors, logs and
+//! publishes [`DomainEvent::CommitStatus`].
+//!
 //! Requests are already throttled per account by the API ([`crate::ThrottleScope::ApiRequest`]);
 //! the per-context cap bounds what one commit can accumulate.
 
@@ -34,18 +39,17 @@ pub mod hooks;
 
 use std::collections::HashMap;
 
+use rbit_collaboration::statuses::{StatusAccess, StatusApplication, StatusApplicationError, creator_ids};
 use rbit_core::{
     Account, RepoId, User,
-    status::{CommitStatus, MAX_STATUSES_PER_CONTEXT, StatusReport, StatusState, combined_state, parse_sha},
+    status::{CommitStatus, StatusError, StatusReport},
 };
 use rbit_git::GitError;
+use rbit_storage::{StorageError, sqlite::statuses::CommitStatusStore};
+
+pub use rbit_collaboration::statuses::{CombinedStatus, StatusPage};
 
 use crate::{DomainEvent, RepoContext, ServiceContext, ServiceError, actions::tokens::TaskGrant};
-
-/// A commit and context that already have [`MAX_STATUSES_PER_CONTEXT`] statuses.
-fn at_cap() -> ServiceError {
-    ServiceError::Invalid(format!("this SHA and context has reached the maximum number of statuses ({MAX_STATUSES_PER_CONTEXT})"))
-}
 
 /// A status as submitted (the REST API's body).
 #[derive(Debug, Clone, Default)]
@@ -57,28 +61,29 @@ pub struct NewStatus {
     pub context: Option<String>,
 }
 
-/// A commit's combined status: the overall state and the latest status of each context.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CombinedStatus {
-    pub sha: String,
-    pub state: StatusState,
-    /// The latest status of each context, by context.
-    pub statuses: Vec<CommitStatus>,
-}
-
-impl CombinedStatus {
-    fn new(sha: String, statuses: Vec<CommitStatus>) -> Self {
-        Self { state: combined_state(&statuses), sha, statuses }
+impl NewStatus {
+    fn report(&self) -> Result<StatusReport, StatusError> {
+        StatusReport::parse(&self.state, self.context.as_deref(), self.description.as_deref(), self.target_url.as_deref())
     }
 }
 
-/// One page of a commit's statuses, newest first.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StatusPage {
-    pub sha: String,
-    pub statuses: Vec<CommitStatus>,
-    /// Statuses across all pages.
-    pub total: u64,
+fn error(error: StatusApplicationError<StorageError, GitError>) -> ServiceError {
+    match error {
+        StatusApplicationError::Store(error) => error.into(),
+        StatusApplicationError::Commit(error) => error.into(),
+        StatusApplicationError::Invalid(message) => ServiceError::Invalid(message),
+        StatusApplicationError::Forbidden => ServiceError::Forbidden,
+        StatusApplicationError::Archived => ServiceError::Archived,
+    }
+}
+
+/// The full id of the commit `sha` names in `repo`; `None` when there is none.
+async fn commit_of(repo: &RepoContext, sha: String) -> Result<Option<String>, GitError> {
+    match repo.reader.commit_id(sha).await {
+        Ok(found) => Ok(Some(found)),
+        Err(GitError::NotFound(_)) => Ok(None),
+        Err(error) => Err(error),
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -91,13 +96,25 @@ impl StatusService {
         Self { ctx }
     }
 
+    fn application(&self, access: StatusAccess) -> StatusApplication<CommitStatusStore> {
+        StatusApplication::new(self.ctx.database.commit_statuses(), access)
+    }
+
+    /// Writes by the request's caller, with its access to `repo`.
+    fn for_caller(&self, repo: &RepoContext) -> StatusApplication<CommitStatusStore> {
+        let id = repo.repo.repo.id;
+        self.application(StatusAccess { repo: id, can_write: repo.access.can_write(), archived: repo.repo.repo.is_archived() })
+    }
+
+    /// Reads and system writes, which check no permission.
+    fn system(&self, repo: RepoId) -> StatusApplication<CommitStatusStore> {
+        self.application(StatusAccess { repo, can_write: false, archived: false })
+    }
+
     /// Records a status of commit `sha` (a full id) for `actor`, who needs write access.
     pub async fn create(&self, actor: &User, repo: &RepoContext, sha: &str, input: &NewStatus) -> Result<CommitStatus, ServiceError> {
-        let (sha, report) = self.checked(repo, sha, input).await?;
-        let store = self.ctx.database.commit_statuses();
-        let Some(status) = store.create(repo.repo.repo.id, &sha, &report, actor.id(), MAX_STATUSES_PER_CONTEXT).await? else {
-            return Err(at_cap());
-        };
+        let application = self.for_caller(repo);
+        let status = application.create(actor.id(), sha, || input.report(), |sha| commit_of(repo, sha)).await.map_err(error)?;
         tracing::info!(
             repo = %repo.repo.full_name(),
             sha = %status.sha,
@@ -127,14 +144,8 @@ impl StatusService {
         sha: &str,
         input: &NewStatus,
     ) -> Result<CommitStatus, ServiceError> {
-        if repo.repo.repo.id != grant.repo {
-            return Err(ServiceError::Forbidden);
-        }
-        let (sha, report) = self.checked(repo, sha, input).await?;
-        let store = self.ctx.database.commit_statuses();
-        let Some(status) = store.create_as_system(grant.repo, &sha, &report, MAX_STATUSES_PER_CONTEXT).await? else {
-            return Err(at_cap());
-        };
+        let application = self.for_caller(repo);
+        let status = application.create_for_task(grant.repo, sha, || input.report(), |sha| commit_of(repo, sha)).await.map_err(error)?;
         tracing::info!(
             repo = %repo.repo.full_name(),
             sha = %status.sha,
@@ -147,25 +158,6 @@ impl StatusService {
         Ok(status)
     }
 
-    /// The full commit id and the report of a status `repo`'s caller may post: write access,
-    /// a repository that is not archived, valid values and a commit that exists.
-    async fn checked(&self, repo: &RepoContext, sha: &str, input: &NewStatus) -> Result<(String, StatusReport), ServiceError> {
-        if !repo.access.can_write() {
-            return Err(ServiceError::Forbidden);
-        }
-        repo.ensure_writable()?;
-        let invalid = |error: rbit_core::status::StatusError| ServiceError::Invalid(error.to_string());
-        let sha = parse_sha(sha).map_err(invalid)?;
-        let report = StatusReport::parse(&input.state, input.context.as_deref(), input.description.as_deref(), input.target_url.as_deref())
-            .map_err(invalid)?;
-        let no_commit = || ServiceError::Invalid(format!("no commit found for SHA {sha}"));
-        match repo.reader.commit_id(sha.clone()).await {
-            Ok(found) if found == sha => Ok((sha, report)),
-            Ok(_) | Err(GitError::NotFound(_)) => Err(no_commit()),
-            Err(error) => Err(error.into()),
-        }
-    }
-
     // Actions: triggers (T).
     /// Records `report` on commit `sha` (a full id of `repo`, not checked) as rbit Actions:
     /// no creator and no permission check — the caller is the Actions service reporting its
@@ -176,8 +168,7 @@ impl StatusService {
         sha: &str,
         report: &StatusReport,
     ) -> Result<Option<CommitStatus>, ServiceError> {
-        let store = self.ctx.database.commit_statuses();
-        let Some(status) = store.create_as_system(repo, sha, report, MAX_STATUSES_PER_CONTEXT).await? else {
+        let Some(status) = self.system(repo).record_system(sha, report).await? else {
             tracing::warn!(repo = repo.0, sha, context = %report.context.as_str(), "commit status cap reached; Actions status dropped");
             return Ok(None);
         };
@@ -195,9 +186,7 @@ impl StatusService {
     /// The statuses of the commit `reference` names, newest first.
     pub async fn list(&self, repo: &RepoContext, reference: &str, offset: u64, limit: u32) -> Result<StatusPage, ServiceError> {
         let sha = self.resolve(repo, reference).await?;
-        let store = self.ctx.database.commit_statuses();
-        let (statuses, total) = tokio::try_join!(store.list(repo.repo.repo.id, &sha, offset, limit), store.count(repo.repo.repo.id, &sha))?;
-        Ok(StatusPage { sha, statuses, total })
+        Ok(self.system(repo.repo.repo.id).page(sha, offset, limit).await?)
     }
 
     /// The combined status of the commit `reference` names.
@@ -208,25 +197,22 @@ impl StatusService {
 
     /// The combined status of commit `sha` (a full id; not resolved).
     pub async fn combined_for(&self, repo: &RepoContext, sha: &str) -> Result<CombinedStatus, ServiceError> {
-        let statuses = self.ctx.database.commit_statuses().latest(repo.repo.repo.id, sha).await?;
-        Ok(CombinedStatus::new(sha.to_owned(), statuses))
+        Ok(self.system(repo.repo.repo.id).combined(sha.to_owned()).await?)
     }
 
     /// The combined status of every commit of `shas` that has statuses (one query), for
     /// commit lists. Commits without statuses are absent.
     pub async fn combined_of(&self, repo: &RepoContext, shas: &[String]) -> Result<HashMap<String, CombinedStatus>, ServiceError> {
-        let mut by_sha: HashMap<String, Vec<CommitStatus>> = HashMap::new();
-        for status in self.ctx.database.commit_statuses().latest_of(repo.repo.repo.id, shas).await? {
-            by_sha.entry(status.sha.clone()).or_default().push(status);
-        }
-        Ok(by_sha.into_iter().map(|(sha, statuses)| (sha.clone(), CombinedStatus::new(sha, statuses))).collect())
+        Ok(self.system(repo.repo.repo.id).combined_of(shas).await?)
+    }
+
+    /// Report `id` of `repo`, for the `status` webhook (no permission check).
+    pub(crate) async fn find(&self, repo: RepoId, id: rbit_core::status::StatusId) -> Result<Option<CommitStatus>, ServiceError> {
+        Ok(self.system(repo).find(id).await?)
     }
 
     /// The accounts that created `statuses` (deleted ones are absent).
     pub async fn creators(&self, statuses: &[CommitStatus]) -> Result<Vec<Account>, ServiceError> {
-        let mut ids: Vec<_> = statuses.iter().filter_map(|status| status.creator).collect();
-        ids.sort_unstable();
-        ids.dedup();
-        Ok(self.ctx.database.accounts().find_accounts(&ids).await?)
+        Ok(self.ctx.database.accounts().find_accounts(&creator_ids(statuses)).await?)
     }
 }

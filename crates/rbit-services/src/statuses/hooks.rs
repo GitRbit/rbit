@@ -95,7 +95,7 @@ fn commit(summary: &CommitSummary, repo: &OwnedRepository, base_url: &str) -> Va
 pub async fn payload(ctx: &ServiceContext, event: &DomainEvent, base_url: &str) -> Result<Option<HookPayload>, ServiceError> {
     let DomainEvent::CommitStatus { repo, status: id, actor, .. } = event else { return Ok(None) };
     let Some(owned) = ctx.database.admin().find_repository(*repo).await? else { return Ok(None) };
-    let Some(stored) = ctx.database.commit_statuses().find(*repo, *id).await? else { return Ok(None) };
+    let Some(stored) = crate::StatusService::new(ctx.clone()).find(*repo, *id).await? else { return Ok(None) };
     let system = RepoContext::for_system(owned.clone(), &ctx.repositories);
     let summary = system.reader.history(stored.sha.clone(), 0, 1).await.ok().and_then(|mut commits| commits.pop());
     let rules: Vec<_> = ctx.database.branch_protection().list(*repo).await?.into_iter().map(|rule| rule.rule).collect();

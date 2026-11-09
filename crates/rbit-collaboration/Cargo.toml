@@ -15,6 +15,7 @@ rbit-repositories = { workspace = true, default-features = false }
 rbit-contracts = { workspace = true, default-features = false }
 rbit-identity-models = { workspace = true, default-features = false }
 serde.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

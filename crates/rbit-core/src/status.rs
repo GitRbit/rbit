@@ -4,6 +4,10 @@
 //!
 //! Milestone 3 workstream S (commit statuses and required checks) owns this file.
 //!
+//! The records and decisions live in [`rbit_collaboration::statuses`]; this module
+//! re-exports them and keeps the report parser, whose target URL syntax is the webhook
+//! URL's, and the merge box summary over [`ChecksStatus`].
+//!
 //! The model is GitHub's commit status API, so existing CI integrations work unchanged:
 //! * a status has a `state` (`pending`, `success`, `failure`, `error`), a `context` that
 //!   names the check (default `default`), an optional `description` (≤
@@ -17,138 +21,16 @@
 //! A status is posted by a person (through the API) or by rbit Actions for its jobs
 //! ([`StatusSource`]); Actions' statuses have no creator.
 
-use std::fmt;
-
-use serde::{Deserialize, Serialize};
-
-use crate::{AccountId, RepoId, Timestamp, pull::ChecksStatus, webhook::WebhookUrl};
-
-/// The context of a status posted without one.
-pub const DEFAULT_CONTEXT: &str = "default";
-/// Longest context, in characters.
-pub const MAX_CONTEXT_CHARS: usize = 255;
-/// Longest description, in characters (GitHub's limit).
-pub const MAX_DESCRIPTION_CHARS: usize = 140;
-/// Reports kept per commit and context (GitHub's limit); further ones are refused.
-pub const MAX_STATUSES_PER_CONTEXT: u32 = 1000;
 /// Most required contexts per branch protection rule; owned by the protection rules.
 pub use rbit_access::protection::MAX_REQUIRED_CONTEXTS;
+pub use rbit_collaboration::statuses::{
+    CommitStatus, DEFAULT_CONTEXT, MAX_CONTEXT_CHARS, MAX_DESCRIPTION_CHARS, MAX_STATUSES_PER_CONTEXT, RequiredChecks, StatusContext,
+    StatusError, StatusId, StatusSource, StatusState, combined_state, parse_sha, required_checks,
+};
 
-/// Database id of one status report.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct StatusId(pub i64);
-
-/// The state a status reports.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum StatusState {
-    Pending,
-    Success,
-    Failure,
-    /// The check could not run (as opposed to running and failing).
-    Error,
-}
-
-impl StatusState {
-    pub const ALL: [Self; 4] = [Self::Pending, Self::Success, Self::Failure, Self::Error];
-
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Pending => "pending",
-            Self::Success => "success",
-            Self::Failure => "failure",
-            Self::Error => "error",
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|state| state.as_str() == value)
-    }
-
-    /// `failure` and `error`.
-    pub const fn is_failed(self) -> bool {
-        matches!(self, Self::Failure | Self::Error)
-    }
-}
-
-impl fmt::Display for StatusState {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-/// Why a submitted status was rejected. The message is shown to the caller.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum StatusError {
-    #[error("state must be one of pending, success, failure or error")]
-    State,
-    #[error("context must not be empty")]
-    EmptyContext,
-    #[error("context must be at most {MAX_CONTEXT_CHARS} characters")]
-    ContextTooLong,
-    #[error("context must not contain control characters")]
-    ContextCharacters,
-    #[error("description must be at most {MAX_DESCRIPTION_CHARS} characters")]
-    DescriptionTooLong,
-    #[error("description must not contain control characters")]
-    DescriptionCharacters,
-    #[error("target_url must be an absolute http or https URL ({0})")]
-    TargetUrl(String),
-    #[error("sha must be a full commit id")]
-    Sha,
-}
-
-/// The name of a check (`ci/build`, `continuous-integration/jenkins`): trimmed, 1 to
-/// [`MAX_CONTEXT_CHARS`] characters, no control characters. Case-sensitive, as on GitHub.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct StatusContext(String);
-
-impl StatusContext {
-    pub fn parse(value: &str) -> Result<Self, StatusError> {
-        let value = value.trim();
-        if value.is_empty() {
-            return Err(StatusError::EmptyContext);
-        }
-        if value.chars().count() > MAX_CONTEXT_CHARS {
-            return Err(StatusError::ContextTooLong);
-        }
-        if value.chars().any(char::is_control) {
-            return Err(StatusError::ContextCharacters);
-        }
-        Ok(Self(value.to_owned()))
-    }
-
-    /// `default`.
-    pub fn default_context() -> Self {
-        Self(DEFAULT_CONTEXT.to_owned())
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for StatusContext {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl AsRef<str> for StatusContext {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-/// A full commit id: 40 (SHA-1) or 64 (SHA-256) hexadecimal digits, lower-cased.
-pub fn parse_sha(value: &str) -> Result<String, StatusError> {
-    let value = value.trim();
-    if matches!(value.len(), 40 | 64) && value.bytes().all(|b| b.is_ascii_hexdigit()) {
-        Ok(value.to_ascii_lowercase())
-    } else {
-        Err(StatusError::Sha)
-    }
-}
+#[cfg(test)]
+use crate::{RepoId, Timestamp};
+use crate::{pull::ChecksStatus, webhook::WebhookUrl};
 
 /// A validated status as submitted, before it is stored.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -187,63 +69,6 @@ impl StatusReport {
     }
 }
 
-// Actions: triggers (T).
-/// Who posted a status.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum StatusSource {
-    /// A person, or CI acting with a person's credentials, through the API.
-    #[default]
-    User,
-    /// rbit Actions, for one of its jobs. Such a status has no creator.
-    Actions,
-}
-
-impl StatusSource {
-    /// The stored value.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::User => "user",
-            Self::Actions => "actions",
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        [Self::User, Self::Actions].into_iter().find(|source| source.as_str() == value)
-    }
-}
-
-/// One stored report.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CommitStatus {
-    pub id: StatusId,
-    pub repo_id: RepoId,
-    /// The full commit id.
-    pub sha: String,
-    pub state: StatusState,
-    pub context: StatusContext,
-    pub description: Option<String>,
-    pub target_url: Option<String>,
-    /// `None` once the account is deleted, and for statuses rbit Actions posted.
-    pub creator: Option<AccountId>,
-    pub source: StatusSource,
-    pub created_at: Timestamp,
-    pub updated_at: Timestamp,
-}
-
-// ------------------------------------------------------------------ decisions
-
-/// GitHub's combined state of a commit from the **latest** status of each context.
-pub fn combined_state(latest: &[CommitStatus]) -> StatusState {
-    if latest.iter().any(|status| status.state.is_failed()) {
-        StatusState::Failure
-    } else if latest.is_empty() || latest.iter().any(|status| status.state == StatusState::Pending) {
-        StatusState::Pending
-    } else {
-        StatusState::Success
-    }
-}
-
 /// The merge box's summary of a commit's checks: [`ChecksStatus::NotConfigured`] when
 /// nothing reported, otherwise the combined state.
 pub fn checks_status(latest: &[CommitStatus]) -> ChecksStatus {
@@ -255,47 +80,6 @@ pub fn checks_status(latest: &[CommitStatus]) -> ChecksStatus {
         StatusState::Success => ChecksStatus::Passing,
         StatusState::Failure | StatusState::Error => ChecksStatus::Failing,
     }
-}
-
-/// How the required contexts of a branch stand on a commit.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct RequiredChecks {
-    /// Required contexts.
-    pub required: usize,
-    /// Required contexts whose latest status is `success`.
-    pub passing: usize,
-    /// Required contexts whose latest status is `failure` or `error`.
-    pub failing: usize,
-}
-
-impl RequiredChecks {
-    /// Every required context passes.
-    pub const fn all_pass(self) -> bool {
-        self.passing == self.required
-    }
-
-    /// Required contexts that are pending or have not reported yet.
-    pub const fn waiting(self) -> usize {
-        self.required - self.passing - self.failing
-    }
-}
-
-/// Counts `required` contexts by the state of their latest status in `latest`.
-/// Duplicated contexts count once.
-pub fn required_checks<S: AsRef<str>>(required: &[S], latest: &[CommitStatus]) -> RequiredChecks {
-    let mut contexts: Vec<&str> = required.iter().map(AsRef::as_ref).collect();
-    contexts.sort_unstable();
-    contexts.dedup();
-    let mut checks = RequiredChecks { required: contexts.len(), ..RequiredChecks::default() };
-    for context in contexts {
-        let newest = latest.iter().filter(|status| status.context.as_str() == context).max_by_key(|status| status.id);
-        match newest.map(|status| status.state) {
-            Some(StatusState::Success) => checks.passing += 1,
-            Some(StatusState::Failure | StatusState::Error) => checks.failing += 1,
-            Some(StatusState::Pending) | None => {}
-        }
-    }
-    checks
 }
 
 #[cfg(test)]

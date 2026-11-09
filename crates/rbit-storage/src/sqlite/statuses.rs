@@ -5,8 +5,9 @@
 //!
 //! Every report is a row; the current status of a `(repository, commit, context)` is the
 //! row with the highest id. [`CommitStatusStore::create`] enforces the per-triple cap in
-//! the same statement as the insert. Validation of the values happens in the service
-//! (`rbit_core::status::StatusReport`).
+//! the same statement as the insert. Validation of the values happens before
+//! (`rbit_core::status::StatusReport`); `rbit_collaboration::statuses::StatusApplication`
+//! reaches this store through its `CommitStatusRepository` port.
 //!
 //! Statuses rbit Actions posts ([`CommitStatusStore::create_as_system`]) have no creator
 //! and `source = 'actions'` (migration `0049_commit_status_source.sql`).
