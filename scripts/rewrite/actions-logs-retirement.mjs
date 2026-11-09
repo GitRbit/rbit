@@ -11,6 +11,11 @@ const RULES = [
   [/\bconst\s+MAX_LINES_PER_CALL\s*:|lines per call"/u, "append limit decided outside rbit_actions::logs"],
   [/\.split\('\\n'\)[\s\S]{0,200}\.pop\(\)/u, "append body splitting outside rbit_actions::logs::split_body"],
 ];
+// Log files are written, recovered, compressed, removed and read in rbit-actions through
+// the TaskLogFiles port; only the disk adapter opens them in the services' logs module.
+const LOG_MODULE = "crates/rbit-services/src/actions/logs/";
+const DISK_ADAPTER = "crates/rbit-services/src/actions/logs/disk.rs";
+const FILE_IO = /\b(?:OpenOptions|GzEncoder|GzDecoder|SeekFrom)\b|\.(?:set_len|sync_data|sync_all)\(|\bfrom_le_bytes\b|\b(?:remove_file|create_dir_all)\s*\(/u;
 
 /** Comments are not code; strip line and block comments before matching. */
 function code(source) {
@@ -24,6 +29,9 @@ export function checkActionsLogsRetirement(sources) {
     if (!path.endsWith(".rs") || TESTS.test(path) || !ADAPTERS.some((root) => path.startsWith(root))) continue;
     const text = code(source);
     for (const [pattern, message] of RULES) if (pattern.test(text)) violations.push(`${path}: ${message}`);
+    if (path.startsWith(LOG_MODULE) && path !== DISK_ADAPTER && FILE_IO.test(text)) {
+      violations.push(`${path}: task log file I/O belongs in rbit_actions::logs behind TaskLogFiles`);
+    }
   }
   return violations;
 }

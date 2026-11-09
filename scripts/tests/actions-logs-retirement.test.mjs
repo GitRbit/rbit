@@ -29,6 +29,21 @@ test("the runner's own pass, test modules, re-exports and comments are allowed",
   ]), []);
 });
 
+test("task log file I/O stays behind the TaskLogFiles port", () => {
+  for (const source of [
+    "let log = OpenOptions::new().create(true).append(true).open(&files.log)?;",
+    "log.set_len(progress.bytes)?;",
+    "index.sync_data()?;",
+    "let mut encoder = flate2::write::GzEncoder::new(file, level);",
+    "let end = u64::from_le_bytes(entry);",
+    "tokio::fs::remove_file(&path).await",
+  ]) {
+    assert.match(check("crates/rbit-services/src/actions/logs/archive.rs", source).join("\n"), /TaskLogFiles/u, source);
+  }
+  assert.deepEqual(check("crates/rbit-services/src/actions/logs/disk.rs", "OpenOptions::new().create(true).append(true).open(path)"), []);
+  assert.deepEqual(check("crates/rbit-services/src/actions/logs/batch_tests.rs", "std::fs::remove_file(&files.log).unwrap();"), []);
+});
+
 test("the current tree has no retired log rule", () => {
   const { files } = authoredSources(fileURLToPath(root));
   assert.ok(files.length > 100);
