@@ -8,9 +8,7 @@
  *
  * A progress report for translators, never a gate: it always exits 0 once it has read the
  * sources. It counts messages (enum variants, or configuration schema entries for
- * `ConfigText`), the unit a translator adds one arm for. The original exhaustive families
- * (`Message`, `ChromeMessage`, the Actions, theme and language-settings messages) are
- * complete in English and Spanish and are not table-backed, so they are not counted.
+ * `ConfigText`), the unit a translator adds one arm for.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";

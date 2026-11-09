@@ -79,7 +79,7 @@ Use textContent for DOM updates. The crate's integration test renders real Askam
 templates with malicious text and attribute arguments. Plain-text email/CLI consumers
 may use the text directly under their own terminal/header control-character rules.
 
-Static English/Spanish labels borrow their compiled catalog literals through private
+Static English labels borrow their compiled catalog literals through private
 `Cow<'static, str>` storage. Interpolated/count messages and diagnostic transformations
 own their resulting text. This keeps ordinary labels from adding heap allocations
 relative to the original static strings; representation tests enforce the distinction
@@ -93,16 +93,9 @@ Arabic translation nor a guarantee against all misleading Unicode identifiers.
 
 ## Untranslated messages and English fallback
 
-The original message families (`Message`, `ChromeMessage`, `ActionsMessage`,
-`ActionsOverviewMessage`, `OverviewControlMessage`, `ActionsJobMessage`, `ThemeMessage`
-and `LanguageMessage`) are complete in English and Spanish: their Spanish match tables are
-exhaustive, so a new variant does not compile without a Spanish entry. Every other locale
-gets their English text without new arms (`Locale::has_original_catalog` is `false`), and
-pages mark those regions English: the header, the footer's chrome and the theme picker
-carry `lang="en"`, and `Page::with_locale` (the constructor of the Explore, Actions and
-language-settings pages built on these families) keeps `<main lang="en">` in such a
-locale. Newer families implement `MessageFamily` instead, where English is the only
-required catalog:
+Every family, the header, footer, Explore, Actions, theme-picker and language-settings
+ones included, implements `MessageFamily`, where English is the only required catalog.
+Pages declare their real language, and each untranslated label marks itself:
 
 - `id` returns the stable key and `english` writes the source text through a
   `MessageWriter` (`literal` for wording, `argument` for names, environments and
@@ -118,10 +111,10 @@ required catalog:
 
 Templates render a `Localized` through the `ui::localized` macro in `macros.html`.
 It marks fallback text `<span lang="en">` so assistive technology reads it as
-English. Translated text gets no wrapper in English, Spanish and the diagnostics; in
-the other locales it is wrapped `<span lang="…">` in its own language
-(`Localized::marked_lang`), because a page built on the original families may surround
-it with English. Neither sets `dir`: the text follows the
+English (an `<option>`, which holds text only, takes the `lang` itself). Translated text
+gets no wrapper in English, Spanish and the diagnostics; in the other locales it is
+wrapped `<span lang="…">` in its own language (`Localized::marked_lang`), because some
+pages still hold English feature content. Neither sets `dir`: the text follows the
 page direction, so it aligns with its translated neighbours in a right-to-left page.
 Do not hard-code `lang="en"` or `dir="ltr"` around untranslated prose. Keep explicit
 `dir="ltr"` only for machine values (code, paths, shas, identifiers).
@@ -164,7 +157,7 @@ consults the translation tables like every other family.
 
 ## Translating a locale
 
-Every `MessageFamily` and `RichFamily` family (78 families, about 2,400 messages) consults
+Every `MessageFamily` and `RichFamily` family (86 families, about 2,600 messages) consults
 a per-locale table from its `translate` method. Tables live in
 `crates/rbit-localization/src/catalog/translations/<locale>/`, one directory per locale
 (`es`, `zh_hans`, `pt_br`, `ja`, `de`, `ru`, `fr`, `ko`), mirroring the source modules:
@@ -251,9 +244,7 @@ translated, in its own language. Add arms in any order, a few at a time.
 
 `node scripts/i18n-coverage.mjs` prints, per locale, how many messages are translated
 and how many fall back; `node scripts/i18n-coverage.mjs de fr` adds per-family counts for
-those locales (directory names). It is a progress report, never a gate. The original
-exhaustive families are not table-backed and not counted: in the new locales they stay
-English until they are converted to `MessageFamily`.
+those locales (directory names). It is a progress report, never a gate.
 
 `cargo test -p rbit-localization` checks a test-only table (`catalog/translations/tests.rs`):
 an entry is used and not a fallback, a missing entry falls back, and plural arms follow
@@ -327,10 +318,11 @@ shape-header ambiguity and existing URL/filter/pagination behavior.
 ## Deferred Explore text
 
 `Catalog::display(Message)` returns plain borrowed `LocalizedDisplay`, with the same
-ordinary template escaping boundary as `LocalizedText`. English and Spanish ExploreSubtitle,
-PageOf and Stars format directly into the caller's writer from shared catalog
-literals. Diagnostic locales and other messages delegate to the existing owned
-catalog path; punctuation, plural wording and RTL isolation remain byte-compatible.
+ordinary template escaping boundary as `LocalizedText`. The English ExploreSubtitle
+formats directly into the caller's writer from shared catalog literals. Counts
+(PageOf, Stars, CountForQuery) and other locales delegate to the owned catalog
+path, which groups digits per locale; punctuation, plural wording and RTL isolation
+remain byte-compatible.
 No HTML-safety trait or raw string slot is introduced. `Catalog::text` stays available
 with unchanged semantics.
 
@@ -345,7 +337,7 @@ same methods and exact full/fragment owned-catalog equivalence fixtures.
 
 
 Actions run rerun/summary labels use the same deferred plain-Display contract via
-`Catalog::actions_display` and borrowed `ActionsDisplay`. English/Spanish dynamic labels write
+`Catalog::actions_display` and borrowed `ActionsDisplay`. English dynamic labels write
 shared catalog literals and existing job names directly to the destination. Diagnostic
 locales delegate to the existing owned Actions catalog without changing its output.
 RunPage methods return borrowed labels only at render time, with ordinary template
@@ -356,10 +348,8 @@ formatting buffers at the source level; no allocator-count or latency claim is m
 ### Borrowed Explore count labels
 
 Explore now retains the integer total and borrows its existing query only while the
-shared results template formats the count. English and Spanish `CountForQuery`
-display writes directly to the destination, including the empty-query case; it no
-longer builds an intermediate count String containing a second copy of the query.
-The existing owned `Catalog::text` API remains the parity oracle and remains available.
+shared results template formats the count, through the owned catalog path so the
+total is grouped per locale. The owned `Catalog::text` API remains the parity oracle.
 Diagnostic catalogs retain that original transformation path. Ordinary Askama text
 and attribute escaping applies to the entire borrowed display value.
 
