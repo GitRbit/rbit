@@ -12,6 +12,7 @@ import { checkActionsDiscoveryRetirement } from "./actions-discovery-retirement.
 import { checkNotificationsRetirement } from "./notifications-retirement.mjs";
 import { checkActionsRunnerRetirement } from "./actions-runner-retirement.mjs";
 import { checkOperationsUpdatesRetirement } from "./operations-updates-retirement.mjs";
+import { checkActionsForkPolicyRetirement } from "./actions-fork-policy-retirement.mjs";
 import { checkCollaborationFeatures, checkCollaborationGraphs } from "./collaboration-features.mjs";
 import { checkUnifiedModelBoundary } from "./identity-model-boundary.mjs";
 import { checkInventoryCompileIsolation } from "./inventory-isolation.mjs";
@@ -189,6 +190,7 @@ export function check(root) {
     ...checkNotificationsRetirement(files),
     ...checkActionsRunnerRetirement(files),
     ...checkOperationsUpdatesRetirement(files),
+    ...checkActionsForkPolicyRetirement(files),
     ...checkPlatformBoundary(root, files), ...checkMigrations(root, baseline), ...checkLedger(root, ledger)] };
 }
 
