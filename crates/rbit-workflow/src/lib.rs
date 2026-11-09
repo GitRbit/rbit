@@ -5,6 +5,9 @@
 //! dependency on other rbit crates, so every rule here is tested with plain tables.
 //!
 //! * [`yaml`] — the YAML document tree, parsed within budgets.
+//! * [`discovery`] — which workflow files a commit has (directory precedence, file filter,
+//!   count cap) and how one is read within its budget, through a [`discovery::WorkflowSource`]
+//!   port the server implements over Git; and what each file makes of an event.
 //! * [`parse()`] — a workflow file into the typed [`model`], within [`Limits`] and a
 //!   [`Deadline`]; problems come back as a [`WorkflowError`] with a line and column.
 //! * [`pattern`] — GitHub's filter-pattern dialect for `branches`, `tags` and `paths`.
@@ -17,7 +20,8 @@
 //!   `rbit-runner`, each supplying the contexts it has.
 //! * [`plan()`] — the jobs of a run as [`spec::JobTemplate`]s: matrices expanded and the
 //!   fields the server decides at run creation evaluated ([`expr`]) with the run's
-//!   [`RunContext`]; and the run's name and concurrency group.
+//!   [`RunContext`]; and the run's name and concurrency group ([`plan::plan_run`] drops
+//!   groups only one run could have).
 //! * [`spec`] — the stored [`spec::JobTemplate`] of a planned job and the [`spec::JobSpec`]
 //!   a runner receives for one task.
 //! * [`protocol`] — the request and response types of runner protocol v1, its version,
@@ -29,6 +33,7 @@
 pub mod action;
 pub mod builtins;
 pub mod cron;
+pub mod discovery;
 pub mod error;
 pub mod expr;
 // Actions: glob paths of the cache and artifacts.

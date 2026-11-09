@@ -53,6 +53,7 @@ mod loader;
 mod matrix;
 mod names;
 mod planning;
+mod run_plan;
 mod templates;
 
 pub use self::contexts::RunContext;
@@ -61,6 +62,7 @@ pub use self::loader::{Loaded, Loader, MAX_CALL_DEPTH, MAX_CALLED_WORKFLOWS, NoC
 pub use self::matrix::{Axes, Combination, combinations};
 pub use self::names::{concurrency_group, run_name};
 pub use self::planning::{MAX_JOB_KEY_BYTES, plan, plan_deferred, plan_with};
+pub use self::run_plan::{RunPlan, plan_run};
 pub(crate) use self::templates::step_template;
 
 #[cfg(test)]
