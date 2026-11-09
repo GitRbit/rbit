@@ -34,7 +34,9 @@ mod advertisement;
 pub use advertisement::info_refs;
 mod denied;
 pub(super) use denied::Denied;
+mod repositories;
 use denied::TOKEN_REQUIRED;
+use repositories::CallerRepositories;
 
 #[cfg(test)]
 use rbit_services::mirrors;
@@ -46,7 +48,6 @@ use axum::{
     http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
 };
-use base64::{Engine, engine::general_purpose::STANDARD};
 use futures_util::TryStreamExt;
 use rbit_auth::AccessTokenSecret;
 use rbit_core::{PushSource, TokenScope, User};
@@ -58,8 +59,10 @@ use rbit_services::{
     two_factor::GitPasswordOutcome,
 };
 use rbit_transport::{
-    ReceiveOptions, Service,
+    ReceiveOptions, Service, pkt_line,
     receive::{self, CommandLimits, Intercept, Remaining},
+    refused_push::{PushRefusal, push_refusal},
+    smart_http::{self, NO_CACHE, access, credentials},
 };
 use std::sync::Arc;
 use tokio::io::{AsyncRead, BufReader};
@@ -168,7 +171,7 @@ async fn run_service(
     let mut response = supervised_body(session.output, slot, activity).into_response();
     let headers = response.headers_mut();
     headers.insert(header::CONTENT_TYPE, HeaderValue::from_str(&service.result_content_type()).expect("static content type"));
-    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static(NO_CACHE));
     response
 }
 
@@ -216,12 +219,13 @@ async fn push_gate(state: &AppState, ctx: &RepoContext, caller: Option<&GitCalle
 /// The answer to a refused push: the client's report (`ng <ref> <reason>`), or `403` and a
 /// text explanation for clients that asked for none.
 fn refused(commands: &receive::CommandList, refusals: &[receive::Refusal]) -> Gate {
-    let report = receive::refusal(commands, refusals);
-    if report.is_empty() {
-        return Gate::Answer((StatusCode::FORBIDDEN, receive::refusal_message(refusals)).into_response());
+    match push_refusal(commands, refusals) {
+        PushRefusal::Explanation(message) => Gate::Answer((StatusCode::FORBIDDEN, message).into_response()),
+        PushRefusal::Report(report) => {
+            let content_type = Service::ReceivePack.result_content_type();
+            Gate::Answer(([(header::CONTENT_TYPE, content_type), (header::CACHE_CONTROL, NO_CACHE.to_owned())], report).into_response())
+        }
     }
-    let content_type = Service::ReceivePack.result_content_type();
-    Gate::Answer(([(header::CONTENT_TYPE, content_type), (header::CACHE_CONTROL, "no-cache".to_owned())], report).into_response())
 }
 
 // Actions: S.
@@ -273,20 +277,18 @@ async fn session_succeeded(completion: tokio::sync::oneshot::Receiver<std::proce
 fn request_reader(headers: &HeaderMap, body: Body) -> Request {
     let stream = body.into_data_stream().map_err(std::io::Error::other);
     let reader = StreamReader::new(stream);
-    let gzipped = headers.get(header::CONTENT_ENCODING).is_some_and(|v| v.as_bytes().eq_ignore_ascii_case(b"gzip"));
+    let gzipped = headers.get(header::CONTENT_ENCODING).is_some_and(|v| smart_http::is_gzip(v.as_bytes()));
     if gzipped { Box::new(GzipDecoder::new(BufReader::new(reader))) } else { Box::new(reader) }
 }
 
 fn git_protocol(headers: &HeaderMap) -> Option<&str> {
-    headers.get("git-protocol").and_then(|v| v.to_str().ok())
+    headers.get(smart_http::GIT_PROTOCOL_HEADER).and_then(|v| v.to_str().ok())
 }
 
-/// A ref advertisement consisting of a single `ERR` packet: Git aborts and prints
-/// `fatal: remote error: <message>`, which plain HTTP error bodies never achieve.
+/// A ref advertisement consisting of a single `ERR` packet ([`pkt_line::error`]).
 fn remote_error(service: Service, message: &str) -> Response {
-    let payload = format!("ERR {message}\n");
-    let packet = format!("{:04x}{payload}", payload.len() + 4);
-    ([(header::CONTENT_TYPE, service.advertisement_content_type()), (header::CACHE_CONTROL, "no-cache".to_owned())], packet).into_response()
+    let packet = pkt_line::error(message);
+    ([(header::CONTENT_TYPE, service.advertisement_content_type()), (header::CACHE_CONTROL, NO_CACHE.to_owned())], packet).into_response()
 }
 
 /// Who is making a Git request, and how far their credential reaches.
@@ -338,8 +340,9 @@ impl GitCaller {
     }
 }
 
-/// Resolves credentials and checks that they grant `service` on the repository.
-/// Returns the repository and the authenticated caller, if any.
+/// Resolves credentials and checks that they grant `service` on the repository
+/// ([`access::authorize`] decides the order and the refusals). Returns the repository and
+/// the authenticated caller, if any.
 async fn authorize(
     state: &AppState,
     client: &Client,
@@ -349,44 +352,9 @@ async fn authorize(
     service: Service,
 ) -> Result<(RepoContext, Option<GitCaller>), Denied> {
     let caller = authenticate(state, client, headers).await?;
-    let user = caller.as_ref().and_then(GitCaller::user);
-
-    // An old name from before a rename or transfer keeps working, so existing clones do.
-    let opened = match (&caller, &state.services.actions) {
-        // Actions: S. A task opens its own repository at its grant, others only if public.
-        (Some(GitCaller::Task(grant)), Some(actions)) => actions.open_for_task(grant, owner, repo).await,
-        (Some(GitCaller::Task(_)), None) => Err(ServiceError::NotFound),
-        _ => state.services.repositories.open_following_renames(user, owner, repo).await,
-    };
-    let mut ctx = match opened {
-        Ok(ctx) => ctx,
-        // Anonymous visitors get a credential prompt instead of a definitive answer.
-        Err(ServiceError::NotFound) if caller.is_none() => return Err(Denied::Challenge),
-        Err(ServiceError::NotFound) => return Err(Denied::NotFound),
-        Err(error) => {
-            tracing::error!(%error, "git authorization failed");
-            return Err(Denied::Internal);
-        }
-    };
-
-    if let Some(scope) = caller.as_ref().and_then(GitCaller::token_scope) {
-        ctx.access = scope.limit(ctx.access);
-    }
-    if !service.is_write() {
-        return Ok((ctx, caller));
-    }
-    if !ctx.access.can_write() {
-        return Err(if caller.is_none() { Denied::Challenge } else { Denied::Forbidden });
-    }
-    // Checked after access, so only those who could otherwise push learn it is a mirror.
-    match state.services.mirrors.is_mirror(ctx.repo.repo.id).await {
-        Ok(false) => Ok((ctx, caller)),
-        Ok(true) => Err(Denied::Mirror),
-        Err(error) => {
-            tracing::error!(%error, "git mirror check failed");
-            Err(Denied::Internal)
-        }
-    }
+    let gate = CallerRepositories { state, caller: caller.as_ref() };
+    let ctx = access::authorize(&gate, caller.is_none(), owner, repo, service).await?;
+    Ok((ctx, caller))
 }
 
 /// `Ok(None)` for anonymous requests; a challenge for wrong credentials.
@@ -462,22 +430,14 @@ async fn authenticate_task(state: &AppState, client: &Client, token: &str) -> Re
     }
 }
 
-/// A task token sent as `Authorization: Bearer` (or `token`), as Git's `http.extraHeader`
-/// can carry it.
+/// A task token sent as `Authorization: Bearer` ([`credentials::bearer_task_token`]).
 fn bearer_task_token(headers: &HeaderMap) -> Option<&str> {
-    let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?.trim();
-    let (scheme, token) = value.split_once(' ')?;
-    let token = token.trim();
-    ((scheme.eq_ignore_ascii_case("bearer") || scheme.eq_ignore_ascii_case("token")) && rbit_core::actions::looks_like_task_token(token))
-        .then_some(token)
+    credentials::bearer_task_token(headers.get(header::AUTHORIZATION)?.to_str().ok()?)
 }
 
+/// `Authorization: Basic` ([`credentials::basic_credentials`]).
 fn basic_credentials(headers: &HeaderMap) -> Option<(String, String)> {
-    let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
-    let encoded = value.strip_prefix("Basic ").or_else(|| value.strip_prefix("basic "))?;
-    let decoded = String::from_utf8(STANDARD.decode(encoded.trim()).ok()?).ok()?;
-    let (login, password) = decoded.split_once(':')?;
-    Some((login.to_owned(), password.to_owned()))
+    credentials::basic_credentials(headers.get(header::AUTHORIZATION)?.to_str().ok()?)
 }
 
 #[cfg(test)]

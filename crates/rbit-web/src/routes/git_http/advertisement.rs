@@ -6,7 +6,10 @@ use axum::{
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
 };
-use rbit_transport::{ProcessControl, Service, TransportError};
+use rbit_transport::{
+    ProcessControl, Service, TransportError,
+    smart_http::{DUMB_PROTOCOL_REFUSED, NO_CACHE},
+};
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
@@ -24,7 +27,7 @@ pub async fn info_refs(
     headers: HeaderMap,
 ) -> Response {
     let Some(service) = query.service.as_deref().and_then(Service::from_wire_name) else {
-        return (StatusCode::FORBIDDEN, "the dumb HTTP protocol is not supported; please upgrade git").into_response();
+        return (StatusCode::FORBIDDEN, DUMB_PROTOCOL_REFUSED).into_response();
     };
     let ctx = match authorize(&state, &client, &headers, &owner, &repo, service).await {
         Ok((ctx, _)) => ctx,
@@ -44,7 +47,7 @@ pub async fn info_refs(
 
 fn advertisement_response(result: Result<Vec<u8>, TransportError>, service: Service, owner: &str, repo: &str) -> Response {
     match result {
-        Ok(body) => ([(header::CONTENT_TYPE, service.advertisement_content_type()), (header::CACHE_CONTROL, "no-cache".to_owned())], body)
+        Ok(body) => ([(header::CONTENT_TYPE, service.advertisement_content_type()), (header::CACHE_CONTROL, NO_CACHE.to_owned())], body)
             .into_response(),
         Err(TransportError::TimedOut) => {
             tracing::warn!(%owner, %repo, %service, "ref advertisement exceeded the time limit");

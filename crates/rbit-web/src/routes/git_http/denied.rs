@@ -5,6 +5,10 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use rbit_services::mirrors;
+use rbit_transport::smart_http::{
+    access::{AccessRefusal, PUSH_FORBIDDEN, REPOSITORY_NOT_FOUND},
+    credentials::{AUTHENTICATION_REQUIRED, BASIC_CHALLENGE},
+};
 
 use crate::error::{UNAVAILABLE_MESSAGE, unavailable_response};
 
@@ -37,16 +41,25 @@ pub(super) const TOKEN_REQUIRED: &str = "two-factor authentication is enabled fo
                               with Git. Create a personal access token under Settings > Access tokens and use it as the \
                               password.";
 
+impl From<AccessRefusal> for Denied {
+    fn from(refusal: AccessRefusal) -> Self {
+        match refusal {
+            AccessRefusal::Challenge => Self::Challenge,
+            AccessRefusal::Forbidden => Self::Forbidden,
+            AccessRefusal::NotFound => Self::NotFound,
+            AccessRefusal::Mirror => Self::Mirror,
+            AccessRefusal::Internal => Self::Internal,
+        }
+    }
+}
+
 impl IntoResponse for Denied {
     fn into_response(self) -> Response {
         match self {
-            Self::Challenge => (
-                StatusCode::UNAUTHORIZED,
-                [(header::WWW_AUTHENTICATE, "Basic realm=\"rbit\", charset=\"UTF-8\"")],
-                "authentication required",
-            )
-                .into_response(),
-            Self::Forbidden => (StatusCode::FORBIDDEN, "you do not have permission to push to this repository").into_response(),
+            Self::Challenge => {
+                (StatusCode::UNAUTHORIZED, [(header::WWW_AUTHENTICATE, BASIC_CHALLENGE)], AUTHENTICATION_REQUIRED).into_response()
+            }
+            Self::Forbidden => (StatusCode::FORBIDDEN, PUSH_FORBIDDEN).into_response(),
             Self::Suspended => (StatusCode::FORBIDDEN, "this account has been suspended").into_response(),
             Self::TokenRequired => (StatusCode::FORBIDDEN, TOKEN_REQUIRED).into_response(),
             Self::RateLimited { retry_after_seconds } => (
@@ -57,7 +70,7 @@ impl IntoResponse for Denied {
                 .into_response(),
             Self::Unavailable { retry_after_seconds } => unavailable_response(UNAVAILABLE_MESSAGE, retry_after_seconds),
             Self::Mirror => (StatusCode::FORBIDDEN, mirrors::PUSH_REFUSED).into_response(),
-            Self::NotFound => (StatusCode::NOT_FOUND, "repository not found").into_response(),
+            Self::NotFound => (StatusCode::NOT_FOUND, REPOSITORY_NOT_FOUND).into_response(),
             Self::Internal => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         }
     }
