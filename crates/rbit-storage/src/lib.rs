@@ -39,6 +39,7 @@ mod repository_forks;
 pub use repository_forks::{ForkCreationStore, ForkReadStore};
 mod repository_aliases;
 mod repository_discovery;
+mod repository_stars;
 mod repository_transfer;
 pub use repository_transfer::TransferStore;
 pub mod sealing;

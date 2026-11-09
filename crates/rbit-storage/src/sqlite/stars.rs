@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use super::pool::Pool;
-use rbit_core::{Account, AccountId, RepoId, Timestamp, repository::OwnedRepository};
+use rbit_core::{AccountId, RepoId, Timestamp, repository::OwnedRepository};
 
 use super::{
     repositories::readable_by,
@@ -13,12 +13,8 @@ use super::{
 };
 use crate::StorageError;
 
-/// An account that starred a repository, and when.
-#[derive(Debug, Clone)]
-pub struct Stargazer {
-    pub account: Account,
-    pub starred_at: Timestamp,
-}
+/// The stargazer model is owned by `rbit_repositories::stars`.
+pub use rbit_repositories::stars::Stargazer;
 
 #[derive(Debug, sqlx::FromRow)]
 struct StargazerRow {
