@@ -3,6 +3,10 @@
 const COMPAT = "crates/rbit-core/src/access.rs";
 // The grant rules are defined only in rbit-access; rbit-core keeps the record projection.
 const POLICY = /\bfn\s+(?:repo_access|grant_holder|policy_grants|grants_apply)\b|\bstruct\s+(?:Grants|RepositoryGrants)\b/u;
+// `rbit_actions::trust::Grants` is what a stored run is granted (secrets, write token), not
+// repository access; that file may name the struct but not the grant rule functions.
+const RUN_GRANTS = "crates/rbit-actions/src/trust.rs";
+const POLICY_FNS = /\bfn\s+(?:repo_access|grant_holder|policy_grants|grants_apply)\b/u;
 // Only adapters that project stored rows may build the policy's fact types directly.
 const FACTS = /\b(?:ViewerAccessFacts|RepositoryAccessFacts)\s*\{/u;
 const FACT_ADAPTERS = [COMPAT, "crates/rbit-storage/src/sqlite/wiki_mutations/authorization.rs"];
@@ -23,7 +27,7 @@ export function checkAccessPolicyRetirement(sources) {
     if (!path.startsWith("crates/") || !path.endsWith(".rs") || path.startsWith("crates/rbit-access/")) continue;
     const text = code(source);
     const tests = path.includes("/tests/");
-    if (!tests && path !== COMPAT && POLICY.test(text)) {
+    if (!tests && path !== COMPAT && (path === RUN_GRANTS ? POLICY_FNS : POLICY).test(text)) {
       violations.push(`${path}: repository grant rules belong in rbit_access::grants`);
     }
     if (path === COMPAT && /\bfn\s+(?:grant_holder|policy_grants|grants_apply)\b|\bstruct\s+(?:Grants|RepositoryGrants)\b/u.test(text)) {

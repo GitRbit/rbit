@@ -13,6 +13,9 @@ test("the retired policy adapter and its rules cannot return", () => {
   assert.deepEqual(checkAccessPolicyRetirement([["crates/rbit-core/src/access.rs", compat]]), []);
   assert.match(checkAccessPolicyRetirement([["crates/rbit-core/src/access.rs", "fn grants_apply() {}"]])[0], /projects records only/u);
   assert.deepEqual(checkAccessPolicyRetirement([["crates/rbit-access/src/grants.rs", "pub fn grants_apply() {}\npub struct RepositoryGrants<P> {}"]]), []);
+  const runGrants = "crates/rbit-actions/src/trust.rs";
+  assert.deepEqual(checkAccessPolicyRetirement([[runGrants, "pub struct Grants { pub write_token: bool }"]]), [], "run grants are not repository grants");
+  assert.match(checkAccessPolicyRetirement([[runGrants, "fn repo_access() {}"]])[0], /belong in rbit_access::grants/u);
 });
 
 test("fact types are built only by the record adapters", () => {
