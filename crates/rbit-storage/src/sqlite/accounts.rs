@@ -48,7 +48,9 @@ const LOGIN_BY_ID: &str = select_login!("WHERE a.id = ?1");
 const SESSION_USER: &str = "SELECT a.id, a.kind, a.name, a.display_name, a.bio, a.created_at, l.email, l.is_admin, \
      '' AS password_hash, l.password_change_required, \
      CASE WHEN ?2 THEN EXISTS (SELECT 1 FROM notifications n WHERE n.user_id = a.id AND n.unread = 1) ELSE 0 END \
-     AS has_unread_notifications, CASE l.locale WHEN 'en' THEN 1 WHEN 'es' THEN 2 ELSE 0 END AS locale_choice \
+     AS has_unread_notifications, CASE COALESCE(l.interface_locale, l.locale) WHEN 'en' THEN 1 WHEN 'es' THEN 2 WHEN 'zh-Hans' THEN 3 \
+     WHEN 'pt-BR' THEN 4 WHEN 'ja' THEN 5 WHEN 'de' THEN 6 WHEN 'ru' THEN 7 WHEN 'fr' THEN 8 WHEN 'ko' THEN 9 ELSE 0 END \
+     AS locale_choice \
      FROM accounts a JOIN user_logins l ON l.account_id = a.id WHERE a.id = ?1 AND l.suspended_at IS NULL";
 
 pub use rbit_identity_models::sessions::SessionUser;

@@ -46,6 +46,18 @@ async fn account_languages_are_independent_and_reset_does_not_change_theme() {
 }
 
 #[tokio::test]
+async fn every_offered_language_is_stored_and_read_back() {
+    let (_directory, database, services) = fixture().await;
+    let carol = user(&database, "carol").await;
+    for locale in AccountLocale::ALL {
+        services.preferences.set_locale(&carol, Some(locale)).await.unwrap();
+        assert_eq!(services.preferences.locale(&carol).await.unwrap(), Some(locale), "{locale:?}");
+    }
+    services.preferences.set_locale(&carol, None).await.unwrap();
+    assert_eq!(services.preferences.locale(&carol).await.unwrap(), None);
+}
+
+#[tokio::test]
 async fn theme_preference_is_per_user() {
     let (_dir, database, services) = fixture().await;
     let alice = user(&database, "alice").await;

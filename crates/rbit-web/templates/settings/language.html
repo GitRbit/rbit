@@ -11,8 +11,10 @@
     <label class="label" for="preferred-language">{{ text.label }}</label>
     <select class="input mt-2 w-full max-w-sm" id="preferred-language" name="locale" aria-describedby="language-help">
       <option value="" {% if selected.is_empty() %}selected{% endif %}>{{ text.browser }}</option>
-      <option value="en" lang="en" {% if selected == "en" %}selected{% endif %}>{{ text.english }}</option>
-      <option value="es" lang="es" {% if selected == "es" %}selected{% endif %}>{{ text.spanish }}</option>
+      {#- Each language is named in its own language, whatever the page's language. -#}
+      {%- for language in rbit_localization::Locale::LANGUAGES %}
+      <option value="{{ language.tag() }}" lang="{{ language.tag() }}" {% if selected == language.tag() %}selected{% endif %}>{{ language.native_name() }}</option>
+      {%- endfor %}
     </select>
     <p id="language-help" class="mt-2 max-w-prose text-xs leading-relaxed text-ink-muted">{{ text.help }}</p>
     <button class="btn btn-primary mt-4 h-10 sm:h-9" type="submit">{{ text.save }}</button>

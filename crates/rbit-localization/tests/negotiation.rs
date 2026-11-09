@@ -39,7 +39,7 @@ fn language_lookup_is_case_insensitive_and_handles_extensions() {
         assert_eq!(negotiate(header).source, PreferenceSource::AcceptLanguage, "{header}");
     }
     assert_eq!(negotiate("en-XA-u-nu-latn").locale, Locale::PseudoExpanded);
-    assert_eq!(negotiate("fr-CA, de").source, PreferenceSource::Default);
+    assert_eq!(negotiate("it-IT, nl").source, PreferenceSource::Default);
 }
 
 #[test]
@@ -84,4 +84,54 @@ fn pseudo_locales_are_opt_in_and_default_configuration_is_validated() {
     assert!(LocaleResolver::new(Locale::PseudoRtl, false).is_err());
     let rtl = LocaleResolver::new(Locale::PseudoRtl, true).unwrap();
     assert_eq!(rtl.resolve(LocalePreferences::default()).locale, Locale::PseudoRtl);
+}
+
+fn production(header: &str) -> Locale {
+    LocaleResolver::default().resolve(LocalePreferences { accept_language: Some(header), ..LocalePreferences::default() }).locale
+}
+
+#[test]
+fn every_language_negotiates_from_its_browser_ranges() {
+    for (header, expected) in [
+        ("de-DE,de;q=0.9,en;q=0.5", Locale::German),
+        ("de-AT", Locale::German),
+        ("fr-CA", Locale::French),
+        ("fr-FR, en;q=0.1", Locale::French),
+        ("ru-RU", Locale::Russian),
+        ("ja-JP", Locale::Japanese),
+        ("ko-KR", Locale::Korean),
+        ("es-419", Locale::Spanish),
+        ("pt-BR", Locale::PortugueseBrazil),
+        ("pt-PT", Locale::PortugueseBrazil),
+        ("pt", Locale::PortugueseBrazil),
+        ("zh-CN", Locale::ChineseSimplified),
+        ("zh-SG", Locale::ChineseSimplified),
+        ("zh-MY", Locale::ChineseSimplified),
+        ("zh", Locale::ChineseSimplified),
+        ("zh-Hans", Locale::ChineseSimplified),
+        ("ZH-hans-TW", Locale::ChineseSimplified),
+        ("zh-cmn-Hans-CN", Locale::ChineseSimplified),
+        ("ja;q=0.4, zh-CN;q=0.8", Locale::ChineseSimplified),
+    ] {
+        assert_eq!(production(header), expected, "{header}");
+    }
+}
+
+#[test]
+fn traditional_chinese_never_falls_back_to_simplified() {
+    for header in ["zh-TW", "zh-HK", "zh-MO", "zh-Hant", "zh-Hant-CN", "zh-Hant-TW", "zh-yue-HK", "zh-TW, en;q=0.1"] {
+        assert_eq!(production(header), Locale::English, "{header}");
+    }
+    assert_eq!(production("zh-TW, ja;q=0.5"), Locale::Japanese, "the next acceptable language wins");
+}
+
+#[test]
+fn saved_choices_accept_only_known_language_tags() {
+    let resolver = LocaleResolver::default();
+    for locale in Locale::LANGUAGES {
+        let chosen = resolver.resolve(LocalePreferences { account: Some(locale.tag()), ..LocalePreferences::default() });
+        assert_eq!((chosen.locale, chosen.source), (locale, PreferenceSource::Account), "{locale:?}");
+    }
+    let traditional = resolver.resolve(LocalePreferences { account: Some("zh-Hant"), ..LocalePreferences::default() });
+    assert_eq!(traditional.source, PreferenceSource::Default);
 }

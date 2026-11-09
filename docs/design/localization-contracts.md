@@ -11,7 +11,8 @@ diagnostics, not translations or Arabic grammar. See [account activation](accoun
 
 ## Negotiation
 
-Construct `LocaleResolver::default()` for English-default production behavior with Spanish negotiation, or
+Construct `LocaleResolver::default()` for English-default production behavior negotiating
+every language of `Locale::LANGUAGES`, or
 `LocaleResolver::new(default, true)` to enable diagnostic catalogs. Configuration
 rejects a pseudo default if diagnostics are disabled. Resolve borrowed
 `LocalePreferences` in this order: explicit request, authenticated account,
@@ -23,7 +24,15 @@ CSRF, persistence and account preference loading belong to that adapter.
 The allocation-free negotiator accepts bounded ASCII basic language ranges, matches
 case-insensitively, and looks up progressively shorter subtags against the closed
 allowlist. It removes dangling extension singletons during lookup. Thus `en-US` and
-`en-Latn-US` fall back to `en`, while `fr-CA` does not invent a translation. This is
+`en-Latn-US` fall back to `en`, `fr-CA` to `fr`, while `it` finds nothing. Two
+languages have their own rule. Portuguese (`pt`, `pt-PT`) is served the Brazilian
+catalog: rbit has one Portuguese translation, Brazilian Portuguese has by far the most
+readers and is the variant most software ships first, and a Portuguese reader is better
+served by it than by English; a separate `pt-PT` can be added later as its own locale.
+Chinese is decided by script, then region: `zh-Hans…`, `zh-CN`, `zh-SG`, `zh-MY` and a bare
+`zh` select `zh-Hans`; `zh-Hant…`, `zh-TW`, `zh-HK`, `zh-MO` and other regions never do, so
+Traditional Chinese readers get their next acceptable language or English rather than
+Simplified characters. This is
 basic-range lookup, not a full IANA language-tag registry or a general BCP 47 parser.
 Tags use hyphens; underscore aliases are rejected. Public output tags/direction are
 static enum values, never reflected header strings.
@@ -268,10 +277,14 @@ grammar, fallback policy and RTL/accessibility acceptance beyond this partial ac
 ## Web adapter status
 
 `rbit_web::localization::RequestLocale` resolves and memoizes one locale in request
-extensions after the existing session lookup. Production supports English/Spanish,
-with an English default. Saved canonical account preference comes from the existing
+extensions after the existing session lookup. Production supports every language of
+`Locale::LANGUAGES`, with an English default. Saved canonical account preference comes from the existing
 login-row session projection. Native `/settings/language` reads that extension and
-persists the choice through the preference service. Diagnostics require an explicit
+persists the choice through the preference service. Its picker lists every language by
+its native name (`Locale::native_name`), each option marked with its own `lang`. The
+account choice is stored in `user_logins.interface_locale` (migration 0072), which takes
+every offered tag; `user_logins.locale` (0062, English and Spanish only) keeps mirroring
+those two, so an older build still reads a valid choice. Diagnostics require an explicit
 trusted resolver extension and remain selected-feature opt-ins.
 
 The shared Page extractor assigns the document locale, while legacy content stays

@@ -27,11 +27,10 @@ pub async fn page_locale(request: Request, next: Next) -> Response {
         return response;
     }
     let selected = match response.headers().get(header::CONTENT_LANGUAGE).and_then(|value| value.to_str().ok()) {
-        Some("en") => Locale::English,
-        Some("es") => Locale::Spanish,
         Some("en-XA") if locale.0.locale == Locale::PseudoExpanded => Locale::PseudoExpanded,
         Some("ar-XB") if locale.0.locale == Locale::PseudoRtl => Locale::PseudoRtl,
-        _ => locale.document_locale(),
+        Some(tag) => Locale::LANGUAGES.into_iter().find(|language| language.tag() == tag).unwrap_or_else(|| locale.document_locale()),
+        None => locale.document_locale(),
     };
     let mut response = response_for(selected, response);
     let mismatch = if selected == locale.0.locale { resolved_mismatch } else { default_mismatch };

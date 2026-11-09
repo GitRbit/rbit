@@ -1,6 +1,6 @@
 //! Request-scoped presentation locale; no preference writes or database reads.
 //!
-//! Production supports English/Spanish with an English default. The session adapter
+//! Production supports every language of `Locale::LANGUAGES` with an English default. The session adapter
 //! supplies the saved account choice through its existing lookup. Embedded tests may
 //! inject an immutable `LocaleResolver` to enable diagnostics for selected features.
 

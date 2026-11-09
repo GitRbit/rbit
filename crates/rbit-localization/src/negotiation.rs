@@ -5,7 +5,19 @@ use crate::Locale;
 const MAX_HEADER_BYTES: usize = 4096;
 const MAX_RANGES: usize = 32;
 const MAX_TAG_BYTES: usize = 63;
-const LOCALES: [Locale; 4] = [Locale::English, Locale::Spanish, Locale::PseudoExpanded, Locale::PseudoRtl];
+const LOCALES: [Locale; 11] = [
+    Locale::English,
+    Locale::Spanish,
+    Locale::ChineseSimplified,
+    Locale::PortugueseBrazil,
+    Locale::Japanese,
+    Locale::German,
+    Locale::Russian,
+    Locale::French,
+    Locale::Korean,
+    Locale::PseudoExpanded,
+    Locale::PseudoRtl,
+];
 
 /// Borrowed choices in descending priority; strings must contain a single tag.
 #[derive(Clone, Copy, Debug, Default)]
@@ -49,7 +61,8 @@ pub struct LocaleResolver {
 }
 
 impl LocaleResolver {
-    /// Enables pseudo catalogs explicitly; production supports English and Spanish.
+    /// Enables pseudo catalogs explicitly; production supports every language of
+    /// [`Locale::LANGUAGES`].
     pub fn new(default: Locale, enable_pseudo: bool) -> Result<Self, UnsupportedDefault> {
         if matches!(default, Locale::PseudoExpanded | Locale::PseudoRtl) && !enable_pseudo {
             return Err(UnsupportedDefault);
@@ -76,15 +89,22 @@ impl LocaleResolver {
     }
 
     fn supported(self, locale: Locale) -> bool {
-        matches!(locale, Locale::English | Locale::Spanish) || self.enable_pseudo
+        !matches!(locale, Locale::PseudoExpanded | Locale::PseudoRtl) || self.enable_pseudo
     }
 
     fn lookup(self, tag: &str) -> Option<Locale> {
         if !valid_range(tag) || tag == "*" {
             return None;
         }
+        if let Some(simplified) = chinese(tag) {
+            return simplified.then_some(Locale::ChineseSimplified);
+        }
         let mut range = tag;
         loop {
+            // Portuguese readers outside Brazil are offered Brazilian Portuguese rather than English.
+            if range.eq_ignore_ascii_case("pt") {
+                return Some(Locale::PortugueseBrazil);
+            }
             if let Some(locale) = LOCALES.iter().copied().find(|locale| range.eq_ignore_ascii_case(locale.tag())) {
                 // Disabled pseudo choices must not silently become English.
                 return self.supported(locale).then_some(locale);
@@ -137,6 +157,26 @@ impl LocaleResolver {
         }
         winner.map(|(locale, _, _)| locale)
     }
+}
+
+/// For a Chinese range, whether it asks for Simplified Chinese; `None` for other languages.
+/// The script decides when present (`zh-Hans-TW` yes, `zh-Hant-CN` no); otherwise the region
+/// does: mainland China, Singapore and Malaysia write Simplified characters, while Taiwan,
+/// Hong Kong and Macau (or an unknown region) never fall back to them. A bare `zh` is
+/// Simplified, as browsers in mainland China send it.
+fn chinese(range: &str) -> Option<bool> {
+    let mut subtags = range.split('-');
+    if !subtags.next()?.eq_ignore_ascii_case("zh") {
+        return None;
+    }
+    // An extended language subtag (`zh-cmn-Hans`) names the spoken variety, not the script.
+    let next = subtags.find(|subtag| !(subtag.len() == 3 && subtag.bytes().all(|byte| byte.is_ascii_alphabetic())));
+    Some(match next {
+        None => true,
+        Some(script) if script.len() == 4 => script.eq_ignore_ascii_case("Hans"),
+        Some(singleton) if singleton.len() == 1 => true,
+        Some(region) => ["CN", "SG", "MY"].iter().any(|simplified| region.eq_ignore_ascii_case(simplified)),
+    })
 }
 
 fn valid_range(range: &str) -> bool {

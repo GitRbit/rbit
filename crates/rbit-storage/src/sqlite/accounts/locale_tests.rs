@@ -10,6 +10,6 @@ async fn session_locale_projection_reuses_the_existing_login_row() {
     let details: Vec<_> = rows.iter().map(|row| row.3.as_str()).collect();
     assert!(details.iter().any(|detail| detail.contains("SEARCH l USING INTEGER PRIMARY KEY")), "{details:?}");
     assert!(!SESSION_USER.contains("user_preferences"));
-    assert!(SESSION_USER.contains("CASE l.locale"));
+    assert!(SESSION_USER.contains("CASE COALESCE(l.interface_locale, l.locale)"));
     pool.close().await;
 }

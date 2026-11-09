@@ -95,6 +95,59 @@ async fn browser_spanish_translates_chrome_and_marks_legacy_content_honestly() {
 }
 
 #[tokio::test]
+async fn new_languages_negotiate_and_mark_their_untranslated_chrome_english() {
+    let fixture = Fixture::new().await;
+    for (header, tag) in [("de-DE,de;q=0.9", "de"), ("zh-CN", "zh-Hans"), ("pt-PT", "pt-BR"), ("ko", "ko"), ("ru, en;q=0.5", "ru")] {
+        let response = fixture.get("/login", &[("accept-language", header)]).await;
+        assert_eq!(response.headers()[header::CONTENT_LANGUAGE], tag, "{header}");
+        assert_eq!(response.headers()["rbit-catalog-key"], format!("1.{tag}"));
+        let body = html(response).await;
+        assert!(body.contains(&format!("<html lang=\"{tag}\" dir=\"ltr\"")), "{header}");
+        assert!(body.contains("<header lang=\"en\""), "{header}: the chrome is still English");
+        assert!(body.contains(&format!("<main id=\"main\" lang=\"{tag}\"")), "{header}: the sign-in page is a catalog page");
+        assert!(body.contains("<span lang=\"en\">Use your username or email address.</span>"));
+    }
+    for traditional in ["zh-TW", "zh-HK", "zh-Hant"] {
+        let response = fixture.get("/login", &[("accept-language", traditional)]).await;
+        assert_eq!(response.headers()[header::CONTENT_LANGUAGE], "en", "{traditional} never becomes Simplified Chinese");
+    }
+}
+
+#[tokio::test]
+async fn the_picker_lists_every_language_by_its_own_name_and_saves_it() {
+    let fixture = Fixture::new().await;
+    let saved = fixture.save("locale=pt-BR", false).await;
+    assert_eq!(saved.status(), StatusCode::SEE_OTHER);
+    assert_eq!(fixture.services.preferences.locale(&fixture.user).await.unwrap(), Some(AccountLocale::PortugueseBrazil));
+    let response = fixture.get("/settings/language", &[("cookie", &fixture.cookie), ("accept-language", "de")]).await;
+    assert_eq!(response.headers()[header::CONTENT_LANGUAGE], "pt-BR", "the saved choice wins over the browser");
+    let body = html(response).await;
+    for (tag, name) in [
+        ("en", "English"),
+        ("de", "Deutsch"),
+        ("es", "Español"),
+        ("fr", "Français"),
+        ("pt-BR", "Português (Brasil)"),
+        ("ru", "Русский"),
+        ("ja", "日本語"),
+        ("zh-Hans", "简体中文"),
+        ("ko", "한국어"),
+    ] {
+        let selected = if tag == "pt-BR" { " selected" } else { "" };
+        assert!(body.contains(&format!("<option value=\"{tag}\" lang=\"{tag}\"{selected}")), "{tag}");
+        assert!(body.contains(&format!(">{name}</option>")), "{name}");
+    }
+    assert!(body.contains("<section id=\"language\" lang=\"en\""), "the page's own labels are still English");
+    for (choice, stored) in [("zh-Hans", AccountLocale::ChineseSimplified), ("ko", AccountLocale::Korean), ("es", AccountLocale::Spanish)] {
+        assert_eq!(fixture.save(&format!("locale={choice}"), false).await.status(), StatusCode::SEE_OTHER);
+        assert_eq!(fixture.services.preferences.locale(&fixture.user).await.unwrap(), Some(stored));
+    }
+    for invalid in ["locale=zh", "locale=zh-Hant", "locale=pt", "locale=de-DE"] {
+        assert_eq!(fixture.save(invalid, false).await.status(), StatusCode::UNPROCESSABLE_ENTITY, "{invalid}");
+    }
+}
+
+#[tokio::test]
 async fn native_and_htmx_settings_save_canonical_choices_and_reset_to_browser_without_cache_purge() {
     let fixture = Fixture::new().await;
     fixture.services.preferences.set_theme(&fixture.user, "dark").await.unwrap();

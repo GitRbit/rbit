@@ -44,8 +44,8 @@ function fixture(initial = '1.en', saved = initial) {
 }
 
 test('catalog identities are bounded closed values, never arbitrary cache namespaces', () => {
-  for (const key of ['1.en', '2.es', '1.en-XA', '1.ar-XB']) assert.equal(catalogKey(key), key);
-  for (const key of ['', 'es', '0.en', '1234567.es', '1.es-MX', '1.en\n', null]) assert.equal(catalogKey(key), null);
+  for (const key of ['1.en', '2.es', '1.zh-Hans', '1.pt-BR', '1.ja', '1.de', '1.ru', '1.fr', '1.ko', '1.en-XA', '1.ar-XB']) assert.equal(catalogKey(key), key);
+  for (const key of ['', 'es', '0.en', '1234567.es', '1.es-MX', '1.zh-Hant', '1.zh-hans', '1.pt', '1.en\n', null]) assert.equal(catalogKey(key), null);
 });
 
 test('native language navigation invalidates only translated HTML history', () => {
