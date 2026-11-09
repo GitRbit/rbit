@@ -1,15 +1,27 @@
-//! Pull requests: which branch names and head repositories a pull request may name, and
-//! the checks and order of opening one. Merging, reviews and background work are still
-//! composed in `rbit-services`.
+//! Pull requests: their records, approval tallies and merge requirements, which branch
+//! names and head repositories a pull request may name, the checks and order of opening
+//! one, and review threads.
 
 mod anchors;
 mod branches;
 mod head;
+mod merge;
+mod messages;
+mod records;
 pub mod review_threads;
 
 pub use anchors::{AnchorLine, DIFF_HUNK_LINES, LineMark, ReviewSide, hunk_excerpt};
 pub use branches::branch_ref;
 pub use head::select_head;
+pub use merge::{MergeEvaluation, MergeFacts, MergeRules, Requirement, RequirementCheck, ReviewTally, evaluate, tally};
+pub use messages::{
+    CommitIdentity, HeadSpec, commit_message, default_merge_title, default_squash_body, default_squash_title, noreply_domain, noreply_email,
+};
+pub use records::{
+    ChecksStatus, MAX_CONFLICT_PATHS, MergeStrategy, Mergeability, PullRequest, Review, ReviewComment, ReviewCommentId, ReviewId,
+    ReviewState,
+};
+pub use review_threads::MAX_REQUESTED_REVIEWERS;
 
 #[cfg(feature = "applications")]
 mod creation;

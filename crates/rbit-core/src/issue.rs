@@ -8,8 +8,6 @@
 //! The integrator owns this file (see `docs/design/milestone-2b.md`); workstreams request
 //! changes through their reports.
 
-use std::fmt;
-
 use serde::{Deserialize, Serialize};
 
 use crate::{AccountId, PushSource};
@@ -28,9 +26,7 @@ pub use rbit_collaboration::labels::LabelId;
 
 pub use rbit_collaboration::milestones::MilestoneId;
 
-/// Database id of a pull request review.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct ReviewId(pub i64);
+pub use rbit_collaboration::pulls::ReviewId;
 
 // ------------------------------------------------------------------ numbers
 
@@ -38,70 +34,13 @@ pub use rbit_collaboration::threads::IssueNumber;
 
 // ------------------------------------------------------------------ enums
 
-/// Generates `as_str`, `parse` and `ALL` for a field-less enum stored as text.
-macro_rules! text_enum {
-    ($(#[$doc:meta])* $name:ident { $($(#[$vdoc:meta])* $variant:ident => $text:literal),+ $(,)? }) => {
-        $(#[$doc])*
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-        #[serde(rename_all = "snake_case")]
-        pub enum $name {
-            $($(#[$vdoc])* $variant),+
-        }
-
-        impl $name {
-            pub const ALL: &'static [Self] = &[$(Self::$variant),+];
-
-            /// The stable identifier stored in the database and used in payloads.
-            pub const fn as_str(self) -> &'static str {
-                match self {
-                    $(Self::$variant => $text),+
-                }
-            }
-
-            pub fn parse(value: &str) -> Option<Self> {
-                match value {
-                    $($text => Some(Self::$variant),)+
-                    _ => None,
-                }
-            }
-        }
-
-        impl fmt::Display for $name {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str(self.as_str())
-            }
-        }
-    };
-}
-
 pub use rbit_collaboration::threads::IssueKind;
 
 pub use rbit_collaboration::IssueState;
 
 pub use rbit_collaboration::threads::StateReason;
 
-text_enum!(
-    /// How a pull request was merged.
-    MergeStrategy {
-        /// A merge commit with two parents.
-        Merge => "merge",
-        /// One new commit with the head's tree.
-        Squash => "squash",
-        /// The head's commits replayed onto the base.
-        Rebase => "rebase",
-    }
-);
-
-text_enum!(
-    /// A pull request review's state. `Pending` reviews are visible only to their author.
-    ReviewState {
-        Pending => "pending",
-        Commented => "commented",
-        Approved => "approved",
-        ChangesRequested => "changes_requested",
-        Dismissed => "dismissed",
-    }
-);
+pub use rbit_collaboration::pulls::{MergeStrategy, ReviewState};
 
 // ------------------------------------------------------------------ text
 
