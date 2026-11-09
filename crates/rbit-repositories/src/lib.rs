@@ -7,6 +7,7 @@
 
 pub mod aliases;
 pub mod archives;
+pub mod browse;
 pub mod contributions;
 pub mod discovery;
 pub mod edits;

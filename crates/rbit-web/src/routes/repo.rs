@@ -38,7 +38,7 @@ use crate::{
     },
 };
 
-const COMMITS_PER_PAGE: usize = 30;
+use rbit_services::repositories::browse::{self, COMMITS_PER_PAGE, MAX_RAW_BYTES};
 
 #[path = "repository_documents.rs"]
 mod repository_documents;
@@ -92,8 +92,6 @@ pub async fn activity(
     .into_response())
 }
 /// Raw downloads are read fully into memory; refuse anything absurdly large.
-const MAX_RAW_BYTES: usize = 100 * 1024 * 1024;
-
 mod files;
 mod navigation;
 
@@ -174,8 +172,8 @@ impl RepoPage {
 
     /// The configured default branch if it exists, otherwise the first branch.
     fn landing_revision(&self) -> Option<String> {
-        let branches = || self.refs.iter().filter(|r| r.kind == RefKind::Branch);
-        branches().find(|r| r.name == self.default_branch()).or_else(|| branches().next()).map(|r| r.name.clone())
+        let branches = self.refs.iter().filter(|r| r.kind == RefKind::Branch).map(|r| r.name.as_str());
+        browse::landing_revision(branches, self.default_branch()).map(str::to_owned)
     }
 
     /// Whether the viewer may edit files on `revision` in the browser (Milestone 3, E):
@@ -198,27 +196,9 @@ pub(super) async fn open_pinned(state: &AppState, viewer: &Viewer, owner: &str, 
     Ok(ctx)
 }
 
-/// The longest branch or tag name that `combined` starts with (as a whole path
-/// segment), and the path after it. Same rule as
-/// [`rbit_git::RepositoryReader::split_revision_path`], restricted to known refs.
+/// The longest known branch or tag that `combined` starts with, and the path after it.
 fn split_known_ref(refs: &[RefSummary], combined: &str) -> Option<(String, String)> {
-    let combined = combined.trim_matches('/');
-    refs.iter()
-        .filter(|r| combined.strip_prefix(r.name.as_str()).is_some_and(|rest| rest.is_empty() || rest.starts_with('/')))
-        .max_by_key(|r| r.name.len())
-        .map(|r| (r.name.clone(), combined[r.name.len()..].trim_start_matches('/').to_owned()))
-}
-
-fn join_path(directory: &str, name: &str) -> String {
-    if directory.is_empty() { name.to_owned() } else { format!("{directory}/{name}") }
-}
-
-fn parent_path(path: &str) -> &str {
-    path.rsplit_once('/').map_or("", |(parent, _)| parent)
-}
-
-fn file_name(path: &str) -> &str {
-    path.rsplit_once('/').map_or(path, |(_, name)| name)
+    browse::split_known_ref(refs.iter().map(|r| r.name.as_str()), combined)
 }
 
 #[derive(Deserialize)]
@@ -334,7 +314,7 @@ async fn render_tree(
         repository_documents::load(reader, &loaded.urls, &view.commit.id, &path, &view.entries, &query, state).await?;
 
     let urls = &loaded.urls;
-    let filtered = matching_entries(&view.entries, &listing_query.q);
+    let filtered = browse::matching_entries(&view.entries, |entry| entry.name.as_str(), &listing_query.q);
     let document_query = readme.as_ref().map(|document| vec![("document".to_owned(), document.path.clone())]).unwrap_or_default();
     let pagination = Pagination::new(filtered.len(), &listing_query, urls.tree(&view.commit.id, &path), document_query);
     let cells = Pagination::new(filtered.len(), &listing_query, entry_commits_url(urls, &view.commit.id, &path), vec![]);
@@ -342,7 +322,7 @@ async fn render_tree(
         .iter()
         .copied()
         .map(|(index, entry)| {
-            let entry_path = join_path(&path, &entry.name);
+            let entry_path = browse::join_path(&path, &entry.name);
             EntryRow {
                 url: match entry.kind {
                     EntryKind::Directory => urls.tree(&revision, &entry_path),
@@ -364,7 +344,7 @@ async fn render_tree(
         header: loaded.header_at(state, "code", &revision),
         switcher: loaded.switcher(&revision, RefTarget::Tree, ""),
         breadcrumbs: breadcrumbs(loaded.ctx.repo.repo.name.as_str(), urls, &revision, &path),
-        parent_url: (!path.is_empty()).then(|| urls.tree(&revision, parent_path(&path))),
+        parent_url: (!path.is_empty()).then(|| urls.tree(&revision, browse::parent_path(&path))),
         latest: CommitView::new(&view.commit, urls),
         entries,
         // Pinned to the resolved commit so the cells always describe the rows on screen.
@@ -439,7 +419,7 @@ pub async fn entry_commits(
     let (revision, path) = ctx.reader.split_revision_path(rest).await.map_err(ServiceError::from)?;
     let view = ctx.reader.tree(revision.clone(), path.clone()).await.map_err(ServiceError::from)?;
     let query = query.normalized();
-    let filtered = matching_entries(&view.entries, &query.q);
+    let filtered = browse::matching_entries(&view.entries, |entry| entry.name.as_str(), &query.q);
     let pagination = Pagination::new(filtered.len(), &query, String::new(), vec![]);
     let selected = &filtered[pagination.start..pagination.end];
     let entries: Vec<_> = selected.iter().map(|(_, entry)| (*entry).clone()).collect();
@@ -459,11 +439,6 @@ pub async fn entry_commits(
     // resolved to the commit it spells: a branch may be named with 40 hex digits.
     let pinned = view.commit.id == revision && ctx.repo.repo.visibility.is_public() && !result.timed_out && commits.len() == entries.len();
     Ok(crate::middleware::cache_pinned(EntryCommitsFragment { cells }.into_response(), pinned))
-}
-
-fn matching_entries<'a>(entries: &'a [rbit_git::TreeEntry], query: &str) -> Vec<(usize, &'a rbit_git::TreeEntry)> {
-    let needle = query.to_lowercase();
-    entries.iter().enumerate().filter(|(_, entry)| needle.is_empty() || entry.name.to_lowercase().contains(&needle)).collect()
 }
 
 /// `GET /{owner}/{repo}/blob/{revision}/{path…}`. A directory path redirects to its
@@ -491,17 +466,17 @@ pub async fn blob(
     let (view, lfs) = super::lfs::lfs_blob(&state, &loaded.ctx, viewer.user(), view, max_bytes).await;
     let lfs_stored = lfs.map(|lfs| lfs.stored);
 
-    let name = file_name(&path).to_owned();
+    let name = browse::file_name(&path).to_owned();
     let text = view.text().map(str::to_owned);
     let line_count = text.as_ref().map(|t| t.lines().count());
     let language = text.as_ref().and_then(|t| state.highlighter.language_name(&name, t));
 
     let content = match text {
-        _ if lfs_stored == Some(true) && image_content_type(&path).is_some() => BlobContent::Image,
+        _ if lfs_stored == Some(true) && browse::image_content_type(&path).is_some() => BlobContent::Image,
         _ if view.data.is_none() => BlobContent::TooLarge,
         None => BlobContent::Binary,
         Some(text) if is_markdown(&name) => {
-            let base = DocumentBase::new(loaded.urls.clone(), revision.clone(), parent_path(&path));
+            let base = DocumentBase::new(loaded.urls.clone(), revision.clone(), browse::parent_path(&path));
             BlobContent::Markdown(state.documents.document(text, base).await?)
         }
         Some(text) => BlobContent::Code(state.highlighter.highlight_lines_cached(&view.id, &name, text).await?),
@@ -544,7 +519,7 @@ pub async fn raw(
 ) -> WebResult<Response> {
     let ctx = open_pinned(&state, &viewer, &owner, &repo).await?;
     let (revision, path) = ctx.reader.split_revision_path(rest).await.map_err(ServiceError::from)?;
-    let image_type = image_content_type(&path);
+    let image_type = browse::image_content_type(&path);
     let view = ctx.reader.blob(revision, path, MAX_RAW_BYTES).await.map_err(ServiceError::from)?;
     // Milestone 3: a pointer file serves its Git LFS object, streamed (L).
     if let Some(response) = super::lfs::lfs_raw(&state, &ctx, viewer.user(), &view, image_type).await {
@@ -639,23 +614,7 @@ async fn render_commits(state: &AppState, loaded: RepoPage, page: Page, revision
 
 /// Reject overflowing offsets instead of panicking or wrapping back to earlier commits.
 fn commit_offset(page: usize) -> WebResult<usize> {
-    page.saturating_sub(1).checked_mul(COMMITS_PER_PAGE).ok_or_else(|| WebError::BadRequest("page number is too large".into()))
-}
-
-/// The image media type for `path`'s extension, for the types browsers display in `<img>`.
-fn image_content_type(path: &str) -> Option<&'static str> {
-    let extension = path.rsplit_once('.')?.1.to_ascii_lowercase();
-    Some(match extension.as_str() {
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        "avif" => "image/avif",
-        "bmp" => "image/bmp",
-        "ico" => "image/x-icon",
-        "svg" => "image/svg+xml",
-        _ => return None,
-    })
+    browse::commit_offset(page).ok_or_else(|| WebError::BadRequest("page number is too large".into()))
 }
 
 fn escape(text: &str) -> String {

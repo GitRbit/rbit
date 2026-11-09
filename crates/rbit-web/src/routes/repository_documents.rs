@@ -100,7 +100,7 @@ pub(super) async fn load(
         let blob = reader.blob(commit.to_owned(), selected.path.clone(), max_bytes).await.map_err(ServiceError::from)?;
         let (html, markdown) = if let Some(text) = blob.text() {
             let markdown = is_markdown(&selected.name);
-            let base = DocumentBase::new(urls.clone(), commit, super::parent_path(&selected.path));
+            let base = DocumentBase::new(urls.clone(), commit, super::browse::parent_path(&selected.path));
             (if markdown { state.documents.document(text.to_owned(), base).await? } else { super::escape(text) }, markdown)
         } else {
             (

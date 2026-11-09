@@ -26,7 +26,7 @@ mod aliases;
 use rbit_repositories::discovery::RepositoryListings;
 pub use rbit_repositories::discovery::{EXPLORE_PAGE_SIZE, RepoSearch, RepoSearchResults};
 
-pub use rbit_repositories::creation::CreateRepository;
+pub use rbit_repositories::{browse, creation::CreateRepository};
 mod creation;
 
 /// A repository the viewer is allowed to see, with what they may do to it.
