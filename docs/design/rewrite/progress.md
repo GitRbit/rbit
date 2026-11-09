@@ -8,7 +8,7 @@ Public development and review continue in [draft PR #53](https://github.com/GitR
 
 | Area | Current implementation |
 | --- | --- |
-| Baseline and parity | Immutable Git-object inventory, schema fingerprints, 55 feature groups, required security contracts and guarded acceptance records |
+| Baseline and parity | Immutable Git-object inventory, schema fingerprints, 55 feature groups (two retired: identity bootstrap and sessions), required security contracts and guarded acceptance records |
 | Shared contracts | `rbit-contracts` owns IDs, timestamps and naming contracts; existing core module/root paths, constructors and serialized behavior remain compatible |
 | Identity models and credentials | Account models have a dependency-light, models-only layer; credentials and bounded password work have explicit separate features and legacy aliases |
 | Session contracts and applications | Feature-owned records/projections retain storage/service aliases and wire bytes; static session ports own application policy, while counted admission and tracked credential finalizers support explicit drain |
@@ -112,12 +112,12 @@ loopback-UNC refusal. The reviewed unsafe-line policy is unchanged. CI now lints
 crate and runs its policy tests on both platforms; no hosted result is recorded yet.
 A mapped-drive run and the independent unsafe audit remain open.
 
-The identity/session regression group now has barrier and forced-interleaving
-tests against the stores production selects: 13 storage races and 7 service
-scenarios, described in the [security contracts](security-contracts.md#identitysession-group-status).
-They found no defect. Reinstating an upserting stale renewal makes the three
-parked-revocation scenarios fail. This covers one of the seven mandatory groups;
-the inactive epoch session paths are not part of this claim.
+The identity/session regression group has barrier and forced-interleaving tests
+(13 storage races, 7 service scenarios; [security contracts](security-contracts.md#identitysession-group-status)),
+excluding the inactive epoch paths. The first retirement ports `identity.bootstrap` and
+`identity.sessions` ([plan](identity-retirement.md), [evidence](identity-retirement-acceptance.md)):
+session purge now runs through identity, and the `Passwords` facade and service session
+aliases are deleted and guarded. The six other identity rows have no identity application yet.
 
 The permission regression group now has a table-driven differential matrix:
 eleven actors against personal/organisation, public/private and archived

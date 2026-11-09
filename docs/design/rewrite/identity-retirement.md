@@ -88,4 +88,6 @@ The ledger rows record the replacement paths and [acceptance evidence](identity-
 
 ## Cost
 
-Recorded after the slice lands; see [acceptance evidence](identity-retirement-acceptance.md#cost).
+Three code commits changed 54 files: production Rust +82/−92 lines in 19 files, tests
++91/−57 in 23 files, plus the checker and policy scripts. Details and the estimate for
+the remaining rows are in the [acceptance evidence](identity-retirement-acceptance.md#cost).
