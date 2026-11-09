@@ -2,8 +2,8 @@
 
 Progress for the `collaboration.pulls` ("Cross-fork pulls, reviews, base selection,
 merge/squash/rebase") and `collaboration.review-threads` ("Line comments, resolvable
-conversations and review requests") ledger rows. `collaboration.pulls` stays `baseline-retained` until its background work
-moves; review threads were retired later. This slice moves the
+conversations and review requests") ledger rows. Both were retired later; see the [pull request acceptance](collaboration-pulls-acceptance.md)
+and the [review-thread acceptance](collaboration-review-threads-acceptance.md). This slice moves the
 decisions of opening a pull request; merging, reviews, base changes and background
 work keep their current owners. It follows the [identity retirement](identity-retirement.md)
 pattern for what moves, what is removed and which boundary keeps it from returning.
@@ -95,13 +95,8 @@ now also fails if the records or merge requirements are defined outside
 text or the message itself, or if review or base-change refusal text appears outside
 collaboration.
 
-## Remaining for `collaboration.pulls`
-
-- Head and base push handling (`pulls/background.rs`): outdated line comments after a
-  head push, pull requests merged outside rbit, re-queueing after statuses, and the
-  mergeability worker and its start-up sweep. These are event-driven Git orchestration
-  with few decisions of their own.
-- Listing and the comparison-count cache (`pulls.rs`).
+Push and status handling, list badges and paging moved last; see the
+[acceptance evidence](collaboration-pulls-acceptance.md).
 
 ## Review threads
 
