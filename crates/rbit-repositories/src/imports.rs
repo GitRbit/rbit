@@ -6,8 +6,15 @@
 //! address) are reported before anything is created. The token is checked here but
 //! never stored. Source parsing, the outbound address guard, the API client, creating
 //! the repository row, the record's lifecycle gate, the copy itself and the scheduler
-//! runtime stay with composition behind [`ImportAdmission`] and [`ImportRun`].
+//! runtime stay with composition behind [`ImportAdmission`] and [`ImportRun`]. What the
+//! copy does with each item is policy too: [`progress`], [`authors`] and [`items`].
+use model::truncate_chars;
 use std::future::Future;
+
+pub mod authors;
+pub mod items;
+pub mod model;
+pub mod progress;
 
 /// Longest token accepted, in bytes.
 pub const MAX_TOKEN_BYTES: usize = 1024;
@@ -44,11 +51,6 @@ pub fn local_name(requested: &str, source: &str) -> String {
 /// characters, or empty.
 pub fn local_description(source: Option<&str>) -> String {
     source.map(|description| truncate_chars(description.trim(), MAX_DESCRIPTION_CHARS).to_owned()).unwrap_or_default()
-}
-
-/// The first `max_chars` characters of `text`.
-fn truncate_chars(text: &str, max_chars: usize) -> &str {
-    text.char_indices().nth(max_chars).map_or(text, |(index, _)| &text[..index])
 }
 
 /// An import's page is shown to its importer and the repository's administrators only.
