@@ -5,7 +5,7 @@
 </div>
 {% else %}
 <div class="mb-2 mt-6 flex flex-wrap items-center gap-2">
-  <h2 class="text-[13px] font-medium">{{ text.jobs }}</h2>
+  <h2 class="text-[13px] font-medium">{% call ui::localized(text.jobs) %}{% endcall %}</h2>
   <span class="badge tabular-nums">{{ jobs.len() }}</span>
 </div>
 <ul class="box">
@@ -47,7 +47,7 @@
   {% endfor %}
 </ul>
 {% if !artifacts.is_empty() %}
-<h2 class="mb-2 mt-6 text-[13px] font-medium text-ink-muted">{{ text.artifacts }}</h2>
+<h2 class="mb-2 mt-6 text-[13px] font-medium text-ink-muted">{% call ui::localized(text.artifacts) %}{% endcall %}</h2>
 <ul class="box">
   {% for artifact in artifacts %}
   <li class="row flex-wrap gap-3 py-3 sm:flex-nowrap">
@@ -57,7 +57,7 @@
     <a class="shrink-0 text-xs text-ink-faint hover:text-ink hover:underline hover:underline-offset-4"
        href="{{ artifact.url }}/tar.gz" hx-boost="false" download title="{{ text.download_tar }}">tar.gz</a>
     <span class="shrink-0 whitespace-nowrap text-xs tabular-nums text-ink-faint">
-      {{ artifact.size.text(page.locale) }} · {{ text.expires }} <time datetime="{{ artifact.expires_iso }}">{% call ui::localized(artifact.expires.until(page.locale)) %}{% endcall %}</time>
+      {{ artifact.size.text(page.locale) }} · {% call ui::localized(text.expires) %}{% endcall %} <time datetime="{{ artifact.expires_iso }}">{% call ui::localized(artifact.expires.until(page.locale)) %}{% endcall %}</time>
     </span>
   </li>
   {% endfor %}
@@ -69,7 +69,7 @@
 <section class="box mt-6 overflow-hidden" aria-label="{{ summary_label }}">
   <h2 class="flex min-h-10 items-center gap-2 border-b border-line bg-subtle px-3 text-[13px] font-medium">
     {% call ui::icon("file", "size-4 shrink-0 text-ink-muted") %}{% endcall %}
-    <span class="truncate">{{ summary_label }}</span>
+    <span class="truncate">{% call ui::localized(summary_label) %}{% endcall %}</span>
   </h2>
   <article class="prose-rbit overflow-x-auto px-4 py-4 sm:px-6">{{ summary.html|safe }}</article>
 </section>

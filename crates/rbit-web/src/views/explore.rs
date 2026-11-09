@@ -4,7 +4,7 @@ use askama::Template;
 use askama_web::WebTemplate;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use rbit_core::{RepoSort, repository::ArchivedFilter};
-use rbit_localization::{Catalog, LocalizedDisplay, LocalizedText, Message};
+use rbit_localization::{Catalog, Localized, LocalizedDisplay, Message};
 
 use super::{
     components::{Pagination, RepoCard},
@@ -14,7 +14,7 @@ use super::{
 /// One typed, localized filter/sort control; URLs retain stable machine values.
 #[derive(Debug)]
 pub struct ExploreLink {
-    pub label: LocalizedText,
+    pub label: Localized,
     pub url: String,
     pub is_active: bool,
 }
@@ -56,39 +56,39 @@ pub struct ExploreFragment<'a> {
 /// Plain text for the feature-owned component, prepared once before rendering.
 #[derive(Debug)]
 pub struct ExploreText {
-    pub title: LocalizedText,
-    pub search_placeholder: LocalizedText,
-    pub search_label: LocalizedText,
-    pub search_button: LocalizedText,
-    pub archive_filter: LocalizedText,
-    pub sort_by: LocalizedText,
-    pub empty_title: LocalizedText,
-    pub empty_description: LocalizedText,
-    pub no_match_title: LocalizedText,
-    pub no_match_description: LocalizedText,
-    pub archived: LocalizedText,
-    pub pagination: LocalizedText,
-    pub previous: LocalizedText,
-    pub next: LocalizedText,
+    pub title: Localized,
+    pub search_placeholder: Localized,
+    pub search_label: Localized,
+    pub search_button: Localized,
+    pub archive_filter: Localized,
+    pub sort_by: Localized,
+    pub empty_title: Localized,
+    pub empty_description: Localized,
+    pub no_match_title: Localized,
+    pub no_match_description: Localized,
+    pub archived: Localized,
+    pub pagination: Localized,
+    pub previous: Localized,
+    pub next: Localized,
 }
 
 impl ExploreText {
     pub fn new(catalog: Catalog) -> Self {
         Self {
-            title: catalog.text(Message::ExploreTitle),
-            search_placeholder: catalog.text(Message::ExploreSearchPlaceholder),
-            search_label: catalog.text(Message::SearchRepositories),
-            search_button: catalog.text(Message::SearchLabel),
-            archive_filter: catalog.text(Message::ArchiveFilterLabel),
-            sort_by: catalog.text(Message::SortBy),
-            empty_title: catalog.text(Message::NothingHereYet),
-            empty_description: catalog.text(Message::PublicRepositoriesEmpty),
-            no_match_title: catalog.text(Message::NoMatchingRepositories),
-            no_match_description: catalog.text(Message::SearchSuggestion),
-            archived: catalog.text(Message::Archived),
-            pagination: catalog.text(Message::PaginationLabel),
-            previous: catalog.text(Message::PreviousPage),
-            next: catalog.text(Message::NextPage),
+            title: catalog.localized(Message::ExploreTitle),
+            search_placeholder: catalog.localized(Message::ExploreSearchPlaceholder),
+            search_label: catalog.localized(Message::SearchRepositories),
+            search_button: catalog.localized(Message::SearchLabel),
+            archive_filter: catalog.localized(Message::ArchiveFilterLabel),
+            sort_by: catalog.localized(Message::SortBy),
+            empty_title: catalog.localized(Message::NothingHereYet),
+            empty_description: catalog.localized(Message::PublicRepositoriesEmpty),
+            no_match_title: catalog.localized(Message::NoMatchingRepositories),
+            no_match_description: catalog.localized(Message::SearchSuggestion),
+            archived: catalog.localized(Message::Archived),
+            pagination: catalog.localized(Message::PaginationLabel),
+            previous: catalog.localized(Message::PreviousPage),
+            next: catalog.localized(Message::NextPage),
         }
     }
 }

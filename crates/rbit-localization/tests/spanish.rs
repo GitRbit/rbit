@@ -30,9 +30,9 @@ fn real_spanish_is_available_without_enabling_diagnostic_catalogs() {
 fn typed_catalog_has_real_literals_and_explicit_integer_noun_forms() {
     let catalog = Catalog::new(Locale::Spanish);
     assert_eq!(catalog.text(Message::RepositoriesTitle).as_str(), "Repositorios");
-    assert_eq!(catalog.chrome(ChromeMessage::SignIn).as_str(), "Iniciar sesión");
-    assert_eq!(catalog.language(LanguageMessage::Title).as_str(), "Idioma de la interfaz");
-    for (count, expected) in [(0, "0 repositorios"), (1, "1 repositorio"), (2, "2 repositorios"), (1_000_000, "1000000 repositorios")] {
+    assert_eq!(catalog.localized(ChromeMessage::SignIn).as_str(), "Iniciar sesión");
+    assert_eq!(catalog.localized(LanguageMessage::Title).as_str(), "Idioma de la interfaz");
+    for (count, expected) in [(0, "0 repositorios"), (1, "1 repositorio"), (2, "2 repositorios"), (1_000_000, "1.000.000 repositorios")] {
         assert_eq!(catalog.text(Message::RepositoryCount { count }).as_str(), expected);
     }
     for (count, expected) in [(0, "0 estrellas"), (-1, "-1 estrella"), (1, "1 estrella"), (2, "2 estrellas")] {
@@ -49,7 +49,7 @@ fn chrome_dynamic_labels_match_plain_text_and_preserve_untrusted_arguments() {
         let catalog = Catalog::new(locale);
         for site in ["", "Forge", "<script>&\"'雪\u{2069}"] {
             let message = ChromeMessage::Home { site };
-            assert_eq!(catalog.chrome_display(message).to_string(), catalog.chrome(message).as_str());
+            assert_eq!(catalog.chrome_display(message).to_string(), catalog.localized(message).as_str());
         }
     }
 }

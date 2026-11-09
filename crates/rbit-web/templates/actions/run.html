@@ -4,7 +4,7 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 {% let text = self.labels() %}
-<p class="mb-3 break-words text-xs text-ink-muted"><a class="hover:text-ink hover:underline hover:underline-offset-4" href="{{ runs_url }}">{{ text.actions }}</a> / <a class="hover:text-ink hover:underline hover:underline-offset-4" href="{{ run.workflow_url }}">{{ run.workflow }}</a></p>
+<p class="mb-3 break-words text-xs text-ink-muted"><a class="hover:text-ink hover:underline hover:underline-offset-4" href="{{ runs_url }}">{% call ui::localized(text.actions) %}{% endcall %}</a> / <a class="hover:text-ink hover:underline hover:underline-offset-4" href="{{ run.workflow_url }}">{{ run.workflow }}</a></p>
 
 {#- While the run is not finished the whole section refreshes itself, as the import page does. -#}
 <section id="run" lang="{{ page.locale.tag() }}" dir="{{ page.locale.direction().as_str() }}"

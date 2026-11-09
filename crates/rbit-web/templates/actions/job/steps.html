@@ -4,10 +4,10 @@
   </div>
   {% else %}
   <div class="mb-3 mt-6 flex flex-wrap items-baseline justify-between gap-2">
-    <h2 class="text-sm font-semibold tracking-tight">{{ text.steps }}</h2>
-    <span class="text-xs tabular-nums text-ink-faint">{{ text.count }}</span>
+    <h2 class="text-sm font-semibold tracking-tight">{% call ui::localized(text.steps) %}{% endcall %}</h2>
+    <span class="text-xs tabular-nums text-ink-faint">{% call ui::localized(text.count) %}{% endcall %}</span>
   </div>
-  <p class="mb-3 text-xs leading-relaxed text-ink-muted">{{ text.retained_window }}</p>
+  <p class="mb-3 text-xs leading-relaxed text-ink-muted">{% call ui::localized(text.retained_window) %}{% endcall %}</p>
   <ol class="box divide-y divide-line overflow-hidden">
     {% for step in steps %}
     <li>

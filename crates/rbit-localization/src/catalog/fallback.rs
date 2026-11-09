@@ -64,6 +64,12 @@ pub trait MessageFamily: Copy {
     /// The complete English source text.
     fn english(self, text: &mut MessageWriter);
 
+    /// The English text when it is one fixed literal, which English pages then borrow
+    /// instead of copying. `english` must write the same literal.
+    fn english_literal(self) -> Option<&'static str> {
+        None
+    }
+
     /// Writes this message in `locale` and returns `true`, or returns `false` when the
     /// locale has no translation yet. Only real translated locales reach this method.
     fn translate(self, locale: Locale, text: &mut MessageWriter) -> bool {
@@ -88,6 +94,17 @@ impl Localized {
         Self { text: LocalizedText(text.into()), fallback: !derives_from_english(locale), locale }
     }
 
+    /// Whether the text borrows a compiled literal rather than owning a copy.
+    #[cfg(test)]
+    pub(crate) const fn borrows_static(&self) -> bool {
+        matches!(self.text.0, std::borrow::Cow::Borrowed(_))
+    }
+
+    /// The text alone, without its fallback mark.
+    pub(crate) fn into_text(self) -> LocalizedText {
+        self.text
+    }
+
     /// The text to display.
     pub fn as_str(&self) -> &str {
         self.text.as_str()
@@ -98,14 +115,13 @@ impl Localized {
         self.fallback
     }
 
-    /// The `lang` a template declares around this text: `en` for a fallback; the locale's
-    /// own tag for a translation in a locale whose original families still render English
-    /// (a page built on them may surround the text with `lang="en"`); otherwise `None`,
-    /// as the text is in the page's language.
+    /// The `lang` a template declares around this text: `en` for a fallback; otherwise
+    /// `None` in English, Spanish and the diagnostics, and the locale's own tag in the other
+    /// translations, where a page may still hold English feature content around the text.
     pub const fn marked_lang(&self) -> Option<&'static str> {
         if self.fallback {
             Some(Locale::English.tag())
-        } else if self.locale.has_original_catalog() {
+        } else if marks_nothing(self.locale) {
             None
         } else {
             Some(self.locale.tag())
@@ -117,6 +133,12 @@ impl fmt::Display for Localized {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.text.as_str())
     }
+}
+
+/// Locales whose translated text carries no `lang` of its own: English, its diagnostics,
+/// and Spanish, the first translation, whose pages have always declared Spanish.
+const fn marks_nothing(locale: Locale) -> bool {
+    matches!(locale, Locale::English | Locale::Spanish | Locale::PseudoExpanded | Locale::PseudoRtl)
 }
 
 /// English itself and the diagnostic catalogs built from it.
@@ -141,6 +163,11 @@ fn localize<M: MessageFamily>(catalog: Catalog, message: M) -> Localized {
         let mut english = MessageWriter { catalog: Catalog::new(Locale::English), output: String::new() };
         message.english(&mut english);
         return Localized { text: english.finish(), fallback: true, locale: catalog.locale };
+    }
+    if catalog.locale == Locale::English
+        && let Some(literal) = message.english_literal()
+    {
+        return Localized { text: LocalizedText(literal.into()), fallback: false, locale: catalog.locale };
     }
     let mut english = MessageWriter { catalog, output: String::new() };
     message.english(&mut english);

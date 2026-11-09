@@ -2,15 +2,15 @@
     first form reloads the page at another branch or tag (`?ref=`), so the inputs below are always
     the workflow's at that ref; the second runs it. Works without JavaScript. -#}
 <details class="box mb-3" {% if form.open %}open{% endif %}>
-  <summary class="flex min-h-11 cursor-pointer items-center gap-2 px-3 text-[13px] font-medium hover:bg-subtle">{% call ui::icon("play", "size-4 shrink-0") %}{% endcall %}{{ text.run_workflow }}</summary>
+  <summary class="flex min-h-11 cursor-pointer items-center gap-2 px-3 text-[13px] font-medium hover:bg-subtle">{% call ui::icon("play", "size-4 shrink-0") %}{% endcall %}{% call ui::localized(text.run_workflow) %}{% endcall %}</summary>
   <div class="border-t border-line p-3 sm:p-4">
     <form method="get" action="{{ form.page_url }}" class="flex flex-wrap items-end gap-2">
       <div class="min-w-0 flex-1 basis-48">
-        <label class="label" for="dispatch-ref">{{ text.workflow_from }}</label>
+        <label class="label" for="dispatch-ref">{% call ui::localized(text.workflow_from) %}{% endcall %}</label>
         <input class="input font-mono" dir="ltr" id="dispatch-ref" name="ref" value="{{ form.reference }}" list="dispatch-refs" autocomplete="off" autocapitalize="none" spellcheck="false" required>
         <datalist id="dispatch-refs">{% for name in form.refs %}<option value="{{ name }}"></option>{% endfor %}</datalist>
       </div>
-      <button class="btn h-10 sm:h-9" type="submit">{{ text.change }}</button>
+      <button class="btn h-10 sm:h-9" type="submit">{% call ui::localized(text.change) %}{% endcall %}</button>
     </form>
 
     {% if let Some(error) = form.error %}
@@ -45,7 +45,7 @@
         {% if let Some(description) = input.description %}<p class="mt-1 text-xs text-ink-muted">{{ description }}</p>{% endif %}
       </div>
       {% endfor %}
-      <div><button class="btn btn-primary w-full sm:w-auto" type="submit">{% call ui::icon("play", "size-3.5") %}{% endcall %}{{ text.run_workflow }}</button></div>
+      <div><button class="btn btn-primary w-full sm:w-auto" type="submit">{% call ui::icon("play", "size-3.5") %}{% endcall %}{% call ui::localized(text.run_workflow) %}{% endcall %}</button></div>
     </form>
     {% endif %}
   </div>

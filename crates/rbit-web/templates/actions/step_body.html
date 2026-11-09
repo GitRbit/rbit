@@ -1,11 +1,11 @@
 {#- A step's log as file-viewer lines; expects `step: StepView` (views::actions). -#}
 {% if let Some(log) = step.log %}
   {% if log.expired %}
-  <p class="px-4 py-3 text-[13px] text-ink-muted">{{ text.expired }}</p>
+  <p class="px-4 py-3 text-[13px] text-ink-muted">{% call ui::localized(text.expired) %}{% endcall %}</p>
   {% else if log.lines.is_empty() %}
-  <p class="px-4 py-3 text-[13px] text-ink-muted">{{ text.no_output }}</p>
+  <p class="px-4 py-3 text-[13px] text-ink-muted">{% call ui::localized(text.no_output) %}{% endcall %}</p>
   {% else %}
-  {% if log.more_before %}<p class="border-b border-line px-4 py-2 text-xs text-ink-muted">{{ text.earlier_lines }}{% if !step.log_url.is_empty() %} <a class="link" href="{{ step.log_url }}">{{ text.show_more }}</a>{{ text.or }}{% endif %} {{ text.download_all }}</p>{% endif %}
+  {% if log.more_before %}<p class="border-b border-line px-4 py-2 text-xs text-ink-muted">{% call ui::localized(text.earlier_lines) %}{% endcall %}{% if !step.log_url.is_empty() %} <a class="link" href="{{ step.log_url }}">{% call ui::localized(text.show_more) %}{% endcall %}</a>{% call ui::localized(text.or) %}{% endcall %}{% endif %} {% call ui::localized(text.download_all) %}{% endcall %}</p>{% endif %}
   <div class="overflow-x-auto">
     <div class="code-lines {{ log.columns() }}" dir="ltr">
       {%- for block in log.blocks() %}
@@ -17,8 +17,8 @@
       {%- endfor %}
     </div>
   </div>
-  {% if log.truncated %}<p class="border-t border-line px-4 py-2 text-xs text-warning">{{ text.truncated }}</p>{% endif %}
+  {% if log.truncated %}<p class="border-t border-line px-4 py-2 text-xs text-warning">{% call ui::localized(text.truncated) %}{% endcall %}</p>{% endif %}
   {% endif %}
 {% else %}
-  <p class="px-4 py-3 text-[13px] text-ink-muted">{{ text.step_not_started }}</p>
+  <p class="px-4 py-3 text-[13px] text-ink-muted">{% call ui::localized(text.step_not_started) %}{% endcall %}</p>
 {% endif %}

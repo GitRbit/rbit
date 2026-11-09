@@ -5,7 +5,7 @@
     submit buttons of a theme form; each row's chip carries its own `data-theme`, so it renders
     in that theme's colours from the combined stylesheet linked here. Highlighting a row (the
     pointer or the arrow keys) shows it in the preview pane; choosing one applies it. -#}
-<dialog class="tpk" lang="{{ page.original_locale().tag() }}" dir="{{ page.original_locale().direction().as_str() }}" aria-label="{{ labels.choose() }}" data-theme-dialog data-label-apply="{{ labels.apply() }}" data-label-applied="{{ labels.applied() }}" data-label-by="{{ labels.by() }}" data-label-credit="{{ labels.credit() }}" data-label-singular="{{ labels.theme_singular() }}" data-label-plural="{{ labels.theme_plural() }}" data-asset-version="{{ asset_version }}">
+<dialog class="tpk" lang="{{ page.locale.tag() }}" dir="{{ page.locale.direction().as_str() }}" aria-label="{{ labels.choose() }}" data-theme-dialog data-label-apply="{{ labels.apply() }}" data-label-applied="{{ labels.applied() }}" data-label-by="{{ labels.by() }}" data-label-credit="{{ labels.credit() }}" data-label-singular="{{ labels.theme_singular() }}" data-label-plural="{{ labels.theme_plural() }}" data-asset-version="{{ asset_version }}">
   <link rel="stylesheet" href="{{ stylesheet }}">
   <div class="tpk-head">
     <div class="tpk-search">
@@ -16,44 +16,44 @@
     </div>
     <div class="tpk-bar">
       <div class="theme-segment tpk-segment" role="group" aria-label="{{ labels.show() }}">
-        <button type="button" data-tpk-variant="" aria-pressed="true">{{ labels.all() }}</button>
-        <button type="button" data-tpk-variant="dark" aria-pressed="false">{{ labels.dark() }}</button>
-        <button type="button" data-tpk-variant="light" aria-pressed="false">{{ labels.light() }}</button>
-        <button type="button" data-tpk-variant="colorblind" aria-pressed="false">{{ labels.colorblind() }}</button>
+        <button type="button" data-tpk-variant="" aria-pressed="true">{% call ui::localized(labels.all()) %}{% endcall %}</button>
+        <button type="button" data-tpk-variant="dark" aria-pressed="false">{% call ui::localized(labels.dark()) %}{% endcall %}</button>
+        <button type="button" data-tpk-variant="light" aria-pressed="false">{% call ui::localized(labels.light()) %}{% endcall %}</button>
+        <button type="button" data-tpk-variant="colorblind" aria-pressed="false">{% call ui::localized(labels.colorblind()) %}{% endcall %}</button>
       </div>
-      <p class="ms-auto text-xs text-ink-faint" data-tpk-count aria-live="polite">{{ total }} {{ labels.theme_plural() }}</p>
+      <p class="ms-auto text-xs text-ink-faint" data-tpk-count aria-live="polite">{{ total }} {% call ui::localized(labels.theme_plural()) %}{% endcall %}</p>
     </div>
   </div>
 
   <div class="tpk-body">
     <nav class="tpk-index" aria-label="{{ labels.families() }}">
-      <a href="#tpk-recent" data-tpk-jump="tpk-recent" hidden>{{ labels.recent() }}</a>
+      <a href="#tpk-recent" data-tpk-jump="tpk-recent" hidden>{% call ui::localized(labels.recent()) %}{% endcall %}</a>
       {%- for group in groups %}
-      <a href="#tpk-g{{ loop.index }}" data-tpk-jump="tpk-g{{ loop.index }}">{% if group.name == "Built in" %}{{ labels.built_in() }}{% else if group.name == "More themes" %}{{ labels.more() }}{% else %}{{ group.name }}{% endif %}<span>{{ group.rows.len() }}</span></a>
+      <a href="#tpk-g{{ loop.index }}" data-tpk-jump="tpk-g{{ loop.index }}">{% if group.name == "Built in" %}{% call ui::localized(labels.built_in()) %}{% endcall %}{% else if group.name == "More themes" %}{% call ui::localized(labels.more()) %}{% endcall %}{% else %}{{ group.name }}{% endif %}<span>{{ group.rows.len() }}</span></a>
       {%- endfor %}
     </nav>
 
     <form class="tpk-list" id="tpk-list" method="post" action="/themes" hx-boost="false" role="listbox" aria-label="{{ labels.themes() }}" data-theme-form>
       <section class="tpk-group" id="tpk-recent" data-tpk-recent hidden>
-        <h3 class="tpk-group-title">{{ labels.recent() }}</h3>
+        <h3 class="tpk-group-title">{% call ui::localized(labels.recent()) %}{% endcall %}</h3>
       </section>
       {%- for group in groups %}
       <section class="tpk-group" id="tpk-g{{ loop.index }}" data-tpk-group>
-        <h3 class="tpk-group-title">{% if group.name == "Built in" %}{{ labels.built_in() }}{% else if group.name == "More themes" %}{{ labels.more() }}{% else %}{{ group.name }}{% endif %}<span>{{ group.rows.len() }}</span></h3>
+        <h3 class="tpk-group-title">{% if group.name == "Built in" %}{% call ui::localized(labels.built_in()) %}{% endcall %}{% else if group.name == "More themes" %}{% call ui::localized(labels.more()) %}{% endcall %}{% else %}{{ group.name }}{% endif %}<span>{{ group.rows.len() }}</span></h3>
         {%- for row in group.rows %}
         {%- if let Some(letter) = row.letter %}
         <p class="tpk-letter" data-tpk-letter>{{ letter }}</p>
         {%- endif %}
         <button class="tpk-opt" id="tpk-{{ row.card.slug }}" type="submit" name="theme" value="{{ row.card.slug }}" role="option" aria-selected="false" aria-pressed="{{ row.card.is_current }}" data-variant="{{ row.card.variant }}" data-counterpart="{{ row.card.counterpart }}" data-search="{{ row.search }}" data-family="{{ group.name }}" data-family-label="{% if group.name == "Built in" %}{{ labels.built_in() }}{% else if group.name == "More themes" %}{{ labels.more() }}{% else %}{{ group.name }}{% endif %}" title="{{ row.card.credit }}" tabindex="-1" data-tpk-option>
           <span class="tpk-chip" data-theme="{{ row.card.slug }}" aria-hidden="true"><b>Aa</b><i></i><i></i><i></i><i></i></span>
-          <span class="tpk-name">{% if row.card.slug == "system" %}{{ labels.system() }}{% else %}{{ row.card.name }}{% endif %}</span>
-          <span class="tpk-variant">{{ labels.variant(row.card.variant) }}</span>
+          <span class="tpk-name">{% if row.card.slug == "system" %}{% call ui::localized(labels.system()) %}{% endcall %}{% else %}{{ row.card.name }}{% endif %}</span>
+          <span class="tpk-variant">{% call ui::localized(labels.variant(row.card.variant)) %}{% endcall %}</span>
           {% call ui::icon("check", "tpk-check size-3.5") %}{% endcall %}
         </button>
         {%- endfor %}
       </section>
       {%- endfor %}
-      <p class="py-16 text-center text-[13px] text-ink-muted" data-tpk-empty hidden>{{ labels.empty() }}</p>
+      <p class="py-16 text-center text-[13px] text-ink-muted" data-tpk-empty hidden>{% call ui::localized(labels.empty()) %}{% endcall %}</p>
     </form>
 
     {#- The highlighted theme on a miniature repository page; theme-picker.js retargets
@@ -61,10 +61,10 @@
     <aside class="tpk-side" aria-label="{{ labels.preview() }}">
       <div class="tpk-info">
         <div class="min-w-0">
-          <p class="tpk-info-name" data-tpk-name>{{ labels.system() }}</p>
-          <p class="tpk-info-meta" data-tpk-meta>{{ labels.built_in() }} · {{ labels.auto() }}</p>
+          <p class="tpk-info-name" data-tpk-name>{% call ui::localized(labels.system()) %}{% endcall %}</p>
+          <p class="tpk-info-meta" data-tpk-meta>{% call ui::localized(labels.built_in()) %}{% endcall %} · {% call ui::localized(labels.auto()) %}{% endcall %}</p>
         </div>
-        <button class="btn btn-primary ms-auto shrink-0" type="submit" form="tpk-list" name="theme" value="system" data-tpk-apply>{{ labels.apply() }}</button>
+        <button class="btn btn-primary ms-auto shrink-0" type="submit" form="tpk-list" name="theme" value="system" data-tpk-apply>{% call ui::localized(labels.apply()) %}{% endcall %}</button>
       </div>
       <div class="tpk-preview" data-theme="system" data-tpk-preview aria-hidden="true">
         <div class="pv-top">
@@ -104,9 +104,9 @@
 
   <footer class="tpk-foot">
     <p class="hidden items-center gap-3 sm:flex">
-      <span><kbd class="kbd">↑</kbd> <kbd class="kbd">↓</kbd> {{ labels.preview() }}</span>
-      <span><kbd class="kbd">↵</kbd> {{ labels.or_apply() }}</span>
-      <span><kbd class="kbd">Esc</kbd> {{ labels.close() }}</span>
+      <span><kbd class="kbd">↑</kbd> <kbd class="kbd">↓</kbd> {% call ui::localized(labels.preview()) %}{% endcall %}</span>
+      <span><kbd class="kbd">↵</kbd> {% call ui::localized(labels.or_apply()) %}{% endcall %}</span>
+      <span><kbd class="kbd">Esc</kbd> {% call ui::localized(labels.close()) %}{% endcall %}</span>
     </p>
   </footer>
 </dialog>

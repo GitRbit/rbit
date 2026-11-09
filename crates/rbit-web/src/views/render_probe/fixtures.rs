@@ -66,7 +66,7 @@ pub(super) fn explore(actor: Actor, theme: Theme, locale: Locale, empty: bool) -
     let page = page("/explore", actor, theme, locale);
     let labels = ExploreText::new(catalog);
     let link = |message, sort, archived| ExploreLink {
-        label: catalog.text(message),
+        label: catalog.localized(message),
         url: explore_url(UNTRUSTED, sort, archived, 1),
         is_active: sort == RepoSort::Name,
     };

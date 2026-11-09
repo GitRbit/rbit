@@ -1,5 +1,7 @@
 //! Typed text for the Actions run presentation; values are plain Unicode text.
-use super::{Catalog, LocalizedText};
+use super::Catalog;
+use super::fallback::{MessageFamily, MessageWriter};
+use crate::Locale;
 mod display;
 pub use display::ActionsDisplay;
 const RERUN_PREFIX: &str = "Re-run ";
@@ -46,64 +48,74 @@ impl ActionsMessage<'_> {
             Self::Summary { .. } => "actions.job.summary",
         }
     }
+
+    /// The English text of a fixed label.
+    const fn english_label(self) -> Option<&'static str> {
+        Some(match self {
+            Self::Actions => "Actions",
+            Self::Workflow => "Workflow",
+            Self::Commit => "Commit",
+            Self::Duration => "Duration",
+            Self::Attempt => "Attempt",
+            Self::TriggeredBy => "Triggered by",
+            Self::Jobs => "Jobs",
+            Self::Artifacts => "Artifacts",
+            Self::RunDetails => "Run details",
+            Self::CancelRun => "Cancel run",
+            Self::RerunFailed => "Re-run failed",
+            Self::RerunAll => "Re-run all",
+            Self::DownloadTar => "Download as tar.gz",
+            Self::Expires => "expires",
+            Self::RerunJob { .. } | Self::Summary { .. } => return None,
+        })
+    }
 }
 
-impl Catalog {
-    /// Uses the same compiled locale and argument-isolation rules as other messages.
-    pub fn actions(self, message: ActionsMessage<'_>) -> LocalizedText {
-        if self.locale == crate::Locale::Spanish {
-            return super::spanish::actions(self, message);
+impl MessageFamily for ActionsMessage<'_> {
+    fn id(self) -> &'static str {
+        Self::id(self)
+    }
+
+    fn english(self, text: &mut MessageWriter) {
+        match self {
+            Self::RerunJob { name } => {
+                text.literal(RERUN_PREFIX);
+                text.argument(name);
+            }
+            Self::Summary { job } => {
+                text.argument(job);
+                text.literal(SUMMARY_SUFFIX);
+            }
+            _ => text.literal(self.english_label().unwrap_or_default()),
         }
-        let literal = match message {
-            ActionsMessage::Actions => "Actions",
-            ActionsMessage::Workflow => "Workflow",
-            ActionsMessage::Commit => "Commit",
-            ActionsMessage::Duration => "Duration",
-            ActionsMessage::Attempt => "Attempt",
-            ActionsMessage::TriggeredBy => "Triggered by",
-            ActionsMessage::Jobs => "Jobs",
-            ActionsMessage::Artifacts => "Artifacts",
-            ActionsMessage::RunDetails => "Run details",
-            ActionsMessage::CancelRun => "Cancel run",
-            ActionsMessage::RerunFailed => "Re-run failed",
-            ActionsMessage::RerunAll => "Re-run all",
-            ActionsMessage::DownloadTar => "Download as tar.gz",
-            ActionsMessage::Expires => "expires",
-            ActionsMessage::RerunJob { name } => {
-                let mut output = String::new();
-                self.literal(&mut output, RERUN_PREFIX);
-                self.argument(&mut output, name);
-                return LocalizedText(output.into());
-            }
-            ActionsMessage::Summary { job } => {
-                let mut output = String::new();
-                self.argument(&mut output, job);
-                self.literal(&mut output, SUMMARY_SUFFIX);
-                return LocalizedText(output.into());
-            }
-        };
-        self.literal_text(literal)
+    }
+
+    fn english_literal(self) -> Option<&'static str> {
+        self.english_label()
+    }
+
+    fn translate(self, locale: Locale, text: &mut MessageWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Locale;
 
     #[test]
     fn messages_have_stable_ids_and_dynamic_values_remain_text() {
         let attack = "<img src=x onerror=alert(1)>";
         for locale in [Locale::English, Locale::PseudoExpanded, Locale::PseudoRtl] {
             let catalog = Catalog::new(locale);
-            let label = catalog.actions(ActionsMessage::RerunJob { name: attack });
+            let label = catalog.localized(ActionsMessage::RerunJob { name: attack });
             assert!(label.as_str().contains(attack));
             if locale == Locale::PseudoRtl {
                 assert!(label.as_str().contains(&format!("\u{2068}{attack}\u{2069}")));
             }
             assert_eq!(ActionsMessage::RerunJob { name: attack }.id(), "actions.job.rerun");
-            assert!(catalog.actions(ActionsMessage::Summary { job: "build" }).as_str().contains("build"));
+            assert!(catalog.localized(ActionsMessage::Summary { job: "build" }).as_str().contains("build"));
         }
-        assert_eq!(Catalog::new(Locale::English).actions(ActionsMessage::RunDetails).as_str(), "Run details");
+        assert_eq!(Catalog::new(Locale::English).localized(ActionsMessage::RunDetails).as_str(), "Run details");
     }
 }

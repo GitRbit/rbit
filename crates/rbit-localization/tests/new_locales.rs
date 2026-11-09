@@ -1,5 +1,5 @@
-//! The locales prepared for translators: the original exhaustive families fall back to
-//! their English text without new arms, and every family message is marked as such.
+//! The locales prepared for translators: a message without an entry falls back to its
+//! English text, and every family message is marked as such.
 use rbit_localization::{
     ActionsJobMessage, ActionsMessage, Catalog, ChromeMessage, IssueMessage, LanguageMessage, Locale, Localized, Message,
     SettingsNavMessage, ThemeMessage,
@@ -15,27 +15,35 @@ const NEW: [Locale; 7] = [
     Locale::Korean,
 ];
 
+/// The text must follow its mark: English marked `en`, or a translation in the locale.
+fn assert_marked(text: &Localized, source: &Localized, locale: Locale) {
+    if text.fallback() {
+        assert_eq!(text.as_str(), source.as_str(), "{locale:?}");
+        assert_eq!(text.marked_lang(), Some("en"), "{locale:?}");
+    } else {
+        assert_eq!(text.marked_lang(), Some(locale.tag()), "{locale:?}");
+    }
+}
+
 #[test]
-fn original_families_render_their_english_text_in_the_new_locales() {
+fn the_formerly_exhaustive_families_are_table_backed_in_every_new_locale() {
     let english = Catalog::new(Locale::English);
     for locale in NEW {
         let catalog = Catalog::new(locale);
-        assert!(!locale.has_original_catalog(), "{locale:?}");
         for message in [ChromeMessage::Skip, ChromeMessage::SignIn, ChromeMessage::Home { site: "Forge" }] {
-            assert_eq!(catalog.chrome(message), english.chrome(message), "{locale:?} {message:?}");
-            assert_eq!(catalog.chrome_display(message).to_string(), english.chrome_display(message).to_string());
+            assert_marked(&catalog.localized(message), &english.localized(message), locale);
+            assert_eq!(catalog.chrome_display(message).to_string(), catalog.localized(message).as_str());
         }
         for message in [Message::ExploreTitle, Message::RepositoryCount { count: 2 }, Message::Stars { count: -1 }] {
-            assert_eq!(catalog.text(message), english.text(message), "{locale:?} {message:?}");
-            assert_eq!(catalog.display(message).to_string(), english.display(message).to_string());
+            assert_marked(&catalog.localized(message), &english.localized(message), locale);
+            assert_eq!(catalog.text(message).as_str(), catalog.localized(message).as_str());
+            assert_eq!(catalog.display(message).to_string(), catalog.localized(message).as_str());
         }
-        assert_eq!(catalog.language(LanguageMessage::Title), english.language(LanguageMessage::Title));
-        assert_eq!(catalog.theme(ThemeMessage::Choose), english.theme(ThemeMessage::Choose));
-        assert_eq!(catalog.actions(ActionsMessage::RunDetails), english.actions(ActionsMessage::RunDetails));
-        assert_eq!(catalog.job(ActionsJobMessage::StepCount { count: 3 }), english.job(ActionsJobMessage::StepCount { count: 3 }));
-    }
-    for locale in [Locale::English, Locale::Spanish, Locale::PseudoExpanded, Locale::PseudoRtl] {
-        assert!(locale.has_original_catalog(), "{locale:?}");
+        assert_marked(&catalog.localized(LanguageMessage::Title), &english.localized(LanguageMessage::Title), locale);
+        assert_marked(&catalog.localized(ThemeMessage::Choose), &english.localized(ThemeMessage::Choose), locale);
+        assert_marked(&catalog.localized(ActionsMessage::RunDetails), &english.localized(ActionsMessage::RunDetails), locale);
+        let steps = ActionsJobMessage::StepCount { count: 3 };
+        assert_marked(&catalog.localized(steps), &english.localized(steps), locale);
     }
 }
 

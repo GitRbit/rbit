@@ -1,33 +1,33 @@
 //! One set of job/log labels per document, with borrowed English row statuses.
 use super::StateLook;
-use rbit_localization::{ActionsJobMessage as Message, Catalog, JobDisplay, Locale, LocalizedText};
+use rbit_localization::{ActionsJobMessage as Message, Catalog, JobDisplay, Locale, Localized};
 
 #[derive(Debug)]
 pub struct JobText {
     catalog: Catalog,
-    pub details: LocalizedText,
-    pub steps: LocalizedText,
+    pub details: Localized,
+    pub steps: Localized,
     pub count: JobDisplay,
-    pub runs_on: LocalizedText,
-    pub duration: LocalizedText,
-    pub raw_log: LocalizedText,
-    pub rerun: LocalizedText,
-    pub not_started: LocalizedText,
-    pub not_started_description: LocalizedText,
-    pub retained_window: LocalizedText,
-    pub expired: LocalizedText,
-    pub no_output: LocalizedText,
-    pub earlier_lines: LocalizedText,
-    pub show_more: LocalizedText,
-    pub or: LocalizedText,
-    pub download_all: LocalizedText,
-    pub truncated: LocalizedText,
-    pub step_not_started: LocalizedText,
+    pub runs_on: Localized,
+    pub duration: Localized,
+    pub raw_log: Localized,
+    pub rerun: Localized,
+    pub not_started: Localized,
+    pub not_started_description: Localized,
+    pub retained_window: Localized,
+    pub expired: Localized,
+    pub no_output: Localized,
+    pub earlier_lines: Localized,
+    pub show_more: Localized,
+    pub or: Localized,
+    pub download_all: Localized,
+    pub truncated: Localized,
+    pub step_not_started: Localized,
 }
 
 /// A state's label in the catalog's locale, for job rows and the run heading alike.
-pub(super) fn state_label(catalog: Catalog, look: &StateLook) -> LocalizedText {
-    catalog.job(match look.key {
+pub(super) fn state_label(catalog: Catalog, look: &StateLook) -> Localized {
+    catalog.localized(match look.key {
         "success" => Message::Success,
         "failure" => Message::Failure,
         "cancelled" => Message::Cancelled,
@@ -50,13 +50,14 @@ pub(super) fn localized_state(catalog: Catalog, look: &StateLook) -> LocalizedSt
 pub struct LocalizedState {
     pub key: &'static str,
     pub tone: &'static str,
-    pub label: LocalizedText,
+    pub label: Localized,
     locale: Locale,
 }
 
 impl LocalizedState {
-    pub const fn language(&self) -> &'static str {
-        self.locale.tag()
+    /// The language of the label: the page's, or English where it is untranslated.
+    pub fn language(&self) -> &'static str {
+        self.label.marked_lang().unwrap_or(self.locale.tag())
     }
 }
 
@@ -65,24 +66,24 @@ impl JobText {
         let catalog = Catalog::new(locale);
         Self {
             catalog,
-            details: catalog.job(Message::Details),
-            steps: catalog.job(Message::Steps),
+            details: catalog.localized(Message::Details),
+            steps: catalog.localized(Message::Steps),
             count: catalog.job_display(Message::StepCount { count: u64::try_from(count).unwrap_or(u64::MAX) }),
-            runs_on: catalog.job(Message::RunsOn),
-            duration: catalog.job(Message::Duration),
-            raw_log: catalog.job(Message::RawLog),
-            rerun: catalog.job(Message::Rerun),
-            not_started: catalog.job(Message::NotStarted),
-            not_started_description: catalog.job(Message::NotStartedDescription),
-            retained_window: catalog.job(Message::RetainedWindow),
-            expired: catalog.job(Message::Expired),
-            no_output: catalog.job(Message::NoOutput),
-            earlier_lines: catalog.job(Message::EarlierLines),
-            show_more: catalog.job(Message::ShowMore),
-            or: catalog.job(Message::Or),
-            download_all: catalog.job(Message::DownloadAll),
-            truncated: catalog.job(Message::Truncated),
-            step_not_started: catalog.job(Message::StepNotStarted),
+            runs_on: catalog.localized(Message::RunsOn),
+            duration: catalog.localized(Message::Duration),
+            raw_log: catalog.localized(Message::RawLog),
+            rerun: catalog.localized(Message::Rerun),
+            not_started: catalog.localized(Message::NotStarted),
+            not_started_description: catalog.localized(Message::NotStartedDescription),
+            retained_window: catalog.localized(Message::RetainedWindow),
+            expired: catalog.localized(Message::Expired),
+            no_output: catalog.localized(Message::NoOutput),
+            earlier_lines: catalog.localized(Message::EarlierLines),
+            show_more: catalog.localized(Message::ShowMore),
+            or: catalog.localized(Message::Or),
+            download_all: catalog.localized(Message::DownloadAll),
+            truncated: catalog.localized(Message::Truncated),
+            step_not_started: catalog.localized(Message::StepNotStarted),
         }
     }
 

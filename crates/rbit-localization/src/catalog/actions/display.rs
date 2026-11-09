@@ -4,7 +4,7 @@ use crate::Locale;
 use std::fmt;
 
 /// Deferred typed Actions text. It holds borrowed arguments and has no trusted-HTML
-/// marker or owned text buffer. Diagnostic catalogs retain `Catalog::actions` output.
+/// marker or owned text buffer. Other locales write the catalog's localized text.
 #[derive(Clone, Copy, Debug)]
 pub struct ActionsDisplay<'a> {
     catalog: Catalog,
@@ -17,6 +17,15 @@ impl Catalog {
         ActionsDisplay { catalog: self, message }
     }
 }
+impl ActionsDisplay<'_> {
+    /// The `lang` a template declares around this label, as [`crate::Localized::marked_lang`].
+    pub fn marked_lang(&self) -> Option<&'static str> {
+        match self.catalog.locale() {
+            Locale::English => None,
+            _ => self.catalog.localized(self.message).marked_lang(),
+        }
+    }
+}
 impl fmt::Display for ActionsDisplay<'_> {
     fn fmt(&self, output: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.catalog.locale() == Locale::English {
@@ -26,14 +35,6 @@ impl fmt::Display for ActionsDisplay<'_> {
                 _ => {}
             }
         }
-        if self.catalog.locale() == Locale::Spanish {
-            use crate::catalog::spanish::{RERUN_PREFIX, SUMMARY_PREFIX};
-            match self.message {
-                ActionsMessage::RerunJob { name } => return write!(output, "{RERUN_PREFIX}{name}"),
-                ActionsMessage::Summary { job } => return write!(output, "{SUMMARY_PREFIX}{job}"),
-                _ => {}
-            }
-        }
-        fmt::Display::fmt(&self.catalog.actions(self.message), output)
+        fmt::Display::fmt(&self.catalog.localized(self.message), output)
     }
 }

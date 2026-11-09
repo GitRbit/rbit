@@ -163,11 +163,17 @@ fn spanish_picker_preserves_theme_identity_and_escapes_site_content() {
 }
 
 #[test]
-fn picker_in_a_locale_without_its_catalog_is_declared_english() {
+fn picker_declares_the_page_language_and_marks_untranslated_labels() {
     let german = ThemePicker::new(&page(Theme::System).with_locale(rbit_localization::Locale::German));
     let html = german.render().unwrap();
-    assert!(html.contains("<dialog class=\"tpk\" lang=\"en\" dir=\"ltr\" aria-label=\"Choose a theme\""));
+    assert!(html.contains("<dialog class=\"tpk\" lang=\"de\" dir=\"ltr\" aria-label=\""));
     assert_label_fallback_or_translated(&html);
+    let all = rbit_localization::Catalog::new(rbit_localization::Locale::German).localized(rbit_localization::ThemeMessage::All);
+    let expected = match all.marked_lang() {
+        Some(lang) => format!("aria-pressed=\"true\"><span lang=\"{lang}\">{all}</span></button>"),
+        None => format!("aria-pressed=\"true\">{all}</button>"),
+    };
+    assert!(html.contains(&expected), "picker labels carry their own mark: {expected}");
 }
 
 /// A preview label is either still English, marked as its fallback, or translated, in

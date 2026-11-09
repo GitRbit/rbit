@@ -38,15 +38,23 @@ fn english_static_labels_and_visibility_choices_borrow_compiled_text() {
 }
 
 #[test]
-fn spanish_static_messages_and_new_shell_labels_borrow_compiled_literals() {
+fn english_chrome_and_language_labels_borrow_compiled_literals() {
+    let catalog = Catalog::new(Locale::English);
+    for message in [super::ChromeMessage::Skip, super::ChromeMessage::SignIn, super::ChromeMessage::TimingHelp] {
+        assert!(catalog.localized(message).borrows_static(), "{}", message.id());
+    }
+    assert!(catalog.localized(super::LanguageMessage::Title).borrows_static());
+    assert!(catalog.localized(super::ThemeMessage::Choose).borrows_static());
+}
+
+#[test]
+fn spanish_static_messages_come_from_its_table() {
     let catalog = Catalog::new(Locale::Spanish);
     for message in STATIC_MESSAGES.into_iter().chain([Message::PaginationLabel]) {
-        assert!(matches!(catalog.text(message).0, Cow::Borrowed(_)), "{}", message.id());
+        assert!(!catalog.localized(message).fallback(), "{}", message.id());
     }
-    for message in [super::ChromeMessage::Skip, super::ChromeMessage::SignIn, super::ChromeMessage::TimingHelp] {
-        assert!(matches!(catalog.chrome(message).0, Cow::Borrowed(_)), "{}", message.id());
-    }
-    assert!(matches!(catalog.language(super::LanguageMessage::Title).0, Cow::Borrowed("Idioma de la interfaz")));
+    assert_eq!(catalog.localized(super::ChromeMessage::Skip).as_str(), "Saltar al contenido");
+    assert_eq!(catalog.localized(super::LanguageMessage::Title).as_str(), "Idioma de la interfaz");
 }
 
 #[test]

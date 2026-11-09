@@ -7,6 +7,7 @@ use axum::{
 };
 use rbit_core::{Config, User};
 use rbit_identity_models::AccountLocale;
+use rbit_localization::{Catalog, LanguageMessage, Locale};
 use rbit_services::{Services, SignUp};
 use rbit_storage::{Database, KvStore, Work, count_work};
 use std::sync::Arc;
@@ -103,7 +104,12 @@ async fn new_languages_negotiate_and_mark_their_untranslated_chrome_english() {
         assert_eq!(response.headers()["rbit-catalog-key"], format!("1.{tag}"));
         let body = html(response).await;
         assert!(body.contains(&format!("<html lang=\"{tag}\" dir=\"ltr\"")), "{header}");
-        assert!(body.contains("<header lang=\"en\""), "{header}: the chrome is still English");
+        assert!(
+            body.contains(&format!("<header data-document-catalog=\"1.{tag}\"")),
+            "{header}: the chrome declares no language of its own"
+        );
+        let skip = body.split("<a href=\"#main\" class=\"").nth(1).and_then(|rest| rest.split("</a>").next()).unwrap();
+        assert!(skip.contains("<span lang=\""), "{header}: the skip link marks its text: {skip}");
         assert!(body.contains(&format!("<main id=\"main\" lang=\"{tag}\"")), "{header}: the sign-in page is a catalog page");
         assert_hint_fallback_or_translated(&body, tag);
     }
@@ -137,7 +143,13 @@ async fn the_picker_lists_every_language_by_its_own_name_and_saves_it() {
         assert!(body.contains(&format!("<option value=\"{tag}\" lang=\"{tag}\"{selected}")), "{tag}");
         assert!(body.contains(&format!(">{name}</option>")), "{name}");
     }
-    assert!(body.contains("<section id=\"language\" lang=\"en\""), "the page's own labels are still English");
+    assert!(body.contains("<section id=\"language\" lang=\"pt-BR\""), "the page declares its language");
+    let save = Catalog::new(Locale::PortugueseBrazil).localized(LanguageMessage::Save);
+    let expected = match save.marked_lang() {
+        Some(lang) => format!("type=\"submit\"><span lang=\"{lang}\">{save}</span></button>"),
+        None => format!("type=\"submit\">{save}</button>"),
+    };
+    assert!(body.contains(&expected), "untranslated labels carry their own mark: {expected}");
     for (choice, stored) in [("zh-Hans", AccountLocale::ChineseSimplified), ("ko", AccountLocale::Korean), ("es", AccountLocale::Spanish)] {
         assert_eq!(fixture.save(&format!("locale={choice}"), false).await.status(), StatusCode::SEE_OTHER);
         assert_eq!(fixture.services.preferences.locale(&fixture.user).await.unwrap(), Some(stored));

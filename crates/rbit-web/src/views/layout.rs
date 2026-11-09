@@ -73,19 +73,13 @@ impl Page {
     }
 
     /// The supported document language and direction for this request, for a page whose
-    /// content comes from the original exhaustive families (Explore, Actions, language
-    /// settings): in a locale they do not cover, that content is English, and so is `<main>`.
+    /// content all comes from the catalog (Explore, Actions, language settings): `<main>`
+    /// declares the same language, and untranslated text is marked `lang="en"` on its own.
     #[must_use]
-    pub fn with_locale(mut self, locale: Locale) -> Self {
+    pub const fn with_locale(mut self, locale: Locale) -> Self {
         self.locale = locale;
-        self.content_locale = if locale.has_original_catalog() { locale } else { Locale::English };
+        self.content_locale = locale;
         self
-    }
-
-    /// The language of text from the original exhaustive families on this page: the
-    /// document's, or English where those families have no catalog for it.
-    pub const fn original_locale(&self) -> Locale {
-        if self.locale.has_original_catalog() { self.locale } else { Locale::English }
     }
 
     #[must_use]
@@ -239,15 +233,19 @@ mod tests {
     }
 
     #[test]
-    fn chrome_of_a_locale_without_its_original_catalog_is_marked_english() {
-        use rbit_localization::Locale;
+    fn chrome_declares_the_page_language_and_marks_only_untranslated_labels() {
+        use rbit_localization::{Catalog, ChromeMessage, Locale};
         let german = Fixture { page: crate::views::test_support::page("/").with_locale(Locale::German) }.render().unwrap();
         assert!(german.contains("<html lang=\"de\" dir=\"ltr\" data-catalog-key=\"1.de\""));
-        assert!(german.contains("<a href=\"#main\" lang=\"en\""));
-        assert!(german.contains("<header lang=\"en\""));
-        assert!(german.contains("<main id=\"main\" lang=\"en\""), "the original families' content is English");
-        assert!(german.contains("<nav lang=\"en\" class=\"flex max-w-full"));
-        assert!(german.contains(">Skip to content</a>"));
+        assert!(german.contains("<header data-document-catalog=\"1.de\""));
+        assert!(german.contains("<main id=\"main\" lang=\"de\""), "catalog content declares the page language");
+        assert!(!german.contains("<header lang") && !german.contains("<nav lang") && !german.contains("<a href=\"#main\" lang"));
+        let skip = Catalog::new(Locale::German).localized(ChromeMessage::Skip);
+        let expected = match skip.marked_lang() {
+            Some(lang) => format!("<span lang=\"{lang}\">{skip}</span></a>"),
+            None => format!(">{skip}</a>"),
+        };
+        assert!(german.contains(&expected), "the skip link marks its own text: {expected}");
         let errors = crate::views::test_support::page("/").with_locale(Locale::Japanese).with_catalog_content();
         assert_eq!(errors.content_locale, Locale::Japanese, "catalog pages keep their own language");
         let spanish = Fixture { page: crate::views::test_support::page("/").with_locale(Locale::Spanish) }.render().unwrap();

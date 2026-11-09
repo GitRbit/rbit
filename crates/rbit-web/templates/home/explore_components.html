@@ -7,7 +7,7 @@
     <div class="min-w-0 flex-1">
       <div class="flex items-center gap-2">
         <span class="truncate font-medium"><span class="text-ink-muted">{{ repo.owner }}/</span>{{ repo.name }}</span>
-        {% if repo.is_archived %}<span class="badge">{{ results.labels.archived }}</span>{% endif %}
+        {% if repo.is_archived %}<span class="badge">{% call ui::localized(results.labels.archived) %}{% endcall %}</span>{% endif %}
       </div>
       {% if let Some(description) = repo.description %}
       <p class="mt-0.5 line-clamp-2 text-[13px] text-ink-muted">{{ description }}</p>
@@ -25,15 +25,15 @@
 {% if pager.is_needed() %}
 <nav class="mt-4 flex items-center justify-between gap-2" aria-label="{{ results.labels.pagination }}">
   {% if let Some(url) = pager.previous_url %}
-  <a href="{{ url }}" class="btn" rel="prev">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}{{ results.labels.previous }}</a>
+  <a href="{{ url }}" class="btn" rel="prev">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}{% call ui::localized(results.labels.previous) %}{% endcall %}</a>
   {% else %}
-  <span class="btn pointer-events-none opacity-50" aria-hidden="true">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}{{ results.labels.previous }}</span>
+  <span class="btn pointer-events-none opacity-50" aria-hidden="true">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}{% call ui::localized(results.labels.previous) %}{% endcall %}</span>
   {% endif %}
-  <span class="text-xs text-ink-muted">{{ results.page_of() }}</span>
+  <span class="text-xs text-ink-muted">{% call ui::localized(results.page_of()) %}{% endcall %}</span>
   {% if let Some(url) = pager.next_url %}
-  <a href="{{ url }}" class="btn" rel="next" data-preload="visible">{{ results.labels.next }}{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</a>
+  <a href="{{ url }}" class="btn" rel="next" data-preload="visible">{% call ui::localized(results.labels.next) %}{% endcall %}{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</a>
   {% else %}
-  <span class="btn pointer-events-none opacity-50" aria-hidden="true">{{ results.labels.next }}{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</span>
+  <span class="btn pointer-events-none opacity-50" aria-hidden="true">{% call ui::localized(results.labels.next) %}{% endcall %}{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</span>
   {% endif %}
 </nav>
 {% endif %}

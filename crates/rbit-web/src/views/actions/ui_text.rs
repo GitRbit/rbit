@@ -4,7 +4,7 @@
 //!
 //! A template builds one handle, `{% let t = crate::views::actions::ui_text::UiText::new(*page.locale) %}`,
 //! and renders literal messages with `t.get(...)` and typed row fields with `t.get(*row.field)`.
-use rbit_localization::{ActionsMessage, Catalog, ChromeMessage, Locale, Localized, LocalizedText, MessageFamily};
+use rbit_localization::{ActionsMessage, Catalog, ChromeMessage, Locale, Localized, MessageFamily};
 
 /// Placeholders for the styled arguments of a [`UiText::rich`] message: private-use
 /// characters, so no name, time or translation can be mistaken for one.
@@ -37,13 +37,13 @@ impl UiText {
     }
 
     /// "Actions", as the run pages name it.
-    pub fn actions(self) -> LocalizedText {
-        self.catalog.actions(ActionsMessage::Actions)
+    pub fn actions(self) -> Localized {
+        self.catalog.localized(ActionsMessage::Actions)
     }
 
     /// "Settings", as the shell names it.
-    pub fn settings(self) -> LocalizedText {
-        self.catalog.chrome(ChromeMessage::Settings)
+    pub fn settings(self) -> Localized {
+        self.catalog.localized(ChromeMessage::Settings)
     }
 
     /// `message` formatted with [`SLOTS`] in place of its styled arguments, then cut into

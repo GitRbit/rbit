@@ -5,7 +5,7 @@ use rbit_localization::{Catalog, Locale, LocalizedText, Message, RepositoryVisib
 fn typed_plural_and_select_messages_are_complete() {
     let catalog = Catalog::new(Locale::English);
     for (count, expected) in
-        [(0, "0 repositories"), (1, "1 repository"), (2, "2 repositories"), (u64::MAX, "18446744073709551615 repositories")]
+        [(0, "0 repositories"), (1, "1 repository"), (2, "2 repositories"), (u64::MAX, "18,446,744,073,709,551,615 repositories")]
     {
         assert_eq!(catalog.text(Message::RepositoryCount { count }).as_str(), expected);
     }

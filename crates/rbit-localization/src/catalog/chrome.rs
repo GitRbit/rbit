@@ -1,5 +1,7 @@
-//! Shared navigation text; static English/Spanish labels borrow compiled literals.
-use super::{Catalog, LocalizedText};
+//! Shared navigation text: the header, the skip link and the footer. Static English labels
+//! borrow compiled literals; translations live in `translations/<locale>/chrome.rs`.
+use super::Catalog;
+use super::fallback::{MessageFamily, MessageWriter};
 use crate::Locale;
 use std::fmt;
 
@@ -80,59 +82,74 @@ impl ChromeMessage<'_> {
         }
     }
 }
-impl Catalog {
-    pub fn chrome(self, message: ChromeMessage<'_>) -> LocalizedText {
-        let (english, spanish) = match message {
-            ChromeMessage::Skip => ("Skip to content", "Saltar al contenido"),
-            ChromeMessage::Main => ("Main", "Principal"),
-            ChromeMessage::Explore => ("Explore", "Explorar"),
-            ChromeMessage::SwitchTheme => ("Switch between light and dark", "Cambiar entre claro y oscuro"),
-            ChromeMessage::ChooseTheme => ("Choose a theme", "Elegir un tema"),
-            ChromeMessage::Notifications => ("Notifications", "Notificaciones"),
-            ChromeMessage::Unread => ("You have unread notifications", "Tienes notificaciones sin leer"),
-            ChromeMessage::NewRepository => ("New repository", "Nuevo repositorio"),
-            ChromeMessage::AccountMenu => ("Account menu", "Menú de la cuenta"),
-            ChromeMessage::Issues => ("Issues", "Incidencias"),
-            ChromeMessage::Pulls => ("Pull requests", "Solicitudes de cambios"),
-            ChromeMessage::Dashboard => ("Dashboard", "Panel"),
-            ChromeMessage::Profile => ("Profile", "Perfil"),
-            ChromeMessage::NewOrganization => ("New organization", "Nueva organización"),
-            ChromeMessage::Settings => ("Settings", "Configuración"),
-            ChromeMessage::Administration => ("Site administration", "Administración del sitio"),
-            ChromeMessage::SignOut => ("Sign out", "Cerrar sesión"),
-            ChromeMessage::SignIn => ("Sign in", "Iniciar sesión"),
-            ChromeMessage::SignUp => ("Sign up", "Registrarse"),
-            ChromeMessage::Menu => ("Menu", "Menú"),
-            ChromeMessage::CreateAccount => ("Create an account", "Crear una cuenta"),
-            ChromeMessage::Themes => ("Themes", "Temas"),
-            ChromeMessage::LightMode => ("Light mode", "Modo claro"),
-            ChromeMessage::DarkMode => ("Dark mode", "Modo oscuro"),
-            ChromeMessage::PoweredBy => ("Powered by", "Funciona con"),
-            ChromeMessage::UpdateAvailable => ("Update available", "Actualización disponible"),
-            ChromeMessage::TimingHelp => {
-                ("Server time for the last page or update", "Tiempo del servidor para la última página o actualización")
-            }
-            ChromeMessage::RenderedIn => ("rendered in", "generado en"),
-            ChromeMessage::Footer => ("Footer", "Pie de página"),
-            ChromeMessage::Support => ("Support", "Ayuda"),
-            ChromeMessage::Terms => ("Terms", "Condiciones"),
-            ChromeMessage::Privacy => ("Privacy", "Privacidad"),
-            ChromeMessage::Status => ("Status", "Estado"),
-            ChromeMessage::Home { site } => {
-                let mut value = String::new();
-                if self.locale == Locale::Spanish {
-                    value.push_str("Inicio de ");
-                    value.push_str(site);
-                } else {
-                    self.argument(&mut value, site);
-                    self.literal(&mut value, " home");
-                }
-                return self.finish(value);
-            }
-        };
-        self.literal_text(if self.locale == Locale::Spanish { spanish } else { english })
+impl ChromeMessage<'_> {
+    /// The English text of a fixed label.
+    const fn english_label(self) -> Option<&'static str> {
+        Some(match self {
+            Self::Skip => "Skip to content",
+            Self::Main => "Main",
+            Self::Explore => "Explore",
+            Self::SwitchTheme => "Switch between light and dark",
+            Self::ChooseTheme => "Choose a theme",
+            Self::Notifications => "Notifications",
+            Self::Unread => "You have unread notifications",
+            Self::NewRepository => "New repository",
+            Self::AccountMenu => "Account menu",
+            Self::Issues => "Issues",
+            Self::Pulls => "Pull requests",
+            Self::Dashboard => "Dashboard",
+            Self::Profile => "Profile",
+            Self::NewOrganization => "New organization",
+            Self::Settings => "Settings",
+            Self::Administration => "Site administration",
+            Self::SignOut => "Sign out",
+            Self::SignIn => "Sign in",
+            Self::SignUp => "Sign up",
+            Self::Menu => "Menu",
+            Self::CreateAccount => "Create an account",
+            Self::Themes => "Themes",
+            Self::LightMode => "Light mode",
+            Self::DarkMode => "Dark mode",
+            Self::PoweredBy => "Powered by",
+            Self::UpdateAvailable => "Update available",
+            Self::TimingHelp => "Server time for the last page or update",
+            Self::RenderedIn => "rendered in",
+            Self::Footer => "Footer",
+            Self::Support => "Support",
+            Self::Terms => "Terms",
+            Self::Privacy => "Privacy",
+            Self::Status => "Status",
+            Self::Home { .. } => return None,
+        })
+    }
+}
+
+impl MessageFamily for ChromeMessage<'_> {
+    fn id(self) -> &'static str {
+        Self::id(self)
     }
 
+    fn english(self, text: &mut MessageWriter) {
+        match (self, self.english_label()) {
+            (_, Some(label)) => text.literal(label),
+            (Self::Home { site }, None) => {
+                text.argument(site);
+                text.literal(" home");
+            }
+            (_, None) => {}
+        }
+    }
+
+    fn english_literal(self) -> Option<&'static str> {
+        self.english_label()
+    }
+
+    fn translate(self, locale: Locale, text: &mut MessageWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
+    }
+}
+
+impl Catalog {
     pub const fn chrome_display(self, message: ChromeMessage<'_>) -> ChromeDisplay<'_> {
         ChromeDisplay { catalog: self, message }
     }
@@ -146,13 +163,11 @@ pub struct ChromeDisplay<'a> {
 }
 impl fmt::Display for ChromeDisplay<'_> {
     fn fmt(&self, output: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let ChromeMessage::Home { site } = self.message {
-            match self.catalog.locale {
-                Locale::English => return write!(output, "{site} home"),
-                Locale::Spanish => return write!(output, "Inicio de {site}"),
-                _ => {}
-            }
+        if let ChromeMessage::Home { site } = self.message
+            && self.catalog.locale == Locale::English
+        {
+            return write!(output, "{site} home");
         }
-        fmt::Display::fmt(&self.catalog.chrome(self.message), output)
+        fmt::Display::fmt(&self.catalog.localized(self.message), output)
     }
 }

@@ -7,7 +7,7 @@
 {% let t = crate::views::actions::ui_text::UiText::new(*page.locale) %}
 {#- hx-history="false" keeps this page, with its secret forms, out of htmx's localStorage history cache. -#}
 <div class="mx-auto max-w-3xl" hx-history="false" lang="{{ page.locale.tag() }}" dir="{{ page.locale.direction().as_str() }}">
-  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">{{ t.settings() }}</a> <span class="text-ink-faint">/</span> <a class="text-ink-muted hover:text-ink" href="{{ actions_url }}">{{ t.actions() }}</a> <span class="text-ink-faint">/</span> <a class="text-ink-muted hover:text-ink" href="{{ environments_url }}">{% call ui::localized(t.get(rbit_localization::ActionsEnvironmentMessage::Title)) %}{% endcall %}</a> <span class="text-ink-faint">/</span> {{ name }}</p>
+  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">{% call ui::localized(t.settings()) %}{% endcall %}</a> <span class="text-ink-faint">/</span> <a class="text-ink-muted hover:text-ink" href="{{ actions_url }}">{% call ui::localized(t.actions()) %}{% endcall %}</a> <span class="text-ink-faint">/</span> <a class="text-ink-muted hover:text-ink" href="{{ environments_url }}">{% call ui::localized(t.get(rbit_localization::ActionsEnvironmentMessage::Title)) %}{% endcall %}</a> <span class="text-ink-faint">/</span> {{ name }}</p>
   <h1 class="mt-1 text-xl font-semibold tracking-tight">{{ name }}</h1>
 
   {% include "actions/notice.html" %}

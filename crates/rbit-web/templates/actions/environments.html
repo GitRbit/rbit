@@ -7,7 +7,7 @@
 {% let t = crate::views::actions::ui_text::UiText::new(*page.locale) %}
 {% let title = t.get(rbit_localization::ActionsEnvironmentMessage::Title) %}
 <div class="mx-auto max-w-3xl" lang="{{ page.locale.tag() }}" dir="{{ page.locale.direction().as_str() }}">
-  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">{{ t.settings() }}</a> <span class="text-ink-faint">/</span> <a class="text-ink-muted hover:text-ink" href="{{ actions_url }}">{{ t.actions() }}</a> <span class="text-ink-faint">/</span> {% call ui::localized(title) %}{% endcall %}</p>
+  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">{% call ui::localized(t.settings()) %}{% endcall %}</a> <span class="text-ink-faint">/</span> <a class="text-ink-muted hover:text-ink" href="{{ actions_url }}">{% call ui::localized(t.actions()) %}{% endcall %}</a> <span class="text-ink-faint">/</span> {% call ui::localized(title) %}{% endcall %}</p>
   <h1 class="mt-1 text-xl font-semibold tracking-tight">{% call ui::localized(title) %}{% endcall %}</h1>
   <p class="mt-1 text-[13px] text-ink-muted">{% call am::rich(t.environments_intro()) %}{% endcall %}</p>
 

@@ -5,20 +5,20 @@
     <div class="min-w-0 flex-1">
       <h1 class="break-words text-xl font-semibold tracking-tight sm:text-2xl">{{ name }}</h1>
       <p class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-ink-muted">
-        <span class="font-medium {{ look.tone }}">{{ look.label }}</span>
-        <span aria-hidden="true">·</span><span class="tabular-nums">{{ text.count }}</span>
+        <span class="font-medium {{ look.tone }}">{% call ui::localized(look.label) %}{% endcall %}</span>
+        <span aria-hidden="true">·</span><span class="tabular-nums">{% call ui::localized(text.count) %}{% endcall %}</span>
       </p>
     </div>
     <div class="flex w-full flex-wrap gap-2 sm:w-auto">
       {% if let Some(raw_url) = raw_url %}
       <a class="btn h-10 sm:h-8" href="{{ raw_url }}" hx-boost="false">
-        {% call ui::icon("file-text", "size-3.5") %}{% endcall %}{{ text.raw_log }}
+        {% call ui::icon("file-text", "size-3.5") %}{% endcall %}{% call ui::localized(text.raw_log) %}{% endcall %}
       </a>
       {% endif %}
       {% if let Some(rerun_url) = rerun_url %}
       <form method="post" action="{{ rerun_url }}">
         <button class="btn h-10 sm:h-8" type="submit">
-          {% call ui::icon("refresh", "size-3.5") %}{% endcall %}{{ text.rerun }}
+          {% call ui::icon("refresh", "size-3.5") %}{% endcall %}{% call ui::localized(text.rerun) %}{% endcall %}
         </button>
       </form>
       {% endif %}
@@ -26,12 +26,12 @@
   </div>
   <dl class="grid gap-4 border-t border-line bg-subtle/40 px-4 py-3 text-xs sm:grid-cols-2 sm:px-5">
     <div class="min-w-0">
-      <dt class="text-ink-faint">{{ text.runs_on }}</dt>
+      <dt class="text-ink-faint">{% call ui::localized(text.runs_on) %}{% endcall %}</dt>
       <dd class="mt-1 break-words font-mono text-ink-muted"><bdi>{{ labels }}</bdi></dd>
     </div>
     {% if let Some(duration) = duration %}
     <div>
-      <dt class="text-ink-faint">{{ text.duration }}</dt>
+      <dt class="text-ink-faint">{% call ui::localized(text.duration) %}{% endcall %}</dt>
       <dd class="mt-1 tabular-nums text-ink-muted">{% call ui::localized(duration.text(page.locale)) %}{% endcall %}</dd>
     </div>
     {% endif %}

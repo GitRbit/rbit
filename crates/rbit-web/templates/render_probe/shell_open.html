@@ -7,10 +7,10 @@
   <input type="hidden" name="next" value="{{ page.path }}">
   <button class="menu-item" type="submit" name="theme" value="{{ toggle.slug() }}" data-theme-toggle data-variant="{{ toggle.scheme().unwrap_or_default() }}">
     <span class="when-dark">{% call ui::icon("sun", "menu-icon") %}{% endcall %}</span><span class="when-light">{% call ui::icon("moon", "menu-icon") %}{% endcall %}</span>
-    <span class="when-dark">{{ chrome.light_mode() }}</span><span class="when-light">{{ chrome.dark_mode() }}</span>
+    <span class="when-dark">{% call ui::localized(chrome.light_mode()) %}{% endcall %}</span><span class="when-light">{% call ui::localized(chrome.dark_mode()) %}{% endcall %}</span>
   </button>
 </form>
-<a class="menu-item sm:hidden" href="/settings/appearance" hx-boost="false" aria-haspopup="dialog" data-theme-dialog-open>{% call ui::icon("palette", "menu-icon") %}{% endcall %}{{ chrome.themes() }}</a>
+<a class="menu-item sm:hidden" href="/settings/appearance" hx-boost="false" aria-haspopup="dialog" data-theme-dialog-open>{% call ui::icon("palette", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.themes()) %}{% endcall %}</a>
 {% endmacro %}
 {% let chrome = page.chrome() %}
 <!doctype html>
@@ -52,13 +52,13 @@
 </head>
 {#- The preloader (assets/preload.js) keeps a preloaded page as long as the server lets the browser cache it. #}
 <body hx-boost="true" data-preload-fresh="{{ crate::middleware::PRELOAD_MAX_AGE_SECONDS }}"{% if page.is_signed_in() %} data-signed-in{% endif %} class="flex min-h-dvh flex-col">
-  <a href="#main"{% if let Some(lang) = chrome.lang() %} lang="{{ lang }}"{% endif %} class="btn sr-only focus:not-sr-only focus:fixed focus:inset-s-4 focus:top-3 focus:z-50">{{ chrome.skip() }}</a>
+  <a href="#main" class="btn sr-only focus:not-sr-only focus:fixed focus:inset-s-4 focus:top-3 focus:z-50">{% call ui::localized(chrome.skip()) %}{% endcall %}</a>
 
   <div class="pointer-events-none fixed inset-x-0 top-0 z-50 h-0.5 overflow-hidden" aria-hidden="true">
     <div id="page-progress" class="h-full w-1/4 bg-ink"></div>
   </div>
 
-  <header{% if let Some(lang) = chrome.lang() %} lang="{{ lang }}"{% endif %} data-document-catalog="{{ page.locale.catalog_key() }}" class="site-header sticky top-0 z-30 border-b border-line bg-canvas/90 pt-[env(safe-area-inset-top)] backdrop-blur-md">
+  <header data-document-catalog="{{ page.locale.catalog_key() }}" class="site-header sticky top-0 z-30 border-b border-line bg-canvas/90 pt-[env(safe-area-inset-top)] backdrop-blur-md">
     <nav class="mx-auto flex h-12 max-w-[96rem] items-center gap-3 px-4 sm:px-6" aria-label="{{ chrome.main() }}">
       <a href="/" class="shrink-0" aria-label="{{ chrome.home(page.site_name) }}">{% call ui::brand_logo(page, "size-9", 36) %}{% endcall %}</a>
       <div class="flex min-w-0 items-center gap-2 text-[13px]">
@@ -66,7 +66,7 @@
       </div>
 
       <div class="ms-auto flex shrink-0 items-center gap-1">
-        <a href="/explore" class="btn btn-ghost hidden sm:inline-flex {% if page.is_at("/explore") %}text-ink{% endif %}">{{ chrome.explore() }}</a>
+        <a href="/explore" class="btn btn-ghost hidden sm:inline-flex {% if page.is_at("/explore") %}text-ink{% endif %}">{% call ui::localized(chrome.explore()) %}{% endcall %}</a>
         {#- One click flips light/dark, keeping a tinted scheme's family (Gruvbox dark ↔ light);
             the palette menu next to it picks any theme. Both are plain forms without JS. On
             phones both move into the account menu (or, signed out, the site menu). -#}
@@ -96,8 +96,8 @@
             {% call ui::avatar(user.avatar, "size-7 text-[10px]") %}{% endcall %}
           </summary>
           <div class="menu inset-e-0 w-60">
-            <a class="menu-item" href="/issues">{{ chrome.issues() }}</a>
-            <a class="menu-item" href="/pulls">{{ chrome.pulls() }}</a>
+            <a class="menu-item" href="/issues">{% call ui::localized(chrome.issues()) %}{% endcall %}</a>
+            <a class="menu-item" href="/pulls">{% call ui::localized(chrome.pulls()) %}{% endcall %}</a>
             <div class="flex items-center gap-2.5 px-2.5 py-2">
               {% call ui::avatar(user.avatar, "size-8 text-[11px]") %}{% endcall %}
               <div class="min-w-0">
@@ -106,33 +106,33 @@
               </div>
             </div>
             <div class="menu-divider"></div>
-            <a class="menu-item" href="/">{% call ui::icon("code", "menu-icon") %}{% endcall %}{{ chrome.dashboard() }}</a>
-            <a class="menu-item" href="/{{ user.name }}">{% call ui::icon("user", "menu-icon") %}{% endcall %}{{ chrome.profile() }}</a>
-            <a class="menu-item sm:hidden" href="/explore">{% call ui::icon("compass", "menu-icon") %}{% endcall %}{{ chrome.explore() }}</a>
+            <a class="menu-item" href="/">{% call ui::icon("code", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.dashboard()) %}{% endcall %}</a>
+            <a class="menu-item" href="/{{ user.name }}">{% call ui::icon("user", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.profile()) %}{% endcall %}</a>
+            <a class="menu-item sm:hidden" href="/explore">{% call ui::icon("compass", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.explore()) %}{% endcall %}</a>
             <div class="menu-divider"></div>
-            <a class="menu-item" href="/new">{% call ui::icon("plus", "menu-icon") %}{% endcall %}{{ chrome.new_repository() }}</a>
-            {% if user.can_create_org %}<a class="menu-item" href="/organizations/new">{% call ui::icon("building", "menu-icon") %}{% endcall %}{{ chrome.new_organization() }}</a>{% endif %}
+            <a class="menu-item" href="/new">{% call ui::icon("plus", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.new_repository()) %}{% endcall %}</a>
+            {% if user.can_create_org %}<a class="menu-item" href="/organizations/new">{% call ui::icon("building", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.new_organization()) %}{% endcall %}</a>{% endif %}
             <div class="menu-divider"></div>
             {% call theme_menu_items(page, chrome) %}{% endcall %}
-            <a class="menu-item" href="/settings">{% call ui::icon("settings", "menu-icon") %}{% endcall %}{{ chrome.settings() }}</a>
+            <a class="menu-item" href="/settings">{% call ui::icon("settings", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.settings()) %}{% endcall %}</a>
             {% if user.is_admin %}
-            <a class="menu-item" href="/admin">{% call ui::icon("shield", "menu-icon") %}{% endcall %}{{ chrome.administration() }}</a>
+            <a class="menu-item" href="/admin">{% call ui::icon("shield", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.administration()) %}{% endcall %}</a>
             {% endif %}
             <div class="menu-divider"></div>
             <form method="post" action="/logout">
-              <button class="menu-item text-ink-muted" type="submit">{% call ui::icon("log-out", "menu-icon") %}{% endcall %}{{ chrome.sign_out() }}</button>
+              <button class="menu-item text-ink-muted" type="submit">{% call ui::icon("log-out", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.sign_out()) %}{% endcall %}</button>
             </form>
           </div>
         </details>
         {% else %}
-        <a href="/login" class="btn btn-ghost hidden sm:inline-flex">{{ chrome.sign_in() }}</a>
-        <a href="/signup" class="btn btn-primary hidden sm:inline-flex">{{ chrome.sign_up() }}</a>
-        {%- if !page.is_at("/login") %}<a href="/login" class="btn sm:hidden">{{ chrome.sign_in() }}</a>{% endif %}
+        <a href="/login" class="btn btn-ghost hidden sm:inline-flex">{% call ui::localized(chrome.sign_in()) %}{% endcall %}</a>
+        <a href="/signup" class="btn btn-primary hidden sm:inline-flex">{% call ui::localized(chrome.sign_up()) %}{% endcall %}</a>
+        {%- if !page.is_at("/login") %}<a href="/login" class="btn sm:hidden">{% call ui::localized(chrome.sign_in()) %}{% endcall %}</a>{% endif %}
         <details class="relative sm:hidden" data-menu>
           <summary class="btn btn-ghost btn-icon cursor-pointer" aria-label="{{ chrome.menu() }}">{% call ui::icon("menu", "size-4") %}{% endcall %}</summary>
           <div class="menu inset-e-0 w-60">
-            <a class="menu-item" href="/explore">{% call ui::icon("compass", "menu-icon") %}{% endcall %}{{ chrome.explore() }}</a>
-            <a class="menu-item" href="/signup">{% call ui::icon("user-plus", "menu-icon") %}{% endcall %}{{ chrome.create_account() }}</a>
+            <a class="menu-item" href="/explore">{% call ui::icon("compass", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.explore()) %}{% endcall %}</a>
+            <a class="menu-item" href="/signup">{% call ui::icon("user-plus", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.create_account()) %}{% endcall %}</a>
             <div class="menu-divider"></div>
             {% call theme_menu_items(page, chrome) %}{% endcall %}
           </div>

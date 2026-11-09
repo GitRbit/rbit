@@ -4,8 +4,8 @@
     Glyphs pointing along the reading direction get `dir-icon` and mirror in RTL (direction.css). -#}
 {#- Catalog text that may be the English fallback of an untranslated message
     (rbit_localization::Localized): fallback text is marked English, and it keeps the page
-    direction. Translated text gets no wrapper, except in a locale whose original catalogs
-    still render English around it, where it declares its own language (`marked_lang`). -#}
+    direction. Translated text gets no wrapper in English and Spanish; in the other locales,
+    where a page may still hold English feature content, it declares its own language. -#}
 {% macro localized(value) -%}
 {%- if let Some(lang) = value.marked_lang() %}<span lang="{{ lang }}">{{ value }}</span>{% else %}{{ value }}{% endif -%}
 {%- endmacro %}

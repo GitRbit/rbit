@@ -54,7 +54,7 @@ macro_rules! entries {
     )*};
 }
 
-/// Spanish (`es`) entries, for the families its original catalog does not cover.
+/// Spanish (`es`) entries.
 #[derive(Debug)]
 pub(crate) struct Es;
 /// Simplified Chinese (`zh-Hans`) entries.

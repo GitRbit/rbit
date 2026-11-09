@@ -4,7 +4,7 @@
 {% let t = crate::views::actions::ui_text::UiText::new(*page.locale) %}
 {#- hx-history="false" keeps this page, with its secret forms, out of htmx's localStorage history cache. -#}
 <div hx-history="false" lang="{{ page.locale.tag() }}" dir="{{ page.locale.direction().as_str() }}">
-  <h2 class="text-xl font-semibold tracking-tight">{{ t.actions() }}</h2>
+  <h2 class="text-xl font-semibold tracking-tight">{% call ui::localized(t.actions()) %}{% endcall %}</h2>
   <p class="mt-1 text-[13px] text-ink-muted">{% call ui::localized(t.get(rbit_localization::ActionsSettingsMessage::AccountIntro)) %}{% endcall %}</p>
 
   {% include "actions/notice.html" %}

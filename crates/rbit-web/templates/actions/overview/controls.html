@@ -1,22 +1,22 @@
 <div class="mb-4 flex flex-wrap items-start gap-3">
   <div class="min-w-0 flex-1">
-    {% if workflow.is_some() %}<p class="mb-1 text-xs text-ink-muted">{{ text.actions }}</p>{% endif %}
+    {% if workflow.is_some() %}<p class="mb-1 text-xs text-ink-muted">{% call ui::localized(text.actions) %}{% endcall %}</p>{% endif %}
     <h1 class="break-words text-xl font-semibold tracking-tight">
-      {% if let Some(name) = workflow %}<bdi>{{ name }}</bdi>{% else %}{{ text.all_runs }}{% endif %}
+      {% if let Some(name) = workflow %}<bdi>{{ name }}</bdi>{% else %}{% call ui::localized(text.all_runs) %}{% endcall %}{% endif %}
     </h1>
   </div>
   {% if let Some(url) = switch_url %}
   <form method="post" action="{{ url }}">
     <input type="hidden" name="disabled" value="{% if disabled %}false{% else %}true{% endif %}">
     <button class="btn h-10 sm:h-8" type="submit">
-      {% if disabled %}{{ text.enable_workflow }}{% else %}{{ text.disable_workflow }}{% endif %}
+      {% if disabled %}{% call ui::localized(text.enable_workflow) %}{% endcall %}{% else %}{% call ui::localized(text.disable_workflow) %}{% endcall %}{% endif %}
     </button>
   </form>
   {% endif %}
 </div>
 
 {% if disabled %}
-<p class="mb-4 rounded-(--radius-ui) border border-line bg-subtle px-3 py-3 text-[13px] text-ink-muted" role="status">{{ text.workflow_disabled }}</p>
+<p class="mb-4 rounded-(--radius-ui) border border-line bg-subtle px-3 py-3 text-[13px] text-ink-muted" role="status">{% call ui::localized(text.workflow_disabled) %}{% endcall %}</p>
 {% endif %}
 
 {% if let Some(form) = dispatch %}{% include "actions/dispatch.html" %}{% endif %}
@@ -24,34 +24,34 @@
 <form method="get" action="{{ filters.action }}" class="box mb-4 p-3 sm:p-4" role="search" aria-label="{{ text.filters }}">
   <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
     <div class="min-w-0">
-      <label class="mb-1 block text-xs font-medium text-ink-muted" for="runs-branch">{{ text.branch }}</label>
+      <label class="mb-1 block text-xs font-medium text-ink-muted" for="runs-branch">{% call ui::localized(text.branch) %}{% endcall %}</label>
       <input class="input w-full min-w-0" id="runs-branch" type="search" name="branch" dir="auto"
              value="{{ filters.branch }}" placeholder="{{ text.branch }}" autocomplete="off" autocapitalize="none" spellcheck="false">
     </div>
     <div class="min-w-0">
-      <label class="mb-1 block text-xs font-medium text-ink-muted" for="runs-actor">{{ text.actor }}</label>
+      <label class="mb-1 block text-xs font-medium text-ink-muted" for="runs-actor">{% call ui::localized(text.actor) %}{% endcall %}</label>
       <input class="input w-full min-w-0" id="runs-actor" type="search" name="actor" dir="auto"
              value="{{ filters.actor }}" placeholder="{{ text.actor }}" autocomplete="off" autocapitalize="none" spellcheck="false">
     </div>
     <div class="min-w-0">
-      <label class="mb-1 block text-xs font-medium text-ink-muted" for="runs-event">{{ text.event }}</label>
+      <label class="mb-1 block text-xs font-medium text-ink-muted" for="runs-event">{% call ui::localized(text.event) %}{% endcall %}</label>
       <div class="relative">
         <select class="input w-full cursor-pointer appearance-none pe-9" id="runs-event" name="event">
-          <option value="">{{ text.any_event }}</option>
+          <option value=""{% if let Some(lang) = text.any_event.marked_lang() %} lang="{{ lang }}"{% endif %}>{{ text.any_event }}</option>
           {% for option in filters.events %}
-          <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ text.option(option.label) }}</option>
+          <option value="{{ option.value }}"{% if let Some(lang) = text.option(option.label).marked_lang() %} lang="{{ lang }}"{% endif %} {% if option.selected %}selected{% endif %}>{{ text.option(option.label) }}</option>
           {% endfor %}
         </select>
         {% call ui::icon("chevron-down", "pointer-events-none absolute end-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
       </div>
     </div>
     <div class="min-w-0">
-      <label class="mb-1 block text-xs font-medium text-ink-muted" for="runs-status">{{ text.status }}</label>
+      <label class="mb-1 block text-xs font-medium text-ink-muted" for="runs-status">{% call ui::localized(text.status) %}{% endcall %}</label>
       <div class="relative">
         <select class="input w-full cursor-pointer appearance-none pe-9" id="runs-status" name="status">
-          <option value="">{{ text.any_status }}</option>
+          <option value=""{% if let Some(lang) = text.any_status.marked_lang() %} lang="{{ lang }}"{% endif %}>{{ text.any_status }}</option>
           {% for option in filters.statuses %}
-          <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ text.option(option.label) }}</option>
+          <option value="{{ option.value }}"{% if let Some(lang) = text.option(option.label).marked_lang() %} lang="{{ lang }}"{% endif %} {% if option.selected %}selected{% endif %}>{{ text.option(option.label) }}</option>
           {% endfor %}
         </select>
         {% call ui::icon("chevron-down", "pointer-events-none absolute end-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
@@ -59,8 +59,8 @@
     </div>
   </div>
   <div class="mt-3 flex flex-wrap items-center gap-2">
-    <button class="btn h-10 sm:h-9" type="submit">{{ text.filter }}</button>
-    {% if filters.any %}<a href="{{ filters.action }}" class="btn btn-ghost h-10 sm:h-9">{{ text.clear }}</a>{% endif %}
+    <button class="btn h-10 sm:h-9" type="submit">{% call ui::localized(text.filter) %}{% endcall %}</button>
+    {% if filters.any %}<a href="{{ filters.action }}" class="btn btn-ghost h-10 sm:h-9">{% call ui::localized(text.clear) %}{% endcall %}</a>{% endif %}
   </div>
 </form>
 

@@ -1,7 +1,7 @@
 {% import "macros.html" as ui %}
 <header class="mb-6">
-  <h1 class="text-2xl font-semibold tracking-tight">{{ results.labels.title }}</h1>
-  <p class="mt-1.5 text-ink-muted">{{ results.subtitle(page.site_name) }}</p>
+  <h1 class="text-2xl font-semibold tracking-tight">{% call ui::localized(results.labels.title) %}{% endcall %}</h1>
+  <p class="mt-1.5 text-ink-muted">{% call ui::localized(results.subtitle(page.site_name)) %}{% endcall %}</p>
 </header>
 
 {# Live search and normal GET use the same public service and results component. #}
@@ -13,7 +13,7 @@
   </div>
   {% if sort != "updated" %}<input type="hidden" name="sort" value="{{ sort }}">{% endif %}
   {% if let Some(value) = archived %}<input type="hidden" name="archived" value="{{ value }}">{% endif %}
-  <button class="btn h-10 sm:h-9" type="submit">{{ results.labels.search_button }}</button>
+  <button class="btn h-10 sm:h-9" type="submit">{% call ui::localized(results.labels.search_button) %}{% endcall %}</button>
 </form>
 
 {% include "home/explore_results.html" %}

@@ -9,7 +9,7 @@ use crate::{
     },
 };
 use askama::Template;
-use rbit_localization::{Catalog, Locale, LocalizedText, Message};
+use rbit_localization::{Catalog, Locale, Localized, Message};
 use std::ops::Deref;
 
 /// Shadow only the changed dynamic methods with the original owned-text behavior.
@@ -23,18 +23,18 @@ impl Deref for OwnedResults<'_> {
     }
 }
 impl OwnedResults<'_> {
-    fn count(&self, query: &str) -> LocalizedText {
-        Catalog::new(self.locale).text(Message::CountForQuery { count: self.total, query })
+    fn count(&self, query: &str) -> Localized {
+        Catalog::new(self.locale).localized(Message::CountForQuery { count: self.total, query })
     }
     #[allow(clippy::trivially_copy_pass_by_ref, reason = "match the borrowed numeric argument in the actual Askama template")]
-    fn star_label(&self, count: &i64) -> LocalizedText {
-        Catalog::new(self.locale).text(Message::Stars { count: *count })
+    fn star_label(&self, count: &i64) -> Localized {
+        Catalog::new(self.locale).localized(Message::Stars { count: *count })
     }
-    fn subtitle(&self, site: &str) -> LocalizedText {
-        Catalog::new(self.locale).text(Message::ExploreSubtitle { site })
+    fn subtitle(&self, site: &str) -> Localized {
+        Catalog::new(self.locale).localized(Message::ExploreSubtitle { site })
     }
-    fn page_of(&self) -> LocalizedText {
-        Catalog::new(self.locale).text(Message::PageOf { page: self.pagination.page, pages: self.pagination.page_count })
+    fn page_of(&self) -> Localized {
+        Catalog::new(self.locale).localized(Message::PageOf { page: self.pagination.page, pages: self.pagination.page_count })
     }
 }
 #[derive(Template)]

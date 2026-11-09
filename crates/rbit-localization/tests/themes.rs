@@ -11,7 +11,7 @@ fn theme_labels_are_compiled_and_machine_values_are_not_catalog_messages() {
         (ThemeMessage::ThemeSingular, "theme", "tema"),
         (ThemeMessage::ThemePlural, "themes", "temas"),
     ] {
-        assert_eq!(Catalog::new(Locale::English).theme(message).as_str(), english);
-        assert_eq!(Catalog::new(Locale::Spanish).theme(message).as_str(), spanish);
+        assert_eq!(Catalog::new(Locale::English).localized(message).as_str(), english);
+        assert_eq!(Catalog::new(Locale::Spanish).localized(message).as_str(), spanish);
     }
 }

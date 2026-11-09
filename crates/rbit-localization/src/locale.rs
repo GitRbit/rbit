@@ -95,14 +95,6 @@ impl Locale {
         }
     }
 
-    /// Whether the original exhaustive families (`Message`, `ChromeMessage`, the Actions,
-    /// theme and language-settings messages) have this locale's own text. They are complete
-    /// in English and Spanish, and the diagnostics derive from English; in every other
-    /// locale they show their English text, which pages must mark `lang="en"`.
-    pub const fn has_original_catalog(self) -> bool {
-        matches!(self, Self::English | Self::Spanish | Self::PseudoExpanded | Self::PseudoRtl)
-    }
-
     /// Text flow for the document's `dir` attribute.
     pub const fn direction(self) -> Direction {
         match self {

@@ -1,9 +1,7 @@
 //! Labels prepared once for the run's document locale; templates escape all text.
 //! Review and approval text may be untranslated: it is [`Localized`], and templates
 //! mark it English through `ui::localized` only when it fell back.
-use rbit_localization::{
-    ActionsMessage, Catalog, Locale, Localized, LocalizedText, OverviewControlDisplay, OverviewControlMessage, RunPageMessage,
-};
+use rbit_localization::{ActionsMessage, Catalog, Locale, Localized, OverviewControlDisplay, OverviewControlMessage, RunPageMessage};
 
 use super::{
     DeploymentView, StateLook,
@@ -13,20 +11,20 @@ use super::{
 #[derive(Debug)]
 pub struct RunText {
     catalog: Catalog,
-    pub actions: LocalizedText,
-    pub workflow: LocalizedText,
-    pub commit: LocalizedText,
-    pub duration: LocalizedText,
-    pub attempt: LocalizedText,
-    pub triggered_by: LocalizedText,
-    pub jobs: LocalizedText,
-    pub artifacts: LocalizedText,
-    pub details: LocalizedText,
-    pub cancel: LocalizedText,
-    pub rerun_failed: LocalizedText,
-    pub rerun_all: LocalizedText,
-    pub download_tar: LocalizedText,
-    pub expires: LocalizedText,
+    pub actions: Localized,
+    pub workflow: Localized,
+    pub commit: Localized,
+    pub duration: Localized,
+    pub attempt: Localized,
+    pub triggered_by: Localized,
+    pub jobs: Localized,
+    pub artifacts: Localized,
+    pub details: Localized,
+    pub cancel: Localized,
+    pub rerun_failed: Localized,
+    pub rerun_all: Localized,
+    pub download_tar: Localized,
+    pub expires: Localized,
     pub approval_title: Localized,
     pub approval_explanation: Localized,
     pub trust_author: Localized,
@@ -43,20 +41,20 @@ impl RunText {
         let catalog = Catalog::new(locale);
         Self {
             catalog,
-            actions: catalog.actions(ActionsMessage::Actions),
-            workflow: catalog.actions(ActionsMessage::Workflow),
-            commit: catalog.actions(ActionsMessage::Commit),
-            duration: catalog.actions(ActionsMessage::Duration),
-            attempt: catalog.actions(ActionsMessage::Attempt),
-            triggered_by: catalog.actions(ActionsMessage::TriggeredBy),
-            jobs: catalog.actions(ActionsMessage::Jobs),
-            artifacts: catalog.actions(ActionsMessage::Artifacts),
-            details: catalog.actions(ActionsMessage::RunDetails),
-            cancel: catalog.actions(ActionsMessage::CancelRun),
-            rerun_failed: catalog.actions(ActionsMessage::RerunFailed),
-            rerun_all: catalog.actions(ActionsMessage::RerunAll),
-            download_tar: catalog.actions(ActionsMessage::DownloadTar),
-            expires: catalog.actions(ActionsMessage::Expires),
+            actions: catalog.localized(ActionsMessage::Actions),
+            workflow: catalog.localized(ActionsMessage::Workflow),
+            commit: catalog.localized(ActionsMessage::Commit),
+            duration: catalog.localized(ActionsMessage::Duration),
+            attempt: catalog.localized(ActionsMessage::Attempt),
+            triggered_by: catalog.localized(ActionsMessage::TriggeredBy),
+            jobs: catalog.localized(ActionsMessage::Jobs),
+            artifacts: catalog.localized(ActionsMessage::Artifacts),
+            details: catalog.localized(ActionsMessage::RunDetails),
+            cancel: catalog.localized(ActionsMessage::CancelRun),
+            rerun_failed: catalog.localized(ActionsMessage::RerunFailed),
+            rerun_all: catalog.localized(ActionsMessage::RerunAll),
+            download_tar: catalog.localized(ActionsMessage::DownloadTar),
+            expires: catalog.localized(ActionsMessage::Expires),
             approval_title: catalog.localized(RunPageMessage::ApprovalTitle),
             approval_explanation: catalog.localized(RunPageMessage::ApprovalExplanation),
             trust_author: catalog.localized(RunPageMessage::TrustAuthor),
@@ -75,7 +73,7 @@ impl RunText {
     }
 
     /// The run's state, as the job rows name it.
-    pub fn state(&self, look: &StateLook) -> LocalizedText {
+    pub fn state(&self, look: &StateLook) -> Localized {
         state_label(self.catalog, look)
     }
 

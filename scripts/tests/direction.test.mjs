@@ -198,7 +198,7 @@ test("directional icons, and only those, are marked to mirror", async () => {
 
 test("the run's commit and ref wrap together as one group", async () => {
   const header = await read("templates/actions/run/header.html");
-  const commit = header.match(/<dt[^>]*>\{\{ text\.commit \}\}<\/dt>\s*<dd([^>]*)>([\s\S]*?)<\/dd>/);
+  const commit = header.match(/<dt[^>]*>\{% call ui::localized\(text\.commit\) %\}\{% endcall %\}<\/dt>\s*<dd([^>]*)>([\s\S]*?)<\/dd>/);
   assert.ok(commit, "the commit cell is a dt/dd pair");
   const [, attributes, body] = commit;
   assert.match(attributes, /\bflex\b/, "the sha and ref share one flex line");

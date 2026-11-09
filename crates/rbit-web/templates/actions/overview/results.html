@@ -1,7 +1,7 @@
 {#- Only the result region refreshes: filter, dispatch and workflow-toggle forms stay outside it. -#}
 <div id="runs" {% if let Some(every) = refresh %}hx-get="{{ self_url }}" hx-trigger="{{ every }}" hx-select="#runs" hx-target="this" hx-swap="outerHTML"{% endif %}
      lang="{{ page.locale.tag() }}" dir="{{ page.locale.direction().as_str() }}">
-  <p class="mb-2 text-xs text-ink-muted">{{ text.page_count }}</p>
+  <p class="mb-2 text-xs text-ink-muted">{% call ui::localized(text.page_count) %}{% endcall %}</p>
   <div class="box overflow-hidden">
     {% if runs.is_empty() %}
     {% if filters.any %}
@@ -21,7 +21,7 @@
           <a class="block break-words text-[13px] font-medium hover:underline hover:underline-offset-4" href="{{ run.url }}">{{ run.title }}</a>
           <p class="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-ink-muted">
             <span><bdi>{{ run.workflow }}</bdi> #{{ run.number }}</span>
-            <span aria-hidden="true">·</span><span>{{ text.option(run.event_message) }}</span>
+            <span aria-hidden="true">·</span><span>{% call ui::localized(text.option(run.event_message)) %}{% endcall %}</span>
             {% if !run.reference.is_empty() %}
             <span aria-hidden="true">·</span><bdi class="break-all font-mono">{{ run.reference }}</bdi>
             {% endif %}
@@ -46,7 +46,7 @@
   </div>
   {% if let Some(url) = next_url %}
   <nav class="mt-4 flex justify-end" aria-label="{{ text.pagination }}">
-    <a href="{{ url }}" class="btn" rel="next">{{ text.older_runs }}{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</a>
+    <a href="{{ url }}" class="btn" rel="next">{% call ui::localized(text.older_runs) %}{% endcall %}{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</a>
   </nav>
   {% endif %}
 </div>

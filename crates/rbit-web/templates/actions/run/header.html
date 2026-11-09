@@ -7,10 +7,10 @@
         {{ run.title }} <span class="font-normal text-ink-muted">#{{ run.number }}</span>
       </h1>
       <p class="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-ink-muted">
-        <span>{{ text.state(run.look) }}</span>
-        <span aria-hidden="true">·</span><span>{{ text.event(run.event_message) }}</span>
+        <span>{% call ui::localized(text.state(run.look)) %}{% endcall %}</span>
+        <span aria-hidden="true">·</span><span>{% call ui::localized(text.event(run.event_message)) %}{% endcall %}</span>
         {% if let Some(actor) = run.actor %}
-        <span aria-hidden="true">·</span><span>{{ text.triggered_by }} <bdi>{{ actor }}</bdi></span>
+        <span aria-hidden="true">·</span><span>{% call ui::localized(text.triggered_by) %}{% endcall %} <bdi>{{ actor }}</bdi></span>
         {% endif %}
         <span aria-hidden="true">·</span><time datetime="{{ run.when_iso }}">{% call ui::localized(run.when.relative(page.locale)) %}{% endcall %}</time>
       </p>
@@ -20,21 +20,21 @@
       {% if let Some(cancel_url) = cancel_url %}
       <form method="post" action="{{ cancel_url }}">
         <button class="btn h-10 sm:h-8" type="submit">
-          {% call ui::icon("stop", "size-3.5") %}{% endcall %}{{ text.cancel }}
+          {% call ui::icon("stop", "size-3.5") %}{% endcall %}{% call ui::localized(text.cancel) %}{% endcall %}
         </button>
       </form>
       {% endif %}
       {% if let Some(rerun_failed_url) = rerun_failed_url %}
       <form method="post" action="{{ rerun_failed_url }}">
         <button class="btn h-10 sm:h-8" type="submit">
-          {% call ui::icon("refresh", "size-3.5") %}{% endcall %}{{ text.rerun_failed }}
+          {% call ui::icon("refresh", "size-3.5") %}{% endcall %}{% call ui::localized(text.rerun_failed) %}{% endcall %}
         </button>
       </form>
       {% endif %}
       {% if let Some(rerun_url) = rerun_url %}
       <form method="post" action="{{ rerun_url }}">
         <button class="btn h-10 sm:h-8" type="submit">
-          {% call ui::icon("refresh", "size-3.5") %}{% endcall %}{{ text.rerun_all }}
+          {% call ui::icon("refresh", "size-3.5") %}{% endcall %}{% call ui::localized(text.rerun_all) %}{% endcall %}
         </button>
       </form>
       {% endif %}
@@ -43,7 +43,7 @@
   </div>
   <dl class="grid grid-cols-2 gap-x-5 gap-y-4 border-t border-line bg-subtle px-4 py-4 text-[13px] sm:grid-cols-4 sm:px-5">
     <div class="min-w-0">
-      <dt class="text-xs text-ink-muted">{{ text.workflow }}</dt>
+      <dt class="text-xs text-ink-muted">{% call ui::localized(text.workflow) %}{% endcall %}</dt>
       <dd class="mt-1 break-words font-medium">
         <a class="hover:underline hover:underline-offset-4" href="{{ run.workflow_url }}"><bdi>{{ run.workflow }}</bdi></a>
       </dd>
@@ -51,7 +51,7 @@
     {#- The sha and ref share one wrapping line that follows the cell's direction; a block
         `bdi` would take its own LTR direction and sit alone at the left edge. -#}
     <div class="min-w-0">
-      <dt class="text-xs text-ink-muted">{{ text.commit }}</dt>
+      <dt class="text-xs text-ink-muted">{% call ui::localized(text.commit) %}{% endcall %}</dt>
       <dd class="mt-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 font-mono text-xs">
         <a class="hover:underline hover:underline-offset-4"
            href="{{ run.commit_url }}" title="{{ run.sha }}"><bdi dir="ltr">{{ run.short_sha }}</bdi></a>
@@ -60,12 +60,12 @@
     </div>
     {% if let Some(duration) = run.duration %}
     <div class="min-w-0">
-      <dt class="text-xs text-ink-muted">{{ text.duration }}</dt>
+      <dt class="text-xs text-ink-muted">{% call ui::localized(text.duration) %}{% endcall %}</dt>
       <dd class="mt-1 tabular-nums">{% call ui::localized(duration.text(page.locale)) %}{% endcall %}</dd>
     </div>
     {% endif %}
     <div class="min-w-0">
-      <dt class="text-xs text-ink-muted">{{ text.attempt }}</dt>
+      <dt class="text-xs text-ink-muted">{% call ui::localized(text.attempt) %}{% endcall %}</dt>
       <dd class="mt-1 tabular-nums">{{ run.attempt }}</dd>
     </div>
   </dl>

@@ -1,5 +1,5 @@
 //! Compiled theme picker labels; theme identifiers and user content stay outside the catalog.
-use super::{Catalog, LocalizedText};
+use super::fallback::{MessageFamily, MessageWriter};
 use crate::Locale;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -30,35 +30,86 @@ pub enum ThemeMessage {
     SearchPrefix,
     OrApply,
 }
-impl Catalog {
-    pub fn theme(self, message: ThemeMessage) -> LocalizedText {
-        let (english, spanish) = match message {
-            ThemeMessage::Choose => ("Choose a theme", "Elegir un tema"),
-            ThemeMessage::Search => ("Search themes", "Buscar temas"),
-            ThemeMessage::Close => ("Close", "Cerrar"),
-            ThemeMessage::Show => ("Show", "Mostrar"),
-            ThemeMessage::All => ("All", "Todos"),
-            ThemeMessage::Dark => ("Dark", "Oscuro"),
-            ThemeMessage::Light => ("Light", "Claro"),
-            ThemeMessage::Colorblind => ("Colorblind", "Daltonismo"),
-            ThemeMessage::Families => ("Theme families", "Familias de temas"),
-            ThemeMessage::Recent => ("Recent", "Recientes"),
-            ThemeMessage::Themes => ("Themes", "Temas"),
-            ThemeMessage::Empty => ("No themes match your search.", "Ningún tema coincide con tu búsqueda."),
-            ThemeMessage::Preview => ("Preview", "Vista previa"),
-            ThemeMessage::System => ("System", "Sistema"),
-            ThemeMessage::BuiltIn => ("Built in", "Integrados"),
-            ThemeMessage::More => ("More themes", "Más temas"),
-            ThemeMessage::Auto => ("Auto", "Automático"),
-            ThemeMessage::Apply => ("Apply", "Aplicar"),
-            ThemeMessage::Applied => ("Applied", "Aplicado"),
-            ThemeMessage::By => ("By", "Por"),
-            ThemeMessage::Credit => ("Built into rbit", "Integrado en rbit"),
-            ThemeMessage::ThemeSingular => ("theme", "tema"),
-            ThemeMessage::ThemePlural => ("themes", "temas"),
-            ThemeMessage::SearchPrefix => ("Search", "Buscar"),
-            ThemeMessage::OrApply => ("or click Apply", "o pulsa Aplicar"),
-        };
-        self.literal_text(if self.locale == Locale::Spanish { spanish } else { english })
+impl ThemeMessage {
+    /// Catalog identifier, independent of the text.
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::Choose => "themes.picker.choose",
+            Self::Search => "themes.picker.search",
+            Self::Close => "themes.picker.close",
+            Self::Show => "themes.picker.show",
+            Self::All => "themes.picker.all",
+            Self::Dark => "themes.picker.dark",
+            Self::Light => "themes.picker.light",
+            Self::Colorblind => "themes.picker.colorblind",
+            Self::Families => "themes.picker.families",
+            Self::Recent => "themes.picker.recent",
+            Self::Themes => "themes.picker.themes",
+            Self::Empty => "themes.picker.empty",
+            Self::Preview => "themes.picker.preview",
+            Self::System => "themes.picker.system",
+            Self::BuiltIn => "themes.picker.built-in",
+            Self::More => "themes.picker.more",
+            Self::Auto => "themes.picker.auto",
+            Self::Apply => "themes.picker.apply",
+            Self::Applied => "themes.picker.applied",
+            Self::By => "themes.picker.by",
+            Self::Credit => "themes.picker.credit",
+            Self::ThemeSingular => "themes.picker.theme-singular",
+            Self::ThemePlural => "themes.picker.theme-plural",
+            Self::SearchPrefix => "themes.picker.search-prefix",
+            Self::OrApply => "themes.picker.or-apply",
+        }
+    }
+}
+
+impl ThemeMessage {
+    /// The English text.
+    const fn english_label(self) -> &'static str {
+        match self {
+            Self::Choose => "Choose a theme",
+            Self::Search => "Search themes",
+            Self::Close => "Close",
+            Self::Show => "Show",
+            Self::All => "All",
+            Self::Dark => "Dark",
+            Self::Light => "Light",
+            Self::Colorblind => "Colorblind",
+            Self::Families => "Theme families",
+            Self::Recent => "Recent",
+            Self::Themes => "Themes",
+            Self::Empty => "No themes match your search.",
+            Self::Preview => "Preview",
+            Self::System => "System",
+            Self::BuiltIn => "Built in",
+            Self::More => "More themes",
+            Self::Auto => "Auto",
+            Self::Apply => "Apply",
+            Self::Applied => "Applied",
+            Self::By => "By",
+            Self::Credit => "Built into rbit",
+            Self::ThemeSingular => "theme",
+            Self::ThemePlural => "themes",
+            Self::SearchPrefix => "Search",
+            Self::OrApply => "or click Apply",
+        }
+    }
+}
+
+impl MessageFamily for ThemeMessage {
+    fn id(self) -> &'static str {
+        Self::id(self)
+    }
+
+    fn english(self, text: &mut MessageWriter) {
+        text.literal(self.english_label());
+    }
+
+    fn english_literal(self) -> Option<&'static str> {
+        Some(self.english_label())
+    }
+
+    fn translate(self, locale: Locale, text: &mut MessageWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
     }
 }

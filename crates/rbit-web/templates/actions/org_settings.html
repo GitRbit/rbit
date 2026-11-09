@@ -7,8 +7,8 @@
 {% let t = crate::views::actions::ui_text::UiText::new(*page.locale) %}
 {#- hx-history="false" keeps this page, with its secret forms, out of htmx's localStorage history cache. -#}
 <div class="mt-6 max-w-3xl" hx-history="false" lang="{{ page.locale.tag() }}" dir="{{ page.locale.direction().as_str() }}">
-  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ header.settings_url }}">{{ t.settings() }}</a> <span class="text-ink-faint">/</span> {{ t.actions() }}</p>
-  <h2 class="mt-1 text-xl font-semibold tracking-tight">{{ t.actions() }}</h2>
+  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ header.settings_url }}">{% call ui::localized(t.settings()) %}{% endcall %}</a> <span class="text-ink-faint">/</span> {% call ui::localized(t.actions()) %}{% endcall %}</p>
+  <h2 class="mt-1 text-xl font-semibold tracking-tight">{% call ui::localized(t.actions()) %}{% endcall %}</h2>
   <p class="mt-1 text-[13px] text-ink-muted">{% call am::rich(t.organization_intro(header.name)) %}{% endcall %}</p>
 
   {% include "actions/notice.html" %}

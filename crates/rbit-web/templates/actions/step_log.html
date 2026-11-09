@@ -12,7 +12,7 @@
     {% let look = text.look(step.look) %}
     {% include "actions/state.html" %}
     <h1 class="min-w-0 flex-1 break-words text-xl font-semibold tracking-tight">{{ step.name }}</h1>
-    <a class="btn h-10 sm:h-8" href="{{ raw_url }}" hx-boost="false">{% call ui::icon("file-text", "size-3.5") %}{% endcall %}{{ text.raw_log }}</a>
+    <a class="btn h-10 sm:h-8" href="{{ raw_url }}" hx-boost="false">{% call ui::icon("file-text", "size-3.5") %}{% endcall %}{% call ui::localized(text.raw_log) %}{% endcall %}</a>
   </div>
   <div class="box mt-6 overflow-hidden">
     {% include "actions/step_body.html" %}

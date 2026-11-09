@@ -1,4 +1,5 @@
-//! Plain lazy messages, escaped by the caller just like `LocalizedText`.
+//! Plain lazy messages, escaped by the caller just like `LocalizedText`. English dynamic
+//! labels write straight to the destination; other locales write their localized text.
 use super::{Catalog, Message};
 use crate::Locale;
 use std::fmt;
@@ -18,41 +19,29 @@ pub struct LocalizedDisplay<'a> {
     message: Message<'a>,
 }
 impl Catalog {
-    /// Defers formatting until consumed. Real-catalog Explore dynamic labels
-    /// write straight to the destination; diagnostic catalogs retain `text()` semantics.
+    /// Defers formatting until consumed. English Explore dynamic labels
+    /// write straight to the destination; other catalogs retain `text()` semantics.
     pub const fn display(self, message: Message<'_>) -> LocalizedDisplay<'_> {
         LocalizedDisplay { catalog: self, message }
     }
 }
 impl fmt::Display for LocalizedDisplay<'_> {
     fn fmt(&self, output: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.catalog.locale() == Locale::English {
-            match self.message {
-                Message::Stars { count } => return write!(output, "{count}{STARS_SUFFIX}"),
-                Message::PageOf { page, pages } => return write!(output, "{PAGE_PREFIX}{page}{PAGE_OF_SEPARATOR}{pages}"),
-                Message::ExploreSubtitle { site } => return write!(output, "{SUBTITLE_PREFIX}{site}{SUBTITLE_SUFFIX}"),
-                Message::CountForQuery { count, query } => {
-                    write!(output, "{count} {}", if count == 1 { "repository" } else { "repositories" })?;
-                    return if query.is_empty() { Ok(()) } else { write!(output, " for “{query}”") };
-                }
-                _ => {}
-            }
+        if self.catalog.locale() == Locale::English
+            && let Message::ExploreSubtitle { site } = self.message
+        {
+            return write!(output, "{SUBTITLE_PREFIX}{site}{SUBTITLE_SUFFIX}");
         }
-        if self.catalog.locale() == Locale::Spanish {
-            use super::spanish::{PAGE_OF, PAGE_PREFIX, SUBTITLE_PREFIX};
-            match self.message {
-                Message::Stars { count } => {
-                    return write!(output, "{count} {}", if count.unsigned_abs() == 1 { "estrella" } else { "estrellas" });
-                }
-                Message::PageOf { page, pages } => return write!(output, "{PAGE_PREFIX}{page}{PAGE_OF}{pages}"),
-                Message::ExploreSubtitle { site } => return write!(output, "{SUBTITLE_PREFIX}{site}."),
-                Message::CountForQuery { count, query } => {
-                    write!(output, "{count} {}", if count == 1 { "repositorio" } else { "repositorios" })?;
-                    return if query.is_empty() { Ok(()) } else { write!(output, " para «{query}»") };
-                }
-                _ => {}
-            }
+        fmt::Display::fmt(&self.catalog.localized(self.message), output)
+    }
+}
+
+impl LocalizedDisplay<'_> {
+    /// The `lang` a template declares around this text, as [`super::Localized::marked_lang`].
+    pub fn marked_lang(&self) -> Option<&'static str> {
+        match self.catalog.locale() {
+            Locale::English => None,
+            _ => self.catalog.localized(self.message).marked_lang(),
         }
-        fmt::Display::fmt(&self.catalog.text(self.message), output)
     }
 }

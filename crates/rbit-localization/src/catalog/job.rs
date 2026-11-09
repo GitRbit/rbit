@@ -1,5 +1,6 @@
 //! Compiled job/log labels. English static labels borrow; counts format lazily.
-use super::{Catalog, LocalizedText};
+use super::Catalog;
+use super::fallback::{MessageFamily, MessageWriter};
 use crate::Locale;
 use std::fmt;
 
@@ -68,47 +69,66 @@ impl ActionsJobMessage {
     }
 }
 
-impl Catalog {
-    pub fn job(self, message: ActionsJobMessage) -> LocalizedText {
-        if self.locale == Locale::Spanish {
-            return super::spanish::job(self, message);
-        }
-        let literal = match message {
-            ActionsJobMessage::Details => "Job details",
-            ActionsJobMessage::Steps => "Steps and logs",
-            ActionsJobMessage::RunsOn => "runs on",
-            ActionsJobMessage::Duration => "Duration",
-            ActionsJobMessage::RawLog => "Raw log",
-            ActionsJobMessage::Rerun => "Re-run job",
-            ActionsJobMessage::NotStarted => "Not started yet",
-            ActionsJobMessage::NotStartedDescription => "The steps and their logs appear here once a runner takes this job.",
-            ActionsJobMessage::RetainedWindow => "Step previews are bounded. Open a step for more lines or download the raw log.",
-            ActionsJobMessage::Expired => "This log was removed by the log retention.",
-            ActionsJobMessage::NoOutput => "No output.",
-            ActionsJobMessage::EarlierLines => "Earlier lines are left out.",
-            ActionsJobMessage::ShowMore => "Show more of this step",
-            ActionsJobMessage::Or => ", or",
-            ActionsJobMessage::DownloadAll => "download the raw log for all of it.",
-            ActionsJobMessage::Truncated => "The job wrote more than the instance keeps; later lines were dropped.",
-            ActionsJobMessage::StepNotStarted => "This step has not started.",
-            ActionsJobMessage::Success => "Success",
-            ActionsJobMessage::Failure => "Failure",
-            ActionsJobMessage::Cancelled => "Cancelled",
-            ActionsJobMessage::Skipped => "Skipped",
-            ActionsJobMessage::Queued => "Queued",
-            ActionsJobMessage::Running => "In progress",
-            ActionsJobMessage::Waiting => "Waiting",
-            ActionsJobMessage::Approval => "Awaiting approval",
-            ActionsJobMessage::WorkflowError => "Workflow error",
-            ActionsJobMessage::StepCount { count } => {
-                let mut output = count.to_string();
-                self.literal(&mut output, if count == 1 { " step" } else { " steps" });
-                return LocalizedText(output.into());
-            }
-        };
-        self.literal_text(literal)
+impl ActionsJobMessage {
+    /// The English text of a fixed label.
+    const fn english_label(self) -> Option<&'static str> {
+        Some(match self {
+            Self::Details => "Job details",
+            Self::Steps => "Steps and logs",
+            Self::RunsOn => "runs on",
+            Self::Duration => "Duration",
+            Self::RawLog => "Raw log",
+            Self::Rerun => "Re-run job",
+            Self::NotStarted => "Not started yet",
+            Self::NotStartedDescription => "The steps and their logs appear here once a runner takes this job.",
+            Self::RetainedWindow => "Step previews are bounded. Open a step for more lines or download the raw log.",
+            Self::Expired => "This log was removed by the log retention.",
+            Self::NoOutput => "No output.",
+            Self::EarlierLines => "Earlier lines are left out.",
+            Self::ShowMore => "Show more of this step",
+            Self::Or => ", or",
+            Self::DownloadAll => "download the raw log for all of it.",
+            Self::Truncated => "The job wrote more than the instance keeps; later lines were dropped.",
+            Self::StepNotStarted => "This step has not started.",
+            Self::Success => "Success",
+            Self::Failure => "Failure",
+            Self::Cancelled => "Cancelled",
+            Self::Skipped => "Skipped",
+            Self::Queued => "Queued",
+            Self::Running => "In progress",
+            Self::Waiting => "Waiting",
+            Self::Approval => "Awaiting approval",
+            Self::WorkflowError => "Workflow error",
+            Self::StepCount { .. } => return None,
+        })
+    }
+}
+
+impl MessageFamily for ActionsJobMessage {
+    fn id(self) -> &'static str {
+        Self::id(self)
     }
 
+    fn english(self, text: &mut MessageWriter) {
+        match self {
+            Self::StepCount { count } => {
+                text.number(count);
+                text.literal(if count == 1 { " step" } else { " steps" });
+            }
+            _ => text.literal(self.english_label().unwrap_or_default()),
+        }
+    }
+
+    fn english_literal(self) -> Option<&'static str> {
+        self.english_label()
+    }
+
+    fn translate(self, locale: Locale, text: &mut MessageWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
+    }
+}
+
+impl Catalog {
     pub const fn job_display(self, message: ActionsJobMessage) -> JobDisplay {
         JobDisplay { catalog: self, message }
     }
@@ -120,36 +140,34 @@ pub struct JobDisplay {
     catalog: Catalog,
     message: ActionsJobMessage,
 }
+impl JobDisplay {
+    /// The `lang` a template declares around this label, as [`super::Localized::marked_lang`].
+    pub fn marked_lang(&self) -> Option<&'static str> {
+        match self.catalog.locale() {
+            Locale::English => None,
+            _ => self.catalog.localized(self.message).marked_lang(),
+        }
+    }
+}
 impl fmt::Display for JobDisplay {
     fn fmt(&self, output: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.catalog.locale() == Locale::English
-            && let ActionsJobMessage::StepCount { count } = self.message
-        {
-            return write!(output, "{count} {}", if count == 1 { "step" } else { "steps" });
-        }
-        if self.catalog.locale() == Locale::Spanish
-            && let ActionsJobMessage::StepCount { count } = self.message
-        {
-            return write!(output, "{count} {}", if count == 1 { "paso" } else { "pasos" });
-        }
-        fmt::Display::fmt(&self.catalog.job(self.message), output)
+        fmt::Display::fmt(&self.catalog.localized(self.message), output)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::borrow::Cow;
 
     #[test]
     fn static_english_is_borrowed_and_counts_match_the_compiled_catalog() {
         let english = Catalog::new(Locale::English);
-        assert!(matches!(english.job(ActionsJobMessage::RawLog).0, Cow::Borrowed("Raw log")));
+        assert!(english.localized(ActionsJobMessage::RawLog).borrows_static());
         for locale in [Locale::English, Locale::Spanish, Locale::PseudoExpanded, Locale::PseudoRtl] {
             let catalog = Catalog::new(locale);
             for count in [0, 1, 2, 512, u64::MAX] {
                 let message = ActionsJobMessage::StepCount { count };
-                assert_eq!(catalog.job_display(message).to_string(), catalog.job(message).as_str());
+                assert_eq!(catalog.job_display(message).to_string(), catalog.localized(message).as_str());
             }
         }
         assert_eq!(ActionsJobMessage::Expired.id(), "actions.log.expired");

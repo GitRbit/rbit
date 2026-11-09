@@ -1,11 +1,11 @@
 <nav class="md:w-56 md:shrink-0" aria-label="{{ text.workflows }}">
   <h2 class="mb-2 flex items-center justify-between gap-2 text-[13px] font-medium text-ink-muted">
-    {{ text.workflows }} <span class="tabular-nums">{{ workflows.len() }}</span>
+    {% call ui::localized(text.workflows) %}{% endcall %} <span class="tabular-nums">{{ workflows.len() }}</span>
   </h2>
   <ul class="box divide-y divide-line">
     <li>
       <a class="flex min-h-11 items-center gap-2 px-3 text-[13px] hover:bg-subtle {% if workflow.is_none() %}font-medium text-ink{% else %}text-ink-muted{% endif %}"
-         href="{{ all_url }}" {% if workflow.is_none() %}aria-current="page"{% endif %}>{{ text.all_workflows }}</a>
+         href="{{ all_url }}" {% if workflow.is_none() %}aria-current="page"{% endif %}>{% call ui::localized(text.all_workflows) %}{% endcall %}</a>
     </li>
     {% for link in workflows %}
     <li>

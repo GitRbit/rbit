@@ -56,7 +56,7 @@ pub async fn explore(
     let sorts = RepoSort::ALL
         .iter()
         .map(|&option| ExploreLink {
-            label: catalog.text(match option {
+            label: catalog.localized(match option {
                 RepoSort::RecentlyUpdated => Message::SortUpdated,
                 RepoSort::Name => Message::SortName,
                 RepoSort::Newest => Message::SortNewest,
@@ -68,7 +68,7 @@ pub async fn explore(
     let archived_filters = ArchivedFilter::ALL
         .iter()
         .map(|&option| ExploreLink {
-            label: catalog.text(match option {
+            label: catalog.localized(match option {
                 ArchivedFilter::Include => Message::ArchiveAll,
                 ArchivedFilter::Exclude => Message::ArchiveActive,
                 ArchivedFilter::Only => Message::Archived,
