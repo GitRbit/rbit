@@ -1,5 +1,6 @@
 /** Retired identity paths must not return; see docs/design/rewrite/identity-retirement.md. */
 import { checkProfileRetirement } from "./profile-retirement.mjs";
+import { checkRecoveryRetirement } from "./recovery-retirement.mjs";
 import { checkTokenRetirement } from "./token-retirement.mjs";
 
 // Session contracts are imported from their defining module, not the legacy service crate.
@@ -33,5 +34,5 @@ export function checkIdentityRetirement(sources) {
       violations.push(`${path}: direct session purge bypasses the identity session application`);
     }
   }
-  return [...violations, ...checkTokenRetirement(sources), ...checkProfileRetirement(sources)];
+  return [...violations, ...checkTokenRetirement(sources), ...checkProfileRetirement(sources), ...checkRecoveryRetirement(sources)];
 }
