@@ -4461,6 +4461,7 @@ dependencies = [
  "rbit-identity-models",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]

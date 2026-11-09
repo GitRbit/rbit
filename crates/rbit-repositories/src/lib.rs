@@ -10,6 +10,8 @@ pub mod contributions;
 pub mod discovery;
 pub mod edits;
 pub mod forks;
+pub mod mirrors;
+pub mod push_mirrors;
 pub mod stars;
 pub mod transfer;
 
