@@ -104,6 +104,10 @@ impl SessionRepository for Store {
         s.kept = keep;
         ready(Ok(3))
     }
+    fn purge_expired(&self) -> impl Future<Output = Result<usize, Self::Error>> + Send {
+        self.0.lock().unwrap().calls.push("purge".into());
+        ready(Ok(2))
+    }
 }
 impl SessionUserRepository for Store {
     type Error = Infallible;

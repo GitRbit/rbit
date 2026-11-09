@@ -108,6 +108,9 @@ impl SessionRepository for PausingSessions {
     fn delete_for_account(&self, account: AccountId, keep: Option<TokenDigest>) -> impl Future<Output = Result<usize, Self::Error>> + Send {
         self.inner.delete_for_account(account, keep)
     }
+    fn purge_expired(&self) -> impl Future<Output = Result<usize, Self::Error>> + Send {
+        self.inner.purge_expired()
+    }
 }
 
 /// Ten minutes ahead of the wall clock: past the last-seen resolution, so every resume

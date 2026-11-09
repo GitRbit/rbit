@@ -42,6 +42,10 @@ impl AccountService {
         self.audit.record(AuditEntry::new(AuditAction::OtherSessionsRevoked).by(user).from_ip(client.ip).detail(detail)).await;
         Ok(removed)
     }
+    /// Hourly maintenance entry point; the identity application owns the cleanup.
+    pub async fn purge_expired_sessions(&self) -> Result<usize, ServiceError> {
+        self.session_application().purge_expired().await.map_err(map)
+    }
     pub fn session_lifetime_seconds(&self) -> i64 {
         self.session_application_policy().lifetime_seconds()
     }

@@ -223,3 +223,34 @@ async fn new_sessions_expire_by_the_maximum_age_or_never_without_one() {
         assert_eq!(services.accounts.resume_session(&token).await.unwrap().is_some(), max_age_days == 0);
     }
 }
+
+/// Retirement parity: the identity-owned purge and the store's own purge remove the
+/// same sessions from the same fixture, and neither touches a live one.
+#[tokio::test]
+async fn identity_purge_matches_the_storage_purge() {
+    let mut survivors = Vec::new();
+    for through_identity in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let (services, kv, alice) = with_max_age(&dir, 0).await;
+        let now = Timestamp::now().seconds();
+        let mut tokens = Vec::new();
+        for (expires, agent) in [(now - 60, "expired"), (now + 3600, "live"), (now - 1, "just expired"), (now + 60, "soon")] {
+            let token = SessionToken::generate();
+            kv.sessions().put(token.digest(), SessionRecord::new(alice.id(), Timestamp(expires), None, agent)).await.unwrap();
+            tokens.push(token);
+        }
+        let removed = if through_identity {
+            services.accounts.purge_expired_sessions().await.unwrap()
+        } else {
+            kv.sessions().purge_expired().await.unwrap()
+        };
+        assert_eq!(removed, 2, "identity: {through_identity}");
+        let mut live = Vec::new();
+        for token in &tokens {
+            live.push(kv.sessions().get(token.digest()).await.unwrap().map(|record| record.user_agent));
+        }
+        survivors.push(live);
+    }
+    assert_eq!(survivors[0], survivors[1]);
+    assert_eq!(survivors[1], [None, Some("live".to_owned()), None, Some("soon".to_owned())]);
+}

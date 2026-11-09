@@ -121,4 +121,11 @@ impl<'a, S: SessionRepository, A: SessionUserRepository, C: SessionClock> Sessio
     pub async fn revoke_others(&self, account: AccountId, current: &SessionToken) -> SessionResult<usize, S::Error, A::Error> {
         self.sessions.delete_for_account(account, Some(current.digest())).await.map_err(SessionError::Session)
     }
+
+    /// Periodic cleanup. Recorded expiry already applies the idle lifetime and the
+    /// absolute maximum age, so no policy pass is repeated here; a session outliving a
+    /// lowered maximum age is still refused and removed by [`Self::resume`].
+    pub async fn purge_expired(&self) -> SessionResult<usize, S::Error, A::Error> {
+        self.sessions.purge_expired().await.map_err(SessionError::Session)
+    }
 }

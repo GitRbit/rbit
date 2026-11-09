@@ -91,3 +91,11 @@ async fn missing_session_never_queries_accounts_or_samples_clock() {
     assert!(app.resume(&SessionToken::generate()).await.unwrap().is_none());
     assert_eq!(store.0.lock().unwrap().calls, ["get"]);
 }
+
+#[tokio::test]
+async fn purge_delegates_once_to_the_store_without_accounts_or_clock() {
+    let store = store();
+    let app = SessionApplication::with_clock(&store, &store, policy(), Clock::at(&[]));
+    assert_eq!(app.purge_expired().await.unwrap(), 2);
+    assert_eq!(store.0.lock().unwrap().calls, ["purge"]);
+}

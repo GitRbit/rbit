@@ -33,6 +33,9 @@ impl SessionRepository for SessionStore {
     fn delete_for_account(&self, account: AccountId, keep: Option<TokenDigest>) -> impl Future<Output = Result<usize, Self::Error>> + Send {
         SessionStore::delete_for_account(self, account, keep)
     }
+    fn purge_expired(&self) -> impl Future<Output = Result<usize, Self::Error>> + Send {
+        SessionStore::purge_expired(self)
+    }
 }
 
 impl SessionUserRepository for AccountStore {

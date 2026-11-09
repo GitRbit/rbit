@@ -22,6 +22,9 @@ pub trait SessionRepository: Sync {
     fn list_for_account(&self, account: AccountId) -> impl Future<Output = Result<Vec<StoredSession>, Self::Error>> + Send;
     /// Both session and account-index rows change in the same transaction.
     fn delete_for_account(&self, account: AccountId, keep: Option<TokenDigest>) -> impl Future<Output = Result<usize, Self::Error>> + Send;
+    /// Removes sessions whose recorded expiry has passed, rechecking each one in the
+    /// write that removes it so a concurrent renewal is never undone. Returns the count.
+    fn purge_expired(&self) -> impl Future<Output = Result<usize, Self::Error>> + Send;
 }
 
 pub trait SessionUserRepository: Sync {

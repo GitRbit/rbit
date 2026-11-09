@@ -47,7 +47,7 @@ pub async fn run(config: Config) -> anyhow::Result<bool> {
         http_listener(TcpListener::bind(config.server.bind).await.with_context(|| format!("cannot bind {}", config.server.bind))?);
     let services = Services::new(Arc::clone(&config), &storage.database, &storage.kv).await?;
 
-    let purger = spawn_session_purger(storage.kv.clone());
+    let purger = spawn_session_purger(services.accounts.clone());
     services.spawn_background();
     let background = services.clone();
     let state = AppState::new(Arc::clone(&config), services);
