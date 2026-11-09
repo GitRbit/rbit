@@ -34,6 +34,7 @@ mod preferences;
 mod protection;
 mod pulls;
 mod push_mirrors;
+mod readable_parity;
 mod recovery;
 mod redirects;
 mod releases;
