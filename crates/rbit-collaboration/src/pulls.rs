@@ -6,6 +6,7 @@ mod anchors;
 mod branches;
 mod head;
 mod merge;
+mod merging;
 mod messages;
 mod records;
 pub mod review_threads;
@@ -14,6 +15,7 @@ pub use anchors::{AnchorLine, DIFF_HUNK_LINES, LineMark, ReviewSide, hunk_excerp
 pub use branches::branch_ref;
 pub use head::select_head;
 pub use merge::{MergeEvaluation, MergeFacts, MergeRules, Requirement, RequirementCheck, ReviewTally, evaluate, tally};
+pub use merging::{MergeDefaults, current_mergeability, merge_gate, merge_message, merges_as_writer, needs_trial_merge, still_expected};
 pub use messages::{
     CommitIdentity, HeadSpec, commit_message, default_merge_title, default_squash_body, default_squash_title, noreply_domain, noreply_email,
 };

@@ -19,14 +19,17 @@
 
 use std::collections::HashSet;
 
+use rbit_collaboration::pulls::{
+    MergeDefaults, current_mergeability, merge_gate, merge_message, merges_as_writer, needs_trial_merge, still_expected,
+};
 use rbit_core::access::{Grants, repo_access};
 use rbit_core::{
     AccountId, PushSource, StateReason, TimelineEvent, Timestamp, User,
     issue::MergeStrategy,
     protection::MergeRules,
     pull::{
-        CommitIdentity, MergeFacts, Mergeability, Review, commit_message, default_merge_title, default_squash_body, default_squash_title,
-        evaluate, noreply_domain, tally,
+        CommitIdentity, MergeFacts, Mergeability, Review, default_merge_title, default_squash_body, default_squash_title, evaluate,
+        noreply_domain, tally,
     },
     status::{checks_status, required_checks},
 };
@@ -65,7 +68,7 @@ impl PullService {
     ) -> Result<MergeBox, ServiceError> {
         let rules = async {
             match viewer {
-                Some(user) if ctx.repo().access.can_write() => {
+                Some(user) if merges_as_writer(true, ctx.repo().access.can_write()) => {
                     self.inner.protection.check_merge(ctx.repo(), user, &ctx.pull.base_branch).await
                 }
                 Some(_) | None => Ok(MergeRules::unprotected()),
@@ -92,11 +95,10 @@ impl PullService {
         let (reviews, writers) = voters?;
         let tally = tally(&reviews, ctx.issue().author, &ctx.pull.head_sha, rules.dismiss_stale_approvals, |id| writers.contains(&id));
         let statuses = statuses?;
-        let stale = base_tip.is_none()
-            || ctx.pull.mergeable_base_sha != base_tip
-            || ctx.pull.mergeable_head_sha.as_deref() != Some(&ctx.pull.head_sha);
-        let mergeable = if stale && ctx.issue().is_open() { Mergeability::Unknown } else { ctx.pull.mergeable };
-        if mergeable == Mergeability::Unknown && ctx.issue().is_open() && !ctx.pull.is_draft {
+        let computed_on = (ctx.pull.mergeable_base_sha.as_deref(), ctx.pull.mergeable_head_sha.as_deref());
+        let mergeable =
+            current_mergeability(ctx.pull.mergeable, computed_on, base_tip.as_deref(), &ctx.pull.head_sha, ctx.issue().is_open());
+        if needs_trial_merge(mergeable, ctx.issue().is_open(), ctx.pull.is_draft) {
             if ctx.pull.mergeable != Mergeability::Unknown {
                 self.ctx().database.pulls().mark_unknown(ctx.issue().id).await?;
             }
@@ -122,7 +124,7 @@ impl PullService {
             conflict_paths: if mergeable == Mergeability::Conflict { ctx.pull.conflict_paths.clone() } else { Vec::new() },
             statuses,
             head_branch_exists,
-            can_merge: viewer.is_some() && ctx.repo().can_write_content(),
+            can_merge: merges_as_writer(viewer.is_some(), ctx.repo().can_write_content()),
             can_delete_head,
             default_title,
             default_message,
@@ -184,21 +186,17 @@ impl PullService {
         let threads = self.inner.timeline.reader();
         let thread = threads.open(Some(actor), ctx.repo().clone(), ctx.issue().number).await?;
         let ctx = self.context(thread).await?;
-        if let Some(expected) = input.expected_head.as_deref().filter(|expected| !expected.is_empty())
-            && expected != ctx.pull.head_sha
-        {
+        if !still_expected(input.expected_head.as_deref(), &ctx.pull.head_sha) {
             return Err(MergeFailure::HeadChanged);
         }
-        if let Some(expected) = input.expected_base.as_deref().filter(|expected| !expected.is_empty())
-            && expected != ctx.pull.base_branch
-        {
+        if !still_expected(input.expected_base.as_deref(), &ctx.pull.base_branch) {
             return Err(MergeFailure::BaseChanged);
         }
         if ctx.pull.is_merged() || !ctx.issue().is_open() {
             return Err(MergeFailure::Blocked("the pull request is closed".to_owned()));
         }
         let mut merge_box = self.merge_box(Some(actor), &ctx).await?;
-        if merge_box.mergeable == Mergeability::Unknown && !ctx.pull.is_draft {
+        if needs_trial_merge(merge_box.mergeable, true, ctx.pull.is_draft) {
             // Not computed yet for this base: compute it now rather than make the merger wait.
             let base_tip = self.base_tip(&ctx).await?.ok_or_else(|| MergeFailure::Blocked("the base branch does not exist".to_owned()))?;
             let (state, paths) = self.trial_merge(ctx.repo(), &base_tip, &ctx.pull.head_sha).await?;
@@ -206,13 +204,7 @@ impl PullService {
             let refreshed = self.context(threads.open(Some(actor), ctx.repo().clone(), ctx.issue().number).await?).await?;
             merge_box = self.merge_box(Some(actor), &refreshed).await?;
         }
-        let evaluation = &merge_box.evaluation;
-        if !evaluation.can_merge() {
-            if !(input.bypass && evaluation.can_merge_with_bypass()) {
-                let unmet =
-                    evaluation.checks.iter().find(|check| !check.met).map_or_else(String::new, |check| check.requirement.describe(false));
-                return Err(MergeFailure::Blocked(format!("this pull request cannot be merged: {unmet}")));
-            }
+        if merge_gate(&merge_box.evaluation, input.bypass).map_err(MergeFailure::Blocked)? {
             AuditService::from_store(self.ctx().database.audit())
                 .record(AuditEntry::new(AuditAction::BranchProtectionBypassed).by(actor).on(ctx.repo().repo.full_name()).detail(format!(
                     "merged pull request #{} into {}",
@@ -231,13 +223,11 @@ impl PullService {
     }
 
     fn message_for(input: &MergeInput, merge_box: &MergeBox) -> String {
-        let (title, body) = match input.strategy {
-            MergeStrategy::Merge => (&merge_box.default_title, &merge_box.default_message),
-            MergeStrategy::Squash | MergeStrategy::Rebase => (&merge_box.default_squash_title, &merge_box.default_squash_message),
+        let defaults = MergeDefaults {
+            merge: (&merge_box.default_title, &merge_box.default_message),
+            squash: (&merge_box.default_squash_title, &merge_box.default_squash_message),
         };
-        let title = if input.title.trim().is_empty() { title.as_str() } else { input.title.trim() };
-        let body = if input.title.trim().is_empty() && input.message.trim().is_empty() { body.as_str() } else { input.message.as_str() };
-        commit_message(title, body)
+        merge_message(input.strategy, &input.title, &input.message, defaults)
     }
 
     /// The git part: merge, record, close, report the push. Retries once if the base moved.
