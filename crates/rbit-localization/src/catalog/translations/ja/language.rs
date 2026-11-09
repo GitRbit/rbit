@@ -17,5 +17,7 @@ entries! { Ja:
         LanguageMessage::Save => text.literal("言語を保存"),
         LanguageMessage::Saved => text.literal("言語の設定を保存しました。"),
         LanguageMessage::Invalid => text.literal("一覧の言語、またはブラウザーのデフォルトを選択してください。"),
+        LanguageMessage::Close => text.literal("閉じる"),
+        LanguageMessage::DeviceOnly => text.literal("このブラウザーは、言語だけを保存する Cookie で選択を記憶します。"),
     }
 }

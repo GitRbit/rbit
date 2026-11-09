@@ -8,6 +8,7 @@ entries! { ZhHans:
         ChromeMessage::Skip => text.literal("跳到内容"),
         ChromeMessage::Main => text.literal("主导航"),
         ChromeMessage::Explore => text.literal("探索"),
+        ChromeMessage::Language => text.literal("语言"),
         ChromeMessage::SwitchTheme => text.literal("在浅色和深色之间切换"),
         ChromeMessage::ChooseTheme => text.literal("选择主题"),
         ChromeMessage::Notifications => text.literal("通知"),

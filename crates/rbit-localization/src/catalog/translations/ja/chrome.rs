@@ -8,6 +8,7 @@ entries! { Ja:
         ChromeMessage::Skip => text.literal("コンテンツへスキップ"),
         ChromeMessage::Main => text.literal("メイン"),
         ChromeMessage::Explore => text.literal("探索"),
+        ChromeMessage::Language => text.literal("言語"),
         ChromeMessage::SwitchTheme => text.literal("ライトとダークを切り替え"),
         ChromeMessage::ChooseTheme => text.literal("テーマを選択"),
         ChromeMessage::Notifications => text.literal("通知"),

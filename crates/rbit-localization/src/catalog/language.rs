@@ -14,6 +14,8 @@ pub enum LanguageMessage {
     Save,
     Saved,
     Invalid,
+    Close,
+    DeviceOnly,
 }
 impl LanguageMessage {
     pub const fn id(self) -> &'static str {
@@ -28,6 +30,8 @@ impl LanguageMessage {
             Self::Save => "settings.language.save",
             Self::Saved => "settings.language.saved",
             Self::Invalid => "settings.language.invalid",
+            Self::Close => "settings.language.close",
+            Self::DeviceOnly => "settings.language.device-only",
         }
     }
 }
@@ -45,6 +49,8 @@ impl LanguageMessage {
             Self::Save => "Save language",
             Self::Saved => "Your language preference was saved.",
             Self::Invalid => "Choose one of the listed languages or the browser default.",
+            Self::Close => "Close",
+            Self::DeviceOnly => "This browser remembers your choice in a cookie that holds only the language.",
         }
     }
 }

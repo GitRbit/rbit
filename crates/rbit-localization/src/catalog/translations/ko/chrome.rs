@@ -8,6 +8,7 @@ entries! { Ko:
         ChromeMessage::Skip => text.literal("본문으로 건너뛰기"),
         ChromeMessage::Main => text.literal("주 메뉴"),
         ChromeMessage::Explore => text.literal("탐색"),
+        ChromeMessage::Language => text.literal("언어"),
         ChromeMessage::SwitchTheme => text.literal("라이트 모드와 다크 모드 전환"),
         ChromeMessage::ChooseTheme => text.literal("테마 선택"),
         ChromeMessage::Notifications => text.literal("알림"),

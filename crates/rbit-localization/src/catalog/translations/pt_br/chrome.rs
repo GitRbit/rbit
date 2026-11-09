@@ -8,6 +8,7 @@ entries! { PtBr:
         ChromeMessage::Skip => text.literal("Pular para o conteúdo"),
         ChromeMessage::Main => text.literal("Principal"),
         ChromeMessage::Explore => text.literal("Explorar"),
+        ChromeMessage::Language => text.literal("Idioma"),
         ChromeMessage::SwitchTheme => text.literal("Alternar entre claro e escuro"),
         ChromeMessage::ChooseTheme => text.literal("Escolher um tema"),
         ChromeMessage::Notifications => text.literal("Notificações"),

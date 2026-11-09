@@ -17,5 +17,7 @@ entries! { Es:
         LanguageMessage::Save => text.literal("Guardar idioma"),
         LanguageMessage::Saved => text.literal("Se guardó tu idioma preferido."),
         LanguageMessage::Invalid => text.literal("Elige uno de los idiomas de la lista o la opción del navegador."),
+        LanguageMessage::Close => text.literal("Cerrar"),
+        LanguageMessage::DeviceOnly => text.literal("Este navegador recuerda tu elección en una cookie que solo guarda el idioma."),
     }
 }

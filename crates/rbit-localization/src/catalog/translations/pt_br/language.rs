@@ -15,5 +15,7 @@ entries! { PtBr:
         LanguageMessage::Save => text.literal("Salvar idioma"),
         LanguageMessage::Saved => text.literal("Sua preferência de idioma foi salva."),
         LanguageMessage::Invalid => text.literal("Escolha um dos idiomas listados ou o padrão do navegador."),
+        LanguageMessage::Close => text.literal("Fechar"),
+        LanguageMessage::DeviceOnly => text.literal("Este navegador lembra sua escolha em um cookie que guarda apenas o idioma."),
     }
 }

@@ -15,5 +15,7 @@ entries! { Ru:
         LanguageMessage::Save => text.literal("Сохранить язык"),
         LanguageMessage::Saved => text.literal("Предпочитаемый язык сохранён."),
         LanguageMessage::Invalid => text.literal("Выберите один из перечисленных языков или язык браузера."),
+        LanguageMessage::Close => text.literal("Закрыть"),
+        LanguageMessage::DeviceOnly => text.literal("Этот браузер запоминает ваш выбор в cookie, где хранится только язык."),
     }
 }

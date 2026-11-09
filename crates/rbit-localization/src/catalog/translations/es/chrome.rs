@@ -8,6 +8,7 @@ entries! { Es:
         ChromeMessage::Skip => text.literal("Saltar al contenido"),
         ChromeMessage::Main => text.literal("Principal"),
         ChromeMessage::Explore => text.literal("Explorar"),
+        ChromeMessage::Language => text.literal("Idioma"),
         ChromeMessage::SwitchTheme => text.literal("Cambiar entre claro y oscuro"),
         ChromeMessage::ChooseTheme => text.literal("Elegir un tema"),
         ChromeMessage::Notifications => text.literal("Notificaciones"),

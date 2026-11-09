@@ -21,5 +21,9 @@ entries! { De:
         LanguageMessage::Invalid => {
             text.literal("Wählen Sie eine der aufgeführten Sprachen oder die Browser-Einstellung.");
         }
+        LanguageMessage::Close => text.literal("Schließen"),
+        LanguageMessage::DeviceOnly => {
+            text.literal("Dieser Browser merkt sich Ihre Auswahl in einem Cookie, das nur die Sprache enthält.");
+        }
     }
 }

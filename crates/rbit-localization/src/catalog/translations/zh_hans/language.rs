@@ -15,5 +15,7 @@ entries! { ZhHans:
         LanguageMessage::Save => text.literal("保存语言"),
         LanguageMessage::Saved => text.literal("你的语言偏好已保存。"),
         LanguageMessage::Invalid => text.literal("请选择列表中的一种语言或浏览器默认设置。"),
+        LanguageMessage::Close => text.literal("关闭"),
+        LanguageMessage::DeviceOnly => text.literal("此浏览器会用一个只保存语言的 Cookie 记住你的选择。"),
     }
 }

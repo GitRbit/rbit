@@ -8,6 +8,7 @@ entries! { Ru:
         ChromeMessage::Skip => text.literal("Перейти к содержимому"),
         ChromeMessage::Main => text.literal("Главное меню"),
         ChromeMessage::Explore => text.literal("Обзор"),
+        ChromeMessage::Language => text.literal("Язык"),
         ChromeMessage::SwitchTheme => text.literal("Переключить светлую и тёмную тему"),
         ChromeMessage::ChooseTheme => text.literal("Выбрать тему"),
         ChromeMessage::Notifications => text.literal("Уведомления"),

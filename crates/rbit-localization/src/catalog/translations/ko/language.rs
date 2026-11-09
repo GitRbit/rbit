@@ -15,5 +15,7 @@ entries! { Ko:
         LanguageMessage::Save => text.literal("언어 저장"),
         LanguageMessage::Saved => text.literal("언어 설정을 저장했습니다."),
         LanguageMessage::Invalid => text.literal("목록에 있는 언어 또는 브라우저 기본값을 선택하세요."),
+        LanguageMessage::Close => text.literal("닫기"),
+        LanguageMessage::DeviceOnly => text.literal("이 브라우저는 언어만 저장하는 쿠키로 선택을 기억합니다."),
     }
 }
