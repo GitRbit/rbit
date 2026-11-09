@@ -27,6 +27,7 @@ locale", for the file layout and typography rules.
 | repository | repositório | |
 | branch | branch (m.) | “branch padrão”, “branch base” |
 | default branch | branch padrão | |
+| base branch / head branch | branch base / branch de origem | “repositório de origem” for head repository |
 | commit (noun) | commit (m.) | |
 | commit (verb) | fazer commit | “Fazer commit das alterações” |
 | pull request | pull request (m.) | |
