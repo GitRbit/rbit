@@ -26,13 +26,18 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
 use rbit_core::Config;
-use rbit_storage::{error::StorageError, sqlite::snapshot};
-
-use super::{
-    FORMAT_VERSION, Manifest, SECRET_KEY_FILE, copy, durable,
-    inventory::{self, Blob, Kind},
-    wikis,
+use rbit_storage::{
+    error::StorageError,
+    sqlite::{
+        backup::{
+            self as stored,
+            inventory::{self, Blob, Kind},
+        },
+        snapshot,
+    },
 };
+
+use super::{FORMAT_VERSION, Manifest, SECRET_KEY_FILE, copy, durable, wikis};
 
 /// Present in a data directory while a restore into it is incomplete.
 pub const MARKER: &str = ".rbit-restore-incomplete";
@@ -250,29 +255,22 @@ async fn restore_wikis(
     database: &Path,
     warnings: &mut Vec<String>,
 ) -> anyhow::Result<u64> {
-    if manifest.format >= wikis::SINCE_FORMAT {
-        let mut connection = inventory::read_only(database).await?;
-        let listed = wikis::read(&mut connection).await?;
-        sqlx::Connection::close(connection).await?;
+    if manifest.format >= stored::wikis::SINCE_FORMAT {
+        let listed = stored::wikis::read(database).await?;
         return wikis::restore(from, target, listed).await;
     }
-    let options = rbit_storage::sqlite::writer_compatibility::register(sqlx::sqlite::SqliteConnectOptions::new())
-        .filename(database)
-        .foreign_keys(true);
-    let mut connection = sqlx::ConnectOptions::connect(&options).await.with_context(|| format!("cannot open {}", database.display()))?;
-    let forgotten = wikis::forget_pages(&mut connection).await?;
-    sqlx::Connection::close(connection).await?;
+    let forgotten = stored::wikis::forget_pages(database).await?;
     if forgotten > 0 {
-        warnings
-            .push(format!("{forgotten} wikis lost their pages: backups older than format {} hold no wiki objects", wikis::SINCE_FORMAT));
+        warnings.push(format!(
+            "{forgotten} wikis lost their pages: backups older than format {} hold no wiki objects",
+            stored::wikis::SINCE_FORMAT
+        ));
     }
     Ok(0)
 }
 
 async fn actions_key_warning(config: &Config, database: &Path, warnings: &mut Vec<String>) -> anyhow::Result<()> {
-    let mut connection = inventory::read_only(database).await?;
-    let secrets: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM actions_secrets").fetch_one(&mut connection).await?;
-    sqlx::Connection::close(connection).await?;
+    let secrets = stored::sealed_actions_secrets(database).await?;
     let key = config.actions.secrets_key_path(&config.storage);
     if secrets > 0 && !key.exists() {
         warnings.push(format!(

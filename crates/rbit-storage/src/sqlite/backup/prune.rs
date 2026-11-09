@@ -12,51 +12,68 @@
 
 use std::path::Path;
 
-use anyhow::Context;
-use sqlx::{ConnectOptions, Connection, sqlite::SqliteConnectOptions};
+use sqlx::Connection;
 
-use super::copy::{Copied, CopiedBlobs};
+use super::{BackupError, writable};
 
-/// Deletes the rows of everything `repositories` and `blobs` report missing from the
-/// snapshot at `snapshot`, in one transaction.
-pub async fn prune(snapshot: &Path, repositories: &Copied, blobs: &CopiedBlobs, wikis: &[i64]) -> anyhow::Result<()> {
-    let nothing = repositories.missing.is_empty()
-        && wikis.is_empty()
-        && blobs.attachments.missing.is_empty()
-        && blobs.lfs.missing.is_empty()
-        && blobs.artifacts.missing.is_empty()
-        && blobs.caches.missing.is_empty()
-        && blobs.logs.missing.is_empty();
-    if nothing {
+/// Everything the backup could not copy, by row id (an LFS object by oid, a wiki and a
+/// log by repository and task).
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Missing<'a> {
+    pub repositories: &'a [i64],
+    pub wikis: &'a [i64],
+    pub attachments: &'a [i64],
+    pub lfs_objects: &'a [String],
+    pub artifacts: &'a [i64],
+    pub caches: &'a [i64],
+    pub logs: &'a [i64],
+}
+
+impl Missing<'_> {
+    /// Whether the backup copied everything the snapshot lists.
+    pub fn is_empty(&self) -> bool {
+        self.repositories.is_empty()
+            && self.wikis.is_empty()
+            && self.attachments.is_empty()
+            && self.lfs_objects.is_empty()
+            && self.artifacts.is_empty()
+            && self.caches.is_empty()
+            && self.logs.is_empty()
+    }
+}
+
+/// Deletes the rows of everything `missing` lists from the snapshot at `snapshot`, in one
+/// transaction. Nothing is opened when nothing is missing.
+pub async fn prune(snapshot: &Path, missing: &Missing<'_>) -> Result<(), BackupError> {
+    if missing.is_empty() {
         return Ok(());
     }
-    let options = rbit_storage::sqlite::writer_compatibility::register(SqliteConnectOptions::new()).filename(snapshot).foreign_keys(true);
-    let mut connection = options.connect().await.with_context(|| format!("cannot open {}", snapshot.display()))?;
+    let mut connection = writable(snapshot).await?;
     let mut tx = connection.begin().await?;
-    for id in &repositories.missing {
+    for &id in missing.repositories {
         // Cascades to everything else of the repository, its stored files' rows included.
         sqlx::query("DELETE FROM repositories WHERE id = ?")
             .bind(id)
             .execute(&mut *tx)
             .await
-            .with_context(|| format!("cannot leave repository {id}, deleted during the backup, out of it; take the backup again"))?;
+            .map_err(|error| BackupError::PruneRepository(id, error))?;
     }
-    for repository in wikis {
+    for repository in missing.wikis {
         sqlx::query("DELETE FROM wiki_repositories WHERE repo_id = ?").bind(repository).execute(&mut *tx).await?;
     }
-    for id in &blobs.attachments.missing {
+    for id in missing.attachments {
         sqlx::query("DELETE FROM release_assets WHERE id = ?").bind(id).execute(&mut *tx).await?;
     }
-    for oid in &blobs.lfs.missing {
+    for oid in missing.lfs_objects {
         sqlx::query("DELETE FROM lfs_objects WHERE oid = ?").bind(oid).execute(&mut *tx).await?;
     }
-    for id in &blobs.artifacts.missing {
+    for id in missing.artifacts {
         sqlx::query("DELETE FROM actions_artifacts WHERE id = ?").bind(id).execute(&mut *tx).await?;
     }
-    for id in &blobs.caches.missing {
+    for id in missing.caches {
         sqlx::query("DELETE FROM actions_caches WHERE id = ?").bind(id).execute(&mut *tx).await?;
     }
-    for task in &blobs.logs.missing {
+    for task in missing.logs {
         // As the sweeper records a log removed by retention.
         sqlx::query("UPDATE actions_tasks SET log_state = 'expired' WHERE id = ?").bind(task).execute(&mut *tx).await?;
     }

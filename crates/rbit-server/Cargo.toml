@@ -27,8 +27,6 @@ tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 rbit-git.workspace = true
-# Wiki ids, revisions and the catalog identity in backups (format 6).
-rbit-wikis = { workspace = true, default-features = false }
 serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true

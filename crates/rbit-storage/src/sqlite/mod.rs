@@ -15,6 +15,8 @@ pub mod actions_secrets;
 pub mod actions_settings;
 pub mod admin;
 pub mod audit;
+// `rbit backup` and `rbit restore`: snapshot, inventory, pruning and the wiki catalog.
+pub mod backup;
 pub mod collaborators;
 pub mod credential_epochs;
 mod credential_mutations;

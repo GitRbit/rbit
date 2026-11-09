@@ -11,6 +11,7 @@ mod accounts;
 // Actions: foundation (F).
 mod actions;
 mod archives;
+mod backup;
 mod collaborators;
 mod credential_epochs;
 mod credential_fence_reads;

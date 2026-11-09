@@ -1,14 +1,12 @@
 //! What a database snapshot says the backup must hold besides itself: every repository and
 //! every stored file a row refers to, with the size and digest the row records for it.
 
-use std::{
-    path::{Path, PathBuf},
-    str::FromStr,
-};
+use std::path::{Path, PathBuf};
 
-use anyhow::Context;
 use rbit_core::{AccountId, RepoId, lfs::LfsOid};
-use sqlx::{ConnectOptions, Connection, SqliteConnection, sqlite::SqliteConnectOptions};
+use sqlx::{Connection, SqliteConnection};
+
+use super::{BackupError, read_only};
 
 /// The kinds of stored file, each with its own rows and directory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,13 +71,8 @@ pub struct Inventory {
     pub blobs: Vec<Blob>,
 }
 
-pub async fn read_only(snapshot: &Path) -> anyhow::Result<SqliteConnection> {
-    let options = rbit_storage::sqlite::writer_compatibility::register(SqliteConnectOptions::from_str("sqlite:")?);
-    options.filename(snapshot).read_only(true).connect().await.with_context(|| format!("cannot open {}", snapshot.display()))
-}
-
 /// Reads the inventory of the snapshot at `snapshot`, of the kinds backup format `format` holds.
-pub async fn read(snapshot: &Path, format: u32) -> anyhow::Result<Inventory> {
+pub async fn read(snapshot: &Path, format: u32) -> Result<Inventory, BackupError> {
     let mut connection = read_only(snapshot).await?;
     let accounts: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM accounts").fetch_one(&mut connection).await?;
     let rows: Vec<(i64, i64)> = sqlx::query_as("SELECT id, owner_id FROM repositories ORDER BY id").fetch_all(&mut connection).await?;
@@ -96,7 +89,7 @@ pub async fn read(snapshot: &Path, format: u32) -> anyhow::Result<Inventory> {
         let objects: Vec<(String, i64)> =
             sqlx::query_as("SELECT oid, size FROM lfs_objects ORDER BY oid").fetch_all(&mut connection).await?;
         for (oid, size) in objects {
-            let parsed = LfsOid::parse(&oid).with_context(|| format!("invalid LFS object id {oid:?}"))?;
+            let parsed = LfsOid::parse(&oid).map_err(|error| BackupError::LfsOid(oid.clone(), error))?;
             let (first, second) = parsed.shards();
             let digest = (0..32).map(|i| u8::from_str_radix(&oid[i * 2..i * 2 + 2], 16)).collect::<Result<Vec<u8>, _>>()?;
             let path = Path::new("lfs").join(first).join(second).join(parsed.as_str());
@@ -115,14 +108,14 @@ pub async fn read(snapshot: &Path, format: u32) -> anyhow::Result<Inventory> {
     })
 }
 
-async fn has_table(connection: &mut SqliteConnection, name: &str) -> anyhow::Result<bool> {
+pub(super) async fn has_table(connection: &mut SqliteConnection, name: &str) -> Result<bool, BackupError> {
     Ok(sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?)")
         .bind(name)
         .fetch_one(connection)
         .await?)
 }
 
-async fn read_actions(connection: &mut SqliteConnection, blobs: &mut Vec<Blob>) -> anyhow::Result<()> {
+async fn read_actions(connection: &mut SqliteConnection, blobs: &mut Vec<Blob>) -> Result<(), BackupError> {
     let actions = Path::new("actions");
     let artifacts: Vec<(i64, i64, i64, Vec<u8>)> =
         sqlx::query_as("SELECT run_id, id, size, sha256 FROM actions_artifacts ORDER BY id").fetch_all(&mut *connection).await?;

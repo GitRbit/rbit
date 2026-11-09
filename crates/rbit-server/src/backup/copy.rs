@@ -10,9 +10,11 @@ use std::{
 use anyhow::{Context, bail};
 use rbit_core::{AccountId, RepoId};
 use rbit_git::RepositoryStorage;
+use rbit_storage::sqlite::backup::{
+    inventory::{Blob, Kind},
+    prune::Missing,
+};
 use tokio::{process::Command, sync::Semaphore, task::JoinSet};
-
-use super::inventory::{Blob, Kind};
 
 /// Repositories copied at the same time.
 const COPY_CONCURRENCY: usize = 4;
@@ -103,6 +105,20 @@ impl CopiedBlobs {
         } else if !counter.missing.contains(&id()) {
             counter.missing.push(id());
         }
+    }
+}
+
+/// What the snapshot must leave out: everything the copies above reported missing, and
+/// the repositories whose wiki store vanished.
+pub fn missing<'a>(repositories: &'a Copied, blobs: &'a CopiedBlobs, wikis: &'a [i64]) -> Missing<'a> {
+    Missing {
+        repositories: &repositories.missing,
+        wikis,
+        attachments: &blobs.attachments.missing,
+        lfs_objects: &blobs.lfs.missing,
+        artifacts: &blobs.artifacts.missing,
+        caches: &blobs.caches.missing,
+        logs: &blobs.logs.missing,
     }
 }
 

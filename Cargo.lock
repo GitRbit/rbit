@@ -4520,7 +4520,6 @@ dependencies = [
  "rbit-ssh",
  "rbit-storage",
  "rbit-web",
- "rbit-wikis",
  "reqwest",
  "semver",
  "serde",

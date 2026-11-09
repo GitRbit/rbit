@@ -53,31 +53,26 @@
 //!
 //! The redb key/value store is **not** backed up: it holds only login sessions and
 //! rebuildable caches. After a restore, users sign in again and caches refill on demand.
+//!
+//! Every database decision (the snapshot, its inventory, pruning, the wiki catalog and
+//! the format) belongs to [`rbit_storage::sqlite::backup`]; this module composes it with
+//! the file, Git and wiki-object copies and the durable manifest.
 
-use std::{
-    path::{Path, PathBuf},
-    str::FromStr,
-};
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
 use rbit_core::Config;
 use rbit_git::RepositoryStorage;
+pub use rbit_storage::sqlite::backup::FORMAT_VERSION;
+use rbit_storage::sqlite::backup::{inventory, prune, snapshot_into};
 use serde::{Deserialize, Serialize};
-use sqlx::{ConnectOptions, Connection, sqlite::SqliteConnectOptions};
 
 use self::durable::{create_private_dir, create_private_file, write_private};
 
 mod copy;
 mod durable;
-mod inventory;
-mod prune;
 pub mod restore;
 mod wikis;
-
-/// Bumped whenever the layout of a backup directory changes (2: release attachments,
-/// 3: Git LFS objects, 4: the secret key file, 5: Actions artifacts, caches and logs,
-/// 6: repository wiki objects).
-pub const FORMAT_VERSION: u32 = 6;
 /// The secret key file's name inside the backup, as in the data directory.
 const SECRET_KEY_FILE: &str = "secret.key";
 
@@ -172,7 +167,7 @@ pub async fn create(config: &Config, output: &Path) -> anyhow::Result<Manifest> 
     let snapshot = output.join("rbit.db");
     // `VACUUM INTO` accepts an empty file, so the snapshot is private from the start.
     drop(create_private_file(&snapshot).await?);
-    snapshot_database(&source, &snapshot).await?;
+    snapshot_into(&source, &snapshot).await?;
     let inventory = inventory::read(&snapshot, FORMAT_VERSION).await?;
     tracing::info!(
         accounts = inventory.accounts,
@@ -185,15 +180,10 @@ pub async fn create(config: &Config, output: &Path) -> anyhow::Result<Manifest> 
     let target = RepositoryStorage::new(output.join("repositories"));
     let repositories = copy::copy_repositories(&config.repository.git_binary, &storage, &target, &inventory.repositories).await?;
     let blobs = copy::copy_blobs(&config.storage.data_dir, output, &inventory.blobs).await?;
-    let listed = {
-        let mut connection = inventory::read_only(&snapshot).await?;
-        let listed = wikis::read(&mut connection).await?;
-        sqlx::Connection::close(connection).await?;
-        listed
-    };
+    let listed = rbit_storage::sqlite::backup::wikis::read(&snapshot).await?;
     let wikis = wikis::copy(&config.storage.data_dir, output, listed).await?;
     let secret_key = copy_secret_key(config, &output.join(SECRET_KEY_FILE)).await?;
-    prune::prune(&snapshot, &repositories, &blobs, &wikis.missing).await?;
+    prune::prune(&snapshot, &copy::missing(&repositories, &blobs, &wikis.missing)).await?;
     let (_, database_digest) = rbit_services::file_digest::sha256(&snapshot).await?;
     let actions_key = config.actions.secrets_key_path(&config.storage);
 
@@ -226,22 +216,6 @@ pub async fn create(config: &Config, output: &Path) -> anyhow::Result<Manifest> 
     durable::sync_tree(output).await?;
     durable::publish(&output.join("manifest.json"), &serde_json::to_vec_pretty(&manifest)?).await?;
     Ok(manifest)
-}
-
-/// `VACUUM INTO`: a consistent, compacted copy of the live database. Opened without
-/// running migrations, so backing up never changes the source.
-async fn snapshot_database(source: &Path, snapshot: &Path) -> anyhow::Result<()> {
-    let target = snapshot.to_str().context("the backup path must be valid UTF-8")?;
-    let mut connection = rbit_storage::sqlite::writer_compatibility::register(SqliteConnectOptions::from_str("sqlite:")?)
-        .filename(source)
-        .create_if_missing(false)
-        .busy_timeout(std::time::Duration::from_secs(30))
-        .connect()
-        .await
-        .with_context(|| format!("cannot open {}", source.display()))?;
-    sqlx::query("VACUUM INTO ?").bind(target).execute(&mut connection).await.context("VACUUM INTO failed")?;
-    connection.close().await?;
-    Ok(())
 }
 
 /// Copies the secret key file into the backup if it lives in the data directory; returns
