@@ -313,7 +313,7 @@ mod tests {
         assert_eq!(english.localized(WikiMessage::SearchCount { count: 1, query: "a" }).as_str(), "1 page matches “a”");
         assert_eq!(english.localized(WikiMessage::Revision { generation: 3 }).as_str(), "Revision 3");
         assert_eq!(Catalog::new(Locale::Spanish).localized(WikiMessage::Save).as_str(), "Guardar página");
-        assert!(Catalog::new(Locale::German).localized(WikiMessage::Save).fallback());
+        assert!(!Catalog::new(Locale::German).localized(WikiMessage::Save).fallback());
         assert_eq!(WikiMessage::Revision { generation: 3 }.id(), "wiki.history.revision");
     }
 }

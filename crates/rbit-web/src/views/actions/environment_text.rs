@@ -86,6 +86,6 @@ mod tests {
         let spanish = UiText::new(Locale::Spanish).protection(&protected);
         assert!(!spanish.fallback);
         assert_eq!(spanish.pieces.iter().map(|piece| piece.text.as_str()).collect::<String>(), "1 revisor · ramas protegidas");
-        assert!(UiText::new(Locale::German).protection(&protected).fallback);
+        assert!(!UiText::new(Locale::German).protection(&protected).fallback);
     }
 }
