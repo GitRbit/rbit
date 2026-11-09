@@ -115,4 +115,6 @@ where
 }
 
 #[cfg(test)]
+mod slot_tests;
+#[cfg(test)]
 mod tests;

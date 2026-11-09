@@ -141,7 +141,7 @@ pub trait RichFamily: Copy {
 }
 
 /// Formats `message` in `locale`, falling back to English.
-pub(super) fn render<M: RichFamily>(locale: Locale, message: M) -> Rich {
+pub(crate) fn render<M: RichFamily>(locale: Locale, message: M) -> Rich {
     if !matches!(locale, Locale::English | Locale::PseudoExpanded | Locale::PseudoRtl) {
         let mut translated = RichWriter::new(Catalog::new(locale));
         if message.translate(locale, &mut translated) {
