@@ -51,13 +51,10 @@ use tokio::sync::{Notify, Semaphore};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{CreateRepository, PushService, RepoContext, RepositoryService, ServiceContext, ServiceError};
+use rbit_repositories::mirrors::{DUE_BATCH, adopted_branch, checked_interval, needs_default_branch};
+pub use rbit_repositories::mirrors::{MAX_CONCURRENT_FETCHES, MirrorPhase, PUSH_REFUSED, SCHEDULER_TICK};
 
-/// How often the scheduler looks for due mirrors.
-pub const SCHEDULER_TICK: Duration = Duration::from_secs(30);
-/// Fetches running at the same time, instance-wide.
-pub const MAX_CONCURRENT_FETCHES: usize = 2;
-/// Due mirrors picked up per scheduler pass.
-const BATCH: u32 = 16;
+mod port;
 /// How long [`MirrorService::shutdown`] waits for running fetches.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 /// Bound for asking the upstream for its default branch.
@@ -72,18 +69,6 @@ pub struct CreateMirror {
     pub url: String,
     /// `None` for `[mirrors] default_interval_minutes`.
     pub interval_minutes: Option<u64>,
-}
-
-/// What a Git client is told when it pushes to a mirror.
-pub const PUSH_REFUSED: &str = "This repository is a mirror; push to its upstream instead";
-
-/// The current stage of an active fetch. Transfer sizes are not available from Git,
-/// so callers should show an indeterminate indicator rather than a percentage.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MirrorPhase {
-    Connecting,
-    Fetching,
-    Finalizing,
 }
 
 #[derive(Debug, Clone)]
@@ -143,12 +128,7 @@ impl MirrorService {
     }
 
     fn checked_interval(&self, minutes: Option<u64>) -> Result<u64, ServiceError> {
-        let minutes = minutes.unwrap_or_else(|| self.default_interval_minutes());
-        let min = self.min_interval_minutes();
-        if minutes < min || minutes > 60 * 24 * 365 {
-            return Err(ServiceError::Invalid(format!("the interval must be between {min} minutes and a year")));
-        }
-        Ok(minutes)
+        checked_interval(minutes, self.default_interval_minutes(), self.min_interval_minutes()).map_err(ServiceError::Invalid)
     }
 
     /// Checks that every address of the upstream's host is public (unless private
@@ -230,24 +210,7 @@ impl MirrorService {
     /// Fetches mirror `repo` now and records the outcome. Errors that concern the
     /// upstream (unreachable, refused address, Git failure) are recorded, not returned.
     pub async fn sync(&self, repo: RepoId) -> Result<(), ServiceError> {
-        let Some(mirror) = self.store().find(repo).await? else { return Ok(()) };
-        let Some(context) = RepoContext::load_for_system(&self.inner.ctx, repo).await? else { return Ok(()) };
-        if context.repo.repo.is_archived() {
-            // Archived mirrors are frozen: they fetch again once unarchived.
-            return Ok(());
-        }
-        // Clear transient progress on success, errors and cancellation alike.
-        let _progress = ActiveProgress { phases: &self.inner.phases, repo };
-        lock(&self.inner.phases).insert(repo, MirrorPhase::Connecting);
-        let outcome = self.fetch(&context, &mirror).await;
-        let error = outcome.as_ref().err().map(ToString::to_string);
-        match &error {
-            None => tracing::info!(repo = %context.repo.full_name(), "mirror fetched"),
-            Some(error) => tracing::warn!(repo = %context.repo.full_name(), %error, "mirror fetch failed"),
-        }
-        metrics::counter!("rbit_mirror_fetches_total", "outcome" => if error.is_none() { "ok" } else { "error" }).increment(1);
-        self.store().record_sync(repo, Timestamp::now(), error.as_deref()).await?;
-        Ok(())
+        rbit_repositories::mirrors::sync(&port::SyncView(self), repo, Timestamp::now).await
     }
 
     async fn fetch(&self, context: &RepoContext, mirror: &Mirror) -> Result<(), String> {
@@ -277,14 +240,12 @@ impl MirrorService {
         let current = &context.repo.repo;
         let Ok(refs) = context.reader.refs().await else { return };
         let branches: Vec<&str> = refs.iter().filter(|r| r.kind == RefKind::Branch).map(|r| r.name.as_str()).collect();
-        if branches.is_empty() || branches.contains(&current.default_branch.as_str()) {
+        if !needs_default_branch(&current.default_branch, &branches) {
             return;
         }
         let git = &self.inner.ctx.config.repository.git_binary;
         let upstream = upstream_default_branch(git, mirror.url.as_str(), Some(resolution), HEAD_TIMEOUT).await.ok().flatten();
-        let Some(branch) = upstream.filter(|b| branches.contains(&b.as_str())).or_else(|| branches.first().map(|b| (*b).to_owned())) else {
-            return;
-        };
+        let Some(branch) = adopted_branch(&branches, upstream) else { return };
         let settings = RepoGeneralSettings {
             description: current.description.clone(),
             visibility: current.visibility,
@@ -337,7 +298,7 @@ impl MirrorService {
 
     /// Starts a fetch for every due mirror that is not already being fetched.
     async fn start_due(&self) -> Result<(), ServiceError> {
-        for mirror in self.store().due(Timestamp::now(), BATCH).await? {
+        for mirror in self.store().due(Timestamp::now(), DUE_BATCH).await? {
             let repo = mirror.repo_id;
             if !lock(&self.inner.running).insert(repo) {
                 continue;
@@ -363,17 +324,6 @@ impl MirrorService {
             });
         }
         Ok(())
-    }
-}
-
-struct ActiveProgress<'a> {
-    phases: &'a Mutex<HashMap<RepoId, MirrorPhase>>,
-    repo: RepoId,
-}
-
-impl Drop for ActiveProgress<'_> {
-    fn drop(&mut self) {
-        lock(self.phases).remove(&self.repo);
     }
 }
 

@@ -48,7 +48,6 @@ use std::{
     time::Duration,
 };
 
-use base64::{Engine, engine::general_purpose::STANDARD};
 use rbit_core::{
     RepoId, Timestamp, User,
     push_mirror::{MAX_PUSH_MIRRORS, PushMirror, PushMirrorId, PushMirrorUrl, validate_secret, validate_username},
@@ -59,17 +58,13 @@ use tokio::sync::{Notify, Semaphore, broadcast::error::RecvError};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{DomainEvent, RepoContext, ServiceContext, ServiceError, outbound::check_public_host};
+use base64::{Engine, engine::general_purpose::STANDARD};
+use rbit_repositories::push_mirrors::{DUE_BATCH, RemoteOrigin, after, credentials, limit_error, secret_must_be_entered_again};
+pub use rbit_repositories::push_mirrors::{MAX_CONCURRENT_PUSHES, SCHEDULER_TICK};
 
-/// How often the scheduler looks for due mirrors.
-pub const SCHEDULER_TICK: Duration = Duration::from_secs(30);
-/// Pushes running at the same time, instance-wide.
-pub const MAX_CONCURRENT_PUSHES: usize = 2;
-/// Due mirrors picked up per scheduler pass.
-const BATCH: u32 = 16;
+mod port;
 /// How long [`PushMirrorService::shutdown`] waits for running pushes.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
-/// The user name sent when none is configured.
-const DEFAULT_USERNAME: &str = "git";
 
 /// Raw push mirror form input.
 #[derive(Debug, Clone, Default)]
@@ -164,8 +159,8 @@ impl PushMirrorService {
     pub async fn create(&self, repo: &RepoContext, actor: &User, input: &PushMirrorInput) -> Result<PushMirror, ServiceError> {
         self.require_admin(repo)?;
         let repo_id = repo.repo.repo.id;
-        if self.store().count(repo_id).await? >= u64::try_from(MAX_PUSH_MIRRORS).unwrap_or(u64::MAX) {
-            return Err(ServiceError::Invalid(format!("a repository can push to at most {MAX_PUSH_MIRRORS} mirrors")));
+        if let Some(error) = limit_error(self.store().count(repo_id).await?, MAX_PUSH_MIRRORS) {
+            return Err(ServiceError::Invalid(error));
         }
         let url = self.validated(input).await?;
         let mirror = self
@@ -191,8 +186,9 @@ impl PushMirrorService {
         let repo_id = repo.repo.repo.id;
         let current = self.store().find(repo_id, id).await?.ok_or(ServiceError::NotFound)?;
         let url = self.validated(input).await?;
-        if current.has_secret && input.secret.is_empty() && !same_origin(&current.url, &url, self.config().allow_local_urls) {
-            return Err(ServiceError::Invalid("the remote moved to another host; enter the password or token again for it".to_owned()));
+        let same = same_origin(&current.url, &url, self.config().allow_local_urls);
+        if let Some(error) = secret_must_be_entered_again(current.has_secret, !input.secret.is_empty(), same) {
+            return Err(ServiceError::Invalid(error.to_owned()));
         }
         let changes = PushMirrorChanges {
             url: url.as_str(),
@@ -233,33 +229,15 @@ impl PushMirrorService {
     /// Pushes mirror `id` now and records the outcome. Errors that concern the remote
     /// (unreachable, refused address, rejected credentials) are recorded, not returned.
     pub async fn push(&self, id: PushMirrorId) -> Result<(), ServiceError> {
-        let Some(target) = self.store().target(id).await? else { return Ok(()) };
-        let next = Timestamp(Timestamp::now().seconds().saturating_add(i64::try_from(self.interval_minutes() * 60).unwrap_or(i64::MAX)));
-        self.store().claim(id, next).await?;
-        let Some(context) = RepoContext::load_for_system(&self.inner.ctx, target.mirror.repo_id).await? else { return Ok(()) };
-        if context.repo.repo.is_archived() {
-            // Archived since it was picked: it resumes once the repository is unarchived.
-            return Ok(());
-        }
-        let outcome = self.attempt(&context, &target).await;
-        let error = outcome.err();
-        match &error {
-            None => tracing::info!(repo = %context.repo.full_name(), mirror = id.0, "push mirror updated"),
-            Some(error) => tracing::warn!(repo = %context.repo.full_name(), mirror = id.0, %error, "push mirror failed"),
-        }
-        metrics::counter!("rbit_push_mirror_pushes_total", "outcome" => if error.is_none() { "ok" } else { "error" }).increment(1);
-        self.store().record_attempt(id, Timestamp::now(), error.as_deref()).await?;
-        Ok(())
+        rbit_repositories::push_mirrors::push(&port::PushView(self), id, self.interval_minutes(), Timestamp::now).await
     }
 
     async fn attempt(&self, context: &RepoContext, target: &PushTarget) -> Result<(), String> {
         let config = self.config();
         let url = PushMirrorUrl::parse(&target.mirror.url, config.allow_local_urls).map_err(|e| e.to_string())?;
         let resolution = self.check_remote(&url).await?;
-        let authorization = target.secret.as_deref().map(|secret| {
-            let username = Some(target.mirror.username.as_str()).filter(|name| !name.is_empty()).unwrap_or(DEFAULT_USERNAME);
-            basic_authorization(username, secret)
-        });
+        let authorization =
+            credentials(&target.mirror.username, target.secret.as_deref()).map(|(user, secret)| basic_authorization(user, secret));
         // An empty repository has nothing to mirror yet (git would refuse the push).
         let refs = context.reader.refs().await.map_err(|error| {
             tracing::error!(%error, repo = %context.repo.full_name(), "cannot read refs for a push mirror");
@@ -324,7 +302,7 @@ impl PushMirrorService {
 
     async fn pushed(&self, repo: RepoId) {
         let delay = Duration::from_secs(self.config().debounce_seconds);
-        let at = Timestamp(Timestamp::now().seconds().saturating_add(i64::try_from(delay.as_secs()).unwrap_or(i64::MAX)));
+        let at = after(Timestamp::now(), delay.as_secs());
         match self.store().schedule_after_push(repo, at).await {
             Ok(0) => {}
             Ok(_) => {
@@ -355,7 +333,7 @@ impl PushMirrorService {
 
     /// Starts a push for every due mirror that is not already being pushed.
     async fn start_due(&self) -> Result<(), ServiceError> {
-        for mirror in self.store().due(Timestamp::now(), BATCH).await? {
+        for mirror in self.store().due(Timestamp::now(), DUE_BATCH).await? {
             let id = mirror.id;
             if !lock(&self.inner.running).insert(id) {
                 continue;
@@ -384,18 +362,21 @@ impl PushMirrorService {
     }
 }
 
-/// Whether the stored URL `stored` and `url` share a scheme, host and port: the stored
-/// secret may follow an edit only within one origin. Local (`file://`) URLs are their own
-/// origin, so any change to one counts.
+/// Whether the stored URL `stored` and `url` share an origin (see
+/// [`rbit_repositories::push_mirrors::same_origin`]); an unreadable stored URL never does.
 fn same_origin(stored: &str, url: &PushMirrorUrl, allow_local: bool) -> bool {
-    let Ok(stored) = PushMirrorUrl::parse(stored, allow_local) else { return false };
-    match (stored.remote(), url.remote()) {
-        (Some(old), Some(new)) => {
-            let scheme = |url: &str| url.get(..8).is_some_and(|prefix| prefix.eq_ignore_ascii_case("https://"));
-            scheme(old.as_str()) == scheme(new.as_str()) && old.host().eq_ignore_ascii_case(new.host()) && old.port() == new.port()
-        }
-        (None, None) => stored.as_str() == url.as_str(),
-        _ => false,
+    let stored = PushMirrorUrl::parse(stored, allow_local).ok();
+    rbit_repositories::push_mirrors::same_origin(stored.as_ref().map(origin), origin(url))
+}
+
+fn origin(url: &PushMirrorUrl) -> RemoteOrigin<'_> {
+    match url.remote() {
+        Some(remote) => RemoteOrigin::Network {
+            https: remote.as_str().get(..8).is_some_and(|prefix| prefix.eq_ignore_ascii_case("https://")),
+            host: remote.host(),
+            port: remote.port(),
+        },
+        None => RemoteOrigin::Local(url.as_str()),
     }
 }
 
