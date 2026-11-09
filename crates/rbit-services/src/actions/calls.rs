@@ -35,7 +35,7 @@ use rbit_workflow::{
 use serde_json::{Map, Value, json};
 use tokio::runtime::Handle;
 
-use super::{ActionsService, triggers::read_workflow_file};
+use super::{ActionsService, workflow_files::GitWorkflows};
 use crate::{
     RepoContext, ServiceError,
     audit::{AuditAction, AuditEntry},
@@ -98,7 +98,7 @@ impl<'a> CallLoader<'a> {
 
     fn read(&mut self, repo: RepoId, sha: &str, path: &str, shown: &str) -> Result<Loaded, String> {
         let reader = self.reader_of(repo).ok_or_else(|| unavailable(shown))?;
-        let workflow = read_workflow_file(self.handle, &reader, sha, path, self.limits, self.deadline).map_err(|error| {
+        let workflow = GitWorkflows::new(self.handle, &reader, sha).load(path, self.limits, self.deadline).map_err(|error| {
             // A file that is not there reads like a repository that may not be called.
             if error.to_string().contains("could not be read") { unavailable(shown) } else { format!("`{shown}`: {error}") }
         })?;

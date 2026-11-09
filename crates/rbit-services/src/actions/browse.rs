@@ -217,7 +217,7 @@ impl ActionsService {
         let repo_id = repo.repo.repo.id;
         let reference = format!("refs/heads/{}", branch.unwrap_or(&repo.repo.repo.default_branch));
         let mut label = None;
-        for dir in super::triggers::WORKFLOW_DIRS {
+        for dir in rbit_workflow::discovery::WORKFLOW_DIRS {
             let path = format!("{dir}/{workflow}");
             let filter = RunFilter {
                 workflow_path: Some(&path),

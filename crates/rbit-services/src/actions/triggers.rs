@@ -9,9 +9,9 @@
 //!   repository, spawns the evaluation.
 //! * Only people and their deploy keys start runs ([`PushSource::starts_runs`], §11.2):
 //!   mirror fetches, imports, task pushes and rbit's own ref changes never do.
-//! * Discovery: at the pushed commit, the first existing of [`WORKFLOW_DIRS`]; at most
-//!   [`MAX_WORKFLOW_FILES`] `*.yml`/`*.yaml` files directly in it, each within
-//!   `[actions] max_workflow_bytes`. A skip marker in the head commit message skips the
+//! * Discovery ([`rbit_workflow::discovery`]): at the pushed commit, the first existing of
+//!   its workflow directories; at most its cap of `*.yml`/`*.yaml` files directly in it,
+//!   each within `[actions] max_workflow_bytes`, read through [`GitWorkflows`]. A skip marker in the head commit message skips the
 //!   push's runs. At most [`MAX_REF_UPDATES`] updated refs of one push are considered, one
 //!   run per workflow and ref.
 //! * Evaluation holds a permit of the evaluation semaphore until its blocking work returns,
@@ -38,7 +38,6 @@
 use std::{
     collections::HashMap,
     iter,
-    path::Path,
     sync::{Arc, atomic::Ordering},
     time::Duration,
 };
@@ -49,9 +48,10 @@ use rbit_core::{
     issue::IssueAction,
     repository::OwnedRepository,
 };
-use rbit_git::{CommitSummary, DiffLimits, EntryKind, GitError, RefUpdate, RepositoryReader};
+use rbit_git::{CommitSummary, DiffLimits, RefUpdate, RepositoryReader};
 use rbit_workflow::{
-    Deadline, ErrorKind, Event, GroupContext, LazyPaths, Limits, Loader, Workflow, WorkflowError,
+    Deadline, Event, GroupContext, LazyPaths, Limits, Loader, WorkflowError,
+    discovery::{self, WorkflowFile, describe},
     model::ActivityType,
     trigger::{ChangedPaths, has_skip_marker},
 };
@@ -64,14 +64,11 @@ use super::{
     ActionsService,
     calls::CallLoader,
     context,
-    runs::{Candidate, Plan, Problem, Trigger},
+    runs::{Candidate, Problem, Trigger},
+    workflow_files::GitWorkflows,
 };
 use crate::{DomainEvent, ServiceError};
 
-/// Where workflows live, in precedence order: only the first that exists is read.
-pub const WORKFLOW_DIRS: [&str; 3] = [".rbit/workflows", ".forgejo/workflows", ".github/workflows"];
-/// Most workflow files read from the directory.
-pub const MAX_WORKFLOW_FILES: usize = 64;
 /// Updated refs of one push that are considered.
 pub const MAX_REF_UPDATES: usize = 16;
 /// Changed paths listed for `paths` filters; beyond it, `paths` filters pass (as on GitHub).
@@ -80,24 +77,6 @@ pub const MAX_CHANGED_PATHS: usize = 3_000;
 pub const EVALUATION_BUDGET: Duration = Duration::from_secs(10);
 /// Commits listed in a push run's event payload, as in the `push` webhook.
 const PAYLOAD_COMMITS: usize = 20;
-
-/// A workflow file read at a commit.
-#[derive(Debug)]
-pub struct WorkflowFile {
-    /// `.forgejo/workflows/ci.yml`.
-    pub path: String,
-    pub parsed: Result<Workflow, WorkflowError>,
-}
-
-impl WorkflowFile {
-    /// The workflow's `name`, or its path when it has none (or does not parse).
-    pub fn name(&self) -> String {
-        match &self.parsed {
-            Ok(workflow) => workflow.name.clone().filter(|name| !name.trim().is_empty()).unwrap_or_else(|| self.path.clone()),
-            Err(_) => self.path.clone(),
-        }
-    }
-}
 
 impl ActionsService {
     /// Reads domain events until shutdown (see the module documentation).
@@ -295,7 +274,7 @@ impl ActionsService {
         let (this, caller) = (self.clone(), owned.clone());
         let candidates = self
             .evaluate(move |handle, deadline| {
-                let files = match discover(handle, &reader, &head, &limits, deadline) {
+                let files = match discovery::discover(&mut GitWorkflows::new(handle, &reader, &head), &limits, deadline) {
                     Ok(files) => files,
                     Err(error) => {
                         tracing::warn!(%error, head, "cannot read the workflows of a pull request head");
@@ -419,7 +398,7 @@ fn evaluate_push(
             continue;
         }
         if !by_commit.contains_key(after) {
-            match discover(handle, reader, after, limits, deadline) {
+            match discovery::discover(&mut GitWorkflows::new(handle, reader, after), limits, deadline) {
                 Ok(files) => {
                     by_commit.insert(after.clone(), files);
                 }
@@ -459,86 +438,6 @@ fn message(commit: &CommitSummary) -> String {
     }
 }
 
-/// Blocking: the workflow files of commit `sha`, parsed (see the module documentation).
-pub(super) fn discover(
-    handle: &Handle,
-    reader: &RepositoryReader,
-    sha: &str,
-    limits: &Limits,
-    deadline: &Deadline,
-) -> Result<Vec<WorkflowFile>, GitError> {
-    Ok(workflow_paths(handle, reader, sha)?
-        .into_iter()
-        .map(|path| {
-            let parsed = read_workflow_file(handle, reader, sha, &path, limits, deadline);
-            WorkflowFile { path, parsed }
-        })
-        .collect())
-}
-
-// Actions: dispatch form.
-/// Blocking: the first workflow file of commit `sha` whose path `wanted` accepts, parsed,
-/// among the files [`discover`] reads; the others are not read.
-pub(super) fn discover_one(
-    handle: &Handle,
-    reader: &RepositoryReader,
-    sha: &str,
-    wanted: impl Fn(&str) -> bool,
-    limits: &Limits,
-    deadline: &Deadline,
-) -> Result<Option<WorkflowFile>, GitError> {
-    Ok(workflow_paths(handle, reader, sha)?.into_iter().find(|path| wanted(path)).map(|path| {
-        let parsed = read_workflow_file(handle, reader, sha, &path, limits, deadline);
-        WorkflowFile { path, parsed }
-    }))
-}
-
-/// Blocking: the paths of the workflow files of commit `sha`, by name: the YAML files of the
-/// first of [`WORKFLOW_DIRS`] that exists, at most [`MAX_WORKFLOW_FILES`].
-fn workflow_paths(handle: &Handle, reader: &RepositoryReader, sha: &str) -> Result<Vec<String>, GitError> {
-    for dir in WORKFLOW_DIRS {
-        let tree = match handle.block_on(reader.tree(sha.to_owned(), dir.to_owned())) {
-            Ok(tree) => tree,
-            Err(GitError::NotFound(_)) => continue,
-            Err(error) => return Err(error),
-        };
-        let mut names: Vec<String> = tree
-            .entries
-            .into_iter()
-            .filter(|entry| matches!(entry.kind, EntryKind::File | EntryKind::Executable))
-            .map(|entry| entry.name)
-            .filter(|name| Path::new(name).extension().is_some_and(|extension| extension == "yml" || extension == "yaml"))
-            .collect();
-        names.sort();
-        if names.len() > MAX_WORKFLOW_FILES {
-            tracing::warn!(dir, files = names.len(), "only the first {MAX_WORKFLOW_FILES} workflow files are read");
-            names.truncate(MAX_WORKFLOW_FILES);
-        }
-        return Ok(names.into_iter().map(|name| format!("{dir}/{name}")).collect());
-    }
-    Ok(Vec::new())
-}
-
-// Actions: reusable workflows. Also what a called workflow is read with.
-pub(super) fn read_workflow_file(
-    handle: &Handle,
-    reader: &RepositoryReader,
-    sha: &str,
-    path: &str,
-    limits: &Limits,
-    deadline: &Deadline,
-) -> Result<Workflow, WorkflowError> {
-    deadline.check()?;
-    let blob = handle.block_on(reader.blob(sha.to_owned(), path.to_owned(), limits.max_bytes)).map_err(|error| {
-        tracing::warn!(%error, path, "cannot read a workflow file");
-        WorkflowError::new(ErrorKind::Parse, "the file could not be read")
-    })?;
-    let Some(data) = blob.data else {
-        return Err(WorkflowError::limit(format!("the file is larger than {} bytes", limits.max_bytes), None));
-    };
-    rbit_workflow::parse(&data, limits, deadline)
-}
-
 /// Blocking: the paths changed from `base` to `head`, with both sides of renames; `None`
 /// without a base, when the comparison fails, or beyond [`MAX_CHANGED_PATHS`] — then
 /// `paths` filters pass.
@@ -560,8 +459,8 @@ pub(super) fn changed_paths(handle: &Handle, reader: &RepositoryReader, base: Op
     Some(comparison.files.into_iter().flat_map(|file| iter::once(file.path).chain(file.old_path)).collect())
 }
 
-/// What each workflow of `files` makes of `event`: workflows it starts are planned, files
-/// that do not parse are reported.
+/// What each workflow of `files` makes of `event` ([`discovery::evaluate`]), with problems
+/// as workflow-error runs record them.
 pub(super) fn candidates(
     files: &[WorkflowFile],
     event: &Event<'_>,
@@ -571,70 +470,20 @@ pub(super) fn candidates(
     deadline: &Deadline,
     loader: &mut dyn Loader,
 ) -> Vec<Candidate> {
-    let mut candidates = Vec::new();
-    for file in files {
-        let outcome = match &file.parsed {
-            Err(error) => Err(problem(&file.path, error)),
-            Ok(workflow) if rbit_workflow::matches(workflow, event, changed) => {
-                plan_workflow(workflow, &file.name(), &file.path, group, limits, deadline, loader)
-                    .map_err(|error| problem(&file.path, &error))
-            }
-            Ok(_) => continue,
-        };
-        candidates.push(Candidate { path: file.path.clone(), name: file.name(), outcome });
-    }
-    candidates
-}
-
-/// A workflow error as the run shows it: the file, then the problem and where it is.
-pub(super) fn describe(path: &str, error: &WorkflowError) -> String {
-    format!("{path}: {error}")
+    discovery::evaluate(files, event, changed, group, limits, deadline, loader)
+        .into_iter()
+        .map(|evaluated| Candidate {
+            outcome: evaluated.outcome.map_err(|error| problem(&evaluated.path, &error)),
+            path: evaluated.path,
+            name: evaluated.name,
+        })
+        .collect()
 }
 
 // Actions: metrics.
 /// `error` of the workflow at `path` as a workflow-error run records it.
 pub(super) fn problem(path: &str, error: &WorkflowError) -> Problem {
     Problem { reason: error.kind, message: describe(path, error) }
-}
-
-/// Plans `workflow` (named `name`, at `path`) for an event described by `group`.
-pub(super) fn plan_workflow(
-    workflow: &Workflow,
-    name: &str,
-    path: &str,
-    group: &GroupContext,
-    limits: &Limits,
-    deadline: &Deadline,
-    loader: &mut dyn Loader,
-) -> Result<Plan, WorkflowError> {
-    let context = GroupContext { workflow: name.to_owned(), workflow_path: path.to_owned(), run_id: 0, ..group.clone() };
-    let mut jobs = rbit_workflow::plan_with(workflow, &context.run_context(), limits, deadline, loader)?;
-    // A group naming `github.run_id` or `github.run_number` is unique to its run: it never
-    // waits for or cancels another, so it is no group at all. Neither is known before the
-    // run exists, so evaluating again with other values tells.
-    let other_run = {
-        let mut other = GroupContext { run_id: 1, ..context.clone() }.run_context();
-        other.github.insert("run_number".to_owned(), serde_json::Value::String("1".to_owned()));
-        other
-    };
-    let concurrency = match rbit_workflow::concurrency_group(workflow, &context.run_context())? {
-        Some((group, cancel)) => match rbit_workflow::concurrency_group(workflow, &other_run)? {
-            Some((other, _)) if other == group => Some((group, cancel)),
-            _ => None,
-        },
-        None => None,
-    };
-    if jobs.iter().any(|job| job.concurrency.is_some())
-        && let Ok(others) = rbit_workflow::plan_with(workflow, &other_run, limits, deadline, loader)
-    {
-        for (job, other) in jobs.iter_mut().zip(&others) {
-            let group = job.concurrency.as_ref().map(|concurrency| &concurrency.group);
-            if job.job_id == other.job_id && group != other.concurrency.as_ref().map(|concurrency| &concurrency.group) {
-                job.concurrency = None;
-            }
-        }
-    }
-    Ok(Plan { jobs, concurrency })
 }
 
 /// The commits a ref update brought, newest first, for the push payload.

@@ -19,19 +19,25 @@
 //!
 //! Workstream T (triggers and runs) owns this file.
 
-use std::{collections::BTreeMap, path::Path};
+use std::collections::BTreeMap;
 
 use rbit_core::{
     User,
     actions::{Run, RunEvent, RunTrust},
 };
-use rbit_git::{EntryKind, GitError, RefKind};
-use rbit_workflow::{Event, GroupContext, model::DispatchInput, trigger::resolve_inputs};
+use rbit_git::{GitError, RefKind};
+use rbit_workflow::{
+    Event, GroupContext,
+    discovery::{self, Discovery, WorkflowFileName, describe},
+    model::DispatchInput,
+    plan::plan_run,
+    trigger::resolve_inputs,
+};
 
 use super::{
     ActionsService, context,
     runs::{Candidate, Trigger},
-    triggers::{MAX_WORKFLOW_FILES, WORKFLOW_DIRS, describe, discover_one, plan_workflow},
+    workflow_files::{GitWorkflows, listing},
 };
 use crate::{RepoContext, ServiceError};
 
@@ -61,8 +67,8 @@ pub struct DispatchForm {
 
 impl ActionsService {
     // Actions: dispatch form.
-    /// The workflow files on `repo`'s default branch, by path, from the first of
-    /// [`WORKFLOW_DIRS`] that exists, as runs read them: what the pages list beside the
+    /// The workflow files on `repo`'s default branch, by path, found as runs find them
+    /// ([`Discovery`]): what the pages list beside the
     /// workflows that ran. Nothing is parsed. Empty for an empty repository.
     pub async fn workflow_paths(&self, repo: &RepoContext) -> Result<Vec<String>, ServiceError> {
         self.require_pages(repo).await?;
@@ -72,22 +78,11 @@ impl ActionsService {
             Err(GitError::NotFound(_)) => return Ok(Vec::new()),
             Err(error) => return Err(error.into()),
         };
-        for dir in WORKFLOW_DIRS {
-            let tree = match repo.reader.tree(sha.clone(), dir.to_owned()).await {
-                Ok(tree) => tree,
-                Err(GitError::NotFound(_)) => continue,
-                Err(error) => return Err(error.into()),
-            };
-            let mut paths: Vec<String> = tree
-                .entries
-                .into_iter()
-                .filter(|entry| matches!(entry.kind, EntryKind::File | EntryKind::Executable))
-                .filter(|entry| Path::new(&entry.name).extension().is_some_and(|extension| extension == "yml" || extension == "yaml"))
-                .map(|entry| format!("{dir}/{}", entry.name))
-                .collect();
-            paths.sort();
-            paths.truncate(MAX_WORKFLOW_FILES);
-            return Ok(paths);
+        let mut discovery = Discovery::new();
+        while let Some(dir) = discovery.next_dir() {
+            if let Some(selected) = discovery.record(listing(repo.reader.tree(sha.clone(), dir.to_owned()).await)?) {
+                return Ok(selected.paths);
+            }
         }
         Ok(Vec::new())
     }
@@ -109,7 +104,8 @@ impl ActionsService {
         let read = self
             .evaluate(move |handle, deadline| {
                 // Only the one file: every writer's view of a workflow page reads it.
-                let found = discover_one(handle, &reader, &sha, |path| file.matches(path), &limits, deadline).map_err(|error| {
+                let mut source = GitWorkflows::new(handle, &reader, &sha);
+                let found = discovery::discover_one(&mut source, |path| file.matches(path), &limits, deadline).map_err(|error| {
                     tracing::warn!(%error, "cannot read the workflow for a dispatch form");
                     "the workflow could not be read".to_owned()
                 })?;
@@ -145,11 +141,11 @@ impl ActionsService {
         let (this, caller) = (self.clone(), owned.clone());
         let evaluated = self
             .evaluate(move |handle, deadline| {
-                let found =
-                    discover_one(handle, &reader, &evaluated_sha, |path| file.matches(path), &limits, deadline).map_err(|error| {
-                        tracing::warn!(%error, "cannot read the workflow to dispatch");
-                        "the workflow could not be read".to_owned()
-                    })?;
+                let mut source = GitWorkflows::new(handle, &reader, &evaluated_sha);
+                let found = discovery::discover_one(&mut source, |path| file.matches(path), &limits, deadline).map_err(|error| {
+                    tracing::warn!(%error, "cannot read the workflow to dispatch");
+                    "the workflow could not be read".to_owned()
+                })?;
                 let Some(found) = found else {
                     return Err(format!("there is no workflow `{}` at this ref", file.shown()));
                 };
@@ -164,7 +160,7 @@ impl ActionsService {
                 };
                 let group = GroupContext { inputs: typed, ..group };
                 let mut loader = super::calls::CallLoader::new(handle, &this, &caller, &reader, &evaluated_sha, &limits, deadline);
-                let plan = plan_workflow(workflow, &found.name(), &found.path, &group, &limits, deadline, &mut loader)
+                let plan = plan_run(workflow, &found.name(), &found.path, &group, &limits, deadline, &mut loader)
                     .map_err(|error| describe(&found.path, &error))?;
                 Ok((Candidate { path: found.path.clone(), name: found.name(), outcome: Ok(plan) }, inputs))
             })
@@ -226,47 +222,9 @@ async fn own_ref(repo: &RepoContext, given: &str) -> Result<String, ServiceError
     Err(refused())
 }
 
-/// The workflow a dispatch names: a file name, or a path inside a workflow directory.
-#[derive(Debug, Clone)]
-struct WorkflowFileName {
-    /// The directory it was given with, if any.
-    dir: Option<&'static str>,
-    name: String,
-}
-
-impl WorkflowFileName {
-    fn matches(&self, path: &str) -> bool {
-        match self.dir {
-            Some(dir) => path.strip_prefix(dir).and_then(|rest| rest.strip_prefix('/')) == Some(self.name.as_str()),
-            None => path.rsplit('/').next() == Some(self.name.as_str()),
-        }
-    }
-
-    fn shown(&self) -> String {
-        match self.dir {
-            Some(dir) => format!("{dir}/{}", self.name),
-            None => self.name.clone(),
-        }
-    }
-}
-
+/// The workflow a dispatch names ([`WorkflowFileName`]), or why it names none.
 fn workflow_file(given: &str) -> Result<WorkflowFileName, ServiceError> {
-    let given = given.trim();
-    let (dir, name) =
-        match WORKFLOW_DIRS.iter().find_map(|dir| given.strip_prefix(dir).and_then(|rest| rest.strip_prefix('/')).map(|rest| (*dir, rest)))
-        {
-            Some((dir, name)) => (Some(dir), name),
-            None => (None, given),
-        };
-    let valid = !name.is_empty()
-        && !name.contains(['/', '\\'])
-        && name != "."
-        && name != ".."
-        && Path::new(name).extension().is_some_and(|extension| extension == "yml" || extension == "yaml");
-    if !valid {
-        return Err(ServiceError::Invalid("name a workflow file, such as ci.yml".to_owned()));
-    }
-    Ok(WorkflowFileName { dir, name: name.to_owned() })
+    WorkflowFileName::parse(given).ok_or_else(|| ServiceError::Invalid("name a workflow file, such as ci.yml".to_owned()))
 }
 
 #[cfg(test)]

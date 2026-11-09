@@ -68,6 +68,7 @@ pub mod tasks;
 pub mod tokens;
 pub mod triggers;
 pub mod trust;
+mod workflow_files;
 
 use std::{
     sync::{

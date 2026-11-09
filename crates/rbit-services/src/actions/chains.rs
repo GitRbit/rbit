@@ -31,7 +31,7 @@ use super::{
     ActionsService, context,
     hooks::{self, RunAction},
     runs::{Candidate, Trigger},
-    triggers::{discover, plan_workflow},
+    workflow_files::GitWorkflows,
 };
 use crate::{
     RepoContext, ServiceError,
@@ -235,7 +235,7 @@ impl ActionsService {
         let (reader, limits, at) = (self.reader(owned), self.limits(), sha.to_owned());
         let (this, caller) = (self.clone(), owned.clone());
         self.evaluate(move |handle, deadline| {
-            let files = match discover(handle, &reader, &at, &limits, deadline) {
+            let files = match rbit_workflow::discovery::discover(&mut GitWorkflows::new(handle, &reader, &at), &limits, deadline) {
                 Ok(files) => files,
                 Err(error) => {
                     tracing::warn!(%error, "cannot read the default branch's workflows");
@@ -247,7 +247,7 @@ impl ActionsService {
                 .filter_map(|file| {
                     let workflow = file.parsed.as_ref().ok().filter(|workflow| wanted(workflow))?;
                     let mut loader = super::calls::CallLoader::new(handle, &this, &caller, &reader, &at, &limits, deadline);
-                    let outcome = plan_workflow(workflow, &file.name(), &file.path, &group, &limits, deadline, &mut loader)
+                    let outcome = rbit_workflow::plan::plan_run(workflow, &file.name(), &file.path, &group, &limits, deadline, &mut loader)
                         .map_err(|error| super::triggers::problem(&file.path, &error));
                     Some(Candidate { path: file.path.clone(), name: file.name(), outcome })
                 })

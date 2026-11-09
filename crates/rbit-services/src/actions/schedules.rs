@@ -31,7 +31,8 @@ use rbit_workflow::{Event, GroupContext, cron::Cron};
 use super::{
     ActionsService, context,
     runs::{Candidate, Trigger},
-    triggers::{discover, plan_workflow, problem},
+    triggers::problem,
+    workflow_files::GitWorkflows,
 };
 use crate::ServiceError;
 
@@ -77,7 +78,7 @@ impl ActionsService {
         let (limits, sha) = (self.limits(), sha.to_owned());
         let found = self
             .evaluate(move |handle, deadline| {
-                let files = discover(handle, &reader, &sha, &limits, deadline)?;
+                let files = rbit_workflow::discovery::discover(&mut GitWorkflows::new(handle, &reader, &sha), &limits, deadline)?;
                 let mut entries = BTreeSet::new();
                 for file in &files {
                     if let Ok(workflow) = &file.parsed {
@@ -178,13 +179,13 @@ impl ActionsService {
         let (this, caller) = (self.clone(), owned.clone());
         let candidate = self
             .evaluate(move |handle, deadline| {
-                let files = discover(handle, &reader, &at, &limits, deadline).ok()?;
+                let files = rbit_workflow::discovery::discover(&mut GitWorkflows::new(handle, &reader, &at), &limits, deadline).ok()?;
                 let file = files.iter().find(|file| file.path == path)?;
                 let outcome = match &file.parsed {
                     Err(error) => Err(problem(&file.path, error)),
                     Ok(workflow) if rbit_workflow::matches(workflow, &Event::Schedule { cron: &cron }, &mut None::<Vec<String>>) => {
                         let mut loader = super::calls::CallLoader::new(handle, &this, &caller, &reader, &at, &limits, deadline);
-                        plan_workflow(workflow, &file.name(), &file.path, &group, &limits, deadline, &mut loader)
+                        rbit_workflow::plan::plan_run(workflow, &file.name(), &file.path, &group, &limits, deadline, &mut loader)
                             .map_err(|error| problem(&file.path, &error))
                     }
                     Ok(_) => return None,

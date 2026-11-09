@@ -1,7 +1,7 @@
 //! Messages of the Actions settings pages that take arguments: the page introductions,
 //! trusted authors, and the secrets and variables sections.
 use rbit_localization::{ActionsSecretsMessage as Secrets, ActionsSettingsMessage as Settings, Localized};
-use rbit_services::actions::triggers::WORKFLOW_DIRS;
+use rbit_workflow::discovery::WORKFLOW_DIRS;
 
 use super::ui_text::{Mark, Rich, SLOTS, UiText};
 use crate::views::{

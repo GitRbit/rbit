@@ -36,6 +36,7 @@ use rbit_storage::sqlite::actions_runs::{NewJob, NewRun, RunStart, Settled};
 use rbit_workflow::{
     ErrorKind,
     model::{Permission, Permissions},
+    plan::RunPlan,
     spec::JobTemplate,
 };
 
@@ -51,14 +52,6 @@ pub const MAX_ERROR_BYTES: usize = 2048;
 const MAX_TEXT_CHARS: usize = 1024;
 /// Longest runner label a job may ask for, in characters.
 const MAX_JOB_LABEL_CHARS: usize = 255;
-
-/// A workflow planned for one event: its jobs and its concurrency group.
-#[derive(Debug, Clone)]
-pub struct Plan {
-    pub jobs: Vec<JobTemplate>,
-    /// The evaluated `concurrency.group` and `cancel-in-progress`.
-    pub concurrency: Option<(String, bool)>,
-}
 
 // Actions: metrics.
 /// Why a workflow has no plan: the error its workflow-error run shows, and its kind (the
@@ -77,7 +70,7 @@ pub struct Candidate {
     /// The workflow's `name`, or its path.
     pub name: String,
     /// The plan, or the error shown on the workflow-error run.
-    pub outcome: Result<Plan, Problem>,
+    pub outcome: Result<RunPlan, Problem>,
 }
 
 /// The event every run it starts shares.

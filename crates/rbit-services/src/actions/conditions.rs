@@ -140,7 +140,7 @@ impl ActionsService {
         let existing = self.ctx().database.actions_runs().jobs(run.id).await?.len();
         let (sha, path, key, limits) = (run.sha.clone(), run.workflow_path.clone(), job.key.clone(), self.limits());
         self.evaluate(move |handle, deadline| {
-            let workflow = super::triggers::read_workflow_file(handle, &reader, &sha, &path, &limits, deadline)?;
+            let workflow = super::workflow_files::GitWorkflows::new(handle, &reader, &sha).load(&path, &limits, deadline)?;
             rbit_workflow::plan::plan_deferred(&workflow, &key, &contexts, existing, &limits, deadline)
         })
         .await

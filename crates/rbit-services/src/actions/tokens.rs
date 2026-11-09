@@ -41,9 +41,6 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, ReadBuf};
 use super::ActionsService;
 use crate::{RepoContext, ServiceError};
 
-/// Where workflows live, in the order rbit looks (§12.1): the directories discovery reads,
-/// so the two never drift. A task may not change them.
-pub const WORKFLOW_DIRECTORIES: [&str; 3] = super::triggers::WORKFLOW_DIRS;
 /// The largest push a task may make, spooled to disk before git sees it.
 pub const MAX_TASK_PUSH_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
@@ -210,7 +207,9 @@ impl ActionsService {
             }
             let mut log = self.git(repo, &objects);
             log.args(["log", "--format=%H", "--name-only", "--diff-merges=dense-combined", after, "--not", "--all", "--"]);
-            log.args(WORKFLOW_DIRECTORIES).stdin(Stdio::null()).stderr(Stdio::piped());
+            // Where workflows live (§12.1): the directories discovery reads, so the two never drift.
+            // A task may not change them.
+            log.args(rbit_workflow::discovery::WORKFLOW_DIRS).stdin(Stdio::null()).stderr(Stdio::piped());
             let output = log.output().await.map_err(ServiceError::internal)?;
             if !output.status.success() {
                 return Err(ServiceError::Invalid(format!("the pushed commits of {} could not be read", update.name)));
