@@ -48,7 +48,10 @@ use rbit_core::{
 use rbit_workflow::{
     protocol::{PollRequest, valid_idempotency_key},
     secret::Secret,
-    spec::{CacheScopes, CheckoutSource, Contexts, JOB_SPEC_VERSION, JobResult, JobSpec, JobTemplate, Needed, RunCacheScope, StepAction, cache_ref_scope},
+    spec::{
+        CacheScopes, CheckoutSource, Contexts, JOB_SPEC_VERSION, JobResult, JobSpec, JobTemplate, Needed, RunCacheScope, StepAction,
+        cache_ref_scope,
+    },
 };
 use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
