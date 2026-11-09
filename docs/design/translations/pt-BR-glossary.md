@@ -42,6 +42,9 @@ locale", for the file layout and typography rules.
 | watch | acompanhar | |
 | clone | clonar | |
 | push / pull (Git) | push / pull; fazer push | |
+| fetch (mirror) | buscar; busca | “Buscar agora”, “última busca”; `git fetch` stays as is |
+| force push | force-push; fazer force-push | |
+| remote | remoto | |
 | tag | tag (f.) | |
 | release | release (f.) | |
 | asset (release) | arquivo da release | |
