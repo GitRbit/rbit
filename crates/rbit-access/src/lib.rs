@@ -13,10 +13,12 @@ mod policy;
 pub mod protection;
 mod repository_access;
 pub mod teams;
+mod token_scope;
 
 pub use organizations::{OrgCreationPolicy, OrgRole};
 pub use policy::{OrganizationAccess, RepositoryAccessFacts, ViewerAccessFacts, repo_access};
 pub use repository_access::RepoAccess;
+pub use token_scope::TokenScope;
 
 #[cfg(test)]
 mod tests;
