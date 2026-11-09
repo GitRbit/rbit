@@ -156,7 +156,7 @@ fn spanish_picker_preserves_theme_identity_and_escapes_site_content() {
     assert!(html.contains("data-label-applied=\"Aplicado\""));
     // The miniature page follows the dialog's direction; only its untranslated labels are English.
     assert!(html.contains("<div class=\"tpk-preview\" data-theme=\"system\""));
-    assert!(html.contains("<span lang=\"en\">Pull requests</span>"));
+    assert_label_fallback_or_translated(&html);
     assert!(!html.contains("lang=\"en\" dir=\"ltr\""));
     assert!(!html.contains("Forge <script>"));
     assert!(html.contains("&#60;script&#62;"));
@@ -167,5 +167,15 @@ fn picker_in_a_locale_without_its_catalog_is_declared_english() {
     let german = ThemePicker::new(&page(Theme::System).with_locale(rbit_localization::Locale::German));
     let html = german.render().unwrap();
     assert!(html.contains("<dialog class=\"tpk\" lang=\"en\" dir=\"ltr\" aria-label=\"Choose a theme\""));
-    assert!(html.contains("<span lang=\"en\">Pull requests</span>"), "family fallbacks stay marked");
+    assert_label_fallback_or_translated(&html);
+}
+
+/// A preview label is either still English, marked as its fallback, or translated, in
+/// which case its English text is gone. Filling a locale's table moves it from the
+/// first case to the second without touching these tests.
+fn assert_label_fallback_or_translated(html: &str) {
+    const LABEL: &str = "Pull requests";
+    let fallback = html.contains(&format!("<span lang=\"en\">{LABEL}</span>"));
+    let translated = !html.contains(&format!(">{LABEL}<"));
+    assert!(fallback || translated, "family fallbacks stay marked");
 }

@@ -87,7 +87,7 @@ async fn browser_spanish_translates_chrome_and_marks_legacy_content_honestly() {
     // The sign-in page's text comes from the catalog: the page is Spanish, and each
     // untranslated message is marked as its English fallback.
     assert!(body.contains("<main id=\"main\" lang=\"es\" dir=\"ltr\""));
-    assert!(body.contains("<span lang=\"en\">Use your username or email address.</span>"));
+    assert_hint_fallback_or_translated(&body, "es");
     let default = fixture.get("/login", &[]).await;
     assert_eq!(default.headers()[header::CONTENT_LANGUAGE], "en");
     let pseudo = fixture.get("/login", &[("accept-language", "ar-XB"), ("rbit-locale", "ar-XB")]).await;
@@ -105,7 +105,7 @@ async fn new_languages_negotiate_and_mark_their_untranslated_chrome_english() {
         assert!(body.contains(&format!("<html lang=\"{tag}\" dir=\"ltr\"")), "{header}");
         assert!(body.contains("<header lang=\"en\""), "{header}: the chrome is still English");
         assert!(body.contains(&format!("<main id=\"main\" lang=\"{tag}\"")), "{header}: the sign-in page is a catalog page");
-        assert!(body.contains("<span lang=\"en\">Use your username or email address.</span>"));
+        assert_hint_fallback_or_translated(&body, tag);
     }
     for traditional in ["zh-TW", "zh-HK", "zh-Hant"] {
         let response = fixture.get("/login", &[("accept-language", traditional)]).await;
@@ -231,4 +231,14 @@ async fn shared_picker_negotiates_spanish_before_validators_without_new_account_
         let filter = format!("data-tpk-variant=\"{value}\"");
         assert!(english_html.contains(&filter) && spanish_html.contains(&filter));
     }
+}
+
+/// The sign-in hint is either still English, marked as its fallback, or translated, in
+/// which case its English text is gone. Filling a locale's sign-in table moves that
+/// locale from the first case to the second without touching this test.
+fn assert_hint_fallback_or_translated(body: &str, tag: &str) {
+    const HINT: &str = "Use your username or email address.";
+    let fallback = body.contains(&format!("<span lang=\"en\">{HINT}</span>"));
+    let translated = !body.contains(HINT);
+    assert!(fallback || translated, "{tag}: the sign-in hint is English but not marked as a fallback");
 }
