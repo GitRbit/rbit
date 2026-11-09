@@ -16,7 +16,7 @@ impl IssueCreationPort for Creation<'_> {
     type Error = ServiceError;
 
     async fn labels(&self, ids: &[LabelId]) -> Result<Vec<Label>, Self::Error> {
-        self.service.repo_labels(self.repo.repo.repo.id, ids).await
+        self.service.repo_labels(&self.repo.repo, ids).await
     }
     async fn assignees(&self, ids: &[AccountId]) -> Result<Vec<User>, Self::Error> {
         self.service.validated_assignees(&self.repo.repo, ids).await

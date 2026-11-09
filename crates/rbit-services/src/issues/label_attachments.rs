@@ -27,7 +27,7 @@ impl<'a> LabelAttachmentPort for LabelAttachmentContext<'a> {
     type Error = ServiceError;
     type Mutation = LabelAttachmentMutationView<'a>;
     async fn resolve(&self, ids: &[LabelId]) -> Result<Vec<Label>, Self::Error> {
-        self.service.repo_labels(self.ctx.repo.repo.repo.id, ids).await
+        self.service.repo_labels(&self.ctx.repo.repo, ids).await
     }
     fn mutation(&self) -> Self::Mutation {
         LabelAttachmentMutationView {

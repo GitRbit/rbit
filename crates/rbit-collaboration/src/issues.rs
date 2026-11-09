@@ -50,3 +50,13 @@ pub use deletion::{IssueDeletion, IssueDeletionError, IssueDeletionPort};
 mod mentions;
 #[cfg(feature = "applications")]
 pub use mentions::{DashboardMentionPort, DashboardMentions, MENTION_SOURCES};
+
+#[cfg(feature = "applications")]
+mod participants;
+#[cfg(feature = "applications")]
+pub use participants::{AccountNamePort, IssueParticipants, MAX_ASSIGNABLE, ParticipantError, ParticipantPort, users_named};
+
+#[cfg(feature = "applications")]
+mod activity;
+#[cfg(feature = "applications")]
+pub use activity::{ReviewText, ThreadActivity, ThreadActivityPort};

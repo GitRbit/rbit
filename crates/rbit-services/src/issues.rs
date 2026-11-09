@@ -30,6 +30,8 @@ mod label_attachments;
 mod labels;
 mod milestone_assignment;
 mod milestones;
+mod ports;
+use ports::{ActivityView, NamesView, ParticipantView, participant_error};
 
 use std::{
     sync::{
@@ -39,12 +41,11 @@ use std::{
     time::Duration,
 };
 
-use rbit_auth::repo_access;
-use rbit_collaboration::issues::DashboardMentions;
 pub use rbit_collaboration::issues::{DEFAULT_DASHBOARD_QUERY, dashboard_query};
+use rbit_collaboration::issues::{DashboardMentions, IssueParticipants, ThreadActivity};
 use rbit_core::{
-    Account, AccountId, Issue, IssueId, IssueKind, IssueNumber, LabelId, RepoAccess, RepoId, StateReason, Timestamp, User,
-    issue::IssueAction, references, repository::OwnedRepository,
+    Account, AccountId, Issue, IssueId, IssueKind, IssueNumber, LabelId, RepoId, StateReason, Timestamp, User, issue::IssueAction,
+    references, repository::OwnedRepository,
 };
 #[cfg(test)]
 use rbit_storage::sqlite::issue_meta::LabelFields;
@@ -59,13 +60,13 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
     DomainEvent, RepoContext, ServiceContext, ServiceError, ThrottleScope, ThrottleService, TimelineService, audit::AuditService,
-    events::RefUpdate, references::ReferenceService, repositories::viewer_grants,
+    events::RefUpdate, references::ReferenceService,
 };
 
-pub use rbit_collaboration::issues::{MAX_ASSIGNEES, MAX_LABELS_PER_ISSUE};
-/// Most users [`IssueService::assignable`] lists.
-pub const MAX_ASSIGNABLE: u32 = 100;
 pub use rbit_collaboration::issues::ISSUES_PER_PAGE;
+/// Most users [`IssueService::assignable`] lists.
+pub use rbit_collaboration::issues::MAX_ASSIGNABLE;
+pub use rbit_collaboration::issues::{MAX_ASSIGNEES, MAX_LABELS_PER_ISSUE};
 pub use rbit_collaboration::milestones::{MAX_MILESTONE_DESCRIPTION_BYTES, MAX_MILESTONE_TITLE_CHARS};
 
 /// How long shutdown waits for the subscriber.
@@ -100,6 +101,11 @@ pub use rbit_collaboration::milestones::is_calendar_day;
 #[cfg(test)]
 fn milestone_fields(input: &MilestoneInput) -> Result<MilestoneFields, ServiceError> {
     rbit_collaboration::milestones::milestone_fields(input).map_err(ServiceError::Invalid)
+}
+
+/// Participant decisions ([`IssueParticipants`]) for the view's repository.
+fn participants<'a>(view: &'a ParticipantView<'a>) -> IssueParticipants<'a, ParticipantView<'a>> {
+    IssueParticipants::new(view, view.repo.repo.id)
 }
 
 // ------------------------------------------------------------------ the service
@@ -144,60 +150,35 @@ impl IssueService {
         });
     }
 
-    /// `actor`'s access to `repo` right now (for assignees, who are not the viewer).
-    async fn access_of(&self, user: &User, repo: &OwnedRepository) -> Result<RepoAccess, ServiceError> {
-        let grants = viewer_grants(&self.ctx.database.repositories(), Some(user), repo).await?;
-        Ok(repo_access(Some(user), repo, &grants))
-    }
-
     /// The users among `names` (case-insensitively); an unknown name is invalid.
     pub async fn users_named(&self, names: &[String]) -> Result<Vec<Account>, ServiceError> {
-        let accounts = self.ctx.database.issue_meta().accounts_named(names).await?;
-        if let Some(missing) =
-            names.iter().find(|name| !accounts.iter().any(|a| !a.is_organization() && a.name.as_str().eq_ignore_ascii_case(name)))
-        {
-            return Err(invalid(format!("there is no user called “{missing}”")));
-        }
-        Ok(accounts.into_iter().filter(|a| !a.is_organization()).collect())
+        rbit_collaboration::issues::users_named(&NamesView { service: self }, names).await.map_err(participant_error)
     }
 
     /// The number of the thread of `repo` that comment `id` belongs to.
     pub async fn comment_thread(&self, repo: &RepoContext, id: rbit_core::CommentId) -> Result<IssueNumber, ServiceError> {
-        let found = self.ctx.database.issue_meta().comment_thread(repo.repo.repo.id, id).await?;
-        found.map(|(_, number)| number).ok_or(ServiceError::NotFound)
+        let view = ParticipantView { service: self, repo: &repo.repo };
+        participants(&view).comment_thread(id).await.map_err(participant_error)
     }
 
     // ------------------------------------------------------------------ triage
 
     /// The labels of `repo` with these ids; an id that is not one of them is invalid.
-    async fn repo_labels(&self, repo: RepoId, ids: &[LabelId]) -> Result<Vec<Label>, ServiceError> {
-        let mut labels = Vec::with_capacity(ids.len());
-        let store = self.ctx.database.issue_meta();
-        for id in ids {
-            labels.push(store.find_label(repo, *id).await?.ok_or_else(|| invalid("unknown label"))?);
-        }
-        Ok(labels)
+    async fn repo_labels(&self, repo: &OwnedRepository, ids: &[LabelId]) -> Result<Vec<Label>, ServiceError> {
+        let view = ParticipantView { service: self, repo };
+        participants(&view).labels(ids).await.map_err(participant_error)
     }
 
     /// The users with these ids, each able to push to `repo`; anyone else is invalid.
     async fn validated_assignees(&self, repo: &OwnedRepository, ids: &[AccountId]) -> Result<Vec<User>, ServiceError> {
-        let mut users = Vec::with_capacity(ids.len());
-        for id in ids {
-            let user = self.ctx.database.accounts().find_active_user(*id).await?.ok_or_else(|| invalid("unknown user"))?;
-            if !self.access_of(&user, repo).await?.can_write() {
-                return Err(invalid(format!("{} cannot be assigned: only people who can push to the repository can", user.name())));
-            }
-            users.push(user);
-        }
-        Ok(users)
+        let view = ParticipantView { service: self, repo };
+        participants(&view).assignees(ids).await.map_err(participant_error)
     }
 
     /// People who may be assigned in `repo`: names starting with `prefix`, at most 100.
     pub async fn assignable(&self, repo: &RepoContext, prefix: &str) -> Result<Vec<Account>, ServiceError> {
-        if !repo.access.can_read() {
-            return Err(ServiceError::NotFound);
-        }
-        Ok(self.ctx.database.issue_meta().assignable(repo.repo.repo.id, prefix.trim(), MAX_ASSIGNABLE).await?)
+        let view = ParticipantView { service: self, repo: &repo.repo };
+        participants(&view).assignable(repo.access.can_read(), prefix).await.map_err(participant_error)
     }
 
     // ------------------------------------------------------------------ references in the background
@@ -247,70 +228,41 @@ impl IssueService {
         DashboardMentions::new(&self.ctx.database, scan)
     }
 
-    async fn record_mentions(&self, issue: IssueId, text: &str) -> Result<(), ServiceError> {
-        Ok(self.mentions().record(issue, text).await?)
-    }
-
     /// One-time Markdown-aware upgrade of existing issue, comment and submitted review bodies.
     pub(crate) async fn index_existing_mentions(&self) -> Result<(), ServiceError> {
         Ok(self.mentions().index_existing().await?)
     }
 
     /// Reacts to one event: what the background subscriber does, callable directly (tests).
+    /// Only routing happens here; [`ThreadActivity`] and the reference applications decide.
     pub async fn handle_event(&self, event: &DomainEvent) -> Result<(), ServiceError> {
-        // Events can be processed after a later edit/deletion. Preserve mentions from
-        // the event's historical content before reading the latest stored body.
+        use rbit_core::issue::{CommentAction, ReviewAction};
+        let view = ActivityView { service: self };
+        let activity = ThreadActivity::new(&view);
         match event {
             DomainEvent::Issue { issue, action: IssueAction::Edited { previous_body: Some(body), .. }, .. }
-            | DomainEvent::IssueComment { issue, action: rbit_core::issue::CommentAction::Edited { previous_body: body }, .. } => {
-                self.record_mentions(*issue, body).await?;
+            | DomainEvent::IssueComment { issue, action: CommentAction::Edited { previous_body: body }, .. } => {
+                activity.earlier_text(*issue, body).await?;
             }
-            DomainEvent::IssueComment { issue, action: rbit_core::issue::CommentAction::Deleted { snapshot }, .. } => {
-                self.record_mentions(*issue, snapshot.body.as_str()).await?;
+            DomainEvent::IssueComment { issue, action: CommentAction::Deleted { snapshot }, .. } => {
+                activity.earlier_text(*issue, snapshot.body.as_str()).await?;
             }
             _ => {}
         }
         match event {
             DomainEvent::PullRequestReview { pull, review, action, .. } => {
-                let store = self.ctx.database.reviews();
-                if let Some(row) = store.find(*pull, *review).await?
-                    && row.state != rbit_core::issue::ReviewState::Pending
-                {
-                    if let rbit_core::issue::ReviewAction::Edited { previous_body } = action {
-                        self.record_mentions(*pull, previous_body).await?;
-                    }
-                    self.record_mentions(*pull, row.body.as_str()).await?;
-                    for comment in store.comments(*pull).await?.iter().filter(|comment| comment.review_id == *review) {
-                        self.record_mentions(*pull, comment.body.as_str()).await?;
-                    }
-                }
-                Ok(())
+                let previous = match action {
+                    ReviewAction::Edited { previous_body } => Some(previous_body.as_str()),
+                    _ => None,
+                };
+                activity.review_changed(*pull, *review, previous).await
             }
             DomainEvent::RepositoryPushed { repo, source, updates } => self.scan_push(*repo, source.pusher(), updates).await,
             DomainEvent::Issue { issue, actor, action: IssueAction::Opened | IssueAction::Edited { .. }, .. } => {
-                let Some(source) = self.ctx.database.issues().find(*issue).await? else { return Ok(()) };
-                let body = source.body.to_string();
-                self.record_mentions(*issue, &body).await?;
-                self.references.record_cross_references(&source, *actor, &body).await
+                activity.thread_written(*issue, *actor).await
             }
-            DomainEvent::IssueComment {
-                issue,
-                comment,
-                actor,
-                action: rbit_core::issue::CommentAction::Created | rbit_core::issue::CommentAction::Edited { .. },
-                ..
-            } => {
-                let store = self.ctx.database.issues();
-                let (Some(source), Some(comment)) = (store.find(*issue).await?, store.find_comment(*issue, *comment).await?) else {
-                    return Ok(());
-                };
-                self.record_mentions(*issue, comment.body.as_str()).await?;
-                // Actions: task tokens. rbit Actions has no account a cross-reference could
-                // show; the referenced thread would name a ghost.
-                match actor {
-                    Some(_) => self.references.record_cross_references(&source, *actor, comment.body.as_str()).await,
-                    None => Ok(()),
-                }
+            DomainEvent::IssueComment { issue, comment, actor, action: CommentAction::Created | CommentAction::Edited { .. }, .. } => {
+                activity.comment_written(*issue, *comment, *actor).await
             }
             DomainEvent::Issue {
                 kind: IssueKind::Pull,
@@ -337,24 +289,8 @@ impl IssueService {
         let limit = self.ctx.config.issues.scan_commit_limit;
         for update in updates {
             let (Some(branch), Some(after)) = (update.branch(), &update.after) else { continue };
-            let excluding = match (&update.before, &snapshot) {
-                (Some(before), _) => vec![before.clone()],
-                (None, Some(snapshot)) => {
-                    let mut skipped = false;
-                    snapshot
-                        .ids()
-                        .filter(|tip| {
-                            if !skipped && *tip == after.as_str() {
-                                skipped = true;
-                                return false;
-                            }
-                            true
-                        })
-                        .map(str::to_owned)
-                        .collect()
-                }
-                (None, None) => Vec::new(),
-            };
+            let tips = snapshot.as_ref().map(rbit_git::RefSnapshot::ids);
+            let excluding = rbit_collaboration::references::push_exclusions(update.before.as_deref(), tips, after);
             let commits = match reader.new_commits(after.clone(), excluding, limit).await {
                 Ok(commits) => commits,
                 Err(error) => {

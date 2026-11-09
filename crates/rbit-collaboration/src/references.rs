@@ -1,9 +1,11 @@
 //! Reference parsing contracts and application-owned resolution/effects.
 mod models;
 mod plain;
+mod pushes;
 mod resolved;
 pub use models::{CLOSING_KEYWORDS, Found, MAX_MENTIONS, Reference, RemoteRef, Scan};
 pub use plain::{find, scan_plain};
+pub use pushes::push_exclusions;
 pub use resolved::{ReferenceSet, ReferencedIssue};
 #[cfg(feature = "applications")]
 mod cross_references;
