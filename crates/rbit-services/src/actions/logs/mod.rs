@@ -31,6 +31,7 @@ mod append;
 mod archive;
 mod batch;
 mod batch_reader;
+mod disk;
 mod masking;
 mod plan;
 mod read;

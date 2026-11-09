@@ -7,12 +7,10 @@ use crate::{
     ActionsService, ServiceError,
     actions::runners::{CachedRunner, RunnerError},
 };
-use rbit_actions::logs::{Append, accept_append, layout, split_body};
+use rbit_actions::logs::{Append, accept_append, split_body};
 use rbit_core::actions::{Job, LogState, Task, TaskId};
 use rbit_workflow::protocol::{LogsResponse, MAX_LOG_LINE_BYTES};
 use std::{
-    fs::OpenOptions,
-    io::{Read, Write},
     path::PathBuf,
     sync::{Arc, PoisonError},
 };
@@ -103,44 +101,14 @@ pub(super) fn clean_line(masker: &Masker, line: &str) -> String {
 }
 
 /// Appends `lines` after `stored`, within `max_bytes`; with `recover`, first cuts the files
-/// back to what the database recorded (a crash between writing them and the row).
+/// back to what the database recorded (a crash between writing them and the row). The
+/// write and sync ordering is `rbit_actions::logs::append_lines`.
 pub(super) fn append_lines(
     files: &LogFiles,
-    mut progress: Progress,
+    progress: Progress,
     lines: &[String],
     max_bytes: u64,
     recover: bool,
 ) -> std::io::Result<Progress> {
-    if let Some(dir) = files.log.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    if recover {
-        // Cut with writable handles: an append-only handle may not change the length.
-        let log = OpenOptions::new().create(true).truncate(false).write(true).open(&files.log)?;
-        let length = log.metadata()?.len();
-        if length > progress.bytes {
-            log.set_len(progress.bytes)?;
-        }
-        progress.bytes = progress.bytes.min(length);
-        let mut index = OpenOptions::new().create(true).truncate(false).read(true).write(true).open(&files.index)?;
-        let entries = index.metadata()?.len() / 8;
-        let mut keep = 0;
-        let mut entry = [0u8; 8];
-        while keep < entries {
-            index.read_exact(&mut entry)?;
-            if u64::from_le_bytes(entry) > progress.bytes {
-                break;
-            }
-            keep += 1;
-        }
-        index.set_len(keep * 8)?;
-    }
-    let mut log = OpenOptions::new().create(true).append(true).open(&files.log)?;
-    let mut index = OpenOptions::new().create(true).append(true).open(&files.index)?;
-    let laid = layout(progress, lines, max_bytes);
-    log.write_all(&laid.text)?;
-    index.write_all(&laid.ends)?;
-    log.sync_data()?;
-    index.sync_data()?;
-    Ok(laid.progress)
+    rbit_actions::logs::append_lines(files, progress, lines, max_bytes, recover)
 }

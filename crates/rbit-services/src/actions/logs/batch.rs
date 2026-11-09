@@ -1,10 +1,10 @@
 //! Authorized job-page metadata and log windows, pinned to one current task.
 use super::{
     LogLimits, LogRange, LogWindow,
-    batch_reader::{LogSnapshot, read_windows},
+    batch_reader::{LogSnapshot, read_windows, representation},
     plan::WindowRequest,
     types::LogFiles,
-    work::ReadWork,
+    work::{ReadWork, record},
 };
 use crate::{ActionsService, RepoContext, ServiceError, actions::browse::JobDetail};
 use rbit_core::{
@@ -94,14 +94,15 @@ async fn read(
     tokio::task::spawn_blocking(move || {
         let mut work = ReadWork::default();
         let result = read_windows(&files, snapshot, &requests, &mut work);
-        work.record();
+        record(&work);
         result
     })
     .await
     .map_err(ServiceError::internal)
 }
 
-/// Only forward on-disk lifecycle transitions can explain a vanished representation.
+/// Only forward on-disk lifecycle transitions can explain a vanished representation
+/// (`rbit_actions::logs::retryable`).
 pub(super) fn retryable(previous: LogState, next: LogState) -> bool {
-    matches!((previous, next), (LogState::Live, LogState::Final | LogState::Expired) | (LogState::Final, LogState::Expired))
+    rbit_actions::logs::retryable(representation(previous), representation(next))
 }

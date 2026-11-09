@@ -1,15 +1,11 @@
 //! Finalization, retention removal and streaming raw-log ZIP entries.
-use super::types::{GZIP_LEVEL, LogFiles};
+use super::types::LogFiles;
 use crate::{ActionsService, ServiceError};
 use rbit_core::{
     RepoId,
     actions::{LogState, TaskId},
 };
-use std::{
-    fs::File,
-    io::{Read, Seek, SeekFrom, Write},
-    sync::PoisonError,
-};
+use std::{fs::File, io::Write, sync::PoisonError};
 
 impl ActionsService {
     /// Compresses a stopped task's log (gzip, level 6) and marks it final. Nothing for a
@@ -33,31 +29,17 @@ impl ActionsService {
     /// Removes a task's log files (retention, the instance log budget, deleted runs).
     pub async fn delete_log(&self, repo: RepoId, task: TaskId) -> Result<(), ServiceError> {
         let files = LogFiles::new(&self.logs_dir(), repo, task);
-        for path in [files.log, files.index, files.gzip] {
-            match tokio::fs::remove_file(&path).await {
-                Ok(()) => {}
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(error) => return Err(ServiceError::internal(error)),
-            }
-        }
-        Ok(())
+        tokio::task::spawn_blocking(move || rbit_actions::logs::remove(&files))
+            .await
+            .map_err(ServiceError::internal)?
+            .map_err(ServiceError::internal)
     }
 }
 
-/// Gzips the plain log into place and removes it; the index stays.
+/// Gzips the plain log into place and removes it; the index stays
+/// (`rbit_actions::logs::compress`).
 pub(super) fn compress(files: &LogFiles) -> std::io::Result<()> {
-    let mut source = match File::open(&files.log) {
-        Ok(source) => source,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(error),
-    };
-    let partial = files.gzip.with_extension("gz.partial");
-    let mut encoder = flate2::write::GzEncoder::new(File::create(&partial)?, flate2::Compression::new(GZIP_LEVEL));
-    std::io::copy(&mut source, &mut encoder)?;
-    encoder.finish()?.sync_all()?;
-    std::fs::rename(&partial, &files.gzip)?;
-    drop(source);
-    std::fs::remove_file(&files.log)
+    rbit_actions::logs::compress(files)
 }
 
 // Actions: run logs.
@@ -68,30 +50,9 @@ pub(super) fn compress(files: &LogFiles) -> std::io::Result<()> {
 /// # Errors
 ///
 /// What reading the log or writing the zip fails with.
-pub fn add_raw_log<W: Write>(
-    zip: &mut crate::actions::downloads::ZipWriter<W>,
-    name: &str,
-    mut log: File,
-    gzip: bool,
-) -> std::io::Result<()> {
-    if gzip {
-        let size = std::io::copy(&mut flate2::read::GzDecoder::new(&log), &mut std::io::sink())?;
-        log.seek(SeekFrom::Start(0))?;
-        zip.add(name, size, &mut flate2::read::GzDecoder::new(log).take(size))
-    } else {
-        let size = log.metadata()?.len();
-        zip.add(name, size, &mut log.take(size))
-    }
+pub fn add_raw_log<W: Write>(zip: &mut crate::actions::downloads::ZipWriter<W>, name: &str, log: File, gzip: bool) -> std::io::Result<()> {
+    rbit_actions::logs::add_raw_log(zip, name, log, gzip)
 }
 
-/// A job name as a file name in the run log archive: no path separators or control
-/// characters, at most 100 characters.
-pub(super) fn log_file_name(name: &str) -> String {
-    let safe: String = name
-        .chars()
-        .map(|c| if c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') { '_' } else { c })
-        .take(100)
-        .collect();
-    let safe = safe.trim().trim_matches('.').to_owned();
-    if safe.is_empty() { "job".to_owned() } else { safe }
-}
+/// A job name as a file name in the run log archive (`rbit_actions::logs`).
+pub(super) use rbit_actions::logs::log_file_name;

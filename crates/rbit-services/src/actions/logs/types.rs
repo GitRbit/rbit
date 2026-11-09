@@ -4,40 +4,8 @@ use std::path::{Path, PathBuf};
 
 /// Most lines one append may carry (`rbit_actions::logs`).
 pub use rbit_actions::logs::MAX_LINES_PER_CALL;
-/// What a job page's step view shows at most: the last lines of the step.
-pub const STEP_VIEW_LINES: usize = 10_000;
-/// … and at most this many bytes of them.
-pub const STEP_VIEW_BYTES: usize = 2 * 1024 * 1024;
-/// gzip level of finalised logs.
-pub(super) const GZIP_LEVEL: u32 = 6;
-
-/// Where a window of log lines starts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LogRange {
-    /// From this line of the task log on (a live tail polls with its last `next_line`).
-    From(u64),
-    /// The last lines, as many as the limits allow.
-    Tail,
-}
-
-/// Lines of a task's log, as a page shows them.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-#[allow(clippy::struct_excessive_bools, reason = "independent facts a page shows")]
-pub struct LogWindow {
-    /// The task-log line number of `lines[0]`.
-    pub first_line: u64,
-    pub lines: Vec<String>,
-    /// Where the next window starts.
-    pub next_line: u64,
-    /// Lines before `first_line` that this window left out.
-    pub more_before: bool,
-    /// The task still runs: more lines may come.
-    pub live: bool,
-    /// The task wrote more than `[actions] max_log_bytes`; later lines were dropped.
-    pub truncated: bool,
-    /// Retention or the instance log budget removed the log.
-    pub expired: bool,
-}
+/// Windows, ranges, limits and the step view's bounds are owned by `rbit_actions::logs`.
+pub use rbit_actions::logs::{LogLimits, LogRange, LogWindow, STEP_VIEW_BYTES, STEP_VIEW_LINES};
 
 /// A whole task log for download: the plain file while the task runs, the gzip file after.
 #[derive(Debug)]
@@ -71,10 +39,3 @@ impl LogFiles {
 
 /// How much of a task's log is written (`rbit_actions::logs::LogProgress`).
 pub(super) use rbit_actions::logs::LogProgress as Progress;
-
-/// Maximum retained lines and bytes for one step, with at least one stored line.
-#[derive(Debug, Clone, Copy)]
-pub struct LogLimits {
-    pub lines: usize,
-    pub bytes: usize,
-}
