@@ -23,15 +23,29 @@
 
     <div class="mb-3 flex min-h-8 flex-wrap items-center gap-2 sm:gap-3">
       {% include "repo/ref_switcher.html" %}
-      {% if breadcrumbs.len() > 1 %}{% include "repo/breadcrumbs.html" %}{% endif %}
-      <a href="{{ history_url }}" class="btn btn-ghost ms-auto" aria-label="{{ rbit_localization::RepoBrowseLabel::History.text(page.locale) }}" title="{{ rbit_localization::RepoBrowseLabel::History.text(page.locale) }}">{% call ui::icon("history", "size-3.5") %}{% endcall %}<span class="hidden sm:inline">{% call ui::localized(rbit_localization::RepoBrowseLabel::History.text(page.locale)) %}{% endcall %}</span></a>
+      {% if breadcrumbs.len() > 1 %}
+      {% include "repo/breadcrumbs.html" %}
+      {% else %}
+      <a href="{{ header.branches_url }}" class="btn btn-ghost max-sm:hidden">{% call ui::icon("branch", "size-3.5 text-ink-muted") %}{% endcall %}<span><span class="font-medium">{{ switcher.branch_count }}</span> <span class="text-ink-muted">{% call ui::localized(rbit_localization::RepoBrowseMessage::BranchNoun { count: *switcher.branch_count }.text(page.locale)) %}{% endcall %}</span></span></a>
+      <a href="{{ header.tags_url }}" class="btn btn-ghost max-sm:hidden">{% call ui::icon("tag", "size-3.5 text-ink-muted") %}{% endcall %}<span><span class="font-medium">{{ switcher.tag_count }}</span> <span class="text-ink-muted">{% call ui::localized(rbit_localization::RepoBrowseMessage::TagNoun { count: *switcher.tag_count }.text(page.locale)) %}{% endcall %}</span></span></a>
+      {% endif %}
+      {% include "repo/file_finder.html" %}
       {% if let Some(url) = new_file_url %}<a href="{{ url }}" class="btn">{% call ui::icon("plus", "size-3.5") %}{% endcall %}{% call ui::localized(rbit_localization::RepoBrowseLabel::AddFile.text(page.locale)) %}{% endcall %}</a>{% endif %}
       {% if let Some(url) = upload_url %}<a href="{{ url }}" class="btn btn-icon" aria-label="{{ rbit_localization::RepoBrowseLabel::UploadFiles.text(page.locale) }}" title="{{ rbit_localization::RepoBrowseLabel::UploadFiles.text(page.locale) }}">{% call ui::icon("upload", "size-3.5") %}{% endcall %}</a>{% endif %}
     </div>
 
-    {% include "repo/listing_controls.html" %}
+    {#- Only very large directories need paging or a name filter; "Go to file" covers the rest. -#}
+    {% if pagination.pages > 1 || !pagination.query.is_empty() %}{% include "repo/listing_controls.html" %}{% endif %}
     <section class="box overflow-hidden" aria-label="{{ rbit_localization::RepoBrowseLabel::Files.text(page.locale) }}">
-      {% include "repo/latest_commit.html" %}
+      <div class="box-header text-[13px]">
+        {% call ui::avatar(latest.avatar, "size-5 text-[9px]") %}{% endcall %}
+        <span class="shrink-0 font-medium">{{ latest.author }}</span>
+        <a href="{{ latest.url }}" class="min-w-0 flex-1 truncate text-ink-muted hover:text-ink" title="{{ latest.summary }}">{{ latest.summary }}</a>
+        <a href="{{ latest.url }}" class="hidden shrink-0 font-mono text-xs text-ink-faint hover:text-ink sm:inline" dir="ltr">{{ latest.short_id }}</a>
+        <time class="shrink-0 text-xs text-ink-faint" datetime="{{ latest.when_iso }}" title="{{ latest.when_iso }}">{% call ui::localized(latest.when.relative(page.locale)) %}{% endcall %}</time>
+        {#- Counting walks the whole history, so it arrives after first paint. -#}
+        <a href="{{ history_url }}" class="flex shrink-0 items-center gap-1.5 text-xs text-ink-muted hover:text-ink" hx-get="{{ commit_count_url }}" hx-trigger="load" hx-swap="outerHTML">{% call ui::icon("history", "size-3.5") %}{% endcall %}<span class="max-sm:sr-only">{% call ui::localized(rbit_localization::RepoBrowseLabel::History.text(page.locale)) %}{% endcall %}</span></a>
+      </div>
       <ul>
         {% if let Some(parent) = parent_url %}
         <li><a href="{{ parent }}" class="row row-link font-mono text-[13px] text-ink-muted" dir="ltr" aria-label="{{ rbit_localization::RepoBrowseLabel::ParentDirectory.text(page.locale) }}">..</a></li>

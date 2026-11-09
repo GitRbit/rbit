@@ -1,0 +1,2 @@
+{% import "macros.html" as ui %}
+<a href="{{ url }}" class="flex shrink-0 items-center gap-1.5 text-xs text-ink-muted hover:text-ink" data-commit-count>{% call ui::icon("history", "size-3.5") %}{% endcall %}<span><span class="font-medium text-ink">{{ count }}{% if capped %}+{% endif %}</span> {% call ui::localized(rbit_localization::RepoBrowseMessage::CommitNoun { count: *raw_count }.text(locale)) %}{% endcall %}</span></a>

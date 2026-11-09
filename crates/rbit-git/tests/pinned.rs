@@ -67,3 +67,26 @@ async fn pinned_and_plain_readers_agree() {
     let (a, b) = tokio::join!(plain.commit_id("main".into()), pinned.commit_id("main".into()));
     assert_eq!(a.unwrap(), b.unwrap());
 }
+
+#[tokio::test]
+async fn counts_commits_and_lists_every_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    git(root, &["init", "-q"]);
+    std::fs::create_dir_all(root.join("src/deep")).unwrap();
+    std::fs::write(root.join("src/deep/z.rs"), "z").unwrap();
+    commit(root, "README.md", "first");
+    commit(root, "a.txt", "second");
+    commit(root, "src/lib.rs", "third");
+
+    let reader = RepositoryReader::new(root.join(".git"));
+    assert_eq!(reader.commit_count("main".into(), 100).await.unwrap(), (3, false));
+    assert_eq!(reader.commit_count("main".into(), 2).await.unwrap(), (2, true));
+
+    let (paths, truncated) = reader.file_paths("main".into(), 100).await.unwrap();
+    assert_eq!(paths, ["README.md", "a.txt", "src/deep/z.rs", "src/lib.rs"]);
+    assert!(!truncated);
+    let (paths, truncated) = reader.file_paths("main".into(), 2).await.unwrap();
+    assert_eq!(paths.len(), 2);
+    assert!(truncated);
+}

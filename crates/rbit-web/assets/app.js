@@ -18,6 +18,7 @@ import "./filter.js";
 import "./diff.js";
 import "./compare.js";
 import "./repo.js";
+import "./file-finder.js";
 import "./repo-documents.js";
 import "./sticky-header.js";
 import "./contributions.js";

@@ -75,6 +75,13 @@ entries! { Ja:
         RepoBrowseLabel::NoStargazersYet => text.literal("スターを付けたユーザーはまだいません"),
         RepoBrowseLabel::StargazersEmpty => text.literal("このリポジトリにスターを付けたユーザーがここに表示されます。"),
         RepoBrowseLabel::RepositoryActivity => text.literal("リポジトリのアクティビティ"),
+        RepoBrowseLabel::GoToFile => text.literal("ファイルへ移動"),
+        RepoBrowseLabel::MatchingFiles => text.literal("一致するファイル"),
+        RepoBrowseLabel::LoadingFiles => text.literal("ファイルを読み込んでいます…"),
+        RepoBrowseLabel::UnableToLoadFiles => text.literal("ファイルを読み込めませんでした。Enter キーで検索します。"),
+        RepoBrowseLabel::SeeAllMatches => text.literal("すべての一致を表示"),
+        RepoBrowseLabel::NoFilesInRevision => text.literal("このリビジョンにはファイルがありません。"),
+        RepoBrowseLabel::TooManyFilesToSearch => text.literal("このリビジョンはファイルが多すぎるため、すべてを検索できません。"),
     }
     RepoBrowseMessage<'a> => MessageWriter |text| {
         RepoBrowseMessage::BranchNoun { .. } => text.literal("ブランチ"),
@@ -112,6 +119,17 @@ entries! { Ja:
             text.literal("/");
             text.argument(name);
             text.literal(" をフォーク");
+        }
+        RepoBrowseMessage::CommitNoun { .. } => text.literal("コミット"),
+        RepoBrowseMessage::NoFileMatches { query } => {
+            text.literal("「");
+            text.argument(query);
+            text.literal("」に一致するファイルはありません。");
+        }
+        RepoBrowseMessage::MoreFileMatches { count } => {
+            text.literal("さらに ");
+            text.number(count as u64);
+            text.literal(" 件一致しています。名前をもっと入力して絞り込んでください。");
         }
     }
 }

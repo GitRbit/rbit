@@ -76,6 +76,13 @@ entries! { Ru:
         RepoBrowseLabel::NoStargazersYet => text.literal("Звёзд пока нет"),
         RepoBrowseLabel::StargazersEmpty => text.literal("Здесь появятся люди, поставившие звезду этому репозиторию."),
         RepoBrowseLabel::RepositoryActivity => text.literal("Активность репозитория"),
+        RepoBrowseLabel::GoToFile => text.literal("Перейти к файлу"),
+        RepoBrowseLabel::MatchingFiles => text.literal("Подходящие файлы"),
+        RepoBrowseLabel::LoadingFiles => text.literal("Загрузка файлов…"),
+        RepoBrowseLabel::UnableToLoadFiles => text.literal("Не удалось загрузить файлы. Нажмите Enter, чтобы выполнить поиск."),
+        RepoBrowseLabel::SeeAllMatches => text.literal("Показать все совпадения"),
+        RepoBrowseLabel::NoFilesInRevision => text.literal("В этой ревизии нет файлов."),
+        RepoBrowseLabel::TooManyFilesToSearch => text.literal("В этой ревизии слишком много файлов, чтобы искать по всем."),
     }
     RepoBrowseMessage<'a> => MessageWriter |text| {
         RepoBrowseMessage::BranchNoun { count } => {
@@ -141,6 +148,21 @@ entries! { Ru:
             text.argument(owner);
             text.literal("/");
             text.argument(name);
+        }
+        RepoBrowseMessage::CommitNoun { count } => text.literal(match text.plural(count as u64) {
+            Plural::One => "коммит",
+            Plural::Few => "коммита",
+            _ => "коммитов",
+        }),
+        RepoBrowseMessage::NoFileMatches { query } => {
+            text.literal("Нет файлов, подходящих под «");
+            text.argument(query);
+            text.literal("».");
+        }
+        RepoBrowseMessage::MoreFileMatches { count } => {
+            text.literal("Ещё совпадений: ");
+            text.number(count as u64);
+            text.literal(". Введите больше символов имени, чтобы сузить список.");
         }
     }
 }

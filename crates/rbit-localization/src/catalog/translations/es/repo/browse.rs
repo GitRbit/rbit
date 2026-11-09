@@ -90,6 +90,13 @@ entries! { Es:
             text.literal("Aquí aparecen las personas que marcan este repositorio con estrella.");
         }
         RepoBrowseLabel::RepositoryActivity => text.literal("Actividad del repositorio"),
+        RepoBrowseLabel::GoToFile => text.literal("Ir al archivo"),
+        RepoBrowseLabel::MatchingFiles => text.literal("Archivos coincidentes"),
+        RepoBrowseLabel::LoadingFiles => text.literal("Cargando archivos…"),
+        RepoBrowseLabel::UnableToLoadFiles => text.literal("No se pudieron cargar los archivos. Pulsa Intro para buscar."),
+        RepoBrowseLabel::SeeAllMatches => text.literal("Ver todas las coincidencias"),
+        RepoBrowseLabel::NoFilesInRevision => text.literal("Esta revisión no tiene archivos."),
+        RepoBrowseLabel::TooManyFilesToSearch => text.literal("Esta revisión tiene demasiados archivos para buscar en todos."),
     }
     RepoBrowseMessage<'a> => MessageWriter |text| {
         RepoBrowseMessage::BranchNoun { count } => text.literal(match text.plural(count as u64) {
@@ -142,6 +149,20 @@ entries! { Es:
             text.argument(owner);
             text.literal("/");
             text.argument(name);
+        }
+        RepoBrowseMessage::CommitNoun { count } => text.literal(match text.plural(count as u64) {
+            Plural::One => "commit",
+            _ => "commits",
+        }),
+        RepoBrowseMessage::NoFileMatches { query } => {
+            text.literal("Ningún archivo coincide con «");
+            text.argument(query);
+            text.literal("».");
+        }
+        RepoBrowseMessage::MoreFileMatches { count } => {
+            text.literal("Coincidencias adicionales: ");
+            text.number(count as u64);
+            text.literal(". Escribe más del nombre para acotar la lista.");
         }
     }
 }

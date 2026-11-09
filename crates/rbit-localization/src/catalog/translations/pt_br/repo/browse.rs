@@ -95,6 +95,13 @@ entries! { PtBr:
             text.literal("As pessoas que marcarem este repositório com estrela aparecerão aqui.");
         }
         RepoBrowseLabel::RepositoryActivity => text.literal("Atividade do repositório"),
+        RepoBrowseLabel::GoToFile => text.literal("Ir para arquivo"),
+        RepoBrowseLabel::MatchingFiles => text.literal("Arquivos correspondentes"),
+        RepoBrowseLabel::LoadingFiles => text.literal("Carregando arquivos…"),
+        RepoBrowseLabel::UnableToLoadFiles => text.literal("Não foi possível carregar os arquivos. Pressione Enter para pesquisar."),
+        RepoBrowseLabel::SeeAllMatches => text.literal("Ver todas as correspondências"),
+        RepoBrowseLabel::NoFilesInRevision => text.literal("Esta revisão não tem arquivos."),
+        RepoBrowseLabel::TooManyFilesToSearch => text.literal("Esta revisão tem arquivos demais para pesquisar em todos."),
     }
     RepoBrowseMessage<'a> => MessageWriter |text| {
         RepoBrowseMessage::BranchNoun { count } => {
@@ -151,6 +158,20 @@ entries! { PtBr:
             text.argument(owner);
             text.literal("/");
             text.argument(name);
+        }
+        RepoBrowseMessage::CommitNoun { count } => text.literal(match text.plural(count as u64) {
+            Plural::One => "commit",
+            _ => "commits",
+        }),
+        RepoBrowseMessage::NoFileMatches { query } => {
+            text.literal("Nenhum arquivo corresponde a “");
+            text.argument(query);
+            text.literal("”.");
+        }
+        RepoBrowseMessage::MoreFileMatches { count } => {
+            text.literal("Correspondências adicionais: ");
+            text.number(count as u64);
+            text.literal(". Digite mais do nome para restringir a lista.");
         }
     }
 }

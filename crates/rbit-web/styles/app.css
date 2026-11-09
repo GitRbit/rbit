@@ -680,6 +680,15 @@
     @apply -mx-1 my-1 h-px bg-line;
   }
 
+  /* "Go to file": the highlighted result and the characters that matched. */
+  .file-finder [aria-selected="true"] > .menu-item {
+    @apply bg-hover;
+  }
+
+  .file-finder-match {
+    @apply bg-transparent font-semibold text-ink underline underline-offset-2;
+  }
+
   /* <details> based dropdowns: no JavaScript required. */
   details > summary {
     list-style: none;

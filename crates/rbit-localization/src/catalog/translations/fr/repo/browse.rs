@@ -85,6 +85,13 @@ entries! { Fr:
         RepoBrowseLabel::NoStargazersYet => text.literal("Aucune étoile pour l’instant"),
         RepoBrowseLabel::StargazersEmpty => text.literal("Les personnes qui ajoutent une étoile à ce dépôt apparaissent ici."),
         RepoBrowseLabel::RepositoryActivity => text.literal("Activité du dépôt"),
+        RepoBrowseLabel::GoToFile => text.literal("Aller au fichier"),
+        RepoBrowseLabel::MatchingFiles => text.literal("Fichiers correspondants"),
+        RepoBrowseLabel::LoadingFiles => text.literal("Chargement des fichiers…"),
+        RepoBrowseLabel::UnableToLoadFiles => text.literal("Impossible de charger les fichiers. Appuyez sur Entrée pour rechercher."),
+        RepoBrowseLabel::SeeAllMatches => text.literal("Voir toutes les correspondances"),
+        RepoBrowseLabel::NoFilesInRevision => text.literal("Cette révision ne contient aucun fichier."),
+        RepoBrowseLabel::TooManyFilesToSearch => text.literal("Cette révision contient trop de fichiers pour tous les parcourir."),
     }
     RepoBrowseMessage<'a> => MessageWriter |text| {
         RepoBrowseMessage::BranchNoun { count } => noun(text, count, "branche", "branches"),
@@ -122,6 +129,17 @@ entries! { Fr:
             text.argument(owner);
             text.literal("/");
             text.argument(name);
+        }
+        RepoBrowseMessage::CommitNoun { count } => noun(text, count, "commit", "commits"),
+        RepoBrowseMessage::NoFileMatches { query } => {
+            text.literal("Aucun fichier ne correspond à « ");
+            text.argument(query);
+            text.literal(" ».");
+        }
+        RepoBrowseMessage::MoreFileMatches { count } => {
+            text.literal("Correspondances supplémentaires : ");
+            text.number(count as u64);
+            text.literal(". Saisissez une plus grande partie du nom pour affiner la liste.");
         }
     }
 }

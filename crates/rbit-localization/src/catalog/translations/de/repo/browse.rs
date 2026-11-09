@@ -91,6 +91,13 @@ entries! { De:
             text.literal("Personen, die dieses Repository mit einem Stern markieren, erscheinen hier.");
         }
         RepoBrowseLabel::RepositoryActivity => text.literal("Repository-Aktivität"),
+        RepoBrowseLabel::GoToFile => text.literal("Zu Datei springen"),
+        RepoBrowseLabel::MatchingFiles => text.literal("Passende Dateien"),
+        RepoBrowseLabel::LoadingFiles => text.literal("Dateien werden geladen…"),
+        RepoBrowseLabel::UnableToLoadFiles => text.literal("Dateien konnten nicht geladen werden. Drücken Sie die Eingabetaste, um zu suchen."),
+        RepoBrowseLabel::SeeAllMatches => text.literal("Alle Treffer anzeigen"),
+        RepoBrowseLabel::NoFilesInRevision => text.literal("Diese Revision enthält keine Dateien."),
+        RepoBrowseLabel::TooManyFilesToSearch => text.literal("Diese Revision enthält zu viele Dateien, um alle zu durchsuchen."),
     }
     RepoBrowseMessage<'a> => MessageWriter |text| {
         RepoBrowseMessage::BranchNoun { count } => text.literal(match text.plural(count as u64) {
@@ -143,6 +150,20 @@ entries! { De:
             text.literal("/");
             text.argument(name);
             text.literal(" forken");
+        }
+        RepoBrowseMessage::CommitNoun { count } => text.literal(match text.plural(count as u64) {
+            Plural::One => "Commit",
+            _ => "Commits",
+        }),
+        RepoBrowseMessage::NoFileMatches { query } => {
+            text.literal("Keine Datei passt zu „");
+            text.argument(query);
+            text.literal("“.");
+        }
+        RepoBrowseMessage::MoreFileMatches { count } => {
+            text.literal("Weitere Treffer: ");
+            text.number(count as u64);
+            text.literal(". Geben Sie mehr vom Namen ein, um die Liste einzugrenzen.");
         }
     }
 }

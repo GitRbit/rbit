@@ -239,6 +239,9 @@ pub struct TreePage {
     pub documents: Vec<RepositoryDocument>,
     pub document_scope: String,
     pub history_url: String,
+    /// The commit count beside the latest commit, pinned to the shown commit.
+    pub commit_count_url: String,
+    pub finder: super::file_finder::FileFinder,
     /// Language breakdown of the selected revision; `None` when empty or unavailable.
     pub languages: Option<LanguageBar>,
     pub language_files_url: String,

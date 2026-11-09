@@ -75,6 +75,13 @@ labels! {
         NoStargazersYet => "repo.stargazers.empty-title", "No stargazers yet";
         StargazersEmpty => "repo.stargazers.empty", "People who star this repository appear here.";
         RepositoryActivity => "repo.activity.title", "Repository activity";
+        GoToFile => "repo.finder.go-to-file", "Go to file";
+        MatchingFiles => "repo.finder.matching", "Matching files";
+        LoadingFiles => "repo.finder.loading", "Loading files…";
+        UnableToLoadFiles => "repo.finder.failed", "Unable to load files. Press Enter to search.";
+        SeeAllMatches => "repo.finder.see-all", "See all matches";
+        NoFilesInRevision => "repo.finder.empty", "This revision has no files.";
+        TooManyFilesToSearch => "repo.finder.truncated", "This revision has too many files to search them all.";
     }
 }
 
@@ -97,6 +104,12 @@ pub enum RepoBrowseMessage<'a> {
     RefPage { page: usize, pages: usize, total: usize },
     /// The fork page's heading: "Fork alice/project".
     ForkTitle { owner: &'a str, name: &'a str },
+    /// The noun after a commit count beside the latest commit: "commit" or "commits".
+    CommitNoun { count: usize },
+    /// "Go to file" found nothing: "No file matches “query”."
+    NoFileMatches { query: &'a str },
+    /// Matches beyond those listed: "12 more files match. Type more of the name to narrow the list."
+    MoreFileMatches { count: usize },
 }
 
 impl MessageFamily for RepoBrowseMessage<'_> {
@@ -110,6 +123,9 @@ impl MessageFamily for RepoBrowseMessage<'_> {
             Self::ListingResults { .. } => "repo.listing.results",
             Self::RefPage { .. } => "repo.refs.page",
             Self::ForkTitle { .. } => "repo.fork.title",
+            Self::CommitNoun { .. } => "repo.browse.commit-noun",
+            Self::NoFileMatches { .. } => "repo.finder.no-match",
+            Self::MoreFileMatches { .. } => "repo.finder.more",
         }
     }
 
@@ -149,6 +165,17 @@ impl MessageFamily for RepoBrowseMessage<'_> {
                 text.argument(owner);
                 text.literal("/");
                 text.argument(name);
+            }
+            Self::CommitNoun { count } => text.literal(if count == 1 { "commit" } else { "commits" }),
+            Self::NoFileMatches { query } => {
+                text.literal("No file matches “");
+                text.argument(query);
+                text.literal("”.");
+            }
+            Self::MoreFileMatches { count } => {
+                text.number(count as u64);
+                text.literal(if count == 1 { " more file matches." } else { " more files match." });
+                text.literal(" Type more of the name to narrow the list.");
             }
         }
     }

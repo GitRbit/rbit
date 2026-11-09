@@ -116,6 +116,8 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .route("/{owner}/{repo}", get(repo::home))
         .route("/{owner}/{repo}/tree/{*rest}", get(repo::tree))
         .route("/{owner}/{repo}/tree-commits/{*rest}", get(repo::entry_commits))
+        .route("/{owner}/{repo}/commit-count/{revision}", get(repo::commit_count))
+        .route("/{owner}/{repo}/find/{*rest}", get(repo::find))
         .route("/{owner}/{repo}/language-files", get(repo::language_files))
         .route("/{owner}/{repo}/activity", get(repo::activity))
         .route("/{owner}/{repo}/blob/{*rest}", get(repo::blob))

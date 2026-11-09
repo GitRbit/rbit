@@ -33,6 +33,7 @@ pub mod merge;
 pub mod mirror;
 pub mod model;
 pub mod overlay;
+pub mod overview;
 mod process;
 pub mod pull_refs;
 pub mod push;

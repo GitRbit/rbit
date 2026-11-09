@@ -75,6 +75,13 @@ entries! { Ko:
         RepoBrowseLabel::NoStargazersYet => text.literal("아직 스타를 준 사용자가 없습니다"),
         RepoBrowseLabel::StargazersEmpty => text.literal("이 저장소에 스타를 표시한 사용자가 여기에 표시됩니다."),
         RepoBrowseLabel::RepositoryActivity => text.literal("저장소 활동"),
+        RepoBrowseLabel::GoToFile => text.literal("파일로 이동"),
+        RepoBrowseLabel::MatchingFiles => text.literal("일치하는 파일"),
+        RepoBrowseLabel::LoadingFiles => text.literal("파일을 불러오는 중…"),
+        RepoBrowseLabel::UnableToLoadFiles => text.literal("파일을 불러올 수 없습니다. Enter 키를 눌러 검색하세요."),
+        RepoBrowseLabel::SeeAllMatches => text.literal("일치 항목 모두 보기"),
+        RepoBrowseLabel::NoFilesInRevision => text.literal("이 리비전에는 파일이 없습니다."),
+        RepoBrowseLabel::TooManyFilesToSearch => text.literal("이 리비전에는 파일이 너무 많아 모두 검색할 수 없습니다."),
     }
     RepoBrowseMessage<'a> => MessageWriter |text| {
         RepoBrowseMessage::BranchNoun { .. } => text.literal("브랜치"),
@@ -113,6 +120,16 @@ entries! { Ko:
             text.literal("/");
             text.argument(name);
             text.literal(" 포크");
+        }
+        RepoBrowseMessage::CommitNoun { .. } => text.literal("커밋"),
+        RepoBrowseMessage::NoFileMatches { query } => {
+            text.literal("“");
+            text.argument(query);
+            text.literal("”에 일치하는 파일이 없습니다.");
+        }
+        RepoBrowseMessage::MoreFileMatches { count } => {
+            text.number(count as u64);
+            text.literal("개가 더 일치합니다. 이름을 더 입력해 목록을 좁히세요.");
         }
     }
 }

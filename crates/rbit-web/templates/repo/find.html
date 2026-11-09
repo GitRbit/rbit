@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+<div class="mb-3 flex min-h-8 flex-wrap items-center gap-3">
+  <h1 class="text-[13px] font-medium"><a href="{{ tree_url }}" class="font-mono text-xs text-ink-muted hover:text-ink hover:underline" dir="ltr">{{ revision }}</a> <span class="text-ink-faint">/</span> {% call ui::localized(rbit_localization::RepoBrowseLabel::GoToFile.text(page.locale)) %}{% endcall %}</h1>
+  {% include "repo/file_finder.html" %}
+</div>
+<section class="box overflow-hidden" aria-label="{{ rbit_localization::RepoBrowseLabel::MatchingFiles.text(page.locale) }}">
+  {% if results.is_empty() %}
+  <p class="px-4 py-6 text-[13px] text-ink-muted">{% if finder.query.is_empty() %}{% call ui::localized(rbit_localization::RepoBrowseLabel::NoFilesInRevision.text(page.locale)) %}{% endcall %}{% else %}{% call ui::localized(rbit_localization::RepoBrowseMessage::NoFileMatches { query: finder.query.as_str() }.text(page.locale)) %}{% endcall %}{% endif %}</p>
+  {% else %}
+  <ul>
+    {% for file in results %}
+    <li><a href="{{ file.url }}" class="row row-link gap-3 font-mono text-[13px]" dir="ltr">{% call ui::icon("file", "size-4 shrink-0 text-ink-faint") %}{% endcall %}<span class="truncate">{{ file.path }}</span></a></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% if more > 0 %}<p class="mt-3 text-xs text-ink-muted">{% call ui::localized(rbit_localization::RepoBrowseMessage::MoreFileMatches { count: *more }.text(page.locale)) %}{% endcall %}</p>{% endif %}
+{% if truncated %}<p class="mt-3 text-xs text-ink-muted">{% call ui::localized(rbit_localization::RepoBrowseLabel::TooManyFilesToSearch.text(page.locale)) %}{% endcall %}</p>{% endif %}
+{% endblock %}

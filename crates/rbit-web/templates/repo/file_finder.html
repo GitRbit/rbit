@@ -1,0 +1,10 @@
+{% import "macros.html" as ui %}
+{#- `finder`: views::file_finder::FileFinder. Submitting opens the find page; with JavaScript
+    the box lists matching paths of the shown commit as you type (file-finder.js). -#}
+<form method="get" action="{{ finder.action }}" role="search" class="file-finder relative min-w-0 max-sm:order-last max-sm:w-full sm:ms-auto sm:w-64" data-file-finder data-paths-url="{{ finder.paths_url }}" data-blob-base="{{ finder.blob_base }}" data-loading="{{ rbit_localization::RepoBrowseLabel::LoadingFiles.text(page.locale) }}" data-failed="{{ rbit_localization::RepoBrowseLabel::UnableToLoadFiles.text(page.locale) }}" data-no-match="{{ rbit_localization::RepoBrowseLabel::NoMatchingFiles.text(page.locale) }}" data-see-all="{{ rbit_localization::RepoBrowseLabel::SeeAllMatches.text(page.locale) }}">
+  <label class="sr-only" for="file-finder-input">{% call ui::localized(rbit_localization::RepoBrowseLabel::GoToFile.text(page.locale)) %}{% endcall %}</label>
+  {% call ui::icon("search", "pointer-events-none absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint") %}{% endcall %}
+  <input id="file-finder-input" type="search" name="q" value="{{ finder.query }}" class="input h-8 w-full ps-8 pe-8 text-[13px]" placeholder="{{ rbit_localization::RepoBrowseLabel::GoToFile.text(page.locale) }}" autocomplete="off" spellcheck="false" maxlength="200" role="combobox" aria-expanded="false" aria-controls="file-finder-results" aria-autocomplete="list">
+  <kbd dir="ltr" class="pointer-events-none absolute end-2 top-1/2 hidden -translate-y-1/2 rounded border border-line px-1.5 font-mono text-[11px] leading-4 text-ink-faint sm:block" aria-hidden="true">t</kbd>
+  <ul id="file-finder-results" class="menu start-0 end-0 max-h-80 overflow-y-auto" role="listbox" aria-label="{{ rbit_localization::RepoBrowseLabel::MatchingFiles.text(page.locale) }}" hidden></ul>
+</form>

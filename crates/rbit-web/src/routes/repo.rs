@@ -94,7 +94,10 @@ pub async fn activity(
 /// Raw downloads are read fully into memory; refuse anything absurdly large.
 const MAX_RAW_BYTES: usize = 100 * 1024 * 1024;
 
+mod files;
 mod navigation;
+
+pub use files::{commit_count, find};
 
 // ------------------------------------------------------------------ browsing helpers
 
@@ -371,6 +374,8 @@ async fn render_tree(
         documents,
         document_scope: urls.home(),
         history_url: urls.commits(&revision),
+        commit_count_url: files::commit_count_url(urls, &view.commit.id),
+        finder: files::finder(urls, &revision, &view.commit.id),
         languages,
         language_files_url: format!("{}/language-files?revision={}", urls.home(), crate::urls::encode_path(&view.commit.id)),
         latest_release,

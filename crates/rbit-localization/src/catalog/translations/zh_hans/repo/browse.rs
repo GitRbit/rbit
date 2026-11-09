@@ -84,6 +84,13 @@ entries! { ZhHans:
         RepoBrowseLabel::NoStargazersYet => text.literal("还没有星标用户"),
         RepoBrowseLabel::StargazersEmpty => text.literal("为此仓库加星标的用户会显示在这里。"),
         RepoBrowseLabel::RepositoryActivity => text.literal("仓库动态"),
+        RepoBrowseLabel::GoToFile => text.literal("转到文件"),
+        RepoBrowseLabel::MatchingFiles => text.literal("匹配的文件"),
+        RepoBrowseLabel::LoadingFiles => text.literal("正在加载文件…"),
+        RepoBrowseLabel::UnableToLoadFiles => text.literal("无法加载文件。按 Enter 键进行搜索。"),
+        RepoBrowseLabel::SeeAllMatches => text.literal("查看全部匹配项"),
+        RepoBrowseLabel::NoFilesInRevision => text.literal("此修订中没有文件。"),
+        RepoBrowseLabel::TooManyFilesToSearch => text.literal("此修订中的文件太多，无法全部搜索。"),
     }
     RepoBrowseMessage<'a> => MessageWriter |text| {
         RepoBrowseMessage::BranchNoun { .. } => text.literal("个分支"),
@@ -121,6 +128,17 @@ entries! { ZhHans:
             text.argument(owner);
             text.literal("/");
             text.argument(name);
+        }
+        RepoBrowseMessage::CommitNoun { .. } => text.literal("次提交"),
+        RepoBrowseMessage::NoFileMatches { query } => {
+            text.literal("没有与“");
+            text.argument(query);
+            text.literal("”匹配的文件。");
+        }
+        RepoBrowseMessage::MoreFileMatches { count } => {
+            text.literal("还有 ");
+            text.number(count as u64);
+            text.literal(" 个匹配项。输入更多文件名以缩小列表范围。");
         }
     }
 }
