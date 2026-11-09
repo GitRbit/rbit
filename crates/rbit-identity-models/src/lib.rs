@@ -9,6 +9,7 @@ pub mod accounts;
 pub mod credential;
 pub mod locale;
 pub mod names;
+pub mod profiles;
 pub mod sessions;
 pub mod token;
 

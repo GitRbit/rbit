@@ -9,16 +9,17 @@ use rbit_core::{AccountId, Email, Timestamp};
 
 use crate::StorageError;
 
-/// Editable profile fields of an account. `None` means "not set".
-///
+/// Editable profile fields; the record is identity-owned and this path stays compatible.
+pub use rbit_identity_models::profiles::AccountProfile;
+
 /// `display_name` and `bio` live on `accounts` (shared with organisations); `website` and
 /// `location` live in `account_profiles`.
-#[derive(Debug, Clone, Default, PartialEq, Eq, sqlx::FromRow)]
-pub struct AccountProfile {
-    pub display_name: Option<String>,
-    pub bio: Option<String>,
-    pub website: Option<String>,
-    pub location: Option<String>,
+#[derive(sqlx::FromRow)]
+struct ProfileRow {
+    display_name: Option<String>,
+    bio: Option<String>,
+    website: Option<String>,
+    location: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -33,13 +34,14 @@ impl ProfileStore {
 
     /// The account's profile, or `None` if the account does not exist.
     pub async fn find(&self, account_id: AccountId) -> Result<Option<AccountProfile>, StorageError> {
-        Ok(sqlx::query_as(
+        let row: Option<ProfileRow> = sqlx::query_as(
             "SELECT a.display_name, a.bio, p.website, p.location \
              FROM accounts a LEFT JOIN account_profiles p ON p.account_id = a.id WHERE a.id = ?",
         )
         .bind(account_id.0)
         .fetch_optional(&self.pool)
-        .await?)
+        .await?;
+        Ok(row.map(|row| AccountProfile { display_name: row.display_name, bio: row.bio, website: row.website, location: row.location }))
     }
 
     /// Replaces every profile field atomically.
