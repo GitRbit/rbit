@@ -152,9 +152,10 @@
     </nav>
   </header>
   {#- Page tabs: sticky under the top bar from `md` up, scrolling with the page on phones
-      (app.css `.site-subnav`). Hidden when a page has none. The labels are still English,
-      but the tabs take the document direction like the rest of the chrome. -#}
-  <div class="site-subnav" lang="en">{% block subnav %}{% endblock %}</div>
+      (app.css `.site-subnav`). Hidden when a page has none. Like the rest of the chrome, the
+      tabs take the document language and direction; an untranslated label marks itself
+      English through `ui::localized`. -#}
+  <div class="site-subnav">{% block subnav %}{% endblock %}</div>
 
   {#- Markers: where `partial.rs` cuts a page for partial responses (title, main). -#}
   <!--partial:main--><main id="main" lang="{{ page.content_locale.tag() }}" dir="{{ page.content_locale.direction().as_str() }}" class="mx-auto w-full max-w-[96rem] flex-1 px-4 pb-16 pt-6 sm:px-6 sm:pt-8">

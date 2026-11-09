@@ -97,13 +97,15 @@ test("every stylesheet uses only logical sides", async () => {
   }
 });
 
-test("the header, tabs and footer inherit the document direction", async () => {
+test("the header, tabs and footer inherit the document direction and language", async () => {
   const base = await read("templates/base.html");
   assert.match(base, /<html lang="\{\{ page\.locale\.tag\(\) \}\}" dir="\{\{ page\.locale\.direction\(\)\.as_str\(\) \}\}"/);
   for (const [name, open] of [["header", /<header\b[^>]*>/], ["tabs", /<div class="site-subnav"[^>]*>/], ["footer", /<footer\b[^>]*>/]]) {
     const tag = base.match(open)?.[0];
     assert.ok(tag, `${name} is in base.html`);
     assert.doesNotMatch(tag, /\bdir=/, `${name} must not pin its own direction: ${tag}`);
+    // Untranslated labels inside mark themselves `lang="en"` through `ui::localized`.
+    assert.doesNotMatch(tag, /\blang=/, `${name} must not pin its own language: ${tag}`);
   }
   for (const path of CHROME_TEMPLATES.slice(3)) {
     const source = await read(path);
