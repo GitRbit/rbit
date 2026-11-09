@@ -1,5 +1,9 @@
 # Identity external sign-in retirement progress
 
+> The row is now ported: the second slice moved the remaining decisions into
+> `rbit_identity::external`. See the [acceptance evidence](identity-external-acceptance.md).
+> The record below describes the first slice as it was.
+
 Progress on the `identity.external` ledger row (OIDC and GitHub sign-in, PKCE, linking and
 verified identity). This slice moves only the protocol building blocks into
 `rbit-identity`. The row stays `baseline-retained`: the external sign-in decisions in
