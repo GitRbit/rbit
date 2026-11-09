@@ -84,8 +84,8 @@ impl From<rbit_git::GitError> for ServiceError {
     }
 }
 
-impl From<rbit_auth::PasswordError> for ServiceError {
-    fn from(error: rbit_auth::PasswordError) -> Self {
+impl From<rbit_identity::PasswordError> for ServiceError {
+    fn from(error: rbit_identity::PasswordError) -> Self {
         Self::internal(error)
     }
 }

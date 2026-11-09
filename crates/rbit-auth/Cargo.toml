@@ -1,6 +1,6 @@
 [package]
 name = "rbit-auth"
-description = "Authentication primitives for rbit: Argon2id password hashing, session tokens and access policy."
+description = "Authentication primitives for rbit: session tokens and access policy."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,7 +8,7 @@ license.workspace = true
 
 [dependencies]
 rbit-access.workspace = true
-rbit-identity = { workspace = true, features = ["credentials", "session-tokens"] }
+rbit-identity = { workspace = true, features = ["session-tokens"] }
 rbit-core.workspace = true
 argon2.workspace = true
 sha2.workspace = true

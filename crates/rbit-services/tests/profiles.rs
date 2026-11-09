@@ -2,8 +2,9 @@
 
 use std::sync::Arc;
 
-use rbit_auth::Passwords;
 use rbit_core::{Config, User};
+use rbit_identity::PasswordWork;
+use rbit_kernel::BlockingBudget;
 use rbit_services::{
     ProfileService, ServiceError, Services,
     profiles::{Profile, PublicProfile, UpdateProfile},
@@ -11,6 +12,11 @@ use rbit_services::{
 use rbit_storage::{Database, KvStore, NewUser};
 
 const PASSWORD: &str = "correct horse battery";
+
+/// Fixture credentials go through the same admitted hashing as production.
+fn work() -> PasswordWork {
+    PasswordWork::new(BlockingBudget::new(std::num::NonZeroUsize::new(1).unwrap()))
+}
 
 struct Fixture {
     _dir: tempfile::TempDir,
@@ -38,7 +44,7 @@ impl Fixture {
                 name: name.parse().unwrap(),
                 email: format!("{name}@example.com").parse().unwrap(),
                 display_name: None,
-                password_hash: Passwords::hash(PASSWORD.to_owned()).await.unwrap(),
+                password_hash: work().begin().unwrap().hash(PASSWORD.to_owned()).await.unwrap(),
                 is_admin: false,
             })
             .await
@@ -202,8 +208,8 @@ async fn change_password() {
     assert!(fixture.services.accounts.resume_session(&session).await.unwrap().is_none(), "revoked before the change returns");
     let hash = fixture.database.profiles().password_hash(alice.id()).await.unwrap().unwrap();
     assert!(hash.starts_with("$argon2id$"));
-    assert!(Passwords::verify(new_password.to_owned(), hash.clone()).await.unwrap());
-    assert!(!Passwords::verify(PASSWORD.to_owned(), hash).await.unwrap());
+    assert!(work().begin().unwrap().verify(new_password.to_owned(), hash.clone()).await.unwrap());
+    assert!(!work().begin().unwrap().verify(PASSWORD.to_owned(), hash).await.unwrap());
 
     // The old password no longer re-authenticates sensitive changes.
     let stale = fixture.profiles().change_email(&alice, PASSWORD.to_owned(), "a@example.com").await;

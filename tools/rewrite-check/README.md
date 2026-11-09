@@ -36,16 +36,19 @@ This development tool has no place in the production server dependency graph.
 
 ## Legacy password scheduling boundary
 
-`rbit-rewrite-check --password-boundary [repository-root]` recursively scans only
-`crates/rbit-services/src` and `crates/rbit-server/src`. Missing, malformed or linked
-source entries fail closed. Every component below the explicitly supplied repository
-anchor is checked, including `crates`, the crate directory and `src`; an alias of the
-anchor itself does not authorize linked descendants. Directory traversal does not
-follow symlinks or Windows reparse points. The link-creation regression fixtures run on
-Unix, where they do not require Windows symlink privileges; the Windows implementation
-checks the reparse-point attribute as well as symbolic-link metadata.
-Integration tests and the compatibility facades themselves are outside
-these roots and may verify legacy compatibility.
+The unadmitted `Passwords` facade is retired (see the
+[identity retirement](../../docs/design/rewrite/identity-retirement.md)).
+`rbit-rewrite-check --password-boundary [repository-root]` recursively scans every Rust
+file below `crates`: sources, integration tests, benches, examples and build scripts.
+`crates/rbit-services/src` and `crates/rbit-server/src` remain required anchors.
+Missing, malformed or linked source entries fail closed. Every component below the
+explicitly supplied repository anchor is checked, including `crates`, the crate
+directory and `src`; an alias of the anchor itself does not authorize linked
+descendants. Directory traversal does not follow symlinks or Windows reparse points.
+The link-creation regression fixtures run on Unix, where they do not require Windows
+symlink privileges; the Windows implementation checks the reparse-point attribute as
+well as symbolic-link metadata. No crate, compatibility path or test may name or
+redefine the facade.
 
 The mode parses Rust and examines authored tokens, including opaque macro groups and
 cfg-gated source. It rejects the `Passwords` identifier in bare, qualified, renamed or
@@ -58,5 +61,5 @@ Diagnostics include the source path and line. This policy does not ban unrelated
 
 Macros are not expanded: generated imports or concatenated identifiers are outside this
 source-token proof and require review. This is a narrow guard against accidentally
-restoring direct legacy password scheduling after activation, not a complete call-graph
+restoring the retired direct password scheduling, not a complete call-graph
 or whole-program security analysis.

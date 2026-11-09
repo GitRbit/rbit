@@ -3,8 +3,8 @@
 //! Pure model ownership lives in `rbit-identity-models`, with compatibility reexports here.
 //! Model consumers depend there directly to avoid application feature unification.
 //! The `credentials` feature
-//! provides the legacy password facade; `password-work` adds explicitly injected bounded
-//! work. Defaults retain the complete historical credential API. No feature creates a
+//! provides the password error and credential inventory; `password-work` adds the only
+//! password hashing path, explicitly injected bounded work. No feature creates a
 //! global budget, performs startup or imports a concrete store/protocol implementation.
 
 pub mod account;
@@ -29,7 +29,7 @@ pub use password_input::{PasswordLength, classify_password_length};
 
 pub use account::{Account, AccountId, AccountKind, User};
 #[cfg(feature = "credentials")]
-pub use credential::{PasswordError, Passwords};
+pub use credential::PasswordError;
 pub use names::{AccountName, Email};
 #[cfg(feature = "password-work")]
 pub use password_attempt::PasswordAttempt;

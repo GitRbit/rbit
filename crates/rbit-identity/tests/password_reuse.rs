@@ -2,7 +2,7 @@
 
 use std::num::NonZeroUsize;
 
-use rbit_identity::{PasswordWork, Passwords};
+use rbit_identity::PasswordWork;
 use rbit_kernel::{AdmissionError, BlockingBudget};
 
 #[tokio::test]
@@ -38,6 +38,7 @@ async fn closing_admission_between_reservation_and_execution_does_not_readmit() 
     work.close();
     assert_eq!(work.begin().unwrap_err(), AdmissionError::Closed);
     let replacement = attempt.hash_if_different("new candidate".into(), previous).await.unwrap().unwrap();
-    assert!(Passwords::verify("new candidate".into(), replacement).await.unwrap());
+    let verifier = PasswordWork::new(BlockingBudget::new(NonZeroUsize::new(1).unwrap()));
+    assert!(verifier.begin().unwrap().verify("new candidate".into(), replacement).await.unwrap());
     assert_eq!(budget.available(), 1);
 }

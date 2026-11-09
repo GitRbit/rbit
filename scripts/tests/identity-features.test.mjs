@@ -17,9 +17,9 @@ test("renamed and target-specific identity edges cannot silently enable crypto d
   dependency.features = [];
   assert.deepEqual(checkIdentityFeatures(metadata), []);
   pkg.name = "rbit-auth";
-  dependency.features = ["credentials"];
-  assert.match(checkIdentityFeatures(metadata)[0], /exactly \[credentials, session-tokens\]/);
   dependency.features = ["credentials", "session-tokens"];
+  assert.match(checkIdentityFeatures(metadata)[0], /exactly \[session-tokens\]/, "the retired password facade cannot return");
+  dependency.features = ["session-tokens"];
   assert.deepEqual(checkIdentityFeatures(metadata), []);
   pkg.name = "rbit-repositories";
   assert.match(checkIdentityFeatures(metadata)[0], /exactly \[\]/);
@@ -35,7 +35,7 @@ test("renamed and target-specific identity edges cannot silently enable crypto d
   dependency.uses_default_features = false;
   pkg.name = "rbit-auth";
   dependency.features = ["password-work"];
-  assert.match(checkIdentityFeatures(metadata)[0], /exactly \[credentials, session-tokens\]/);
+  assert.match(checkIdentityFeatures(metadata)[0], /exactly \[session-tokens\]/);
   pkg.name = "rbit-web"; dependency.kind = "dev";
   assert.deepEqual(checkIdentityFeatures(metadata), []);
 });

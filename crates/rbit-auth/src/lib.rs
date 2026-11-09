@@ -2,7 +2,6 @@
 //!
 //! Security primitives with no knowledge of HTTP or storage:
 //!
-//! * [`password`] — Argon2id hashing tuned to OWASP recommendations.
 //! * [`session`] — unguessable session tokens; only their digests are ever stored.
 //! * [`access_token`] — personal access token secrets (`rbit_…`; legacy `rit_…`), likewise stored as digests.
 //! * [`policy`] — who may read, write or administer a repository.
@@ -18,7 +17,6 @@
 
 pub mod access_token;
 pub mod oidc;
-pub mod password;
 pub mod policy;
 // Actions: S.
 pub mod runner_token;
@@ -31,7 +29,6 @@ pub mod webauthn;
 
 pub use access_token::AccessTokenSecret;
 pub use oidc::{Flow, FlowKey, IdToken, IdTokenCheck, JwkSet, OidcError, Pkce};
-pub use password::{PasswordError, Passwords};
 pub use policy::{Grants, repo_access};
 // Actions: S.
 pub use runner_token::{RegistrationSecret, RunnerCredential};

@@ -26,11 +26,12 @@ cannot satisfy the W1–W5 product and operational requirements.
 
 The policy command rejects new internal dependency edges, new authored files over 400 physical lines, growth beyond baseline ceilings for existing oversized files, and edits/removal of historical SQL migrations. Cumulative logical-type checking is a separate AST gate for strict replacement crates. Public interfaces require crate/module responsibility and invariant documentation.
 
-The same checker also audits services/server production source for the legacy
-`Passwords` facade after bounded password activation. It checks parsed source tokens,
-namespace aliases and auth/identity wildcard imports, including cfg-gated and authored
-macro tokens; comments and strings are allowed. Integration tests remain outside that
-boundary, and macro expansion is not claimed. See the
+The same checker also audits every crate's Rust source, tests included, for the retired
+`Passwords` facade. It checks parsed source tokens, namespace aliases and auth/identity
+wildcard imports, including cfg-gated and authored macro tokens; comments and strings
+are allowed, and macro expansion is not claimed. The
+[identity retirement](identity-retirement.md) lists the other boundaries that keep
+retired identity paths from returning. See the
 [checker scope](../../../tools/rewrite-check/README.md#legacy-password-scheduling-boundary).
 
 Runtime performance acceptance requires new release measurements from the pinned main and candidate with matching fixtures/toolchains/assets. Source inventories, test durations and old noisy debug measurements are not substitutes for performance results. Build through the [shared worktree helper](../../development-worktrees.md); do not create per-worktree compiler directories.

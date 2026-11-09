@@ -2,7 +2,7 @@
 
 use argon2::{PasswordHash, PasswordVerifier, password_hash::Error};
 
-use super::{DUMMY_HASH, PasswordError, Passwords};
+use super::{DUMMY_HASH, PasswordError, hasher};
 
 pub(crate) fn verify_login(password: &str, stored: Option<&str>) -> Result<bool, PasswordError> {
     if let Some(stored) = stored
@@ -11,7 +11,7 @@ pub(crate) fn verify_login(password: &str, stored: Option<&str>) -> Result<bool,
         return Ok(accepted);
     }
     // Even a hypothetical successful match of the dummy credential grants no identity.
-    match Passwords::argon2().verify_password(password.as_bytes(), DUMMY_HASH) {
+    match hasher().verify_password(password.as_bytes(), DUMMY_HASH) {
         Ok(()) | Err(Error::PasswordInvalid) => Ok(false),
         Err(error) => Err(PasswordError::Hash(error)),
     }
@@ -26,7 +26,7 @@ fn verify_stored(password: &str, stored: &str) -> Result<Option<bool>, PasswordE
     if parsed.salt.is_none() || parsed.hash.is_none() {
         return Ok(None);
     }
-    classify(Passwords::argon2().verify_password(password.as_bytes(), &parsed))
+    classify(hasher().verify_password(password.as_bytes(), &parsed))
 }
 
 /// None means no supported verification ran and dummy work is still required.

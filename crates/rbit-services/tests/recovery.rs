@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 
-use rbit_auth::{Passwords, SessionToken};
+use rbit_auth::SessionToken;
 use rbit_identity::PasswordWork;
 use rbit_kernel::BlockingBudget;
 
@@ -117,7 +117,12 @@ impl Fixture {
                 name: name.parse().unwrap(),
                 email: format!("{name}@example.com").parse().unwrap(),
                 display_name: None,
-                password_hash: Passwords::hash(PASSWORD.to_owned()).await.unwrap(),
+                password_hash: PasswordWork::new(BlockingBudget::new(std::num::NonZeroUsize::new(1).unwrap()))
+                    .begin()
+                    .unwrap()
+                    .hash(PASSWORD.to_owned())
+                    .await
+                    .unwrap(),
                 is_admin,
             })
             .await

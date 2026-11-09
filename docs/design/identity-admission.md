@@ -22,15 +22,13 @@ The composition root constructs a narrow `PasswordWork` handle from validated st
 configuration and a `BlockingBudget`; clones share the same budget. Its purpose is
 password operations only, not a generic execution framework or credential store.
 The adapter now lives in `rbit-identity`, alongside private synchronous credential
-primitives. `rbit-auth::Passwords` and its error/module paths re-export the same types
-for compatibility; the kernel knows no account, password, HTTP or authorization types.
+primitives. The kernel knows no account, password, HTTP or authorization types.
 
 Keep synchronous crypto operations private to identity for execution inside admitted workers.
 Keep current Argon2id algorithm/version, parameters, salts, PHC compatibility and
-malformed-hash false behavior. The existing async facade can remain temporarily for
-source compatibility/test fixtures, but production services must not call its unbounded
-spawn path. Enforce the production call-site inventory in CI and remove the compatibility
-facade in an explicitly versioned API cleanup. Never nest an async crypto call that
+malformed-hash false behavior. The unbounded async `Passwords` facade and its `rbit-auth`
+aliases are removed (0.2.0, [identity retirement](rewrite/identity-retirement.md)); the
+boundary check rejects the name in every crate, tests included. Never nest an async crypto call that
 spawns again inside an admitted blocking closure.
 
 ## Reservation before one-use state

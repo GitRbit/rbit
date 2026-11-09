@@ -77,7 +77,24 @@ fn namespace_aliases_are_tracked_across_authored_files_without_following_module_
 }
 
 #[test]
-fn comments_strings_unrelated_blocking_work_and_files_outside_production_roots_are_allowed() {
+fn every_crate_target_is_checked_once_the_facade_is_retired() {
+    for path in [
+        "crates/rbit-services/tests/compatibility.rs",
+        "crates/rbit-identity/src/lib.rs",
+        "crates/rbit-auth/src/password.rs",
+        "crates/rbit-web/benches/login.rs",
+        "crates/rbit-auth/build.rs",
+    ] {
+        let root = fixture(&[(path, "pub use rbit_identity::Passwords;\n")]);
+        let report = check(root.path());
+        assert!(report.violations.iter().any(|diagnostic| diagnostic.file == root.path().join(path)), "{path}");
+    }
+    let redefined = fixture(&[("crates/rbit-identity/src/credential.rs", "pub struct Passwords;\n")]);
+    assert!(messages(&check(redefined.path())).iter().any(|message| message.contains("legacy Passwords facade")));
+}
+
+#[test]
+fn comments_strings_and_unrelated_blocking_work_are_allowed() {
     let root = fixture(&[
         (
             "crates/rbit-services/src/lib.rs",
@@ -89,11 +106,11 @@ use std::sync::*;
 fn git_work() { tokio::task::spawn_blocking(|| 42); }
 "##,
         ),
-        ("crates/rbit-services/tests/compatibility.rs", "use rbit_auth::Passwords;\n"),
-        ("crates/rbit-identity/src/lib.rs", "pub struct Passwords;\n"),
+        ("crates/rbit-services/tests/compatibility.rs", "//! Passwords was retired.\nconst OLD: &str = \"Passwords\";\n"),
+        ("crates/rbit-identity/src/lib.rs", "pub struct PasswordWork;\n"),
     ]);
     let report = check(root.path());
-    assert_eq!(report.files, 2);
+    assert_eq!(report.files, 4);
     assert!(report.violations.is_empty(), "{:?}", report.violations);
 }
 

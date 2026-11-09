@@ -1,4 +1,4 @@
-//! Source-only guard against legacy password scheduling in online service/host code.
+//! Source-only guard against the retired, unadmitted password facade in any crate.
 
 use std::{
     collections::BTreeSet,
@@ -36,15 +36,20 @@ struct Imports {
     wildcards: Vec<Wildcard>,
 }
 
-/// Fixed source roots deliberately exclude integration tests and other crates.
+/// The facade is retired, so every Rust file of every workspace crate is checked:
+/// sources, integration tests, benches, examples and build scripts. The online service
+/// and host source roots remain required anchors, so a moved tree fails closed.
 pub fn check(repository: &Path) -> Report {
     let mut report = Report::default();
     let mut files = Vec::new();
-    for member in ["rbit-services", "rbit-server"] {
-        let Some(root) = source_root(repository, member, &mut report) else { continue };
-        let before = (files.len(), report.violations.len());
-        discover(&root, &mut files, &mut report);
-        if before == (files.len(), report.violations.len()) {
+    let anchors: Vec<_> =
+        ["rbit-services", "rbit-server"].into_iter().filter_map(|member| source_root(repository, member, &mut report)).collect();
+    let crates = repository.join("crates");
+    if fs::symlink_metadata(&crates).is_ok_and(|metadata| !linked(&metadata)) {
+        discover(&crates, &mut files, &mut report);
+    }
+    for root in anchors {
+        if !files.iter().any(|file| file.starts_with(&root)) {
             diagnostic(&mut report, &root, 1, "no Rust sources found under required production source root".into());
         }
     }
@@ -160,7 +165,7 @@ fn inspect(stream: TokenStream, file: &Path, imports: &mut Imports, report: &mut
                     report,
                     file,
                     identifier.span().start().line,
-                    "legacy Passwords facade is forbidden here; use admitted PasswordWork".into(),
+                    "retired legacy Passwords facade is forbidden; use admitted PasswordWork".into(),
                 );
             }
             TokenTree::Group(group) => inspect(group.stream(), file, imports, report),

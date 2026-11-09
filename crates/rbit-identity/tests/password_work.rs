@@ -2,7 +2,7 @@
 
 use std::num::NonZeroUsize;
 
-use rbit_identity::{PasswordWork, Passwords};
+use rbit_identity::PasswordWork;
 use rbit_kernel::{AdmissionError, BlockingBudget};
 
 fn work(capacity: usize) -> (PasswordWork, BlockingBudget) {
@@ -41,14 +41,13 @@ fn dropping_unpolled_password_future_releases_reservation_without_a_runtime() {
 }
 
 #[tokio::test]
-async fn hashes_preserve_parameters_and_fresh_salts_and_verify_across_facades() {
+async fn hashes_preserve_parameters_and_fresh_salts_and_verify() {
     let (work, budget) = work(1);
     let first = work.begin().unwrap().hash("existing password".into()).await.unwrap();
     let second = work.begin().unwrap().hash("existing password".into()).await.unwrap();
     let prefix = "$argon2id$v=19$m=19456,t=2,p=1$";
     assert!(first.starts_with(prefix) && second.starts_with(prefix));
     assert_ne!(first.split('$').nth(4), second.split('$').nth(4), "new hashes use fresh random salt");
-    assert!(Passwords::verify("existing password".into(), first.clone()).await.unwrap());
     assert!(work.begin().unwrap().verify("existing password".into(), first.clone()).await.unwrap());
     assert!(!work.begin().unwrap().verify("wrong password".into(), first).await.unwrap());
     assert_eq!(budget.available(), 1);

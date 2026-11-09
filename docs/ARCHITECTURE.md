@@ -38,7 +38,7 @@ rbit/
 └── crates/
     ├── rbit-core/           # Domain model and configuration. No I/O, no async.
     ├── rbit-storage/        # SQLite (relational) + redb (key/value) persistence
-    ├── rbit-auth/           # Passwords, session/token secrets, TOTP, passkeys, permission rules
+    ├── rbit-auth/           # Session/token secrets, TOTP, passkeys, permission rules
     ├── rbit-git/            # Repository read model, diffs, languages, maintenance (gitoxide)
     ├── rbit-transport/      # Git smart protocol: stateless (HTTP) and interactive (SSH)
     ├── rbit-services/       # Application use-cases, domain events, background jobs
@@ -1161,7 +1161,7 @@ links the object.
 
 | Concern | Measure |
 |---|---|
-| Passwords | Argon2id (m = 19 MiB, t = 2, p = 1 — OWASP 2024), hashed on the blocking pool. |
+| Passwords | Argon2id (m = 19 MiB, t = 2, p = 1 — OWASP 2024), hashed only by admitted `PasswordWork` on the blocking pool. |
 | Sessions | 32 random bytes from the OS CSPRNG, base64url in an `HttpOnly; SameSite=Lax` cookie (`Secure` behind HTTPS). Only SHA-256 digest stored. Sliding expiry. |
 | Access tokens | `rbit_` + 256 random bits (`rit_` from earlier releases is still accepted: the digest covers only the random part); only the SHA-256 digest is stored, plus a 4-character hint shown as `…a1b2`. Used as the Git HTTP password and as the API bearer token; scope (`read`/`write`/`admin`) caps the owner's access, so a read token can clone but never push, and only an admin token changes settings, webhooks or deletes. Optional expiry; `last_used_at` is recorded at most hourly. Max 50 per user. |
 | Repository access | One pure policy (`repo_access`) decides every check — pages, API, Git over HTTP and SSH — from the viewer's grants (organisation role and base permission, teams, collaborator entry); SQL listings use one readable-by predicate tested against it. Leaving an organisation revokes its team memberships and collaborator entries in the same transaction (trigger). |

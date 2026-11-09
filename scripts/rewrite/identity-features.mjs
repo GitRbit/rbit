@@ -7,7 +7,7 @@ const consumers = {
   "rbit-repositories": { normal: [] },
   "rbit-core": { normal: [] },
   "rbit-storage": { normal: [] },
-  "rbit-auth": { normal: ["credentials", "session-tokens"] },
+  "rbit-auth": { normal: ["session-tokens"] },
   "rbit-services": { normal: ["password-work", "sessions"] },
   "rbit-web": { dev: ["password-work"] },
 };
