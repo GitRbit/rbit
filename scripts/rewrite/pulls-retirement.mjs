@@ -7,7 +7,8 @@ const SERVICES = "crates/rbit-services/src/";
 const DECISIONS = /\bfn\s+(?:branch_ref|select_head)\b/u;
 // Opening policy text is owned by rbit_collaboration::pulls::PullCreation.
 // (Base changes and reopening share some refusals and keep their own owners.)
-const POLICY_TEXT = /pull requests cannot be opened against a mirror|choose existing branches to compare|already contains every commit of/u;
+// Review submission/dismissal and base-change refusals are owned by rbit_collaboration::pulls too.
+const POLICY_TEXT = /pull requests cannot be opened against a mirror|choose existing branches to compare|already contains every commit of|you cannot approve or request changes|write a comment or leave line comments first|say why the review is dismissed|only approvals and change requests can be dismissed|The base branch changed from|"choose an existing branch"/u;
 // Only storage and the creation adapter see the capped insert's outcome.
 const INSERT_OUTCOME = /\bCreatedPull::(?:Created|Duplicate)\b/u;
 const INSERT_OWNERS = ["crates/rbit-storage/", "crates/rbit-services/src/pulls/creation.rs"];
@@ -37,7 +38,7 @@ export function checkPullsRetirement(sources) {
       violations.push(`${path}: branch and head selection belong to rbit_collaboration::pulls`);
     }
     if (!path.startsWith(OWNER) && POLICY_TEXT.test(text)) {
-      violations.push(`${path}: pull request opening policy text belongs to rbit_collaboration::pulls::PullCreation`);
+      violations.push(`${path}: pull request opening, review and base-change policy text belongs to rbit_collaboration::pulls`);
     }
     if (!path.startsWith(OWNER) && (MODELS.test(text) || (path === CORE_MODEL && CORE_DECISIONS.test(text)))) {
       violations.push(`${path}: pull request records and merge requirements belong to rbit_collaboration::pulls`);

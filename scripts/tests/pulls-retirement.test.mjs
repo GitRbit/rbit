@@ -19,6 +19,12 @@ test("opening policy text and the insert outcome stay with the application and a
     "\"pull requests cannot be opened against a mirror\"",
     "format!(\"{base_branch} already contains every commit of {head_branch}\")",
     "\"choose existing branches to compare\"",
+    "\"you cannot approve or request changes on your own pull request\"",
+    "\"write a comment or leave line comments first\"",
+    "\"say why the review is dismissed\"",
+    "\"only approvals and change requests can be dismissed\"",
+    "format!(\"The base branch changed from {previous} to {branch}.\")",
+    "ServiceError::Invalid(\"choose an existing branch\".to_owned())",
   ]) {
     assert.match(check([["crates/rbit-services/src/pulls.rs", `${text}\n`]])[0], /policy text belongs/u, text);
     assert.deepEqual(check([["crates/rbit-collaboration/src/pulls/creation.rs", `${text}\n`]]), [], text);
