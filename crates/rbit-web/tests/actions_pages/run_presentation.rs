@@ -206,7 +206,7 @@ async fn run_section(fixture: &Fixture, url: &str, language: &str) -> String {
 }
 
 #[tokio::test]
-async fn untranslated_review_text_is_marked_english_only_where_it_falls_back() {
+async fn translated_review_text_carries_no_english_marking() {
     let fixture = Fixture::new().await;
     let labels = vec!["ubuntu-latest".to_owned()];
     let jobs = [build_job(&labels)];
@@ -214,9 +214,11 @@ async fn untranslated_review_text_is_marked_english_only_where_it_falls_back() {
         seed(&fixture, Seed { title: "Fork review", jobs: &jobs, start: RunStart::AwaitingApproval, trusted: false, error: None }).await;
     let url = format!("/alice/rocket/actions/runs/{}", run.number);
     let spanish = run_section(&fixture, &url, "es").await;
-    for fallback in ["This run waits for approval", "Approve and run"] {
-        assert!(spanish.contains(&format!("<span lang=\"en\">{fallback}</span>")), "{fallback} falls back: {spanish}");
+    for translated in ["Esta ejecución espera aprobación", "Aprobar y ejecutar"] {
+        assert!(spanish.contains(translated), "{translated} is translated: {spanish}");
+        assert!(!spanish.contains(&format!("<span lang=\"en\">{translated}")), "{translated} has no wrapper");
     }
+    assert!(!spanish.contains("This run waits for approval"));
     assert!(spanish.contains("envío") && !spanish.contains("<span lang=\"en\">envío"), "translated text has no wrapper");
     assert!(!spanish.contains("lang=\"en\" dir=\"ltr\""), "no hard-coded English islands remain");
     let english = run_section(&fixture, &url, "en").await;

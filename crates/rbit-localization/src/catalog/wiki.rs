@@ -296,7 +296,7 @@ mod tests {
     use crate::{Catalog, Locale};
 
     #[test]
-    fn wiki_messages_have_ids_keep_user_text_plain_and_fall_back_to_english() {
+    fn wiki_messages_have_ids_keep_user_text_plain_and_translate_to_spanish() {
         let attack = "<script>alert(1)</script>";
         for locale in [Locale::English, Locale::Spanish, Locale::PseudoExpanded, Locale::PseudoRtl] {
             let catalog = Catalog::new(locale);
@@ -305,14 +305,15 @@ mod tests {
             if locale == Locale::PseudoRtl {
                 assert!(title.as_str().contains("\u{2068}<script>alert(1)</script>\u{2069}"));
             }
-            assert_eq!(title.fallback(), locale == Locale::Spanish);
+            assert!(!title.fallback());
         }
         let english = Catalog::new(Locale::English);
         assert_eq!(english.localized(WikiMessage::Tab).as_str(), "Wiki");
         assert_eq!(english.localized(WikiMessage::Changes { additions: 1, deletions: 2 }).as_str(), "1 addition, 2 deletions");
         assert_eq!(english.localized(WikiMessage::SearchCount { count: 1, query: "a" }).as_str(), "1 page matches “a”");
         assert_eq!(english.localized(WikiMessage::Revision { generation: 3 }).as_str(), "Revision 3");
-        assert_eq!(Catalog::new(Locale::Spanish).localized(WikiMessage::Save).as_str(), "Save page");
+        assert_eq!(Catalog::new(Locale::Spanish).localized(WikiMessage::Save).as_str(), "Guardar página");
+        assert!(Catalog::new(Locale::German).localized(WikiMessage::Save).fallback());
         assert_eq!(WikiMessage::Revision { generation: 3 }.id(), "wiki.history.revision");
     }
 }

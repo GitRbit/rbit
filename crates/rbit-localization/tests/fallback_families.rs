@@ -1,5 +1,5 @@
-//! Every key of the English-first families exists, renders in every catalog and falls
-//! back to English wherever a locale has not translated it.
+//! Every key of the English-first families exists and renders in every catalog; Spanish
+//! translates them all.
 use std::collections::BTreeSet;
 
 use rbit_localization::{Catalog, Locale, MessageFamily, RunPageMessage, SettingsNavMessage, ThemePreviewMessage};
@@ -15,9 +15,7 @@ fn check_family<M: MessageFamily + std::fmt::Debug>(messages: &[M], distinct_ids
         for locale in LOCALES {
             let text = Catalog::new(locale).localized(message);
             assert!(!text.as_str().is_empty(), "{message:?} in {locale:?}");
-            if locale != Locale::Spanish {
-                assert!(!text.fallback(), "{message:?} derives from English in {locale:?}");
-            }
+            assert!(!text.fallback(), "{message:?} has its own text in {locale:?}");
         }
     }
 }
@@ -43,17 +41,13 @@ fn run_page() -> Vec<RunPageMessage<'static>> {
 }
 
 #[test]
-fn run_page_keys_exist_render_and_fall_back_in_spanish() {
+fn run_page_keys_exist_render_and_translate_to_spanish() {
     check_family(&run_page(), 13);
     let spanish = Catalog::new(Locale::Spanish);
-    for message in run_page() {
-        let english = Catalog::new(Locale::English).localized(message);
-        let fallback = spanish.localized(message);
-        assert_eq!(fallback.as_str(), english.as_str(), "{message:?}");
-        assert!(fallback.fallback(), "{message:?}");
-    }
     let approved = spanish.localized(RunPageMessage::UntrustedApprovedNote { approver: "<alice>" });
-    assert!(approved.as_str().ends_with("approved by <alice>."), "arguments stay plain text: {approved}");
+    assert!(approved.as_str().ends_with("la aprobó <alice>."), "arguments stay plain text: {approved}");
+    let two = spanish.localized(RunPageMessage::DeploymentJobs { jobs: "deploy, smoke", count: 2, environment: "prod" });
+    assert_eq!(two.as_str(), "deploy, smoke despliegan en prod, cuyos revisores deben aprobarlo primero.");
 }
 
 #[test]
@@ -66,7 +60,7 @@ fn deployment_text_chooses_the_verb_by_job_count() {
 }
 
 #[test]
-fn settings_navigation_keys_exist_and_translate_only_what_spanish_has() {
+fn settings_navigation_keys_exist_and_translate_to_spanish() {
     use SettingsNavMessage as M;
     let all = [
         M::Settings,
@@ -88,12 +82,12 @@ fn settings_navigation_keys_exist_and_translate_only_what_spanish_has() {
         assert!(!text.fallback(), "{message:?} reuses the shell's Spanish entry");
     }
     let keys = spanish.localized(M::SshKeys);
-    assert_eq!(keys.as_str(), "SSH keys");
-    assert!(keys.fallback());
+    assert_eq!(keys.as_str(), "Claves SSH");
+    assert!(!keys.fallback());
 }
 
 #[test]
-fn theme_preview_keys_exist_render_and_fall_back_in_spanish() {
+fn theme_preview_keys_exist_render_and_translate_to_spanish() {
     use ThemePreviewMessage as M;
     let all = [
         M::Star,
@@ -114,5 +108,6 @@ fn theme_preview_keys_exist_render_and_fall_back_in_spanish() {
     let english = Catalog::new(Locale::English);
     assert_eq!(english.localized(M::Lines { count: 1 }).as_str(), "1 line");
     assert_eq!(english.localized(M::Lines { count: 8 }).as_str(), "8 lines");
-    assert!(all.iter().all(|&message| Catalog::new(Locale::Spanish).localized(message).fallback()));
+    assert_eq!(Catalog::new(Locale::Spanish).localized(M::Lines { count: 1 }).as_str(), "1 línea");
+    assert_eq!(Catalog::new(Locale::Spanish).localized(M::Lines { count: 8 }).as_str(), "8 líneas");
 }
