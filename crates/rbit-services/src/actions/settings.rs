@@ -398,7 +398,7 @@ impl ActionsService {
             return Err(ServiceError::Invalid("only owner secrets are given to selected repositories".to_owned()));
         };
         // Every repository, whoever may read it: an owner manages all of them.
-        let stored = self.ctx().database.repositories().list_by_owner(owner, None, true).await?;
+        let stored = crate::repositories::all_for_owner(&self.ctx().database, owner).await?;
         let mut repositories: Vec<OwnerRepository> =
             stored.into_iter().map(|owned| OwnerRepository { id: owned.repo.id, name: owned.repo.name.to_string() }).collect();
         repositories.sort_by(|a, b| a.name.cmp(&b.name));

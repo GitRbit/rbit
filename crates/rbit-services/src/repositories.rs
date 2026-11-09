@@ -23,8 +23,7 @@ use crate::{EventBus, ServiceContext, ServiceError, StarSummary, timeline::OpenC
 
 mod aliases;
 
-/// Upper bound on the dashboard list; it is a jumping-off point, not an archive.
-const DASHBOARD_LIMIT: u32 = 100;
+use rbit_repositories::discovery::RepositoryListings;
 pub use rbit_repositories::discovery::{EXPLORE_PAGE_SIZE, RepoSearch, RepoSearchResults};
 
 pub use rbit_repositories::creation::CreateRepository;
@@ -206,25 +205,23 @@ impl RepositoryService {
 
     /// Repositories of `owner` that `viewer` may see.
     pub async fn list_for_owner(&self, viewer: Option<&User>, owner: &Account) -> Result<Vec<OwnedRepository>, ServiceError> {
-        let is_admin = viewer.is_some_and(|user| user.is_admin);
-        Ok(self.store.list_by_owner(owner.id, viewer.map(User::id), is_admin).await?)
+        Ok(RepositoryListings::new(&self.store).for_owner(viewer, owner).await?)
     }
 
     /// The dashboard list: `user`'s own repositories, those of their organisations and
     /// those shared with them (each only if they may read it), most recently updated first.
     pub async fn list_for_dashboard(&self, user: &User) -> Result<Vec<OwnedRepository>, ServiceError> {
-        Ok(self.store.list_for_member(user.id(), DASHBOARD_LIMIT).await?)
+        Ok(RepositoryListings::new(&self.store).dashboard(user).await?)
     }
 
     /// One page (`limit` repositories after skipping `offset`) of the same list as
     /// [`Self::list_for_dashboard`], uncapped, with the total across all pages.
     pub async fn page_for_member(&self, user: &User, limit: u32, offset: u32) -> Result<(Vec<OwnedRepository>, u64), ServiceError> {
-        let total = self.store.count_for_member(user.id()).await?;
-        Ok((self.store.page_for_member(user.id(), limit, offset).await?, total))
+        Ok(RepositoryListings::new(&self.store).member_page(user, limit, offset).await?)
     }
 
     pub async fn recent_public(&self, limit: u32) -> Result<Vec<OwnedRepository>, ServiceError> {
-        Ok(self.store.list_recent_public(limit).await?)
+        Ok(RepositoryListings::new(&self.store).recent_public(limit).await?)
     }
 
     /// One page of public repositories matching `search` (name or description).
@@ -244,6 +241,11 @@ impl RepositoryService {
 /// organisation). Shared by repository creation, forks and transfers.
 pub(crate) async fn authorised_owner(store: &RepositoryStore, actor: &User, owner: &str) -> Result<Account, ServiceError> {
     rbit_repositories::creation::RepositoryOwnership::resolve(store, actor, owner).await.map_err(creation::owner_error)
+}
+
+/// Every repository of `owner`, whoever may read it, for owner-level management.
+pub(crate) async fn all_for_owner(database: &rbit_storage::Database, owner: AccountId) -> Result<Vec<OwnedRepository>, ServiceError> {
+    Ok(RepositoryListings::new(&database.repositories()).all_for_owner(owner).await?)
 }
 
 /// What `viewer` was granted on `repo`, for [`repo_access`], loaded through the

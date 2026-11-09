@@ -39,11 +39,8 @@ pub async fn explore(
     shape: ExploreRequestShape,
     Query(params): Query<ExploreQuery>,
 ) -> WebResult<Response> {
-    let query = params.q.unwrap_or_default().trim().to_owned();
-    let sort = params.sort.as_deref().and_then(RepoSort::parse).unwrap_or_default();
-    let archived = params.archived.as_deref().and_then(ArchivedFilter::parse).unwrap_or_default();
-    let requested = params.page.as_deref().and_then(|p| p.parse().ok()).unwrap_or(1);
-    let search = RepoSearch { text: query.clone(), sort, archived, page: requested };
+    let search = RepoSearch::from_query(params.q.as_deref(), params.sort.as_deref(), params.archived.as_deref(), params.page.as_deref());
+    let (query, sort, archived) = (search.text.clone(), search.sort, search.archived);
     // This public-only service remains the sole authority for result visibility.
     let found = state.services.repositories.explore(&search).await?;
     let pagination = Pagination {
