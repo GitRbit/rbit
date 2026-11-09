@@ -1,11 +1,12 @@
 //! A counted lease spans verification, commit and adopted finalization ownership.
 
-use super::ProfileService;
+use super::{ProfileService, Throttle, map, map_with};
 use crate::{
     DomainEvent, ServiceError,
     audit::{AuditAction, AuditEntry, AuditService},
 };
 use rbit_core::User;
+use rbit_identity::profiles::commit_password_change;
 
 impl ProfileService {
     /// Replaces the password after re-checking the current one.
@@ -18,35 +19,24 @@ impl ProfileService {
         let mut current_password = zeroize::Zeroizing::new(current_password);
         let mut new_password = zeroize::Zeroizing::new(new_password);
         async move {
-            self.validate_new_password(&new_password)?;
-            if current_password.as_str() == new_password.as_str() {
-                return Err(ServiceError::Invalid("choose a different password from your current password".into()));
-            }
-            // Reserve before the first await, but defer closed error until the original
-            // admission boundary so validation/throttle/authentication precedence survives.
-            let ownership = self.accounts.reserve_password_change();
-            let verified = self.checked_password_hash(user, &current_password).await?;
-            let attempt = self.accounts.password_work().begin()?;
-            let ownership = ownership?;
-            let result = attempt
-                .verify_and_hash(std::mem::take(&mut *current_password), verified.to_string(), std::mem::take(&mut *new_password))
-                .await;
-            if matches!(&result, Err(rbit_identity::PasswordError::Hash(_))) {
-                self.finish_password_check(user, true)?;
-            }
-            let hash = result?;
-            self.finish_password_check(user, hash.is_some())?;
-            let hash = hash.ok_or(ServiceError::InvalidCredentials)?;
+            let (store, accounts, throttle) = (self.store(), self.ctx.database.accounts(), Throttle(&self.throttle));
+            let app = self.application(&store, &accounts, &throttle);
+            // The identity application reserves before its first await but reports a closed
+            // owner only at the original admission boundary, after validation and throttling.
+            let prepared = app
+                .prepare_password_change(user, std::mem::take(&mut *current_password), std::mem::take(&mut *new_password), || {
+                    self.accounts.reserve_password_change()
+                })
+                .await
+                .map_err(|error| map_with(error, |error| error))?;
             // Narrow worker capabilities deliberately exclude the tracking supervisor.
-            let store = self.store();
             let finalizer = self.accounts.password_change_finalizer();
             let audit = AuditService::new(self.ctx.clone());
             let events = self.ctx.events.clone();
             let user = user.clone();
-            crate::credentials::finish_update(ownership, move |context| async move {
-                if !store.set_password_hash_if_current(user.id(), &hash, &verified).await? {
-                    return Err(ServiceError::InvalidCredentials);
-                }
+            let (hash, verified) = (prepared.hash, prepared.verified);
+            crate::credentials::finish_update(prepared.ownership, move |context| async move {
+                commit_password_change(&store, user.id(), &hash, &verified).await.map_err(|error| map(widen(error)))?;
                 finalizer.preserving_current(&context, user.id()).await?;
                 tracing::info!(user = %user.name(), "password changed");
                 audit.record(AuditEntry::new(AuditAction::PasswordChanged).by(&user)).await;
@@ -55,5 +45,22 @@ impl ProfileService {
             })
             .await
         }
+    }
+}
+
+/// The commit has no throttle; widen its error to the adapter's mapping type.
+fn widen<S>(
+    error: rbit_identity::profiles::ProfileError<S, std::convert::Infallible>,
+) -> rbit_identity::profiles::ProfileError<S, ServiceError> {
+    use rbit_identity::profiles::ProfileError as E;
+    match error {
+        E::Store(error) => E::Store(error),
+        E::Throttle(never) | E::Reserve(never) => match never {},
+        E::Rejected(rejection) => E::Rejected(rejection),
+        E::Name(error) => E::Name(error),
+        E::InvalidCredentials => E::InvalidCredentials,
+        E::NotFound => E::NotFound,
+        E::Admission(error) => E::Admission(error),
+        E::Password(error) => E::Password(error),
     }
 }

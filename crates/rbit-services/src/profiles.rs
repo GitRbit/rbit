@@ -1,40 +1,25 @@
-//! User profile and account settings (display name, bio, email, password).
+//! User profile and account settings: the service adapter over the identity profile
+//! application.
 //!
-//! Workstream D owns this file.
+//! Validation, password checks, throttle order and compare-and-set commits live in
+//! `rbit_identity::profiles`. This adapter supplies the throttle, maps errors, logs,
+//! audits, publishes domain events and finalizes sessions after a password change.
 
-mod password_checks;
-use rbit_core::{AccountId, AccountName, Email, User};
-use rbit_storage::sqlite::profiles::{AccountProfile, ProfileStore};
+mod password_changes;
+
+use rbit_core::{AccountId, Email, User};
+use rbit_identity::profiles::{CredentialThrottle, ProfileApplication, ProfileError};
+use rbit_storage::{AccountStore, StorageError, sqlite::profiles::ProfileStore};
 
 use crate::audit::{AuditAction, AuditEntry, AuditService};
 use crate::{AccountService, DomainEvent, ServiceContext, ServiceError, ThrottleScope, ThrottleService};
 
-const MAX_DISPLAY_NAME_LEN: usize = 80;
-const MAX_BIO_LEN: usize = 300;
-const MAX_WEBSITE_LEN: usize = 200;
-const MAX_LOCATION_LEN: usize = 80;
-/// Upper bound on password length: Argon2 accepts more, but unbounded input invites denial of service.
-const MAX_PASSWORD_LEN: usize = 256;
-
 /// A user's editable profile. `None` means "not set".
-pub type Profile = AccountProfile;
-
+pub type Profile = rbit_identity::profiles::AccountProfile;
 /// The profile fields shown on `/{name}` in addition to the account's display name and bio.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct PublicProfile {
-    /// Always an `http://` or `https://` URL.
-    pub website: Option<String>,
-    pub location: Option<String>,
-}
-
+pub use rbit_identity::profiles::PublicProfile;
 /// Raw "edit profile" input, exactly as submitted. Blank fields clear the value.
-#[derive(Debug, Clone, Default)]
-pub struct UpdateProfile {
-    pub display_name: String,
-    pub bio: String,
-    pub website: String,
-    pub location: String,
-}
+pub type UpdateProfile = rbit_identity::profiles::ProfileUpdate;
 
 #[derive(Debug, Clone)]
 pub struct ProfileService {
@@ -43,7 +28,28 @@ pub struct ProfileService {
     throttle: ThrottleService,
 }
 
-mod password_changes;
+/// Account-keyed buckets of the shared throttle.
+struct Throttle<'a>(&'a ThrottleService);
+
+impl CredentialThrottle for Throttle<'_> {
+    type Error = ServiceError;
+    fn check_rename(&self, account: AccountId) -> Result<(), ServiceError> {
+        self.0.check(ThrottleScope::AccountRename, &account.0.to_string())
+    }
+    fn check_password(&self, account: AccountId) -> Result<(), ServiceError> {
+        self.0.check(ThrottleScope::PasswordCheck, &account.0.to_string())
+    }
+    fn record_password(&self, account: AccountId, valid: bool) {
+        let key = account.0.to_string();
+        if valid {
+            self.0.reset(ThrottleScope::PasswordCheck, &key);
+        } else {
+            self.0.record_failure(ThrottleScope::PasswordCheck, &key);
+        }
+    }
+}
+
+type Application<'a> = ProfileApplication<'a, ProfileStore, AccountStore, Throttle<'a>>;
 
 impl ProfileService {
     pub(crate) fn new(ctx: ServiceContext, accounts: AccountService, throttle: ThrottleService) -> Self {
@@ -54,15 +60,21 @@ impl ProfileService {
         self.ctx.database.profiles()
     }
 
+    fn application<'s>(&'s self, store: &'s ProfileStore, accounts: &'s AccountStore, throttle: &'s Throttle<'s>) -> Application<'s> {
+        let min = self.ctx.config.security.min_password_length;
+        ProfileApplication::new(store, accounts, throttle, self.accounts.password_work(), min)
+    }
+
     /// The signed-in user's own profile, for the settings form.
     pub async fn profile(&self, user: &User) -> Result<Profile, ServiceError> {
-        self.store().find(user.id()).await?.ok_or(ServiceError::NotFound)
+        let (store, accounts, throttle) = (self.store(), self.ctx.database.accounts(), Throttle(&self.throttle));
+        self.application(&store, &accounts, &throttle).profile(user).await.map_err(map)
     }
 
     /// Extras for an account's public profile page. Accounts without any are blank.
     pub async fn public_profile(&self, account_id: AccountId) -> Result<PublicProfile, ServiceError> {
-        let profile = self.store().find(account_id).await?.unwrap_or_default();
-        Ok(PublicProfile { website: profile.website, location: profile.location })
+        let (store, accounts, throttle) = (self.store(), self.ctx.database.accounts(), Throttle(&self.throttle));
+        self.application(&store, &accounts, &throttle).public_profile(account_id).await.map_err(map)
     }
 
     /// Renames the authenticated user's own account without changing its identity or
@@ -75,12 +87,9 @@ impl ProfileService {
     ) -> impl std::future::Future<Output = Result<(), ServiceError>> {
         let mut current_password = zeroize::Zeroizing::new(current_password);
         async move {
-            self.throttle.check(ThrottleScope::AccountRename, &user.id().0.to_string())?;
-            let name: AccountName = new_name.trim().parse()?;
-            let verified = self.verify_password(user, std::mem::take(&mut *current_password)).await?;
-            if !self.ctx.database.accounts().rename_if_password(user.id(), &name, &verified).await? {
-                return Err(ServiceError::InvalidCredentials);
-            }
+            let (store, accounts, throttle) = (self.store(), self.ctx.database.accounts(), Throttle(&self.throttle));
+            let app = self.application(&store, &accounts, &throttle);
+            let name = app.change_username(user, std::mem::take(&mut *current_password), new_name).await.map_err(map)?;
             tracing::info!(account = user.id().0, new_name = %name, "account renamed");
             AuditService::new(self.ctx.clone()).record(AuditEntry::new(AuditAction::UsernameChanged).by(user).on(name.to_string())).await;
             Ok(())
@@ -89,13 +98,8 @@ impl ProfileService {
 
     /// Validates and replaces every profile field.
     pub async fn update_profile(&self, user: &User, input: UpdateProfile) -> Result<Profile, ServiceError> {
-        let profile = Profile {
-            display_name: single_line("display name", &input.display_name, MAX_DISPLAY_NAME_LEN)?,
-            bio: optional_text("bio", input.bio.trim(), MAX_BIO_LEN)?,
-            website: website(&input.website)?,
-            location: single_line("location", &input.location, MAX_LOCATION_LEN)?,
-        };
-        self.store().update(user.id(), &profile).await?;
+        let (store, accounts, throttle) = (self.store(), self.ctx.database.accounts(), Throttle(&self.throttle));
+        let profile = self.application(&store, &accounts, &throttle).update_profile(user, input).await.map_err(map)?;
         tracing::info!(user = %user.name(), "profile updated");
         Ok(profile)
     }
@@ -112,96 +116,30 @@ impl ProfileService {
     ) -> impl std::future::Future<Output = Result<Email, ServiceError>> {
         let mut current_password = zeroize::Zeroizing::new(current_password);
         async move {
-            let email: Email = new_email.trim().parse()?;
-            let verified = self.verify_password(user, std::mem::take(&mut *current_password)).await?;
-            if !self.store().set_email_if_password(user.id(), &email, &verified).await? {
-                return Err(ServiceError::InvalidCredentials);
-            }
+            let (store, accounts, throttle) = (self.store(), self.ctx.database.accounts(), Throttle(&self.throttle));
+            let app = self.application(&store, &accounts, &throttle);
+            let email = app.change_email(user, std::mem::take(&mut *current_password), new_email).await.map_err(map)?;
             tracing::info!(user = %user.name(), "email changed");
             self.ctx.events.publish(DomainEvent::EmailChanged { user: user.id(), previous: user.email.to_string() });
             Ok(email)
         }
     }
-
-    fn validate_new_password(&self, password: &str) -> Result<(), ServiceError> {
-        let min = self.ctx.config.security.min_password_length;
-        let length = rbit_identity::classify_password_length(password, min, MAX_PASSWORD_LEN);
-        if length == rbit_identity::PasswordLength::TooShort {
-            return Err(ServiceError::Invalid(format!("new password must be at least {min} characters")));
-        }
-        if length == rbit_identity::PasswordLength::TooLong {
-            return Err(ServiceError::Invalid(format!("new password must be at most {MAX_PASSWORD_LEN} characters")));
-        }
-        Ok(())
-    }
 }
 
-/// A trimmed single-line value; blank becomes `None`.
-fn single_line(field: &str, value: &str, max: usize) -> Result<Option<String>, ServiceError> {
-    let value = value.trim();
-    if value.chars().any(char::is_control) {
-        return Err(ServiceError::Invalid(format!("{field} must be a single line of text")));
-    }
-    optional_text(field, value, max)
+fn map(error: ProfileError<StorageError, ServiceError>) -> ServiceError {
+    map_with(error, |never| match never {})
 }
 
-/// `value` (already trimmed) as an optional field of at most `max` characters.
-fn optional_text(field: &str, value: &str, max: usize) -> Result<Option<String>, ServiceError> {
-    if value.chars().count() > max {
-        return Err(ServiceError::Invalid(format!("{field} must be at most {max} characters")));
-    }
-    if value.chars().any(|c| c.is_control() && c != '\n' && c != '\r' && c != '\t') {
-        return Err(ServiceError::Invalid(format!("{field} contains invalid characters")));
-    }
-    Ok((!value.is_empty()).then(|| value.to_owned()))
-}
-
-/// An `http(s)://` URL with a host, or `None` when blank. Anything else (notably
-/// `javascript:` and `data:` URLs) is rejected, because the value is rendered as a link.
-fn website(value: &str) -> Result<Option<String>, ServiceError> {
-    let value = value.trim();
-    if value.is_empty() {
-        return Ok(None);
-    }
-    if value.chars().count() > MAX_WEBSITE_LEN {
-        return Err(ServiceError::Invalid(format!("website must be at most {MAX_WEBSITE_LEN} characters")));
-    }
-    let lower = value.to_ascii_lowercase();
-    let rest = lower.strip_prefix("https://").or_else(|| lower.strip_prefix("http://"));
-    let has_host = rest.is_some_and(|rest| rest.split(['/', '?', '#']).next().is_some_and(|host| !host.is_empty()));
-    if !has_host || value.chars().any(|c| c.is_whitespace() || c.is_control()) {
-        return Err(ServiceError::Invalid("website must be a URL starting with http:// or https://".to_owned()));
-    }
-    Ok(Some(value.to_owned()))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn website_accepts_http_urls_only() {
-        assert_eq!(website("  ").unwrap(), None);
-        assert_eq!(website(" https://example.com/me ").unwrap().as_deref(), Some("https://example.com/me"));
-        assert_eq!(website("HTTP://Example.com").unwrap().as_deref(), Some("HTTP://Example.com"));
-        for bad in ["example.com", "javascript:alert(1)", "https://", "https:///path", "ftp://example.com", "https://exa mple.com"] {
-            assert!(website(bad).is_err(), "{bad:?} should be rejected");
-        }
-        assert!(website(&format!("https://{}", "a".repeat(MAX_WEBSITE_LEN))).is_err());
-    }
-
-    #[test]
-    fn single_line_fields_reject_line_breaks() {
-        assert_eq!(single_line("location", "  Berlin ", 80).unwrap().as_deref(), Some("Berlin"));
-        assert_eq!(single_line("location", "", 80).unwrap(), None);
-        assert!(single_line("location", "Ber\nlin", 80).is_err());
-        assert!(single_line("location", &"é".repeat(81), 80).is_err());
-        assert!(single_line("location", &"é".repeat(80), 80).is_ok());
-    }
-
-    #[test]
-    fn multi_line_text_keeps_line_breaks() {
-        assert_eq!(optional_text("bio", "line one\nline two", 300).unwrap().as_deref(), Some("line one\nline two"));
-        assert!(optional_text("bio", "bell\u{7}", 300).is_err());
+fn map_with<R>(error: ProfileError<StorageError, ServiceError, R>, reserve: impl FnOnce(R) -> ServiceError) -> ServiceError {
+    match error {
+        ProfileError::Store(error) => error.into(),
+        ProfileError::Throttle(error) => error,
+        ProfileError::Reserve(error) => reserve(error),
+        ProfileError::Rejected(rejection) => ServiceError::Invalid(rejection.to_string()),
+        ProfileError::Name(error) => error.into(),
+        ProfileError::InvalidCredentials => ServiceError::InvalidCredentials,
+        ProfileError::NotFound => ServiceError::NotFound,
+        ProfileError::Admission(error) => error.into(),
+        ProfileError::Password(error) => error.into(),
     }
 }

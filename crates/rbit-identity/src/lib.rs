@@ -5,7 +5,8 @@
 //! The `credentials` feature
 //! provides the password error and credential inventory; `password-work` adds the only
 //! password hashing path, explicitly injected bounded work. `access-tokens` adds the
-//! personal access token application over static ports. No feature creates a
+//! personal access token application over static ports; `password-work` also carries the
+//! self-service profile application. No feature creates a
 //! global budget, performs startup or imports a concrete store/protocol implementation.
 
 #[cfg(feature = "access-tokens")]
@@ -13,6 +14,8 @@ pub mod access_tokens;
 pub mod account;
 pub mod accounts;
 pub mod names;
+#[cfg(feature = "password-work")]
+pub mod profiles;
 pub mod sessions;
 pub mod token;
 pub use token::TokenDigest;

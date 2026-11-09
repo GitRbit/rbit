@@ -57,6 +57,10 @@ name = "password_work"
 required-features = ["password-work"]
 
 [[test]]
+name = "profile_application"
+required-features = ["password-work"]
+
+[[test]]
 name = "account_workflows"
 required-features = ["password-work"]
 
