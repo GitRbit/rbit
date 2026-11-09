@@ -64,6 +64,7 @@ job pages, theme picker, language settings); the table-backed translations in
 | email | correo electrónico (correo) | |
 | environment | entorno | |
 | event | evento | |
+| fetch (Git) | obtener / obtención | "Obtener ahora", "Última obtención" |
 | file | archivo | |
 | fork (noun / verb) | bifurcación / bifurcar | |
 | history | historial | |
@@ -80,6 +81,18 @@ job pages, theme picker, language settings); the table-backed translations in
 | merged | fusionada | |
 | milestone | hito | |
 | mirror | réplica | "réplica de" |
+| pull mirror / push mirror | réplica de extracción / réplica de envío | |
+| upstream (of a mirror) | origen | "URL de origen" |
+| remote | remoto | |
+| payload (webhook) | carga | "URL de la carga" |
+| timeout | tiempo de espera; "Tiempo de … (segundos)" in field labels | |
+| override (configuration) | sustitución | |
+| live (branding, policies) | en vivo | |
+| outdated (review comment) | obsoleto | |
+| dismiss (review) | descartar | |
+| trusted | de confianza | |
+| scope (token, OAuth) | alcance (token) / ámbito (OAuth) | |
+| expire / expiration | caducar / caducidad | |
 | notification | notificación | |
 | open (state) | abierta | |
 | organization | organización | |
