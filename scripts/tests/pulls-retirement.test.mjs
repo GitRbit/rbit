@@ -55,6 +55,20 @@ test("pull models and merge gating stay in collaboration", () => {
   assert.deepEqual(check([["crates/rbit-core/src/pull.rs", "pub use rbit_collaboration::pulls::{PullRequest, evaluate};\n"]]), []);
 });
 
+test("push handling and listing decide in collaboration", () => {
+  for (const source of [
+    "fn outdated_requests(comments: &[(&str, &str)], head: &str) {}\n",
+    "let current = pull.mergeable != Mergeability::Unknown && pull.mergeable_base_sha == base_tip;\n",
+    "let was = then[*request].as_ref();\n",
+    "let tally = rbit_core::pull::tally(reviews, author, head, false, |_| true);\n",
+    "self.list_page(repo, filter, PAGE_SIZE, page.max(1).saturating_sub(1).saturating_mul(PAGE_SIZE))\n",
+  ]) {
+    assert.match(check([["crates/rbit-services/src/pulls/background.rs", source]])[0], /returned to the pull service/u, source);
+    assert.match(check([["crates/rbit-services/src/pulls.rs", source]])[0], /returned to the pull service/u, source);
+  }
+  assert.deepEqual(check([["crates/rbit-services/src/jobs.rs", "fn tally(summary: &mut MaintenanceSummary) {}\n"]]), []);
+});
+
 test("the current tree has no retired pull creation path", () => {
   const { files } = authoredSources(fileURLToPath(root));
   assert.ok(files.length > 100);

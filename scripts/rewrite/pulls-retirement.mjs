@@ -20,6 +20,10 @@ const CORE_DECISIONS = /\bfn\s+(?:evaluate|tally)\b/u;
 // Merge gating stays with rbit_collaboration::pulls::{current_mergeability, merge_gate, merge_message}.
 const MERGING = "crates/rbit-services/src/pulls/merging.rs";
 const MERGE_POLICY = /mergeable_base_sha\s*!=|can_merge_with_bypass\(\)|this pull request cannot be merged|input\.title\.trim\(\)\.is_empty\(\)/u;
+// Push handling and listing decide through rbit_collaboration::pulls::{trial_merge_is_current,
+// outdated_requests, outdated_comments, list_badges, list_offset}.
+const PULL_SERVICES = /^crates\/rbit-services\/src\/pulls(?:\.rs|\/)/u;
+const PUSH_POLICY = /\bfn\s+outdated_requests\b|mergeable\s*!=\s*Mergeability::Unknown\s*&&|then\[\*request\]|pull::tally\(|page\.max\(1\)\.saturating_sub/u;
 
 /** Comments are not code; strip line and block comments before matching. */
 function code(source) {
@@ -42,6 +46,9 @@ export function checkPullsRetirement(sources) {
     }
     if (!path.startsWith(OWNER) && (MODELS.test(text) || (path === CORE_MODEL && CORE_DECISIONS.test(text)))) {
       violations.push(`${path}: pull request records and merge requirements belong to rbit_collaboration::pulls`);
+    }
+    if (PULL_SERVICES.test(path) && PUSH_POLICY.test(text)) {
+      violations.push(`${path}: push, outdated-comment or listing rules returned to the pull service; use rbit_collaboration::pulls`);
     }
     if (path === MERGING && MERGE_POLICY.test(text)) {
       violations.push(`${path}: merge gating returned to the merge service; use rbit_collaboration::pulls`);
