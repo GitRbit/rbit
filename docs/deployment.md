@@ -719,13 +719,19 @@ These are the guarantees rbit makes; size the backup schedule and storage to the
 
 ## Upgrades and migrations
 
-1. Take a backup (`rbit backup`).
+1. Take a backup (`rbit backup`), with the old or the new binary: a backup never
+   migrates, so it restores for the old version either way.
 2. Replace the binary (or pull/rebuild the image).
 3. Restart. Database migrations are embedded in the binary and applied automatically at
    start-up, before the server accepts requests. To apply them separately (for example
    in a deploy pipeline), run `rbit migrate` while the server is stopped; it migrates
-   and exits.
+   and exits. Every other command except `rbit backup` and `rbit restore` also applies
+   pending migrations first.
 
-Migrations only move forward. To roll back, stop the new version, restore the backup
-taken in step 1 and start the old binary. The [changelog](../CHANGELOG.md) calls out
-anything else, such as the one-time sign-out when upgrading to milestone 1.
+Migrations only move forward, and an older binary refuses to start on a database a newer
+one migrated. To roll back, stop the new version, move its data directory aside, restore
+the backup taken in step 1 with the new binary's `rbit restore` (it does not migrate) and
+start the old binary; writes made after the backup are lost. The
+[upgrade runbook](upgrade-rehearsal.md) has the complete steps for 0.2.0 and the
+rehearsal that tests them. The [changelog](../CHANGELOG.md) calls out anything else, such
+as the one-time sign-out when upgrading to milestone 1.
