@@ -7,7 +7,8 @@
 //! password hashing path, explicitly injected bounded work. `access-tokens` adds the
 //! personal access token application over static ports; `password-work` also carries the
 //! self-service profile application, and with `session-tokens` the recovery application. `two-factor` adds TOTP, recovery codes and the
-//! authenticator application; `passkeys` adds the `WebAuthn` ceremonies. No feature creates a
+//! authenticator application; `passkeys` adds the `WebAuthn` ceremonies; `external` adds the OIDC flow and
+//! ID-token checks. No feature creates a
 //! global budget, performs startup or imports a concrete store/protocol implementation.
 
 #[cfg(feature = "access-tokens")]
@@ -15,6 +16,8 @@ pub mod access_tokens;
 pub mod account;
 pub mod accounts;
 pub mod names;
+#[cfg(feature = "external")]
+pub mod oidc;
 #[cfg(feature = "passkeys")]
 pub mod passkeys;
 #[cfg(feature = "password-work")]

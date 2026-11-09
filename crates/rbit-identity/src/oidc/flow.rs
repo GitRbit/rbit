@@ -1,7 +1,7 @@
 //! Sealed login flow state, PKCE derivation and per-session link authorization.
 
 use super::CLOCK_LEEWAY_SECONDS;
-use crate::secret::random_bytes;
+use crate::token::codec::random_bytes;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use hmac::{Hmac, KeyInit, Mac};
 use serde::{Deserialize, Serialize};
