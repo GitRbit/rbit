@@ -24,11 +24,10 @@ fn encode_path(path: &str) -> String {
     path.split('/').map(|segment| utf8_percent_encode(segment, SEGMENT).to_string()).collect::<Vec<_>>().join("/")
 }
 
-/// The all-zero object id GitHub sends for a ref's missing side.
-pub const NULL_SHA: &str = "0000000000000000000000000000000000000000";
-
-/// Commits listed in a `push` payload; `total_commits` says how many there were.
-pub const MAX_PUSH_COMMITS: usize = 20;
+use rbit_notifications::webhooks::payloads::{self as envelopes, PushEnvelope, PushedRef};
+/// Webhook envelopes, the push contract and `ping` are feature policy; this module
+/// renders the shared objects they carry.
+pub use rbit_notifications::webhooks::payloads::{MAX_PUSH_COMMITS, NULL_SHA};
 
 /// RFC 3339, UTC (`2026-10-15T12:00:00Z`).
 pub fn timestamp(at: Timestamp) -> Value {
@@ -128,99 +127,66 @@ pub struct PushPayload<'a> {
 impl PushPayload<'_> {
     pub fn to_json(&self) -> Value {
         let html_url = format!("{}/{}", self.base_url, self.repo.full_name());
-        let before = self.update.before.as_deref().unwrap_or(NULL_SHA);
-        let after = self.update.after.as_deref().unwrap_or(NULL_SHA);
-        let compare = if self.update.is_created() {
-            format!("{html_url}/commit/{after}")
-        } else if self.update.is_deleted() {
-            html_url.clone()
-        } else {
-            format!("{html_url}/compare/{}...{}", short(before), short(after))
-        };
-        // GitHub lists commits oldest first; `head_commit` is the new tip.
-        let shown: Vec<Value> = self.commits.iter().take(MAX_PUSH_COMMITS).rev().map(|commit| push_commit(commit, &html_url)).collect();
-        let head_commit = self.commits.first().filter(|commit| Some(commit.id.as_str()) == self.update.after.as_deref());
-        let pusher = match self.pusher {
-            Some(account) => json!({ "name": account.name.as_str(), "email": null }),
-            None => json!({ "name": "deploy-key", "email": null }),
-        };
-        let mut payload = json!({
-            "ref": self.update.name,
-            "before": before,
-            "after": after,
-            "created": self.update.is_created(),
-            "deleted": self.update.is_deleted(),
-            "base_ref": null,
-            "compare": compare,
-            "commits": shown,
-            "total_commits": self.total,
-            "head_commit": head_commit.map(|commit| push_commit(commit, &html_url)),
-            "pusher": pusher,
-            "repository": repository(self.repo, self.base_url, self.fork),
-            "sender": self.pusher.map(|who| account(who, self.base_url)),
-        });
-        if let Some(org) = organization(self.repo, self.base_url) {
-            payload["organization"] = org;
+        let ids: Vec<&str> = self.commits.iter().map(|commit| commit.id.as_str()).collect();
+        let render = |index: usize| push_commit(&self.commits[index], &html_url);
+        PushEnvelope {
+            update: PushedRef {
+                name: &self.update.name,
+                before: self.update.before.as_deref(),
+                after: self.update.after.as_deref(),
+                created: self.update.is_created(),
+                deleted: self.update.is_deleted(),
+            },
+            html_url: &html_url,
+            commits: &ids,
+            render: &render,
+            total: self.total,
+            pusher: self.pusher.map(|pusher| pusher.name.as_str()),
+            repository: repository(self.repo, self.base_url, self.fork),
+            sender: self.pusher.map(|who| account(who, self.base_url)),
+            organization: organization(self.repo, self.base_url),
         }
-        payload
+        .into_json()
     }
-}
-
-fn short(id: &str) -> &str {
-    id.get(..12).unwrap_or(id)
 }
 
 /// A `repository` payload (`created`, `deleted`, `transferred`, `archived` or
 /// `unarchived`).
 pub fn repository_event(action: &str, repo: &Value, sender: Option<&Account>, base_url: &str) -> Value {
-    json!({
-        "action": action,
-        "repository": repo,
-        "sender": sender.map(|who| account(who, base_url)),
-    })
+    envelopes::repository_event(action, repo, sender.map(|who| account(who, base_url)).as_ref())
 }
 
 /// The `repository` object of a deleted repository: the row is gone, so only what the
 /// event still carries.
 pub fn deleted_repository(id: i64, full_name: &str, owner: Option<&Account>, base_url: &str) -> Value {
-    let name = full_name.rsplit_once('/').map_or(full_name, |(_, name)| name);
-    json!({
-        "id": id,
-        "name": name,
-        "full_name": full_name,
-        "owner": owner.map(|owner| account(owner, base_url)),
-        "html_url": format!("{base_url}/{full_name}"),
-    })
+    envelopes::deleted_repository(id, full_name, owner.map(|owner| account(owner, base_url)).as_ref(), base_url)
 }
 
 /// A `repository` payload with `action: transferred`, naming the previous owner.
 pub fn transferred(repo: &OwnedRepository, fork: bool, from: &Account, sender: Option<&Account>, base_url: &str) -> Value {
-    let key = match from.kind {
-        AccountKind::User => "user",
-        AccountKind::Organization => "organization",
-    };
-    let mut payload = repository_event("transferred", &repository(repo, base_url, fork), sender, base_url);
-    payload["changes"] = json!({ "owner": { "from": { key: account(from, base_url) } } });
-    with_organization(payload, repo, base_url)
+    envelopes::transferred(
+        &repository(repo, base_url, fork),
+        &account(from, base_url),
+        from.kind == AccountKind::Organization,
+        sender.map(|who| account(who, base_url)).as_ref(),
+        organization(repo, base_url),
+    )
 }
 
 /// Adds the `organization` field for organisation-owned repositories.
-pub fn with_organization(mut payload: Value, repo: &OwnedRepository, base_url: &str) -> Value {
-    if let Some(org) = organization(repo, base_url) {
-        payload["organization"] = org;
-    }
-    payload
+pub fn with_organization(payload: Value, repo: &OwnedRepository, base_url: &str) -> Value {
+    envelopes::with_organization(payload, organization(repo, base_url))
 }
 
 /// A `fork` payload: `forkee` is the new repository, `repository` the one forked
 /// (`parent_is_fork` when that one is itself a fork).
 pub fn fork(forkee: &OwnedRepository, parent: &OwnedRepository, parent_is_fork: bool, sender: Option<&Account>, base_url: &str) -> Value {
-    let payload = json!({
-        "forkee": repository(forkee, base_url, true),
-        "repository": repository(parent, base_url, parent_is_fork),
-        "sender": sender.map(|who| account(who, base_url)),
-    });
-    with_organization(payload, parent, base_url)
+    envelopes::fork(
+        &repository(forkee, base_url, true),
+        &repository(parent, base_url, parent_is_fork),
+        sender.map(|who| account(who, base_url)).as_ref(),
+        organization(parent, base_url),
+    )
 }
 
 /// A release with its files, in GitHub's release shape, as the API returns it and
@@ -291,18 +257,16 @@ pub fn release(
 
 /// A `release` payload (`action: published`); `release` is a [`release`] object.
 pub fn release_published(release: &Value, repo: &OwnedRepository, fork: bool, sender: Option<&Account>, base_url: &str) -> Value {
-    let payload = json!({
-        "action": "published",
-        "release": release,
-        "repository": repository(repo, base_url, fork),
-        "sender": sender.map(|who| account(who, base_url)),
-    });
-    with_organization(payload, repo, base_url)
+    envelopes::release_published(
+        release,
+        &repository(repo, base_url, fork),
+        sender.map(|who| account(who, base_url)).as_ref(),
+        organization(repo, base_url),
+    )
 }
 
-/// A `member` payload: `action` is `added`, `edited` or `removed`; `changes` carries
-/// GitHub's `permission` (`to` when added, `from` and `to` when edited, plus the older
-/// `old_permission.from`).
+/// A `member` payload: `action` is `added`, `edited` or `removed`, with GitHub's
+/// `permission` changes.
 pub fn member(
     action: &str,
     permission: (Option<&str>, Option<&str>),
@@ -312,20 +276,14 @@ pub fn member(
     sender: Option<&Account>,
     base_url: &str,
 ) -> Value {
-    let mut payload = json!({
-        "action": action,
-        "member": account(member, base_url),
-        "repository": repository(repo, base_url, fork),
-        "sender": sender.map(|who| account(who, base_url)),
-    });
-    match permission {
-        (None, Some(to)) => payload["changes"] = json!({ "permission": { "to": to } }),
-        (Some(from), Some(to)) => {
-            payload["changes"] = json!({ "permission": { "from": from, "to": to }, "old_permission": { "from": from } });
-        }
-        _ => {}
-    }
-    with_organization(payload, repo, base_url)
+    envelopes::member(
+        action,
+        permission,
+        &account(member, base_url),
+        &repository(repo, base_url, fork),
+        sender.map(|who| account(who, base_url)).as_ref(),
+        organization(repo, base_url),
+    )
 }
 
 /// A hook, as the API returns it and `ping` payloads embed it. Never includes the secret.
@@ -358,46 +316,14 @@ pub fn hook(hook: &Webhook, api_url: &str) -> Value {
     })
 }
 
-/// Short, friendly sentences for `ping` payloads, in the spirit of GitHub's.
-const ZEN: &[&str] = &[
-    "Keep it logically awesome.",
-    "Simplicity is the ultimate sophistication.",
-    "Small commits, clear messages.",
-    "Practicality beats purity.",
-    "Design for failure.",
-    "Speak like a human.",
-];
-
 /// A `ping` payload for a newly created (or explicitly pinged) hook.
 pub fn ping(hook_json: &Value, hook_id: i64, context: Option<(&str, Value)>, sender: Option<&Account>, base_url: &str) -> Value {
-    let zen = ZEN[usize::try_from(hook_id.unsigned_abs()).unwrap_or_default() % ZEN.len()];
-    let mut payload = json!({
-        "zen": zen,
-        "hook_id": hook_id,
-        "hook": hook_json,
-        "sender": sender.map(|who| account(who, base_url)),
-    });
-    if let Some((key, value)) = context {
-        payload[key] = value;
-    }
-    payload
+    envelopes::ping(hook_json, hook_id, context, sender.map(|who| account(who, base_url)).as_ref())
 }
 
 /// The `action` stored with a delivery, read back from its payload.
 pub fn action_of(event: WebhookEvent, payload: &Value) -> Option<String> {
-    match event {
-        WebhookEvent::Push | WebhookEvent::Fork | WebhookEvent::Ping | WebhookEvent::Status => None,
-        WebhookEvent::Repository
-        | WebhookEvent::Release
-        | WebhookEvent::Issues
-        | WebhookEvent::IssueComment
-        | WebhookEvent::PullRequest
-        | WebhookEvent::PullRequestReview
-        | WebhookEvent::Member
-        // Actions: integration (I).
-        | WebhookEvent::WorkflowRun
-        | WebhookEvent::WorkflowJob => payload.get("action").and_then(Value::as_str).map(str::to_owned),
-    }
+    envelopes::action_of(event.as_str(), payload)
 }
 
 #[cfg(test)]
@@ -586,6 +512,15 @@ mod tests {
         assert_eq!(edited["changes"], json!({ "permission": { "from": "write", "to": "admin" }, "old_permission": { "from": "write" } }));
         let removed = member("removed", (None, None), &user(), &repo(user()), false, None, BASE);
         assert!(removed.get("changes").is_none() && removed.get("organization").is_none());
+    }
+
+    #[test]
+    fn exactly_the_documented_events_record_an_action() {
+        let payload = json!({ "action": "x" });
+        for event in WebhookEvent::subscribable(true).chain([WebhookEvent::Ping]) {
+            let none = matches!(event, WebhookEvent::Push | WebhookEvent::Fork | WebhookEvent::Ping | WebhookEvent::Status);
+            assert_eq!(action_of(event, &payload).is_none(), none, "{event:?}");
+        }
     }
 
     #[test]

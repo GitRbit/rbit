@@ -10,6 +10,7 @@ license.workspace = true
 rbit-contracts = { workspace = true, default-features = false }
 rbit-collaboration = { workspace = true, default-features = false }
 hmac.workspace = true
+serde_json.workspace = true
 sha2.workspace = true
 
 [dev-dependencies]
