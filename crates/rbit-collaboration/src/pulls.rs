@@ -4,6 +4,7 @@
 
 mod anchors;
 mod branches;
+mod edits;
 mod head;
 mod merge;
 mod merging;
@@ -14,6 +15,7 @@ mod reviews;
 
 pub use anchors::{AnchorLine, DIFF_HUNK_LINES, LineMark, ReviewSide, hunk_excerpt};
 pub use branches::branch_ref;
+pub use edits::{BaseChange, BaseChangeFacts, CLOSED, may_edit_pull, plan_base_change};
 pub use head::select_head;
 pub use merge::{MergeEvaluation, MergeFacts, MergeRules, Requirement, RequirementCheck, ReviewTally, evaluate, tally};
 pub use merging::{MergeDefaults, current_mergeability, merge_gate, merge_message, merges_as_writer, needs_trial_merge, still_expected};

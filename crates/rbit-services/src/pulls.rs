@@ -38,7 +38,9 @@ use std::{
     sync::{Arc, Mutex, PoisonError, atomic::AtomicBool},
 };
 
-use rbit_collaboration::pulls::{PullCreation, PullCreationAccess, PullInput, branch_ref, select_head};
+use rbit_collaboration::pulls::{
+    BaseChange, BaseChangeFacts, CLOSED, PullCreation, PullCreationAccess, PullInput, may_edit_pull, plan_base_change, select_head,
+};
 use rbit_core::access::repo_access;
 use rbit_core::{
     Account, AccountId, Issue, IssueNumber, RepoAccess, RepoId, Timestamp, User,
@@ -570,12 +572,12 @@ impl PullService {
 
     /// Marks the pull request draft or ready for review (author or writers).
     pub async fn set_draft(&self, actor: &User, ctx: &PullContext, draft: bool) -> Result<(), ServiceError> {
-        if !(ctx.issue().is_author(actor) || ctx.repo().access.can_write()) || !ctx.repo().access.can_read() {
+        if !may_edit_pull(ctx.issue().is_author(actor), ctx.repo().access.can_write()) || !ctx.repo().access.can_read() {
             return Err(ServiceError::Forbidden);
         }
         ctx.repo().ensure_writable()?;
         if !ctx.issue().is_open() {
-            return Err(ServiceError::Invalid("the pull request is closed".to_owned()));
+            return Err(ServiceError::Invalid(CLOSED.to_owned()));
         }
         if self.ctx().database.pulls().set_draft(ctx.issue().id, draft, Timestamp::now()).await? {
             let (event, action) = if draft {
@@ -593,28 +595,24 @@ impl PullService {
     /// Points the pull request at another existing branch of the base repository (author
     /// or writers). Approvals given so far are dismissed: they were for the old base.
     pub async fn set_base(&self, actor: &User, ctx: &PullContext, branch: &str) -> Result<(), ServiceError> {
-        if !(ctx.issue().is_author(actor) || ctx.repo().access.can_write()) {
+        if !may_edit_pull(ctx.issue().is_author(actor), ctx.repo().access.can_write()) {
             return Err(ServiceError::Forbidden);
         }
         ctx.repo().ensure_writable()?;
-        let branch = branch.trim();
-        if !ctx.issue().is_open() || ctx.pull.is_merged() {
-            return Err(ServiceError::Invalid("the pull request is closed".to_owned()));
-        }
-        let full = branch_ref(branch).ok_or_else(|| ServiceError::Invalid("choose an existing branch".to_owned()))?;
-        if ctx.repo().reader.commit_id(full).await.is_err() {
-            return Err(ServiceError::Invalid("the base branch does not exist".to_owned()));
-        }
-        if !ctx.pull.is_cross_repository() && branch == ctx.pull.head_branch {
-            return Err(ServiceError::Invalid("the base and the head branch must differ".to_owned()));
-        }
+        let facts = BaseChangeFacts {
+            is_open: ctx.issue().is_open(),
+            is_merged: ctx.pull.is_merged(),
+            cross_repository: ctx.pull.is_cross_repository(),
+            head_branch: &ctx.pull.head_branch,
+            base_branch: &ctx.pull.base_branch,
+        };
+        let exists = |full: String| async move { ctx.repo().reader.commit_id(full).await.is_ok() };
+        let plan = plan_base_change(facts, branch, exists).await.map_err(|refusal| ServiceError::Invalid(refusal.to_owned()))?;
+        let BaseChange::To { branch, message } = plan else { return Ok(()) };
+        let branch = branch.as_str();
         let previous = ctx.pull.base_branch.clone();
-        if branch == previous {
-            return Ok(());
-        }
         self.spend(actor)?;
         // Approvals were given for the old base: dismiss them with the change.
-        let message = format!("The base branch changed from {previous} to {branch}.");
         let changed = self.ctx().database.pulls().set_base(ctx.issue().id, branch, actor.id(), &message, Timestamp::now()).await?;
         if let Some(dismissed) = changed {
             let event = rbit_core::TimelineEvent::BaseChanged { from: previous.clone(), to: branch.to_owned() };
