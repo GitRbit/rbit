@@ -106,6 +106,7 @@ impl Database {
 
         let pool = SqlitePoolOptions::new().max_connections(connection_capacity()).connect_with(options).await?;
         crate::identity_upgrade::require_legacy_sql(&pool).await?;
+        schema::refuse_newer(&pool).await?;
         sqlx::migrate!("./migrations").run(&pool).await?;
         crate::identity_upgrade::require_legacy_sql(&pool).await?;
 

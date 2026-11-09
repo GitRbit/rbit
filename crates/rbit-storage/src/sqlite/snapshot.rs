@@ -129,6 +129,10 @@ mod tests {
         assert_eq!(report.unknown_migrations, [99999]);
         assert!(!report.is_clean());
         assert_eq!(pending_migrations(&path).await.unwrap(), Vec::<i64>::new());
+        // Opening it says why, rather than sqlx's "previously applied but is missing".
+        let refused = Database::open(&path).await.unwrap_err();
+        assert!(matches!(&refused, StorageError::NewerSchema(unknown) if unknown == &[99999]), "{refused}");
+        assert!(refused.to_string().contains("migrated by a newer rbit"));
     }
 
     #[tokio::test]

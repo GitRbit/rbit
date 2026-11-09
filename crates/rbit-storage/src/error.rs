@@ -34,6 +34,13 @@ pub enum StorageError {
     #[error("the secret key file {0} is missing, but the database holds values sealed with it; restore the key file from your backup")]
     MissingKey(String),
 
+    /// The database records migrations this binary does not embed: a newer rbit migrated
+    /// it. Nothing was changed.
+    #[error(
+        "the database was migrated by a newer rbit (migrations {0:?} are unknown to this version) and is left unchanged; run that version, or restore a backup taken before the upgrade"
+    )]
+    NewerSchema(Vec<i64>),
+
     /// The secret key file does not open the values sealed in the database.
     #[error("the secret key file {0} does not match the values sealed in the database; restore the key file that belongs to it")]
     WrongKey(String),
