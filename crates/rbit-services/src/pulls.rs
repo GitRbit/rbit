@@ -26,6 +26,7 @@
 //! except through `PullStore::create` (which uses `IssueStore::insert_in`).
 
 mod background;
+mod creation;
 pub mod hooks;
 pub mod json;
 pub mod lifecycle;
@@ -38,20 +39,19 @@ use std::{
 };
 
 use rbit_auth::repo_access;
+use rbit_collaboration::pulls::{PullCreation, PullCreationAccess, PullInput, branch_ref, select_head};
 use rbit_core::{
-    Account, AccountId, Issue, IssueKind, IssueNumber, RepoAccess, RepoId, Timestamp, User,
+    Account, AccountId, Issue, IssueNumber, RepoAccess, RepoId, Timestamp, User,
     issue::IssueAction,
     pull::{HeadSpec, PullRequest},
     repository::OwnedRepository,
 };
 use rbit_git::{CommitSummary, DiffLimits, compare::Comparison, overlay::Overlay, pull_refs};
 use rbit_storage::kv::CachedComparisonCounts;
-use rbit_storage::sqlite::{
-    issues::NewIssue,
-    pulls::{CreatedPull, NewPull},
-};
 use tokio::sync::{Notify, Semaphore};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
+
+use creation::{CreationView, creation_error};
 
 pub use rbit_storage::sqlite::pulls::{PullFilter, PullSort, PullStateFilter};
 
@@ -276,13 +276,7 @@ impl PullService {
     pub async fn resolve_head(&self, viewer: Option<&User>, base: &RepoContext, spec: &HeadSpec) -> Result<RepoContext, ServiceError> {
         let Some(owner) = &spec.owner else { return Ok(base.clone()) };
         let network = self.network(viewer, base).await?;
-        let candidates: Vec<&OwnedRepository> =
-            network.iter().filter(|repo| repo.owner.name.as_str().eq_ignore_ascii_case(owner)).collect();
-        let found = match &spec.repo {
-            Some(name) => candidates.into_iter().find(|repo| repo.repo.name.as_str().eq_ignore_ascii_case(name)),
-            None => candidates.iter().find(|repo| repo.repo.name == base.repo.repo.name).or_else(|| candidates.first()).copied(),
-        }
-        .ok_or(ServiceError::NotFound)?;
+        let found = select_head(&network, owner, spec.repo.as_deref(), base.repo.repo.name.as_str()).ok_or(ServiceError::NotFound)?;
         if found.repo.id == base.repo.repo.id {
             return Ok(base.clone());
         }
@@ -356,60 +350,21 @@ impl PullService {
         head: &RepoContext,
         input: NewPullInput,
     ) -> Result<(Issue, PullRequest), ServiceError> {
-        if !base.access.can_read() || !head.access.can_read() {
-            return Err(ServiceError::NotFound);
-        }
-        let same_repo = base.repo.repo.id == head.repo.repo.id;
-        if !same_repo && !self.network(Some(actor), base).await?.iter().any(|repo| repo.repo.id == head.repo.repo.id) {
-            return Err(ServiceError::NotFound);
-        }
-        base.ensure_writable()?;
-        if self.ctx().database.mirrors().is_mirror(base.repo.repo.id).await? {
-            return Err(ServiceError::Invalid("pull requests cannot be opened against a mirror".to_owned()));
-        }
-        let base_branch = input.base_branch.trim();
-        let head_branch = input.head_branch.trim();
-        let (Ok(base_ref), Ok(head_ref)) = (branch_ref(base_branch), branch_ref(head_branch)) else {
-            return Err(ServiceError::Invalid("choose existing branches to compare".to_owned()));
+        let access = PullCreationAccess {
+            same_repo: base.repo.repo.id == head.repo.repo.id,
+            base_readable: base.access.can_read(),
+            head_readable: head.access.can_read(),
+            base_archived: base.repo.repo.is_archived(),
         };
-        if same_repo && base_branch == head_branch {
-            return Err(ServiceError::Invalid("the base and the head branch must differ".to_owned()));
-        }
-        let missing = |side: &str| ServiceError::Invalid(format!("the {side} branch does not exist"));
-        let base_tip = base.reader.commit_id(base_ref.clone()).await.map_err(|_| missing("base"))?;
-        let head_tip = head.reader.commit_id(head_ref.clone()).await.map_err(|_| missing("head"))?;
-        let no_files = DiffLimits { max_files: 0, ..DiffLimits::default() };
-        let comparison = self.compare_counting(base, &base_tip, head, &head_tip, no_files, 2, false).await?;
-        if comparison.merge_base.is_none() {
-            return Err(ServiceError::Invalid("the branches have entirely different histories".to_owned()));
-        }
-        if comparison.ahead == 0 {
-            return Err(ServiceError::Invalid(format!("{base_branch} already contains every commit of {head_branch}")));
-        }
-        let title = match input.title.trim() {
-            "" if comparison.ahead == 1 => comparison.commits.first().map_or_else(|| head_branch.to_owned(), |c| c.summary.clone()),
-            "" => head_branch.to_owned(),
-            title => title.to_owned(),
+        let input = PullInput {
+            base_branch: &input.base_branch,
+            head_branch: &input.head_branch,
+            title: &input.title,
+            body: &input.body,
+            draft: input.draft,
         };
-        let title = rbit_core::IssueTitle::parse(&title)?;
-        let body = rbit_core::IssueText::body(&input.body)?;
-        self.spend(actor)?;
-
-        let now = Timestamp::now();
-        let new = NewPull {
-            issue: NewIssue { repo: base.repo.repo.id, kind: IssueKind::Pull, title, body, author: actor.id(), at: now },
-            head_repo: head.repo.repo.id,
-            head_branch: head_branch.to_owned(),
-            base_branch: base_branch.to_owned(),
-            head_sha: head_tip.clone(),
-            is_draft: input.draft,
-        };
-        let (issue, mut pull) = match self.ctx().database.pulls().create(&new).await? {
-            CreatedPull::Created(pair) => *pair,
-            CreatedPull::Duplicate(number) => {
-                return Err(ServiceError::Invalid(format!("pull request #{} already proposes these branches", number.get())));
-            }
-        };
+        let view = CreationView { service: self, actor, base, head };
+        let (issue, mut pull) = PullCreation::new(&view, access).create(input, || self.spend(actor)).await.map_err(creation_error)?;
         match self.store_head(base, head, &pull, issue.number).await {
             Ok(stored) if stored != pull.head_sha => {
                 self.ctx().database.pulls().set_head(issue.id, &stored, Timestamp::now()).await?;
@@ -650,7 +605,7 @@ impl PullService {
         if !ctx.issue().is_open() || ctx.pull.is_merged() {
             return Err(ServiceError::Invalid("the pull request is closed".to_owned()));
         }
-        let full = branch_ref(branch).map_err(|_| ServiceError::Invalid("choose an existing branch".to_owned()))?;
+        let full = branch_ref(branch).ok_or_else(|| ServiceError::Invalid("choose an existing branch".to_owned()))?;
         if ctx.repo().reader.commit_id(full).await.is_err() {
             return Err(ServiceError::Invalid("the base branch does not exist".to_owned()));
         }
@@ -730,18 +685,6 @@ impl PullService {
         let grants = viewer_grants(&self.ctx().database.repositories(), Some(&user), repo).await?;
         Ok(repo_access(Some(&user), repo, &grants))
     }
-}
-
-/// `refs/heads/{branch}` for a plausible branch name.
-fn branch_ref(branch: &str) -> Result<String, ServiceError> {
-    if branch.is_empty()
-        || branch.starts_with('-')
-        || branch.contains(['\0', '\n', ' ', ':', '~', '^', '?', '*', '[', '\\'])
-        || branch.contains("..")
-    {
-        return Err(ServiceError::Invalid("invalid branch name".to_owned()));
-    }
-    Ok(format!("refs/heads/{branch}"))
 }
 
 /// Whether the `PoisonError`-tolerant lock map hands out the same lock for a repository.

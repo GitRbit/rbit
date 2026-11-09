@@ -5,6 +5,7 @@ pub mod comments;
 pub mod issues;
 pub mod labels;
 pub mod milestones;
+pub mod pulls;
 pub mod references;
 mod state;
 pub mod statuses;
