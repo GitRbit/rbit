@@ -40,6 +40,7 @@ import { checkOperationsCliRetirement } from "./operations-cli-retirement.mjs";
 import { checkAdministrationRetirement } from "./administration-retirement.mjs";
 import { checkConfigurationRetirement } from "./configuration-retirement.mjs";
 import { checkActionsSecretsRetirement } from "./actions-secrets-retirement.mjs";
+import { checkActionsSchedulingRetirement } from "./actions-scheduling-retirement.mjs";
 import { checkActionsLogsRetirement } from "./actions-logs-retirement.mjs";
 import { checkCollaborationTimelineRetirement } from "./collaboration-timeline-retirement.mjs";
 import { checkImportsRetirement } from "./imports-retirement.mjs";
@@ -253,6 +254,7 @@ export function check(root) {
     ...checkMirrorsRetirement(files),
     ...checkOperationsCliRetirement(files),
     ...checkActionsSecretsRetirement(files),
+    ...checkActionsSchedulingRetirement(files),
     ...checkActionsLogsRetirement(files),
     ...checkCollaborationTimelineRetirement(files),
     ...checkImportsRetirement(files),
