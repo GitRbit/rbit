@@ -55,6 +55,7 @@ fn assert_untrusted_is_escaped_once(html: &str) {
 
 fn assert_styles(html: &str, theme: Theme, include: bool) {
     assert_eq!(html.contains("<style data-app-stylesheet>"), include);
+    assert_eq!(html.contains(&format!("href=\"{}\" data-deferred-stylesheet>", assets::url("deferred.css"))), include);
     if include {
         assert!(html.contains(&format!("<style data-app-stylesheet>{}</style>", assets::inline_css("app.css").as_str())));
         if let Some(path) = theme.stylesheet_path() {

@@ -233,6 +233,7 @@ mod tests {
 
         let (policy, html) = send(&[("cookie", theme), ("HX-Request", "true")]).await;
         assert!(!html.contains("<style"), "htmx discards <head>; its stylesheets are dead weight");
+        assert!(!html.contains("data-deferred-stylesheet"), "the page that asked already links the deferred sheet");
         assert!(policy.contains("style-src 'self';") && !policy.contains("'sha256-"), "{policy}");
         assert!(full - html.len() >= crate::assets::inline_css("app.css").as_str().len(), "the page shrinks by the stylesheet");
         assert!(html.contains("<!--partial:title-->") && html.contains("<!--partial:main-->"), "the parts htmx swaps remain");
@@ -263,5 +264,8 @@ mod tests {
         }
         // theme.js can link a theme sheet, which must follow app.css in the cascade.
         assert!(html.find("/assets/theme.js?v=").unwrap() > html.rfind("</style>").unwrap());
+        // The deferred sheet extends app.css: it follows it, as if inlined after it.
+        let deferred = html.find("/assets/deferred.css?v=").unwrap();
+        assert!(deferred > html.find("<style data-app-stylesheet>").unwrap() && deferred < html.find("</head>").unwrap());
     }
 }

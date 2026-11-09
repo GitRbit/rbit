@@ -37,9 +37,12 @@
   <script src="{{ page.asset("vendor/htmx.min.js") }}" defer></script>
   <script src="{{ page.asset("app.bundle.js") }}" type="module"></script>
   {#- Exact embedded bytes are authorized by hashes in the response CSP. htmx requests
-      leave them out: htmx drops the <head> and the page keeps its own stylesheets. -#}
+      leave them out: htmx drops the <head> and the page keeps its own stylesheets. The
+      deferred sheet (single pages, script-opened dialogs) is linked, cached for good, and
+      follows app.css in the cascade as if inlined after it. -#}
   {%- if crate::assets::head_styles() %}
   <style data-app-stylesheet>{{ crate::assets::inline_css("app.css")|safe }}</style>
+  <link rel="stylesheet" href="{{ page.asset("deferred.css") }}" data-deferred-stylesheet>
   {%- if let Some(path) = page.theme.stylesheet_path() %}
   <style data-theme-stylesheet data-theme="{{ page.theme.slug() }}">{{ crate::assets::inline_css(path)|safe }}</style>
   {%- endif %}

@@ -11,12 +11,10 @@
  * need `dark:` variants. The scheme follows the OS unless `data-theme` on <html> pins it.
  */
 @import "tailwindcss";
-@import "./branch-graph.css";
 @import "./repo-documents.css";
-@import "./monitoring.css";
 @import "./direction.css";
 @import "./scripts.css";
-@import "./language-picker.css";
+/* Single pages and script-opened dialogs are in deferred.css, linked rather than inlined. */
 @plugin "@tailwindcss/typography";
 
 @source "../templates";

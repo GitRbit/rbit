@@ -189,7 +189,10 @@ mod tests {
                 theme: Theme::parse(slug).unwrap(),
             };
             let html = Fixture { page }.render().unwrap();
-            assert!(!html.contains("rel=\"stylesheet\""));
+            // The one linked sheet is the deferred one, content-versioned and right after app.css.
+            let deferred = html.find(&format!("<link rel=\"stylesheet\" href=\"{}\"", assets::url("deferred.css")));
+            assert!(deferred.is_some_and(|at| at > html.find("<style data-app-stylesheet>").unwrap()), "{html}");
+            assert_eq!(html.matches("rel=\"stylesheet\"").count(), 1);
             assert!(!html.contains("rel=\"manifest\""));
             assert!(html.contains("/assets/app.bundle.js?v="));
             let mut paths = vec!["app.css".to_owned()];

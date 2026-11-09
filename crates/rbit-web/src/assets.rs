@@ -274,17 +274,16 @@ pub fn read(path: &str) -> Option<Cow<'static, [u8]>> {
     EmbeddedAssets::get(path).map(|file| file.data)
 }
 
-/// Checks that the generated stylesheet (`npm run build`, not in Git) was there when this
-/// binary was built: every page inlines it, so a server without it could serve no page.
+/// Checks that the generated stylesheets (`npm run build`, not in Git) were there when this
+/// binary was built: every page inlines app.css and links deferred.css; without them it serves no page.
 ///
 /// # Errors
 ///
-/// What to do about it, when it is missing.
+/// What to do about it, when one is missing.
 pub fn ensure_built() -> Result<(), String> {
-    match served("app.css") {
-        Some(_) => Ok(()),
-        None => Err("this rbit was built without its stylesheet (crates/rbit-web/assets/app.css); run `npm run build` and build it again"
-            .to_owned()),
+    match ["app.css", "deferred.css"].into_iter().find(|path| served(path).is_none()) {
+        None => Ok(()),
+        Some(path) => Err(format!("this rbit was built without crates/rbit-web/assets/{path}; run `npm run build` and build it again")),
     }
 }
 

@@ -13,8 +13,9 @@
 /actions-production-artifacts/
 /actions-production-fixture/
 
-# Generated stylesheet: run `npm run build:css`
+# Generated stylesheets: run `npm run build:css`
 /crates/rbit-web/assets/app.css
+/crates/rbit-web/assets/deferred.css
 
 # Local runtime data (SQLite, redb, repositories)
 /data

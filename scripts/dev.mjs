@@ -1,6 +1,6 @@
 // Live development server: rebuilds and restarts rbit whenever Rust sources,
-// templates or manifests change, and keeps the stylesheet compiled with Tailwind's
-// watcher. Debug builds read `assets/` from disk, so CSS and JS changes need no
+// templates or manifests change, and keeps the stylesheets compiled with Tailwind's
+// watchers. Debug builds read `assets/` from disk, so CSS and JS changes need no
 // restart; refresh the browser to see any change.
 //
 //   npm run dev            # isolated runtime, shared compiler output
@@ -102,6 +102,7 @@ watch(join(root, "crates"), { recursive: true }, (_event, file) => schedule(file
 watch(join(root, "Cargo.toml"), () => schedule("Cargo.toml"));
 
 const css = spawn("npm", ["run", "watch:css"], { cwd: root, stdio: "inherit", shell: process.platform === "win32" });
+const deferredCss = spawn("npm", ["run", "watch:deferred-css"], { cwd: root, stdio: "inherit", shell: process.platform === "win32" });
 const js = spawn("npm", ["run", "watch:js"], { cwd: root, stdio: "inherit", shell: process.platform === "win32" });
 
 async function shutdown() {
@@ -109,6 +110,7 @@ async function shutdown() {
   stopping = true;
   clearTimeout(timer);
   css.kill();
+  deferredCss.kill();
   js.kill();
   try {
     if (activeBuild) { log("waiting for the current build before shutdown"); await activeBuild.catch(() => {}); }

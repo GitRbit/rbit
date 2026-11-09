@@ -1,0 +1,22 @@
+/*
+ * Deferred stylesheet: the rules a first paint of most pages never needs. Every page inlines
+ * app.css (which `npm run build:css` compiles to assets/app.css), so each byte there is sent,
+ * buffered and hashed on every request. These rules are linked instead
+ * (`/assets/deferred.css?v=<hash>`, cached for a year) right after the inline sheet, so they
+ * keep the same place in the cascade and never paint late.
+ *
+ * What belongs here: styles of single pages that are rarely the first one a visitor opens,
+ * and of dialogs that scripts fetch and open. The shell, the writing direction and writing
+ * systems, and the main repository pages stay in app.css.
+ *
+ * `@reference` makes app.css's theme, utilities and variants available to `@apply` and
+ * `theme()` here without emitting any of them a second time.
+ */
+@reference "./app.css";
+
+/* The branch graph page (templates/repo/branch_graph.html). */
+@import "./branch-graph.css";
+/* Admin monitoring (templates/admin/monitoring.html, the dashboard's summary). */
+@import "./monitoring.css";
+/* The header language dialog, fetched and opened by language-picker.js. */
+@import "./language-picker.css";
