@@ -105,6 +105,8 @@ borrowed adapters. No release measurement was taken and none is claimed.
   record why it is not moved before a shared safe-content boundary exists. Until it
   moves, `collaboration.timeline` stays `baseline-retained`; every other timeline
   decision listed above runs in `rbit-collaboration`.
+  The bridge has since moved to `rbit_collaboration::references`; see the
+  [timeline acceptance](collaboration-timeline-acceptance.md).
 - `ThreadWriter::record` remains a direct timeline-event write used by other
   workstreams (labels, pushes); it holds no decision.
 - Pull request lifecycle, reviews and review threads keep their own rows.

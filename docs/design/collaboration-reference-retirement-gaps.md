@@ -26,29 +26,27 @@ requests to zero. Source/Node graph and AST bounds pass; Rust tests, HTTP autoco
 full reference/privacy and strict Clippy still await the shared lane. SuggestionThreads
 has an explicit qualified legacy-component gate entry. No latency claim is made.
 
-## Markdown content boundary assessment
+## Markdown content boundary (resolved)
 
-The remaining core bridge is the original pulldown Markdown event projection/options.
-It preserves code/link/image exclusions, emphasis joining and raw-HTML handling and
-runs the feature-owned Scan. Both core and web already directly depend on pulldown;
-collaboration's isolated models currently do not. There is no implemented presentation
-crate in this checkout; the plan assigns safe content rendering to rbit-presentation.
+The core bridge (`rbit_core::references::{markdown_options, scan_markdown}`) moved to
+`rbit_collaboration::references::{markdown_options, scan_markdown}`
+(`references/markdown.rs`), unchanged. It is compiled only with the `applications`
+feature, which now adds pulldown-cmark as an optional dependency. The default model graph
+stays engine-free, and `collaboration-features.mjs` rejects pulldown-cmark there.
 
-Moving this bridge under collaboration's applications feature would require core to
-enable application capabilities for its existing public API. Moving it into default
-models would widen the model graph with a Markdown engine. Making core depend on a
-future Askama/presentation implementation would reverse the intended layering and
-risk feature-unified UI dependencies in model consumers. Those are not accepted
-ways to remove a 50-line compatibility bridge.
+The concern recorded earlier was core's public API: keeping
+`rbit_core::references::scan_markdown` would have forced core to enable application
+capabilities. Instead the API was removed. Its five calls, in three `rbit-services` files
+(`issues.rs`, `references.rs`, `notifications/fanout.rs`) already enable `applications`
+and now call collaboration directly. `rbit-core` no longer depends on pulldown-cmark. No
+crate edge was added, and no presentation or Askama dependency reaches core or the models.
 
-A future substantial shared content boundary can expose a statically dispatched
-Markdown text visitor/options contract without importing core or collaboration.
-The existing core API can then delegate while web safe rendering uses the same content
-policy. It must keep the existing engine/version and no HTTP/Askama dependency on the
-core-facing edge; pure collaboration models must remain engine-free. Adopt that split
-alongside actual shared safe-content ownership, measured compile/binary impact and
-Markdown/security parity tests, rather than adding a crate solely for this wrapper.
-Until then the bridge remains explicit and the reference/timeline ledger is not retired.
+Safe rendering keeps its own copy of the same option set (in `rbit-web`'s renderer, or in
+`rbit-presentation` once that crate is integrated). The rewrite check compares the two
+`Options::ENABLE_*` sets, so the scan and the renderer cannot drift apart without failing
+the policy. A shared options contract can replace that comparison if the scan and the
+renderer ever share a crate. See the
+[timeline acceptance](rewrite/collaboration-timeline-acceptance.md).
 
 ## Whole-group gaps
 
