@@ -7,7 +7,7 @@ use std::fmt::Debug;
 use crate::catalog::chrome::ChromeSentence;
 use crate::catalog::collab::rich::{RichFamily, RichPart, RichWriter, render};
 use crate::catalog::collab::{CloseReason, CollabSentence, TimelineEventMessage};
-use crate::catalog::repo::RepoNavSentence;
+use crate::catalog::repo::{RepoBrowseSentence, RepoNavSentence};
 use crate::catalog::settings::{access::AccessSentence, keys::KeysSentence, tokens::TokensSentence, webhooks::WebhookSentence};
 use crate::catalog::settings::{
     org_teams::TeamSentence,
@@ -223,6 +223,7 @@ fn every_rich_translation_keeps_every_slot_exactly_once() {
         .chain(slot_mismatches(&[ProfileSentence::ProfileIntro, ProfileSentence::NotificationsIntro]))
         .chain(slot_mismatches(&[false, true].map(|organization| WebhookSentence::Intro { organization })))
         .chain(slot_mismatches(&[RepoNavSentence::ForkedFrom, RepoNavSentence::MirrorOf, RepoNavSentence::SshKeyNote]))
+        .chain(slot_mismatches(&[RepoBrowseSentence::EmptySshNote]))
         .chain(slot_mismatches(&[RecoverySentence::RememberedSignIn]))
         .chain(slot_mismatches(&[ProtectionSentence::Intro]))
         .chain(slot_mismatches(&[TeamSentence::NameHint]))

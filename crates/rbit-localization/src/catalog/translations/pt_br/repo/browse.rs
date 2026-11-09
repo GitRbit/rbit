@@ -1,6 +1,8 @@
 //! Brazilian Portuguese (`pt-BR`) entries for `catalog/repo/browse.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::repo::browse::RepoBrowseSentence;
 use crate::catalog::repo::browse::{RepoBrowseLabel, RepoBrowseMessage};
 use crate::plural::Plural;
 
@@ -44,11 +46,6 @@ entries! { PtBr:
         RepoBrowseLabel::CopyRepositoryUrl => text.literal("Copiar URL do repositório"),
         RepoBrowseLabel::SshRepositoryUrl => text.literal("URL SSH do repositório"),
         RepoBrowseLabel::CopySshRepositoryUrl => text.literal("Copiar URL SSH do repositório"),
-        RepoBrowseLabel::EmptySshNote => {
-            text.literal(
-                "Os comandos abaixo usam HTTPS. Para fazer push por SSH, use a URL SSH e adicione uma chave em ",
-            );
-        }
         RepoBrowseLabel::CreateNewRepository => text.literal("Criar um novo repositório"),
         RepoBrowseLabel::PushExistingRepository => text.literal("Fazer push de um repositório existente"),
         RepoBrowseLabel::CloseFileBrowser => text.literal("Fechar o navegador de arquivos"),
@@ -172,6 +169,13 @@ entries! { PtBr:
             text.literal("Correspondências adicionais: ");
             text.number(count as u64);
             text.literal(". Digite mais do nome para restringir a lista.");
+        }
+    }
+    RepoBrowseSentence => RichWriter |text| {
+        RepoBrowseSentence::EmptySshNote => {
+            text.literal("Os comandos abaixo usam HTTPS. Para fazer push por SSH, use a URL SSH e adicione uma chave em ");
+            text.slot(0);
+            text.literal(".");
         }
     }
 }

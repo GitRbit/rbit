@@ -41,9 +41,9 @@ pub use explore::Message;
 pub use theme_preview::ThemePreviewMessage;
 mod repo;
 pub use repo::{
-    ContributionLabel, ContributionMessage, ReleaseLabel, ReleaseMessage, RepoBrowseLabel, RepoBrowseMessage, RepoCreateLabel,
-    RepoCreateMessage, RepoEditLabel, RepoEditMessage, RepoHistoryLabel, RepoHistoryMessage, RepoNavLabel, RepoNavMessage, RepoNavSentence,
-    RepoSettingsLabel, RepoSettingsMessage,
+    ContributionLabel, ContributionMessage, ReleaseLabel, ReleaseMessage, RepoBrowseLabel, RepoBrowseMessage, RepoBrowseSentence,
+    RepoCreateLabel, RepoCreateMessage, RepoEditLabel, RepoEditMessage, RepoHistoryLabel, RepoHistoryMessage, RepoNavLabel, RepoNavMessage,
+    RepoNavSentence, RepoSettingsLabel, RepoSettingsMessage,
 };
 mod wiki;
 pub use wiki::WikiMessage;

@@ -41,7 +41,6 @@ labels! {
         CopyRepositoryUrl => "repo.empty.copy-url", "Copy repository URL";
         SshRepositoryUrl => "repo.empty.ssh-url", "SSH repository URL";
         CopySshRepositoryUrl => "repo.empty.copy-ssh-url", "Copy SSH repository URL";
-        EmptySshNote => "repo.empty.ssh-note", "The commands below use HTTPS. To push over SSH, use the SSH URL instead and add a key in ";
         CreateNewRepository => "repo.empty.create", "Create a new repository";
         PushExistingRepository => "repo.empty.push", "Push an existing repository";
         CloseFileBrowser => "repo.languages.close", "Close file browser";
@@ -186,3 +185,40 @@ impl MessageFamily for RepoBrowseMessage<'_> {
 }
 
 lookup!(RepoBrowseMessage<'_>);
+
+/// Repository browsing sentences that embed markup; the template renders each slot.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RepoBrowseSentence {
+    /// Under an empty repository's push commands. Slot 0: the SSH keys settings link,
+    /// worded by `RepoNavLabel::YourSettings`.
+    EmptySshNote,
+}
+
+impl RepoBrowseSentence {
+    /// This sentence in `locale`, or its English text marked as a fallback.
+    pub fn rich(self, locale: impl std::borrow::Borrow<crate::Locale>) -> crate::catalog::collab::rich::Rich {
+        crate::catalog::collab::rich::render(*locale.borrow(), self)
+    }
+}
+
+impl crate::catalog::collab::rich::RichFamily for RepoBrowseSentence {
+    fn id(self) -> &'static str {
+        match self {
+            Self::EmptySshNote => "repo.empty.ssh-note",
+        }
+    }
+
+    fn english(self, text: &mut crate::catalog::collab::rich::RichWriter) {
+        match self {
+            Self::EmptySshNote => {
+                text.literal("The commands below use HTTPS. To push over SSH, use the SSH URL instead and add a key in ");
+                text.slot(0);
+                text.literal(".");
+            }
+        }
+    }
+
+    fn translate(self, locale: crate::Locale, text: &mut crate::catalog::collab::rich::RichWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
+    }
+}

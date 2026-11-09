@@ -1,6 +1,8 @@
 //! Korean (`ko`) entries for `catalog/repo/browse.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::repo::browse::RepoBrowseSentence;
 use crate::catalog::repo::browse::{RepoBrowseLabel, RepoBrowseMessage};
 
 entries! { Ko:
@@ -41,7 +43,6 @@ entries! { Ko:
         RepoBrowseLabel::CopyRepositoryUrl => text.literal("저장소 URL 복사"),
         RepoBrowseLabel::SshRepositoryUrl => text.literal("SSH 저장소 URL"),
         RepoBrowseLabel::CopySshRepositoryUrl => text.literal("SSH 저장소 URL 복사"),
-        RepoBrowseLabel::EmptySshNote => text.literal("아래 명령은 HTTPS를 사용합니다. SSH로 푸시하려면 SSH URL을 대신 사용하고 다음 위치에서 키를 추가하세요: "),
         RepoBrowseLabel::CreateNewRepository => text.literal("새 저장소 만들기"),
         RepoBrowseLabel::PushExistingRepository => text.literal("기존 저장소 푸시"),
         RepoBrowseLabel::CloseFileBrowser => text.literal("파일 탐색기 닫기"),
@@ -130,6 +131,13 @@ entries! { Ko:
         RepoBrowseMessage::MoreFileMatches { count } => {
             text.number(count as u64);
             text.literal("개가 더 일치합니다. 이름을 더 입력해 목록을 좁히세요.");
+        }
+    }
+    RepoBrowseSentence => RichWriter |text| {
+        RepoBrowseSentence::EmptySshNote => {
+            text.literal("아래 명령은 HTTPS를 사용합니다. SSH로 푸시하려면 SSH URL을 대신 사용하고 다음 위치에서 키를 추가하세요: ");
+            text.slot(0);
+            text.literal(".");
         }
     }
 }

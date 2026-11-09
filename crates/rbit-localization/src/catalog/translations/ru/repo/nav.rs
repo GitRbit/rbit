@@ -32,7 +32,6 @@ entries! { Ru:
         RepoNavLabel::CopySshCloneUrl => text.literal("Скопировать SSH-URL для клонирования"),
         RepoNavLabel::Copy => text.literal("Скопировать"),
         RepoNavLabel::YourSettings => text.literal("ваших настройках"),
-        RepoNavLabel::YourSettingsEnd => text.literal("."),
         RepoNavLabel::DownloadZip => text.literal("Скачать ZIP"),
         RepoNavLabel::Star => text.literal("Звезда"),
         RepoNavLabel::Starred => text.literal("Со звездой"),

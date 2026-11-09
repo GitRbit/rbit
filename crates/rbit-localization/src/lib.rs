@@ -27,9 +27,9 @@ pub use catalog::{
     RepositoryVisibility, RunPageMessage, SettingsNavMessage, ThemeMessage, ThemePreviewMessage, ThemeSentence, WikiMessage,
 };
 pub use catalog::{
-    ContributionLabel, ContributionMessage, ReleaseLabel, ReleaseMessage, RepoBrowseLabel, RepoBrowseMessage, RepoCreateLabel,
-    RepoCreateMessage, RepoEditLabel, RepoEditMessage, RepoHistoryLabel, RepoHistoryMessage, RepoNavLabel, RepoNavMessage, RepoNavSentence,
-    RepoSettingsLabel, RepoSettingsMessage,
+    ContributionLabel, ContributionMessage, ReleaseLabel, ReleaseMessage, RepoBrowseLabel, RepoBrowseMessage, RepoBrowseSentence,
+    RepoCreateLabel, RepoCreateMessage, RepoEditLabel, RepoEditMessage, RepoHistoryLabel, RepoHistoryMessage, RepoNavLabel, RepoNavMessage,
+    RepoNavSentence, RepoSettingsLabel, RepoSettingsMessage,
 };
 pub use locale::{Direction, Locale};
 pub use negotiation::{LocalePreferences, LocaleResolver, PreferenceSource, ResolvedLocale, UnsupportedDefault};

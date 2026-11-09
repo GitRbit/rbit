@@ -1,6 +1,8 @@
 //! French (`fr`) entries for `catalog/repo/browse.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::repo::browse::RepoBrowseSentence;
 use crate::catalog::repo::browse::{RepoBrowseLabel, RepoBrowseMessage};
 use crate::plural::Plural;
 
@@ -42,9 +44,6 @@ entries! { Fr:
         RepoBrowseLabel::CopyRepositoryUrl => text.literal("Copier l’URL du dépôt"),
         RepoBrowseLabel::SshRepositoryUrl => text.literal("URL SSH du dépôt"),
         RepoBrowseLabel::CopySshRepositoryUrl => text.literal("Copier l’URL SSH du dépôt"),
-        RepoBrowseLabel::EmptySshNote => text.literal(
-            "Les commandes ci-dessous utilisent HTTPS. Pour pousser en SSH, utilisez plutôt l’URL SSH et ajoutez une clé dans ",
-        ),
         RepoBrowseLabel::CreateNewRepository => text.literal("Créer un nouveau dépôt"),
         RepoBrowseLabel::PushExistingRepository => text.literal("Pousser un dépôt existant"),
         RepoBrowseLabel::CloseFileBrowser => text.literal("Fermer l’explorateur de fichiers"),
@@ -140,6 +139,13 @@ entries! { Fr:
             text.literal("Correspondances supplémentaires : ");
             text.number(count as u64);
             text.literal(". Saisissez une plus grande partie du nom pour affiner la liste.");
+        }
+    }
+    RepoBrowseSentence => RichWriter |text| {
+        RepoBrowseSentence::EmptySshNote => {
+            text.literal("Les commandes ci-dessous utilisent HTTPS. Pour pousser en SSH, utilisez plutôt l’URL SSH et ajoutez une clé dans ");
+            text.slot(0);
+            text.literal(".");
         }
     }
 }

@@ -31,7 +31,6 @@ entries! { Ja:
         RepoNavLabel::CopySshCloneUrl => text.literal("SSH クローン URL をコピー"),
         RepoNavLabel::Copy => text.literal("コピー"),
         RepoNavLabel::YourSettings => text.literal("設定"),
-        RepoNavLabel::YourSettingsEnd => text.literal("。"),
         RepoNavLabel::DownloadZip => text.literal("ZIP をダウンロード"),
         RepoNavLabel::Star => text.literal("スター"),
         RepoNavLabel::Starred => text.literal("スター済み"),

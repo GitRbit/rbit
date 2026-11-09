@@ -1,6 +1,8 @@
 //! Japanese (`ja`) entries for `catalog/repo/browse.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::repo::browse::RepoBrowseSentence;
 use crate::catalog::repo::browse::{RepoBrowseLabel, RepoBrowseMessage};
 
 entries! { Ja:
@@ -41,7 +43,6 @@ entries! { Ja:
         RepoBrowseLabel::CopyRepositoryUrl => text.literal("リポジトリの URL をコピー"),
         RepoBrowseLabel::SshRepositoryUrl => text.literal("リポジトリの SSH URL"),
         RepoBrowseLabel::CopySshRepositoryUrl => text.literal("リポジトリの SSH URL をコピー"),
-        RepoBrowseLabel::EmptySshNote => text.literal("以下のコマンドは HTTPS を使用します。SSH でプッシュするには、代わりに SSH URL を使い、次の場所でキーを追加してください："),
         RepoBrowseLabel::CreateNewRepository => text.literal("新しいリポジトリを作成"),
         RepoBrowseLabel::PushExistingRepository => text.literal("既存のリポジトリをプッシュ"),
         RepoBrowseLabel::CloseFileBrowser => text.literal("ファイルブラウザーを閉じる"),
@@ -130,6 +131,13 @@ entries! { Ja:
             text.literal("さらに ");
             text.number(count as u64);
             text.literal(" 件一致しています。名前をもっと入力して絞り込んでください。");
+        }
+    }
+    RepoBrowseSentence => RichWriter |text| {
+        RepoBrowseSentence::EmptySshNote => {
+            text.literal("以下のコマンドは HTTPS を使用します。SSH でプッシュするには、代わりに SSH URL を使い、次の場所でキーを追加してください：");
+            text.slot(0);
+            text.literal("。");
         }
     }
 }

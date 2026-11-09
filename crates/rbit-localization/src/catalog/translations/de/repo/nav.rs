@@ -35,7 +35,6 @@ entries! { De:
         RepoNavLabel::CopySshCloneUrl => text.literal("SSH-Klon-URL kopieren"),
         RepoNavLabel::Copy => text.literal("Kopieren"),
         RepoNavLabel::YourSettings => text.literal("Ihren Einstellungen"),
-        RepoNavLabel::YourSettingsEnd => text.literal("."),
         RepoNavLabel::DownloadZip => text.literal("ZIP herunterladen"),
         RepoNavLabel::Star => text.literal("Stern"),
         RepoNavLabel::Starred => text.literal("Markiert"),

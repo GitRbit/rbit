@@ -27,7 +27,6 @@ labels! {
         SshCloneUrl => "repo.nav.ssh-clone-url", "SSH clone URL";
         CopySshCloneUrl => "repo.nav.copy-ssh-clone-url", "Copy SSH clone URL";
         Copy => "repo.nav.copy", "Copy";
-        YourSettingsEnd => "repo.nav.your-settings-end", ".";
         YourSettings => "repo.nav.your-settings", "your settings";
         DownloadZip => "repo.nav.download-zip", "Download ZIP";
         Star => "repo.star.star", "Star";

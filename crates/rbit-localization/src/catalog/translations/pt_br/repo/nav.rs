@@ -37,7 +37,6 @@ entries! { PtBr:
         RepoNavLabel::CopySshCloneUrl => text.literal("Copiar URL de clone SSH"),
         RepoNavLabel::Copy => text.literal("Copiar"),
         RepoNavLabel::YourSettings => text.literal("suas configurações"),
-        RepoNavLabel::YourSettingsEnd => text.literal("."),
         RepoNavLabel::DownloadZip => text.literal("Baixar ZIP"),
         RepoNavLabel::Star => text.literal("Estrela"),
         RepoNavLabel::Starred => text.literal("Com estrela"),

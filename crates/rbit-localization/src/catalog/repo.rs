@@ -71,7 +71,7 @@ pub(super) mod history;
 pub(super) mod nav;
 pub(super) mod releases;
 pub(super) mod settings;
-pub use browse::{RepoBrowseLabel, RepoBrowseMessage};
+pub use browse::{RepoBrowseLabel, RepoBrowseMessage, RepoBrowseSentence};
 pub use contributions::{ContributionLabel, ContributionMessage};
 pub use create::{RepoCreateLabel, RepoCreateMessage};
 pub use edit::{RepoEditLabel, RepoEditMessage};

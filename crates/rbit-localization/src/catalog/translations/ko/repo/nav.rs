@@ -31,7 +31,6 @@ entries! { Ko:
         RepoNavLabel::CopySshCloneUrl => text.literal("SSH 클론 URL 복사"),
         RepoNavLabel::Copy => text.literal("복사"),
         RepoNavLabel::YourSettings => text.literal("내 설정"),
-        RepoNavLabel::YourSettingsEnd => text.literal("."),
         RepoNavLabel::DownloadZip => text.literal("ZIP 다운로드"),
         RepoNavLabel::Star => text.literal("스타"),
         RepoNavLabel::Starred => text.literal("스타 표시함"),

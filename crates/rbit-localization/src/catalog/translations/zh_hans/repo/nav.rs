@@ -33,7 +33,6 @@ entries! { ZhHans:
         RepoNavLabel::CopySshCloneUrl => text.literal("复制 SSH 克隆 URL"),
         RepoNavLabel::Copy => text.literal("复制"),
         RepoNavLabel::YourSettings => text.literal("你的设置"),
-        RepoNavLabel::YourSettingsEnd => text.literal("。"),
         RepoNavLabel::DownloadZip => text.literal("下载 ZIP"),
         RepoNavLabel::Star => text.literal("加星标"),
         RepoNavLabel::Starred => text.literal("已加星标"),

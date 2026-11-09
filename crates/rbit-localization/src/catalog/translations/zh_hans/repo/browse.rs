@@ -1,6 +1,8 @@
 //! Simplified Chinese (`zh-Hans`) entries for `catalog/repo/browse.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::repo::browse::RepoBrowseSentence;
 use crate::catalog::repo::browse::{RepoBrowseLabel, RepoBrowseMessage};
 
 /// A count as the English arm writes it.
@@ -46,9 +48,6 @@ entries! { ZhHans:
         RepoBrowseLabel::CopyRepositoryUrl => text.literal("复制仓库 URL"),
         RepoBrowseLabel::SshRepositoryUrl => text.literal("SSH 仓库 URL"),
         RepoBrowseLabel::CopySshRepositoryUrl => text.literal("复制 SSH 仓库 URL"),
-        RepoBrowseLabel::EmptySshNote => {
-            text.literal("下面的命令使用 HTTPS。如需通过 SSH 推送，请改用 SSH URL，并在以下位置添加密钥：");
-        }
         RepoBrowseLabel::CreateNewRepository => text.literal("新建仓库"),
         RepoBrowseLabel::PushExistingRepository => text.literal("推送现有仓库"),
         RepoBrowseLabel::CloseFileBrowser => text.literal("关闭文件浏览器"),
@@ -139,6 +138,13 @@ entries! { ZhHans:
             text.literal("还有 ");
             text.number(count as u64);
             text.literal(" 个匹配项。输入更多文件名以缩小列表范围。");
+        }
+    }
+    RepoBrowseSentence => RichWriter |text| {
+        RepoBrowseSentence::EmptySshNote => {
+            text.literal("下面的命令使用 HTTPS。如需通过 SSH 推送，请改用 SSH URL，并在以下位置添加密钥：");
+            text.slot(0);
+            text.literal("。");
         }
     }
 }

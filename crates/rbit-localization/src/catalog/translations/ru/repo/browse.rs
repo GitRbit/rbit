@@ -1,6 +1,8 @@
 //! Russian (`ru`) entries for `catalog/repo/browse.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::repo::browse::RepoBrowseSentence;
 use crate::catalog::repo::browse::{RepoBrowseLabel, RepoBrowseMessage};
 use crate::plural::Plural;
 
@@ -42,7 +44,6 @@ entries! { Ru:
         RepoBrowseLabel::CopyRepositoryUrl => text.literal("Скопировать URL репозитория"),
         RepoBrowseLabel::SshRepositoryUrl => text.literal("SSH-URL репозитория"),
         RepoBrowseLabel::CopySshRepositoryUrl => text.literal("Скопировать SSH-URL репозитория"),
-        RepoBrowseLabel::EmptySshNote => text.literal("Команды ниже используют HTTPS. Чтобы отправлять изменения по SSH, используйте SSH-URL и добавьте ключ в "),
         RepoBrowseLabel::CreateNewRepository => text.literal("Создать новый репозиторий"),
         RepoBrowseLabel::PushExistingRepository => text.literal("Отправить существующий репозиторий"),
         RepoBrowseLabel::CloseFileBrowser => text.literal("Закрыть обозреватель файлов"),
@@ -163,6 +164,13 @@ entries! { Ru:
             text.literal("Ещё совпадений: ");
             text.number(count as u64);
             text.literal(". Введите больше символов имени, чтобы сузить список.");
+        }
+    }
+    RepoBrowseSentence => RichWriter |text| {
+        RepoBrowseSentence::EmptySshNote => {
+            text.literal("Команды ниже используют HTTPS. Чтобы отправлять изменения по SSH, используйте SSH-URL и добавьте ключ в ");
+            text.slot(0);
+            text.literal(".");
         }
     }
 }
