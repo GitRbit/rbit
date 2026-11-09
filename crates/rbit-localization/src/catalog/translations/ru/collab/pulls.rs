@@ -16,7 +16,7 @@ entries! { Ru:
             text.argument(author);
         }
         PullMessage::New => text.literal("Новый"),
-        PullMessage::NewSuffix => text.literal("запрос на слияние"),
+        PullMessage::NewSuffix => text.literal("\u{a0}запрос на слияние"),
         PullMessage::EmptyTitle => text.literal("Запросов на слияние здесь нет"),
         PullMessage::EmptyText => text.literal("Запросы на слияние предлагают изменения из ветки или форка. Сравните ветки, чтобы открыть запрос."),
         PullMessage::OpenTitle => text.literal("Открыть запрос на слияние"),

@@ -38,6 +38,7 @@ entries! { ZhHans:
         ReleaseLabel::CreateTagFrom => text.literal("从此处新建标记"),
         ReleaseLabel::TargetHint => text.literal("仅在标记不存在时使用"),
         ReleaseLabel::OneOfTags => text.literal("仓库现有的"),
+        ReleaseLabel::TagsEnd => text.literal("。"),
         ReleaseLabel::TagsLink => text.literal("标记"),
         ReleaseLabel::Title => text.literal("标题"),
         ReleaseLabel::TitleHint => text.literal("可选，默认为标记名"),

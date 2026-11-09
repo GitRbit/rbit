@@ -33,7 +33,7 @@ entries! { Ja:
         NotificationsMessage::Saved => text.literal("設定を保存しました。"),
         NotificationsMessage::Unavailable => text.literal("このサーバーではメールを利用できないため、通知は受信トレイにのみ表示されます。"),
         NotificationsMessage::VerifyLead => text.literal("通知メールを受け取るには、"),
-        NotificationsMessage::VerifyMiddle => text.literal("を"),
+        NotificationsMessage::VerifyMiddle => text.literal(" を"),
         NotificationsMessage::VerifyLink => text.literal("アカウント設定"),
         NotificationsMessage::VerifyTail => text.literal("で確認してください。"),
         NotificationsMessage::Email => text.literal("メール"),

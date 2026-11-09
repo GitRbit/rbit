@@ -7,8 +7,8 @@ entries! { Ko:
     AccessMessage => MessageWriter |text| {
         AccessMessage::Settings => text.literal("설정"),
         AccessMessage::Collaborators => text.literal("공동 작업자"),
-        AccessMessage::IntroLead => text.literal("여기에 추가한 사람은"),
-        AccessMessage::IntroDirectly => text.literal("저장소에 직접 액세스할 수 있습니다"),
+        AccessMessage::IntroLead => text.literal("여기에 추가한 사람은 "),
+        AccessMessage::IntroDirectly => text.literal(" 저장소에 직접 액세스할 수 있습니다"),
         AccessMessage::IntroOrganization => text.literal("(조직 소속 여부와 관계없음)"),
         AccessMessage::IntroTail => text.literal("."),
         AccessMessage::AddCollaborator => text.literal("공동 작업자 추가"),

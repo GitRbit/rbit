@@ -42,7 +42,7 @@ entries! { Ru:
         RepoBrowseLabel::CopyRepositoryUrl => text.literal("Скопировать URL репозитория"),
         RepoBrowseLabel::SshRepositoryUrl => text.literal("SSH-URL репозитория"),
         RepoBrowseLabel::CopySshRepositoryUrl => text.literal("Скопировать SSH-URL репозитория"),
-        RepoBrowseLabel::EmptySshNote => text.literal("Команды ниже используют HTTPS. Чтобы отправлять изменения по SSH, используйте SSH-URL и добавьте ключ в"),
+        RepoBrowseLabel::EmptySshNote => text.literal("Команды ниже используют HTTPS. Чтобы отправлять изменения по SSH, используйте SSH-URL и добавьте ключ в "),
         RepoBrowseLabel::CreateNewRepository => text.literal("Создать новый репозиторий"),
         RepoBrowseLabel::PushExistingRepository => text.literal("Отправить существующий репозиторий"),
         RepoBrowseLabel::CloseFileBrowser => text.literal("Закрыть обозреватель файлов"),

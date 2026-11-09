@@ -43,7 +43,7 @@ entries! { Fr:
         RepoBrowseLabel::SshRepositoryUrl => text.literal("URL SSH du dépôt"),
         RepoBrowseLabel::CopySshRepositoryUrl => text.literal("Copier l’URL SSH du dépôt"),
         RepoBrowseLabel::EmptySshNote => text.literal(
-            "Les commandes ci-dessous utilisent HTTPS. Pour pousser en SSH, utilisez plutôt l’URL SSH et ajoutez une clé dans",
+            "Les commandes ci-dessous utilisent HTTPS. Pour pousser en SSH, utilisez plutôt l’URL SSH et ajoutez une clé dans ",
         ),
         RepoBrowseLabel::CreateNewRepository => text.literal("Créer un nouveau dépôt"),
         RepoBrowseLabel::PushExistingRepository => text.literal("Pousser un dépôt existant"),

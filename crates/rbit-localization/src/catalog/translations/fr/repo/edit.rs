@@ -8,7 +8,8 @@ entries! { Fr:
     RepoEditLabel => MessageWriter |text| {
         RepoEditLabel::NewFile => text.literal("Nouveau fichier"),
         RepoEditLabel::Edit => text.literal("Modifier"),
-        RepoEditLabel::On => text.literal("Sur"),
+        RepoEditLabel::AfterName => text.literal(". "),
+        RepoEditLabel::On => text.literal("Sur "),
         RepoEditLabel::NewFileHint => text.literal("Saisissez un chemin avec / pour créer des dossiers."),
         RepoEditLabel::EditHint => text.literal("Modifiez le chemin pour renommer ou déplacer le fichier."),
         RepoEditLabel::BackToFile => text.literal("Retour au fichier"),
@@ -22,14 +23,14 @@ entries! { Fr:
         ),
         RepoEditLabel::DeleteFile => text.literal("Supprimer le fichier"),
         RepoEditLabel::UploadFiles => text.literal("Téléverser des fichiers"),
-        RepoEditLabel::Into => text.literal("Dans"),
-        RepoEditLabel::OnBranch => text.literal("sur"),
+        RepoEditLabel::Into => text.literal("Dans "),
+        RepoEditLabel::OnBranch => text.literal(" sur "),
         RepoEditLabel::UploadHint => text.literal("Les fichiers de même nom sont remplacés."),
         RepoEditLabel::Files => text.literal("Fichiers"),
-        RepoEditLabel::NothingCommitted => text.literal("Rien n’a été validé."),
+        RepoEditLabel::NothingCommitted => text.literal("Rien n’a été validé. "),
         RepoEditLabel::ReviewNewCommits => text.literal("Examinez les nouveaux commits"),
         RepoEditLabel::KeptAndCommittedOnTop => text.literal(
-            "puis validez de nouveau\u{a0}: vos modifications sont conservées ci-dessous et seront validées par-dessus la \
+            ", puis validez de nouveau\u{a0}: vos modifications sont conservées ci-dessous et seront validées par-dessus la \
              nouvelle version.",
         ),
         RepoEditLabel::BranchGone => text.literal(
@@ -40,7 +41,8 @@ entries! { Fr:
         RepoEditLabel::ExtendedDescription => text.literal("Description détaillée"),
         RepoEditLabel::Optional => text.literal("facultatif"),
         RepoEditLabel::CommitDirectlyTo => text.literal("Valider directement sur"),
-        RepoEditLabel::NotAllowed => text.literal("Non autorisé\u{a0}:"),
+        RepoEditLabel::NotAllowedEnd => text.literal("."),
+        RepoEditLabel::NotAllowed => text.literal("Non autorisé\u{a0}: "),
         RepoEditLabel::NewBranchAndPull => text.literal("Créer une nouvelle branche et ouvrir une pull request"),
         RepoEditLabel::NewBranchName => text.literal("Nom de la nouvelle branche"),
     }
@@ -67,7 +69,7 @@ entries! { Fr:
             text.argument(branch);
             text.literal(" n’existe plus");
         }
-        RepoEditMessage::NowPointsAt => text.literal("Elle pointe désormais sur"),
+        RepoEditMessage::NowPointsAt => text.literal("Elle pointe désormais sur "),
         RepoEditMessage::NotEditable { limit } => {
             text.literal("Ce fichier est binaire ou dépasse ");
             text.argument(limit);

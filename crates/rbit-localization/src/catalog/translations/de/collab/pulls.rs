@@ -16,7 +16,7 @@ entries! { De:
             text.argument(author);
         }
         PullMessage::New => text.literal("Neuer"),
-        PullMessage::NewSuffix => text.literal("Pull-Request"),
+        PullMessage::NewSuffix => text.literal("\u{a0}Pull-Request"),
         PullMessage::EmptyTitle => text.literal("Keine Pull-Requests vorhanden"),
         PullMessage::EmptyText => text.literal(
             "Pull-Requests schlagen Änderungen aus einem Branch oder Fork vor. Vergleichen Sie Branches, um einen zu eröffnen.",

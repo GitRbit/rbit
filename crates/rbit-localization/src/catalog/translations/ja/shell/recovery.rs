@@ -19,6 +19,7 @@ entries! { Ja:
         RecoveryMessage::NothingArrived => {
             text.literal("メールが届きませんか？迷惑メールフォルダーを確認するか、");
         }
+        RecoveryMessage::TryAgainEnd => text.literal("。"),
         RecoveryMessage::TryAgain => text.literal("もう一度お試しください"),
         RecoveryMessage::SendResetLink => text.literal("リセットリンクを送信"),
         RecoveryMessage::RememberedIt => text.literal("パスワードを思い出しましたか？"),

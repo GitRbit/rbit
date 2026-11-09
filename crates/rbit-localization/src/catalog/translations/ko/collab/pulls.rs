@@ -15,7 +15,7 @@ entries! { Ko:
             text.argument(author);
         }
         PullMessage::New => text.literal("새"),
-        PullMessage::NewSuffix => text.literal("풀 리퀘스트"),
+        PullMessage::NewSuffix => text.literal("\u{a0}풀 리퀘스트"),
         PullMessage::EmptyTitle => text.literal("풀 리퀘스트가 없습니다"),
         PullMessage::EmptyText => text.literal("풀 리퀘스트는 브랜치나 포크의 변경 사항을 제안합니다. 브랜치를 비교하여 풀 리퀘스트를 여세요."),
         PullMessage::OpenTitle => text.literal("풀 리퀘스트 열기"),

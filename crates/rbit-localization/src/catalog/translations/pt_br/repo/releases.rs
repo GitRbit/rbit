@@ -42,12 +42,13 @@ entries! { PtBr:
             text.literal("Uma release descreve uma tag: as notas dela e arquivos para baixar.");
         }
         ReleaseLabel::Tag => text.literal("Tag"),
-        ReleaseLabel::AnExisting => text.literal("Uma"),
+        ReleaseLabel::AnExisting => text.literal("Uma "),
         ReleaseLabel::TagLink => text.literal("tag existente"),
-        ReleaseLabel::OrNewTag => text.literal("ou uma nova criada a partir do branch abaixo."),
+        ReleaseLabel::OrNewTag => text.literal(" ou uma nova criada a partir do branch abaixo."),
         ReleaseLabel::CreateTagFrom => text.literal("Criar uma nova tag a partir de"),
         ReleaseLabel::TargetHint => text.literal("usado apenas quando a tag não existe"),
-        ReleaseLabel::OneOfTags => text.literal("Uma das"),
+        ReleaseLabel::OneOfTags => text.literal("Uma das "),
+        ReleaseLabel::TagsEnd => text.literal("."),
         ReleaseLabel::TagsLink => text.literal("tags do repositório"),
         ReleaseLabel::Title => text.literal("Título"),
         ReleaseLabel::TitleHint => text.literal("opcional; por padrão, o nome da tag"),

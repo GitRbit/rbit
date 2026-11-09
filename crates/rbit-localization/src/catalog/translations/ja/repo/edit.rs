@@ -7,6 +7,7 @@ entries! { Ja:
     RepoEditLabel => MessageWriter |text| {
         RepoEditLabel::NewFile => text.literal("新しいファイル"),
         RepoEditLabel::Edit => text.literal("編集："),
+        RepoEditLabel::AfterName => text.literal("。"),
         RepoEditLabel::On => text.literal("ブランチ："),
         RepoEditLabel::NewFileHint => text.literal("パスに / を含めるとディレクトリを作成できます。"),
         RepoEditLabel::EditHint => text.literal("パスを変更すると、ファイルの名前を変更または移動できます。"),
@@ -32,6 +33,7 @@ entries! { Ja:
         RepoEditLabel::ExtendedDescription => text.literal("詳しい説明"),
         RepoEditLabel::Optional => text.literal("任意"),
         RepoEditLabel::CommitDirectlyTo => text.literal("次のブランチに直接コミット："),
+        RepoEditLabel::NotAllowedEnd => text.literal("。"),
         RepoEditLabel::NotAllowed => text.literal("許可されていません："),
         RepoEditLabel::NewBranchAndPull => text.literal("新しいブランチを作成してプルリクエストを開始"),
         RepoEditLabel::NewBranchName => text.literal("新しいブランチ名"),

@@ -16,7 +16,7 @@ entries! { Fr:
             text.argument(author);
         }
         PullMessage::New => text.literal("Nouvelle"),
-        PullMessage::NewSuffix => text.literal("pull request"),
+        PullMessage::NewSuffix => text.literal("\u{a0}pull request"),
         PullMessage::EmptyTitle => text.literal("Aucune pull request ici"),
         PullMessage::EmptyText => text.literal(
             "Les pull requests proposent des modifications depuis une branche ou un fork. Comparez des branches pour en \

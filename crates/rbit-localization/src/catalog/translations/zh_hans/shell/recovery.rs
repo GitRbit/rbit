@@ -15,6 +15,7 @@ entries! { ZhHans:
             text.literal("如果有账户使用该地址，我们已向其发送了一个用于设置新密码的链接。该链接只能使用一次，一小时后失效。");
         }
         RecoveryMessage::NothingArrived => text.literal("没有收到？请检查垃圾邮件文件夹，或"),
+        RecoveryMessage::TryAgainEnd => text.literal("。"),
         RecoveryMessage::TryAgain => text.literal("重试"),
         RecoveryMessage::SendResetLink => text.literal("发送重置链接"),
         RecoveryMessage::RememberedIt => text.literal("想起来了？"),

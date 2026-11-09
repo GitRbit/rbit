@@ -24,7 +24,8 @@ entries! { PtBr:
                  funciona uma vez e expira em uma hora.",
             );
         }
-        RecoveryMessage::NothingArrived => text.literal("Não chegou nada? Verifique sua pasta de spam ou"),
+        RecoveryMessage::NothingArrived => text.literal("Não chegou nada? Verifique sua pasta de spam ou "),
+        RecoveryMessage::TryAgainEnd => text.literal("."),
         RecoveryMessage::TryAgain => text.literal("tente novamente"),
         RecoveryMessage::SendResetLink => text.literal("Enviar link de redefinição"),
         RecoveryMessage::RememberedIt => text.literal("Lembrou?"),

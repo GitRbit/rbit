@@ -34,7 +34,7 @@ entries! { ZhHans:
         NotificationsMessage::IntroTail => text.literal("中。请选择还要发送到你邮箱地址的通知。"),
         NotificationsMessage::Saved => text.literal("偏好设置已保存。"),
         NotificationsMessage::Unavailable => text.literal("此服务器无法发送邮件，因此通知只会显示在收件箱中。"),
-        NotificationsMessage::VerifyLead => text.literal("要接收通知邮件，请验证"),
+        NotificationsMessage::VerifyLead => text.literal("要接收通知邮件，请验证 "),
         NotificationsMessage::VerifyMiddle => text.literal("，可在"),
         NotificationsMessage::VerifyLink => text.literal("账户设置"),
         NotificationsMessage::VerifyTail => text.literal("中操作。"),

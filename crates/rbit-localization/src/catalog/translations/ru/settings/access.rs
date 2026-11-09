@@ -7,8 +7,8 @@ entries! { Ru:
     AccessMessage => MessageWriter |text| {
         AccessMessage::Settings => text.literal("Настройки"),
         AccessMessage::Collaborators => text.literal("Соавторы"),
-        AccessMessage::IntroLead => text.literal("Люди, добавленные здесь, получают доступ к"),
-        AccessMessage::IntroDirectly => text.literal("напрямую"),
+        AccessMessage::IntroLead => text.literal("Люди, добавленные здесь, получают доступ к "),
+        AccessMessage::IntroDirectly => text.literal(" напрямую"),
         AccessMessage::IntroOrganization => text.literal(", независимо от того, состоят ли они в организации"),
         AccessMessage::IntroTail => text.literal("."),
         AccessMessage::AddCollaborator => text.literal("Добавить соавтора"),

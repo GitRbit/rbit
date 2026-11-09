@@ -43,10 +43,10 @@ entries! { Fr:
             "L’e-mail n’est pas disponible sur ce serveur\u{a0}: les notifications n’apparaissent donc que dans votre \
              boîte de réception.",
         ),
-        NotificationsMessage::VerifyLead => text.literal("Vérifiez"),
-        NotificationsMessage::VerifyMiddle => text.literal("dans les"),
+        NotificationsMessage::VerifyLead => text.literal("Vérifiez "),
+        NotificationsMessage::VerifyMiddle => text.literal(" dans les "),
         NotificationsMessage::VerifyLink => text.literal("paramètres du compte"),
-        NotificationsMessage::VerifyTail => text.literal("pour recevoir les e-mails de notification."),
+        NotificationsMessage::VerifyTail => text.literal(" pour recevoir les e-mails de notification."),
         NotificationsMessage::Email => text.literal("E-mail"),
         NotificationsMessage::SendTo => text.literal("Envoyer à"),
         NotificationsMessage::When => text.literal("Quand"),

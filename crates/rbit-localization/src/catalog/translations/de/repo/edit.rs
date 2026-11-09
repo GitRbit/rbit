@@ -8,7 +8,8 @@ entries! { De:
     RepoEditLabel => MessageWriter |text| {
         RepoEditLabel::NewFile => text.literal("Neue Datei"),
         RepoEditLabel::Edit => text.literal("Bearbeiten"),
-        RepoEditLabel::On => text.literal("Auf"),
+        RepoEditLabel::AfterName => text.literal(". "),
+        RepoEditLabel::On => text.literal("Auf "),
         RepoEditLabel::NewFileHint => text.literal("Geben Sie einen Pfad mit / ein, um Verzeichnisse anzulegen."),
         RepoEditLabel::EditHint => {
             text.literal("Ändern Sie den Pfad, um die Datei umzubenennen oder zu verschieben.");
@@ -24,14 +25,14 @@ entries! { De:
         ),
         RepoEditLabel::DeleteFile => text.literal("Datei löschen"),
         RepoEditLabel::UploadFiles => text.literal("Dateien hochladen"),
-        RepoEditLabel::Into => text.literal("Nach"),
-        RepoEditLabel::OnBranch => text.literal("auf"),
+        RepoEditLabel::Into => text.literal("Nach "),
+        RepoEditLabel::OnBranch => text.literal(" auf "),
         RepoEditLabel::UploadHint => text.literal("Dateien mit demselben Namen werden ersetzt."),
         RepoEditLabel::Files => text.literal("Dateien"),
-        RepoEditLabel::NothingCommitted => text.literal("Es wurde nichts committet."),
+        RepoEditLabel::NothingCommitted => text.literal("Es wurde nichts committet. "),
         RepoEditLabel::ReviewNewCommits => text.literal("Prüfen Sie die neuen Commits"),
         RepoEditLabel::KeptAndCommittedOnTop => text.literal(
-            "und committen Sie dann erneut: Ihre Änderungen bleiben unten erhalten und werden auf die neue \
+            ", und committen Sie dann erneut: Ihre Änderungen bleiben unten erhalten und werden auf die neue \
              Version committet.",
         ),
         RepoEditLabel::BranchGone => text.literal(
@@ -43,7 +44,8 @@ entries! { De:
         RepoEditLabel::ExtendedDescription => text.literal("Ausführliche Beschreibung"),
         RepoEditLabel::Optional => text.literal("optional"),
         RepoEditLabel::CommitDirectlyTo => text.literal("Direkt committen auf"),
-        RepoEditLabel::NotAllowed => text.literal("Nicht erlaubt:"),
+        RepoEditLabel::NotAllowedEnd => text.literal("."),
+        RepoEditLabel::NotAllowed => text.literal("Nicht erlaubt: "),
         RepoEditLabel::NewBranchAndPull => {
             text.literal("Neuen Branch erstellen und Pull-Request starten");
         }
@@ -72,7 +74,7 @@ entries! { De:
             text.argument(branch);
             text.literal(" existiert nicht mehr");
         }
-        RepoEditMessage::NowPointsAt => text.literal("Er zeigt jetzt auf"),
+        RepoEditMessage::NowPointsAt => text.literal("Er zeigt jetzt auf "),
         RepoEditMessage::NotEditable { limit } => {
             text.literal("Diese Datei ist binär oder größer als ");
             text.argument(limit);

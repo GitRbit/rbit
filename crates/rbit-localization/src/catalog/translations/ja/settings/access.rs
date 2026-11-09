@@ -7,8 +7,8 @@ entries! { Ja:
     AccessMessage => MessageWriter |text| {
         AccessMessage::Settings => text.literal("設定"),
         AccessMessage::Collaborators => text.literal("コラボレーター"),
-        AccessMessage::IntroLead => text.literal("ここで追加したユーザーは"),
-        AccessMessage::IntroDirectly => text.literal("に直接アクセスできます"),
+        AccessMessage::IntroLead => text.literal("ここで追加したユーザーは "),
+        AccessMessage::IntroDirectly => text.literal(" に直接アクセスできます"),
         AccessMessage::IntroOrganization => text.literal("。組織に所属しているかどうかは問いません"),
         AccessMessage::IntroTail => text.literal("。"),
         AccessMessage::AddCollaborator => text.literal("コラボレーターを追加"),

@@ -7,7 +7,8 @@ entries! { ZhHans:
     RepoEditLabel => MessageWriter |text| {
         RepoEditLabel::NewFile => text.literal("新建文件"),
         RepoEditLabel::Edit => text.literal("编辑"),
-        RepoEditLabel::On => text.literal("分支"),
+        RepoEditLabel::AfterName => text.literal("。"),
+        RepoEditLabel::On => text.literal("分支 "),
         RepoEditLabel::NewFileHint => text.literal("在路径中输入 / 即可创建目录。"),
         RepoEditLabel::EditHint => text.literal("修改路径即可重命名或移动文件。"),
         RepoEditLabel::BackToFile => text.literal("返回文件"),
@@ -19,14 +20,14 @@ entries! { ZhHans:
         RepoEditLabel::DeleteHint => text.literal("文件仍保留在历史记录中；变空的目录会消失。"),
         RepoEditLabel::DeleteFile => text.literal("删除文件"),
         RepoEditLabel::UploadFiles => text.literal("上传文件"),
-        RepoEditLabel::Into => text.literal("上传到目录"),
-        RepoEditLabel::OnBranch => text.literal("分支"),
+        RepoEditLabel::Into => text.literal("上传到目录 "),
+        RepoEditLabel::OnBranch => text.literal("，分支 "),
         RepoEditLabel::UploadHint => text.literal("同名文件将被替换。"),
         RepoEditLabel::Files => text.literal("文件"),
         RepoEditLabel::NothingCommitted => text.literal("未提交任何内容。"),
         RepoEditLabel::ReviewNewCommits => text.literal("查看新提交"),
         RepoEditLabel::KeptAndCommittedOnTop => {
-            text.literal("然后再次提交：你的更改保留在下方，并将在新版本之上提交。");
+            text.literal("，然后再次提交：你的更改保留在下方，并将在新版本之上提交。");
         }
         RepoEditLabel::BranchGone => text.literal("未提交任何内容。请改为提交到新分支；你的更改保留在下方。"),
         RepoEditLabel::CommitChangesLegend => text.literal("提交更改"),
@@ -34,6 +35,7 @@ entries! { ZhHans:
         RepoEditLabel::ExtendedDescription => text.literal("详细描述"),
         RepoEditLabel::Optional => text.literal("可选"),
         RepoEditLabel::CommitDirectlyTo => text.literal("直接提交到"),
+        RepoEditLabel::NotAllowedEnd => text.literal("。"),
         RepoEditLabel::NotAllowed => text.literal("不允许："),
         RepoEditLabel::NewBranchAndPull => text.literal("创建新分支并发起拉取请求"),
         RepoEditLabel::NewBranchName => text.literal("新分支名称"),
@@ -59,7 +61,7 @@ entries! { ZhHans:
             text.argument(branch);
             text.literal(" 已不存在");
         }
-        RepoEditMessage::NowPointsAt => text.literal("它现在指向"),
+        RepoEditMessage::NowPointsAt => text.literal("它现在指向 "),
         RepoEditMessage::NotEditable { limit } => {
             text.literal("此文件是二进制文件或大于 ");
             text.argument(limit);

@@ -48,10 +48,10 @@ entries! { PtBr:
                  entrada.",
             );
         }
-        NotificationsMessage::VerifyLead => text.literal("Verifique"),
-        NotificationsMessage::VerifyMiddle => text.literal("nas"),
+        NotificationsMessage::VerifyLead => text.literal("Verifique "),
+        NotificationsMessage::VerifyMiddle => text.literal(" nas "),
         NotificationsMessage::VerifyLink => text.literal("configurações da conta"),
-        NotificationsMessage::VerifyTail => text.literal("para receber e-mails de notificação."),
+        NotificationsMessage::VerifyTail => text.literal(" para receber e-mails de notificação."),
         NotificationsMessage::Email => text.literal("E-mail"),
         NotificationsMessage::SendTo => text.literal("Enviar para"),
         NotificationsMessage::When => text.literal("Quando"),

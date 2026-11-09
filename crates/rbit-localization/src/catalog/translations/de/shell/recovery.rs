@@ -20,8 +20,9 @@ entries! { De:
              gesendet. Der Link funktioniert einmal und läuft nach einer Stunde ab.",
         ),
         RecoveryMessage::NothingArrived => text.literal(
-            "Nichts angekommen? Prüfen Sie Ihren Spam-Ordner oder",
+            "Nichts angekommen? Prüfen Sie Ihren Spam-Ordner oder ",
         ),
+        RecoveryMessage::TryAgainEnd => text.literal("."),
         RecoveryMessage::TryAgain => text.literal("versuchen Sie es erneut"),
         RecoveryMessage::SendResetLink => text.literal("Link zum Zurücksetzen senden"),
         RecoveryMessage::RememberedIt => text.literal("Wieder eingefallen?"),

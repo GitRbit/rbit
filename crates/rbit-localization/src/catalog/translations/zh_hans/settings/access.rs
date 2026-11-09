@@ -7,8 +7,8 @@ entries! { ZhHans:
     AccessMessage => MessageWriter |text| {
         AccessMessage::Settings => text.literal("设置"),
         AccessMessage::Collaborators => text.literal("协作者"),
-        AccessMessage::IntroLead => text.literal("在此添加的人员将获得对"),
-        AccessMessage::IntroDirectly => text.literal("的直接访问权限"),
+        AccessMessage::IntroLead => text.literal("在此添加的人员将获得对 "),
+        AccessMessage::IntroDirectly => text.literal(" 的直接访问权限"),
         AccessMessage::IntroOrganization => text.literal("，无论他们是否属于该组织"),
         AccessMessage::IntroTail => text.literal("。"),
         AccessMessage::AddCollaborator => text.literal("添加协作者"),

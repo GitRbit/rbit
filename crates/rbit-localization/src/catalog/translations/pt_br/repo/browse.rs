@@ -46,7 +46,7 @@ entries! { PtBr:
         RepoBrowseLabel::CopySshRepositoryUrl => text.literal("Copiar URL SSH do repositório"),
         RepoBrowseLabel::EmptySshNote => {
             text.literal(
-                "Os comandos abaixo usam HTTPS. Para fazer push por SSH, use a URL SSH e adicione uma chave em",
+                "Os comandos abaixo usam HTTPS. Para fazer push por SSH, use a URL SSH e adicione uma chave em ",
             );
         }
         RepoBrowseLabel::CreateNewRepository => text.literal("Criar um novo repositório"),

@@ -8,7 +8,8 @@ entries! { Ru:
     RepoEditLabel => MessageWriter |text| {
         RepoEditLabel::NewFile => text.literal("Новый файл"),
         RepoEditLabel::Edit => text.literal("Редактирование"),
-        RepoEditLabel::On => text.literal("В ветке"),
+        RepoEditLabel::AfterName => text.literal(". "),
+        RepoEditLabel::On => text.literal("В ветке "),
         RepoEditLabel::NewFileHint => text.literal("Укажите путь с /, чтобы создать каталоги."),
         RepoEditLabel::EditHint => text.literal("Измените путь, чтобы переименовать или переместить файл."),
         RepoEditLabel::BackToFile => text.literal("Вернуться к файлу"),
@@ -20,20 +21,21 @@ entries! { Ru:
         RepoEditLabel::DeleteHint => text.literal("Файл останется в истории; каталог, который станет пустым, исчезнет."),
         RepoEditLabel::DeleteFile => text.literal("Удалить файл"),
         RepoEditLabel::UploadFiles => text.literal("Загрузить файлы"),
-        RepoEditLabel::Into => text.literal("В каталог"),
-        RepoEditLabel::OnBranch => text.literal("в ветке"),
+        RepoEditLabel::Into => text.literal("В каталог "),
+        RepoEditLabel::OnBranch => text.literal(" в ветке "),
         RepoEditLabel::UploadHint => text.literal("Файлы с такими же именами будут заменены."),
         RepoEditLabel::Files => text.literal("Файлы"),
-        RepoEditLabel::NothingCommitted => text.literal("Ничего не зафиксировано."),
+        RepoEditLabel::NothingCommitted => text.literal("Ничего не зафиксировано. "),
         RepoEditLabel::ReviewNewCommits => text.literal("Просмотрите новые коммиты"),
-        RepoEditLabel::KeptAndCommittedOnTop => text.literal("и зафиксируйте изменения снова: они сохранены ниже и будут добавлены поверх новой версии."),
+        RepoEditLabel::KeptAndCommittedOnTop => text.literal(" и зафиксируйте изменения снова: они сохранены ниже и будут добавлены поверх новой версии."),
         RepoEditLabel::BranchGone => text.literal("Ничего не зафиксировано. Зафиксируйте изменения в новой ветке; они сохранены ниже."),
         RepoEditLabel::CommitChangesLegend => text.literal("Фиксация изменений"),
         RepoEditLabel::CommitMessage => text.literal("Сообщение коммита"),
         RepoEditLabel::ExtendedDescription => text.literal("Подробное описание"),
         RepoEditLabel::Optional => text.literal("необязательно"),
         RepoEditLabel::CommitDirectlyTo => text.literal("Зафиксировать напрямую в"),
-        RepoEditLabel::NotAllowed => text.literal("Недоступно:"),
+        RepoEditLabel::NotAllowedEnd => text.literal("."),
+        RepoEditLabel::NotAllowed => text.literal("Недоступно: "),
         RepoEditLabel::NewBranchAndPull => text.literal("Создать новую ветку и открыть запрос на слияние"),
         RepoEditLabel::NewBranchName => text.literal("Имя новой ветки"),
     }
@@ -64,7 +66,7 @@ entries! { Ru:
             text.argument(branch);
             text.literal(" больше не существует");
         }
-        RepoEditMessage::NowPointsAt => text.literal("Теперь она указывает на"),
+        RepoEditMessage::NowPointsAt => text.literal("Теперь она указывает на "),
         RepoEditMessage::NotEditable { limit } => {
             text.literal("Этот файл двоичный или больше ");
             text.argument(limit);

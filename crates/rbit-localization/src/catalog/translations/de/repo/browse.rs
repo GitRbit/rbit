@@ -46,7 +46,7 @@ entries! { De:
         RepoBrowseLabel::CopySshRepositoryUrl => text.literal("SSH-URL des Repositorys kopieren"),
         RepoBrowseLabel::EmptySshNote => text.literal(
             "Die folgenden Befehle verwenden HTTPS. Um über SSH zu pushen, verwenden Sie stattdessen die SSH-URL und \
-             hinterlegen Sie einen Schlüssel in",
+             hinterlegen Sie einen Schlüssel in ",
         ),
         RepoBrowseLabel::CreateNewRepository => text.literal("Neues Repository erstellen"),
         RepoBrowseLabel::PushExistingRepository => text.literal("Bestehendes Repository pushen"),

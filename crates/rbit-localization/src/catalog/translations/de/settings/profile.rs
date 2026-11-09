@@ -42,11 +42,11 @@ entries! { De:
         NotificationsMessage::Unavailable => text.literal(
             "E-Mail ist auf diesem Server nicht verfügbar, daher erscheinen Benachrichtigungen nur in Ihrem Posteingang.",
         ),
-        NotificationsMessage::VerifyLead => text.literal("Bestätigen Sie"),
-        NotificationsMessage::VerifyMiddle => text.literal("in den"),
+        NotificationsMessage::VerifyLead => text.literal("Bestätigen Sie "),
+        NotificationsMessage::VerifyMiddle => text.literal(" in den "),
         NotificationsMessage::VerifyLink => text.literal("Kontoeinstellungen"),
         NotificationsMessage::VerifyTail => text.literal(
-            "um Benachrichtigungs-E-Mails zu erhalten.",
+            ", um Benachrichtigungs-E-Mails zu erhalten.",
         ),
         NotificationsMessage::Email => text.literal("E-Mail"),
         NotificationsMessage::SendTo => text.literal("Senden an"),

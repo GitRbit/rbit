@@ -7,8 +7,8 @@ entries! { PtBr:
     AccessMessage => MessageWriter |text| {
         AccessMessage::Settings => text.literal("Configurações"),
         AccessMessage::Collaborators => text.literal("Colaboradores"),
-        AccessMessage::IntroLead => text.literal("As pessoas adicionadas aqui recebem acesso a"),
-        AccessMessage::IntroDirectly => text.literal("diretamente"),
+        AccessMessage::IntroLead => text.literal("As pessoas adicionadas aqui recebem acesso a "),
+        AccessMessage::IntroDirectly => text.literal(" diretamente"),
         AccessMessage::IntroOrganization => text.literal(", pertençam ou não à organização"),
         AccessMessage::IntroTail => text.literal("."),
         AccessMessage::AddCollaborator => text.literal("Adicionar um colaborador"),

@@ -16,7 +16,7 @@ entries! { PtBr:
             text.argument(author);
         }
         PullMessage::New => text.literal("Novo"),
-        PullMessage::NewSuffix => text.literal("pull request"),
+        PullMessage::NewSuffix => text.literal("\u{a0}pull request"),
         PullMessage::EmptyTitle => text.literal("Nenhum pull request aqui"),
         PullMessage::EmptyText => {
             text.literal(
