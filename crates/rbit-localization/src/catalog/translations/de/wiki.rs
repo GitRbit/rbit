@@ -129,5 +129,22 @@ entries! { De:
             text.literal("“.");
         }
         WikiMessage::MorePages => text.literal("Weitere Seiten"),
+        WikiMessage::DeleteKeepsHistory => text.literal(
+            "Die Seite wird aus dem Wiki entfernt. Ihr Verlauf bleibt erhalten, und Personen mit Schreibzugriff können \
+             sie über die gelöschten Seiten wiederherstellen.",
+        ),
+        WikiMessage::DeletedPages => text.literal("Gelöschte Seiten"),
+        WikiMessage::NoDeletedPages => text.literal("Es wurden keine Seiten gelöscht."),
+        WikiMessage::DeletedNotice => text.literal("Diese Seite wurde gelöscht. Ihr Verlauf bleibt erhalten."),
+        WikiMessage::RestorePage => text.literal("Seite wiederherstellen"),
+        WikiMessage::MoreDeletedPages => text.literal("Frühere Löschungen"),
+        WikiMessage::RestoreBlocked => text.literal(
+            "Eine andere Seite verwendet diesen Pfad jetzt. Benennen Sie zuerst die andere Seite um und stellen Sie \
+             dann diese wieder her.",
+        ),
+        WikiMessage::RenamedFrom { path } => {
+            text.literal("Umbenannt von ");
+            text.argument(path);
+        }
     }
 }
