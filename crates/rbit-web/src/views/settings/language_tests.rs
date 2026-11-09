@@ -24,7 +24,7 @@ fn header_language_button_leads_the_theme_buttons_in_reading_order() {
         "aria-label=\"Language\"",
         "title=\"Language\"",
         "data-language-dialog-open",
-        "<circle cx=\"12\" cy=\"12\" r=\"10\"/>",
+        "<path d=\"m22 22-5-10-5 10\"/>",
     ] {
         assert!(button.contains(part), "the language button has {part}: {button}");
     }
@@ -42,7 +42,7 @@ fn header_language_button_mirrors_with_the_document_and_names_itself_in_the_page
     let html = Shell { page: page("/").with_locale(Locale::PseudoRtl) }.render().unwrap();
     assert!(html.contains("<html lang=\"ar-XB\" dir=\"rtl\""));
     let header = html.split("<header").nth(1).unwrap().split("</header>").next().unwrap();
-    // Logical order only: no direction of its own, so a right-to-left page places the globe
+    // Logical order only: no direction of its own, so a right-to-left page places the language button
     // to the right of the theme buttons, still first in reading order.
     assert!(!header.split_once('>').unwrap().0.contains("dir="));
     let order = positions(header, &["data-language-dialog-open", "data-theme-toggle", "data-theme-dialog-open"]);

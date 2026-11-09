@@ -1,4 +1,4 @@
-// The header's language dialog. The globe button (`[data-language-dialog-open]`) is a link to
+// The header's language dialog. The language button (`[data-language-dialog-open]`) is a link to
 // /settings/language, which works without JavaScript; this module opens the dialog instead,
 // fetched from /settings/language/dialog the first time. Each row submits the language page's
 // own form: the choice is saved exactly as that page saves it (the account preference, or a

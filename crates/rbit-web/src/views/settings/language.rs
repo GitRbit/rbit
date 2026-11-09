@@ -61,7 +61,7 @@ impl VisitorLanguagePage {
 }
 
 /// `GET /settings/language/dialog`: the header's language dialog, a `<dialog>` fragment that
-/// `language-picker.js` fetches the first time the globe button is pressed. Its rows submit
+/// `language-picker.js` fetches the first time the language button is pressed. Its rows submit
 /// the form of the language page, for accounts and visitors alike.
 #[derive(Debug, Template, WebTemplate)]
 #[template(path = "settings/language_dialog.html")]

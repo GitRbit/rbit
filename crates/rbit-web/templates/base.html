@@ -1,8 +1,8 @@
 {% import "macros.html" as ui %}
 {#- Language, light/dark switch and the theme picker as menu rows: the phone-sized stand-ins
-    for the top bar's globe, sun/moon and palette buttons. -#}
+    for the top bar's language, sun/moon and palette buttons. -#}
 {% macro display_menu_items(page, chrome) %}
-<a class="menu-item sm:hidden" href="/settings/language" hx-boost="false" aria-haspopup="dialog" data-language-dialog-open>{% call ui::icon("globe", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.language()) %}{% endcall %}</a>
+<a class="menu-item sm:hidden" href="/settings/language" hx-boost="false" aria-haspopup="dialog" data-language-dialog-open>{% call ui::icon("languages", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.language()) %}{% endcall %}</a>
 {%- let toggle = page.theme.toggled() %}
 <form method="post" action="/themes" class="sm:hidden" hx-boost="false" data-theme-form data-asset-version="{{ crate::assets::build_version() }}">
   <input type="hidden" name="next" value="{{ page.path }}">
@@ -72,7 +72,7 @@
             signed in, a cookie choice otherwise). It leads the display controls, so it sits
             before the theme buttons in reading order and mirrors with them right to left. -#}
         <a href="/settings/language" class="btn btn-ghost btn-icon hidden sm:inline-flex" hx-boost="false" aria-haspopup="dialog" aria-label="{{ chrome.language() }}" title="{{ chrome.language() }}" data-language-dialog-open>
-          {% call ui::icon("globe", "size-4") %}{% endcall %}
+          {% call ui::icon("languages", "size-4") %}{% endcall %}
         </a>
         {#- One click flips light/dark, keeping a tinted scheme's family (Gruvbox dark ↔ light);
             the palette menu next to it picks any theme. Both are plain forms without JS. On

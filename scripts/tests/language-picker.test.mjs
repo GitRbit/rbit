@@ -184,7 +184,7 @@ test("the header links the button to the language page before the theme buttons,
     assert.ok(desktop < shell.indexOf('<form method="post" action="/themes" class="hidden sm:contents"'), "it precedes the theme switch");
     const macro = shell.slice(0, shell.indexOf("{% endmacro %}"));
     assert.ok(macro.indexOf("data-language-dialog-open") < macro.indexOf("data-theme-toggle"), "the phone menu row comes first too");
-    assert.match(shell.slice(desktop, shell.indexOf("</a>", desktop)), /ui::icon\("globe", "size-4"\)/);
+    assert.match(shell.slice(desktop, shell.indexOf("</a>", desktop)), /ui::icon\("languages", "size-4"\)/);
   }
   const app = read("assets/app.js");
   assert.match(app, /import "\.\/language-picker\.js";/);
