@@ -4,6 +4,7 @@
 //! a duplicated one repeats it. Adding a variant fails to compile here until it is listed.
 use std::fmt::Debug;
 
+use crate::catalog::chrome::ChromeSentence;
 use crate::catalog::collab::rich::{RichFamily, RichPart, RichWriter, render};
 use crate::catalog::collab::{CloseReason, CollabSentence, TimelineEventMessage};
 use crate::locale::Locale;
@@ -202,7 +203,11 @@ fn events() -> Vec<TimelineEventMessage> {
 
 #[test]
 fn every_rich_translation_keeps_every_slot_exactly_once() {
-    let mismatches: Vec<String> = slot_mismatches(&sentences()).into_iter().chain(slot_mismatches(&events())).collect();
+    let mismatches: Vec<String> = slot_mismatches(&sentences())
+        .into_iter()
+        .chain(slot_mismatches(&events()))
+        .chain(slot_mismatches(&[ChromeSentence::PoweredBy]))
+        .collect();
     assert!(mismatches.is_empty(), "translations that drop or repeat a slot:\n{}", mismatches.join("\n"));
 }
 

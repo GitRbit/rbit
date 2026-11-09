@@ -1,8 +1,10 @@
 //! Shared navigation text: the header, the skip link and the footer. Static English labels
 //! borrow compiled literals; translations live in `translations/<locale>/chrome.rs`.
 use super::Catalog;
+use super::collab::rich::{self, Rich, RichFamily, RichWriter};
 use super::fallback::{MessageFamily, MessageWriter};
 use crate::Locale;
+use std::borrow::Borrow;
 use std::fmt;
 
 #[derive(Clone, Copy, Debug)]
@@ -32,7 +34,6 @@ pub enum ChromeMessage<'a> {
     Themes,
     LightMode,
     DarkMode,
-    PoweredBy,
     UpdateAvailable,
     TimingHelp,
     RenderedIn,
@@ -71,7 +72,6 @@ impl ChromeMessage<'_> {
             Self::Themes => "chrome.themes",
             Self::LightMode => "chrome.light-mode",
             Self::DarkMode => "chrome.dark-mode",
-            Self::PoweredBy => "chrome.powered-by",
             Self::UpdateAvailable => "chrome.update",
             Self::TimingHelp => "chrome.timing-help",
             Self::RenderedIn => "chrome.rendered-in",
@@ -113,7 +113,6 @@ impl ChromeMessage<'_> {
             Self::Themes => "Themes",
             Self::LightMode => "Light mode",
             Self::DarkMode => "Dark mode",
-            Self::PoweredBy => "Powered by",
             Self::UpdateAvailable => "Update available",
             Self::TimingHelp => "Server time for the last page or update",
             Self::RenderedIn => "rendered in",
@@ -172,5 +171,40 @@ impl fmt::Display for ChromeDisplay<'_> {
             return write!(output, "{site} home");
         }
         fmt::Display::fmt(&self.catalog.localized(self.message), output)
+    }
+}
+
+/// Chrome sentences that embed markup; the template renders each slot.
+#[derive(Clone, Copy, Debug)]
+pub enum ChromeSentence {
+    /// The footer credit. Slot 0: the product name.
+    PoweredBy,
+}
+
+impl ChromeSentence {
+    /// This sentence in `locale`, or its English text marked as a fallback.
+    pub fn rich(self, locale: impl Borrow<Locale>) -> Rich {
+        rich::render(*locale.borrow(), self)
+    }
+}
+
+impl RichFamily for ChromeSentence {
+    fn id(self) -> &'static str {
+        match self {
+            Self::PoweredBy => "chrome.powered-by",
+        }
+    }
+
+    fn english(self, text: &mut RichWriter) {
+        match self {
+            Self::PoweredBy => {
+                text.literal("Powered by ");
+                text.slot(0);
+            }
+        }
+    }
+
+    fn translate(self, locale: Locale, text: &mut RichWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
     }
 }

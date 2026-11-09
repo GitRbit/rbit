@@ -1,6 +1,7 @@
 //! Brazilian Portuguese (`pt-BR`) entries for `catalog/chrome.rs`.
 
-use crate::catalog::chrome::ChromeMessage;
+use crate::catalog::chrome::{ChromeMessage, ChromeSentence};
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 
 entries! { PtBr:
@@ -30,7 +31,6 @@ entries! { PtBr:
         ChromeMessage::Themes => text.literal("Temas"),
         ChromeMessage::LightMode => text.literal("Modo claro"),
         ChromeMessage::DarkMode => text.literal("Modo escuro"),
-        ChromeMessage::PoweredBy => text.literal("Desenvolvido com"),
         ChromeMessage::UpdateAvailable => text.literal("Atualização disponível"),
         ChromeMessage::TimingHelp => text.literal("Tempo do servidor para a última página ou atualização"),
         ChromeMessage::RenderedIn => text.literal("gerado em"),
@@ -42,6 +42,12 @@ entries! { PtBr:
         ChromeMessage::Home { site } => {
             text.literal("Início de ");
             text.argument(site);
+        }
+    }
+    ChromeSentence => RichWriter |text| {
+        ChromeSentence::PoweredBy => {
+            text.literal("Desenvolvido com ");
+            text.slot(0);
         }
     }
 }

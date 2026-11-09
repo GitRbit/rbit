@@ -1,6 +1,7 @@
 //! Simplified Chinese (`zh-Hans`) entries for `catalog/chrome.rs`.
 
-use crate::catalog::chrome::ChromeMessage;
+use crate::catalog::chrome::{ChromeMessage, ChromeSentence};
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 
 entries! { ZhHans:
@@ -30,7 +31,6 @@ entries! { ZhHans:
         ChromeMessage::Themes => text.literal("主题"),
         ChromeMessage::LightMode => text.literal("浅色模式"),
         ChromeMessage::DarkMode => text.literal("深色模式"),
-        ChromeMessage::PoweredBy => text.literal("基于"),
         ChromeMessage::UpdateAvailable => text.literal("有可用更新"),
         ChromeMessage::TimingHelp => text.literal("上一个页面或更新的服务器耗时"),
         ChromeMessage::RenderedIn => text.literal("渲染耗时"),
@@ -42,6 +42,13 @@ entries! { ZhHans:
         ChromeMessage::Home { site } => {
             text.argument(site);
             text.literal(" 首页");
+        }
+    }
+    ChromeSentence => RichWriter |text| {
+        ChromeSentence::PoweredBy => {
+            text.literal("由 ");
+            text.slot(0);
+            text.literal(" 驱动");
         }
     }
 }

@@ -22,8 +22,8 @@ pub use catalog::shell;
 pub use catalog::time;
 pub use catalog::{
     ActionsDisplay, ActionsEnvironmentMessage, ActionsJobMessage, ActionsMessage, ActionsOverviewMessage, ActionsRunnersMessage,
-    ActionsSecretsMessage, ActionsSettingsMessage, Catalog, ChromeDisplay, ChromeMessage, JobDisplay, LanguageMessage, Localized,
-    LocalizedDisplay, LocalizedText, Message, MessageFamily, MessageWriter, OverviewControlDisplay, OverviewControlMessage,
+    ActionsSecretsMessage, ActionsSettingsMessage, Catalog, ChromeDisplay, ChromeMessage, ChromeSentence, JobDisplay, LanguageMessage,
+    Localized, LocalizedDisplay, LocalizedText, Message, MessageFamily, MessageWriter, OverviewControlDisplay, OverviewControlMessage,
     RepositoryVisibility, RunPageMessage, SettingsNavMessage, ThemeMessage, ThemePreviewMessage, WikiMessage,
 };
 pub use catalog::{

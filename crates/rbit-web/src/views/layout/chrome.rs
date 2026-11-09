@@ -1,6 +1,6 @@
 //! Lazy shared chrome labels: only rendered controls request their catalog text. Templates
 //! show each through `ui::localized`, which marks an untranslated label `lang="en"`.
-use rbit_localization::{Catalog, ChromeDisplay, ChromeMessage as Message, Locale, Localized};
+use rbit_localization::{Catalog, ChromeDisplay, ChromeMessage as Message, ChromeSentence, Locale, Localized, Rich};
 
 #[derive(Clone, Copy, Debug)]
 pub struct PageChrome {
@@ -111,8 +111,9 @@ impl PageChrome {
         self.catalog.localized(Message::DarkMode)
     }
 
-    pub fn powered_by(&self) -> Localized {
-        self.catalog.localized(Message::PoweredBy)
+    /// The footer credit; slot 0 is the product name.
+    pub fn powered_by(&self) -> Rich {
+        ChromeSentence::PoweredBy.rich(self.catalog.locale())
     }
 
     pub fn update_available(&self) -> Localized {

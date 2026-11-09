@@ -1,6 +1,7 @@
 //! Japanese (`ja`) entries for `catalog/chrome.rs`.
 
-use crate::catalog::chrome::ChromeMessage;
+use crate::catalog::chrome::{ChromeMessage, ChromeSentence};
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 
 entries! { Ja:
@@ -30,7 +31,6 @@ entries! { Ja:
         ChromeMessage::Themes => text.literal("テーマ"),
         ChromeMessage::LightMode => text.literal("ライトモード"),
         ChromeMessage::DarkMode => text.literal("ダークモード"),
-        ChromeMessage::PoweredBy => text.literal("提供："),
         ChromeMessage::UpdateAvailable => text.literal("アップデートがあります"),
         ChromeMessage::TimingHelp => text.literal("直前のページまたは更新にかかったサーバー時間"),
         ChromeMessage::RenderedIn => text.literal("描画時間"),
@@ -42,6 +42,12 @@ entries! { Ja:
         ChromeMessage::Home { site } => {
             text.argument(site);
             text.literal(" ホーム");
+        }
+    }
+    ChromeSentence => RichWriter |text| {
+        ChromeSentence::PoweredBy => {
+            text.slot(0);
+            text.literal(" で動作");
         }
     }
 }

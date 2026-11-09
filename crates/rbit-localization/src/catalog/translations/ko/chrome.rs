@@ -1,6 +1,7 @@
 //! Korean (`ko`) entries for `catalog/chrome.rs`.
 
-use crate::catalog::chrome::ChromeMessage;
+use crate::catalog::chrome::{ChromeMessage, ChromeSentence};
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 
 entries! { Ko:
@@ -30,7 +31,6 @@ entries! { Ko:
         ChromeMessage::Themes => text.literal("테마"),
         ChromeMessage::LightMode => text.literal("라이트 모드"),
         ChromeMessage::DarkMode => text.literal("다크 모드"),
-        ChromeMessage::PoweredBy => text.literal("Powered by"),
         ChromeMessage::UpdateAvailable => text.literal("업데이트 사용 가능"),
         ChromeMessage::TimingHelp => text.literal("마지막 페이지 또는 업데이트의 서버 처리 시간"),
         ChromeMessage::RenderedIn => text.literal("렌더링 시간"),
@@ -42,6 +42,12 @@ entries! { Ko:
         ChromeMessage::Home { site } => {
             text.argument(site);
             text.literal(" 홈");
+        }
+    }
+    ChromeSentence => RichWriter |text| {
+        ChromeSentence::PoweredBy => {
+            text.slot(0);
+            text.literal(" 기반");
         }
     }
 }

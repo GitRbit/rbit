@@ -5,7 +5,7 @@
     <div class="mx-auto flex min-h-12 flex-wrap max-w-[96rem] items-center justify-between gap-4 px-4 text-xs text-ink-faint sm:px-6">
       <p class="flex min-w-0 items-center gap-2">
         {% if page.branding.show_powered_by %}{% call ui::brand_logo(page, "size-3.5 shrink-0 text-ink-muted", 14) %}{% endcall %}
-        <span class="truncate">{% call ui::localized(page.chrome().powered_by()) %}{% endcall %} <span class="text-ink-muted">rbit</span></span>{% endif %}
+        {% let credit = page.chrome().powered_by() %}<span class="truncate"{% if credit.fallback() %} lang="en"{% endif %}>{% for part in credit.parts() %}{% if part.is_slot(0) %}<span class="text-ink-muted">rbit</span>{% else %}{{ part.text() }}{% endif %}{% endfor %}</span>{% endif %}
         <span class="truncate">{{ page.branding.footer_text }}</span>
         {% if page.branding.show_version %}<span class="font-mono text-[11px]" dir="ltr">v{{ env!("CARGO_PKG_VERSION") }}</span>{% endif %}
         <span data-update-notice="{{ page.updates.revision }};{{ page.updates.notice() }}" data-update-label="{{ page.chrome().update_available() }}">{% if let Some(release) = page.updates.release %}<a href="{{ release.url }}" class="link whitespace-nowrap" hx-boost="false" rel="noreferrer">{% call ui::localized(page.chrome().update_available()) %}{% endcall %}</a>{% endif %}</span>

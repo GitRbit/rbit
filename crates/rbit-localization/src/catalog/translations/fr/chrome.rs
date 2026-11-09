@@ -1,6 +1,7 @@
 //! French (`fr`) entries for `catalog/chrome.rs`.
 
-use crate::catalog::chrome::ChromeMessage;
+use crate::catalog::chrome::{ChromeMessage, ChromeSentence};
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 
 entries! { Fr:
@@ -30,7 +31,6 @@ entries! { Fr:
         ChromeMessage::Themes => text.literal("Thèmes"),
         ChromeMessage::LightMode => text.literal("Mode clair"),
         ChromeMessage::DarkMode => text.literal("Mode sombre"),
-        ChromeMessage::PoweredBy => text.literal("Propulsé par"),
         ChromeMessage::UpdateAvailable => text.literal("Mise à jour disponible"),
         ChromeMessage::TimingHelp => text.literal("Temps serveur de la dernière page ou mise à jour"),
         ChromeMessage::RenderedIn => text.literal("généré en"),
@@ -42,6 +42,12 @@ entries! { Fr:
         ChromeMessage::Home { site } => {
             text.literal("Accueil de ");
             text.argument(site);
+        }
+    }
+    ChromeSentence => RichWriter |text| {
+        ChromeSentence::PoweredBy => {
+            text.literal("Propulsé par ");
+            text.slot(0);
         }
     }
 }

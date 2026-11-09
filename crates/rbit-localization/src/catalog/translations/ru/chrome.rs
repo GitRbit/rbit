@@ -1,6 +1,7 @@
 //! Russian (`ru`) entries for `catalog/chrome.rs`.
 
-use crate::catalog::chrome::ChromeMessage;
+use crate::catalog::chrome::{ChromeMessage, ChromeSentence};
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 
 entries! { Ru:
@@ -30,7 +31,6 @@ entries! { Ru:
         ChromeMessage::Themes => text.literal("Темы"),
         ChromeMessage::LightMode => text.literal("Светлая тема"),
         ChromeMessage::DarkMode => text.literal("Тёмная тема"),
-        ChromeMessage::PoweredBy => text.literal("Работает на"),
         ChromeMessage::UpdateAvailable => text.literal("Доступно обновление"),
         ChromeMessage::TimingHelp => text.literal("Время обработки последней страницы или обновления на сервере"),
         ChromeMessage::RenderedIn => text.literal("сформировано за"),
@@ -42,6 +42,12 @@ entries! { Ru:
         ChromeMessage::Home { site } => {
             text.literal("Главная: ");
             text.argument(site);
+        }
+    }
+    ChromeSentence => RichWriter |text| {
+        ChromeSentence::PoweredBy => {
+            text.literal("Работает на ");
+            text.slot(0);
         }
     }
 }
