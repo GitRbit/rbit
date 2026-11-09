@@ -24,19 +24,18 @@ use rbit_core::{
 };
 pub use rbit_storage::sqlite::actions_caches::CacheOrder;
 use rbit_storage::sqlite::actions_caches::{CacheFilter, CacheRecorded, NewCacheEntry};
-use rbit_workflow::spec::CacheScopes;
+use rbit_workflow::{
+    protocol::{CacheProbe, MAX_CACHE_KEY_CHARS, MAX_RESTORE_KEYS, ref_to_scope, restore_probes, valid_cache_key, valid_cache_version},
+    spec::CacheScopes,
+};
 
 use super::{
     ActionsService,
-    artifacts::{digest_from_hex, receive, remove_file},
+    artifacts::{receive, remove_file},
     runners::{CachedRunner, RunnerError},
 };
 use crate::{RepoContext, ServiceError};
 
-/// Longest key, as on GitHub (and `rbit-runner`).
-pub const MAX_CACHE_KEY_CHARS: usize = 512;
-/// Most `restore-keys` a lookup may carry.
-pub const MAX_RESTORE_KEYS: usize = 10;
 /// Most entries one save evicts, and the sweeper removes in one pass.
 const EVICT_ENTRIES: u32 = 256;
 const SECONDS_PER_DAY: i64 = 86_400;
@@ -60,38 +59,12 @@ pub struct CacheSave<'a> {
     pub replace: bool,
 }
 
-fn valid_key(key: &str) -> bool {
-    !key.is_empty() && key.chars().count() <= MAX_CACHE_KEY_CHARS && !key.contains(',')
-}
-
-fn valid_version(version: &str) -> bool {
-    version.len() == 64 && version.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
-}
-
 // Actions: cache REST API.
 fn require_writer(repo: &RepoContext) -> Result<(), ServiceError> {
     if !repo.access.can_write() {
         return Err(ServiceError::Forbidden);
     }
     repo.ensure_writable()
-}
-
-/// The ref GitHub names an entry's scope by: `refs/heads/main` for `heads/main`, and an
-/// untrusted pull request's `pull/3` as `refs/pull/3/merge`.
-pub fn scope_ref(scope: &str) -> String {
-    match scope.strip_prefix("pull/").filter(|number| number.bytes().all(|b| b.is_ascii_digit())) {
-        Some(number) => format!("refs/pull/{number}/merge"),
-        None => format!("refs/{scope}"),
-    }
-}
-
-/// The scope a `ref` filter names, the inverse of [`scope_ref`].
-fn ref_to_scope(reference: &str) -> String {
-    let scope = reference.strip_prefix("refs/").unwrap_or(reference);
-    match scope.strip_prefix("pull/").and_then(|rest| rest.strip_suffix("/merge")) {
-        Some(number) if number.bytes().all(|b| b.is_ascii_digit()) => format!("pull/{number}"),
-        _ => scope.to_owned(),
-    }
 }
 
 impl ActionsService {
@@ -124,27 +97,24 @@ impl ActionsService {
         task: TaskId,
         lookup: &CacheLookup<'_>,
     ) -> Result<Option<CacheEntry>, RunnerError> {
-        if !valid_key(lookup.key) || lookup.restore_keys.iter().any(|key| !valid_key(key)) {
+        if !valid_cache_key(lookup.key) || lookup.restore_keys.iter().any(|key| !valid_cache_key(key)) {
             return Err(RunnerError::bad_request(format!("cache keys are 1 to {MAX_CACHE_KEY_CHARS} characters without commas")));
         }
         if lookup.restore_keys.len() > MAX_RESTORE_KEYS {
             return Err(RunnerError::bad_request(format!("a lookup has at most {MAX_RESTORE_KEYS} restore keys")));
         }
-        if !valid_version(lookup.version) {
+        if !valid_cache_version(lookup.version) {
             return Err(RunnerError::bad_request("the cache version must be 64 lowercase hex digits"));
         }
         let (_, run, scopes) = self.cache_task(runner, task).await?;
         let store = self.ctx().database.actions_caches();
-        for scope in &scopes.read {
-            if let Some(entry) = store.exact(run.repo_id, scope, lookup.key, lookup.version).await? {
-                return Ok(Some(entry));
-            }
-        }
-        for prefix in lookup.restore_keys {
-            for scope in &scopes.read {
-                if let Some(entry) = store.newest_with_prefix(run.repo_id, scope, prefix, lookup.version).await? {
-                    return Ok(Some(entry));
-                }
+        for probe in restore_probes(&scopes.read, lookup.key, lookup.restore_keys) {
+            let found = match probe {
+                CacheProbe::Exact { scope, key } => store.exact(run.repo_id, scope, key, lookup.version).await?,
+                CacheProbe::Prefix { scope, prefix } => store.newest_with_prefix(run.repo_id, scope, prefix, lookup.version).await?,
+            };
+            if found.is_some() {
+                return Ok(found);
             }
         }
         Ok(None)
@@ -179,13 +149,14 @@ impl ActionsService {
         save: &CacheSave<'_>,
         mut body: impl tokio::io::AsyncRead + Unpin,
     ) -> Result<Option<CacheEntry>, RunnerError> {
-        if !valid_key(save.key) {
+        if !valid_cache_key(save.key) {
             return Err(RunnerError::bad_request(format!("cache keys are 1 to {MAX_CACHE_KEY_CHARS} characters without commas")));
         }
-        if !valid_version(save.version) {
+        if !valid_cache_version(save.version) {
             return Err(RunnerError::bad_request("the cache version must be 64 lowercase hex digits"));
         }
-        let expected = digest_from_hex(save.sha256).ok_or_else(|| RunnerError::bad_request("the content digest must be 64 hex digits"))?;
+        let expected = rbit_workflow::protocol::sha256_from_hex(save.sha256)
+            .ok_or_else(|| RunnerError::bad_request("the content digest must be 64 hex digits"))?;
         let (task, run, scopes) = self.cache_task(runner, task).await?;
         let store = self.ctx().database.actions_caches();
         if !save.replace && store.exact(run.repo_id, &scopes.write, save.key, save.version).await?.is_some() {
@@ -359,31 +330,5 @@ impl ActionsService {
             Some(id) => self.ctx().database.actions_caches().find(CacheEntryId(id)).await?.is_none(),
             None => false,
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn keys_and_versions_are_checked() {
-        assert!(valid_key("cargo-Linux-abc"));
-        assert!(!valid_key(""));
-        assert!(!valid_key("a,b"));
-        assert!(!valid_key(&"k".repeat(MAX_CACHE_KEY_CHARS + 1)));
-        assert!(valid_version(&"0a".repeat(32)));
-        assert!(!valid_version(&"0A".repeat(32)));
-        assert!(!valid_version("abc"));
-    }
-
-    #[test]
-    fn scopes_and_refs_map_both_ways() {
-        for (scope, reference) in [("heads/main", "refs/heads/main"), ("pull/3", "refs/pull/3/merge"), ("pull/3/head", "refs/pull/3/head")]
-        {
-            assert_eq!(scope_ref(scope), reference);
-            assert_eq!(ref_to_scope(reference), scope);
-        }
-        assert_eq!(ref_to_scope("heads/main"), "heads/main");
     }
 }

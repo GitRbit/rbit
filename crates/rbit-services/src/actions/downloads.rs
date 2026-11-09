@@ -65,7 +65,7 @@ impl<W: Write> Write for Counter<W> {
 }
 
 /// The stored archive's directory that holds an artifact's files.
-const STORED_ROOT: &str = "w";
+const STORED_ROOT: &str = rbit_workflow::protocol::ARCHIVE_WORKSPACE_DIR;
 
 /// A regular file of a stored artifact, as the downloads write it.
 struct File<'a, R: Read> {

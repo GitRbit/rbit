@@ -53,7 +53,7 @@ use rbit_services::{
     ActionsService, OrgContext, RepoContext, ServiceError,
     actions::{
         browse::{RunQuery, WorkflowState},
-        caches::{CacheOrder, scope_ref},
+        caches::CacheOrder,
         dispatch::DispatchRequest,
         hooks,
         runners::{ManagedScope, RegistrationOptions},
@@ -737,7 +737,7 @@ pub async fn delete_artifact(State(state): State<AppState>, caller: Caller, Path
 fn cache_json(entry: &CacheEntry) -> Value {
     json!({
         "id": entry.id.0,
-        "ref": scope_ref(&entry.scope),
+        "ref": rbit_workflow::protocol::scope_ref(&entry.scope),
         "key": entry.key,
         "version": entry.version,
         "last_accessed_at": timestamp(entry.used_at),

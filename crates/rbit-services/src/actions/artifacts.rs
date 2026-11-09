@@ -24,7 +24,7 @@ use rbit_core::{
     actions::{Artifact, ArtifactId, Job, RunId, Task},
 };
 use rbit_storage::sqlite::actions_artifacts::{NewArtifact, Recorded};
-use rbit_workflow::protocol::valid_artifact_name;
+use rbit_workflow::protocol::{sha256_from_hex, valid_artifact_name};
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 
@@ -44,18 +44,6 @@ pub struct Upload<'a> {
     /// `retention-days`; it can only lower the instance's.
     pub retention_days: Option<u32>,
     pub overwrite: bool,
-}
-
-/// `hex` as 32 bytes.
-pub(super) fn digest_from_hex(hex: &str) -> Option<[u8; 32]> {
-    if hex.len() != 64 {
-        return None;
-    }
-    let mut digest = [0u8; 32];
-    for (index, byte) in digest.iter_mut().enumerate() {
-        *byte = u8::from_str_radix(hex.get(index * 2..index * 2 + 2)?, 16).ok()?;
-    }
-    Some(digest)
 }
 
 /// The newest attempt's artifact of each name.
@@ -114,7 +102,7 @@ impl ActionsService {
             return Err(RunnerError::bad_request("artifact names are 1 to 128 letters, digits, '.', '_' or '-', and not '.' or '..'"));
         }
         let expected =
-            digest_from_hex(upload.sha256).ok_or_else(|| RunnerError::bad_request("the content digest must be 64 hex digits"))?;
+            sha256_from_hex(upload.sha256).ok_or_else(|| RunnerError::bad_request("the content digest must be 64 hex digits"))?;
         let (task, job) = self.leased_task(runner, task).await?;
         let database = &self.ctx().database;
         let run = database.actions_runs().run(job.run_id).await?.ok_or_else(|| RunnerError::not_found("there is no such run"))?;
@@ -333,24 +321,5 @@ pub(super) async fn remove_file(path: &Path) {
         && error.kind() != io::ErrorKind::NotFound
     {
         tracing::warn!(%error, path = %path.display(), "cannot remove an Actions file");
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn digests_are_64_hex_digits() {
-        let digest = Sha256::digest(b"x");
-        let hex = digest.iter().fold(String::new(), |mut hex, byte| {
-            use std::fmt::Write as _;
-            let _ = write!(hex, "{byte:02x}");
-            hex
-        });
-        assert_eq!(digest_from_hex(&hex), Some(digest.into()));
-        assert_eq!(digest_from_hex(&hex.to_uppercase()), Some(digest.into()));
-        assert_eq!(digest_from_hex(&hex[..62]), None);
-        assert_eq!(digest_from_hex(&"zz".repeat(32)), None);
     }
 }

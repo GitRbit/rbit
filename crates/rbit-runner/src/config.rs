@@ -265,7 +265,7 @@ impl RunnerConfig {
     }
 
     pub fn host_labels(&self) -> impl Iterator<Item = &str> {
-        self.labels.iter().filter(|label| label.backend == Backend::Host).map(|label| label.name.as_str())
+        self.labels.iter().filter(|label| !label.backend.isolates_jobs()).map(|label| label.name.as_str())
     }
 
     /// The label a task's `runs-on` selected: the first of its labels this runner serves.

@@ -36,15 +36,16 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use rbit_workflow::{glob::GlobSet, spec::BuiltinKind};
+use rbit_workflow::{
+    glob::GlobSet,
+    protocol::{ARCHIVE_HOME_DIR, ARCHIVE_WORKSPACE_DIR, CacheProbe, MAX_CACHE_KEY_CHARS, cache_key_fits, restore_probes},
+    spec::BuiltinKind,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
 use super::{Inputs, Outcome};
 use crate::{backend::Backend, contexts::hex, job::Job, untrusted::crosses_link};
-
-/// Longest cache key, as on GitHub.
-pub const MAX_KEY_CHARS: usize = 512;
 
 /// The runner's cache directory and its size limit.
 #[derive(Debug, Clone)]
@@ -87,17 +88,19 @@ impl Store {
     }
 
     /// The entry for `key`, else the newest for each prefix in `restore_keys`, searching
-    /// `scopes` in order; only entries saved with the same `paths` match.
+    /// `scopes` in [`restore_probes`] order; only entries saved with the same `paths` match.
     pub fn find(&self, repository: i64, scopes: &[String], key: &str, restore_keys: &[String], paths: &[String]) -> Option<Found> {
-        for scope in scopes {
-            let (archive, meta) = self.entry(repository, scope, key);
-            if archive.is_file() && read_meta(&meta).is_some_and(|meta| meta.key == key && meta.paths == paths) {
-                return Some(Found { archive, key: key.to_owned(), scope: scope.clone() });
+        restore_probes(scopes, key, restore_keys).find_map(|probe| match probe {
+            CacheProbe::Exact { scope, key } => {
+                let (archive, meta) = self.entry(repository, scope, key);
+                (archive.is_file() && read_meta(&meta).is_some_and(|meta| meta.key == key && meta.paths == paths)).then(|| Found {
+                    archive,
+                    key: key.to_owned(),
+                    scope: scope.to_owned(),
+                })
             }
-        }
-        for prefix in restore_keys {
-            for scope in scopes {
-                let Ok(entries) = fs::read_dir(self.scope_dir(repository, scope)) else { continue };
+            CacheProbe::Prefix { scope, prefix } => {
+                let entries = fs::read_dir(self.scope_dir(repository, scope)).ok()?;
                 let newest = entries
                     .flatten()
                     .map(|entry| entry.path())
@@ -106,15 +109,12 @@ impl Store {
                         let meta = read_meta(&path)?;
                         let archive = path.with_extension("tar.gz");
                         let modified = fs::metadata(&archive).and_then(|metadata| metadata.modified()).ok()?;
-                        (meta.key.starts_with(prefix.as_str()) && meta.paths == paths).then_some((modified, archive, meta.key))
+                        (meta.key.starts_with(prefix) && meta.paths == paths).then_some((modified, archive, meta.key))
                     })
                     .max_by_key(|(modified, ..)| *modified);
-                if let Some((_, archive, key)) = newest {
-                    return Some(Found { archive, key, scope: scope.clone() });
-                }
+                newest.map(|(_, archive, key)| Found { archive, key, scope: scope.to_owned() })
             }
-        }
-        None
+        })
     }
 
     /// Whether `key` is already saved in `scope` with these `paths`. An entry of the key with
@@ -211,8 +211,8 @@ pub enum Area {
 impl Area {
     const fn prefix(self) -> &'static str {
         match self {
-            Self::Workspace => "w",
-            Self::Home => "h",
+            Self::Workspace => ARCHIVE_WORKSPACE_DIR,
+            Self::Home => ARCHIVE_HOME_DIR,
         }
     }
 }
@@ -401,8 +401,8 @@ pub(super) fn extract(archive: &Path, roots: &Roots) -> io::Result<u64> {
         let path = entry.path()?.into_owned();
         let mut components = path.components();
         let area = match components.next() {
-            Some(Component::Normal(first)) if first == "w" => Area::Workspace,
-            Some(Component::Normal(first)) if first == "h" => Area::Home,
+            Some(Component::Normal(first)) if first == ARCHIVE_WORKSPACE_DIR => Area::Workspace,
+            Some(Component::Normal(first)) if first == ARCHIVE_HOME_DIR => Area::Home,
             _ => continue,
         };
         let relative: PathBuf = components.collect();
@@ -532,8 +532,8 @@ async fn fetch(
 /// Runs a cache step.
 pub async fn cache(job: &mut Job, kind: BuiltinKind, inputs: &Inputs) -> Outcome {
     let key = inputs.get("key").trim().to_owned();
-    if key.chars().count() > MAX_KEY_CHARS || key.contains(',') {
-        return job.fail(&format!("the cache key must be at most {MAX_KEY_CHARS} characters without commas"));
+    if !cache_key_fits(&key) {
+        return job.fail(&format!("the cache key must be at most {MAX_CACHE_KEY_CHARS} characters without commas"));
     }
     let paths = lines(inputs.get("path"));
     if let Err(error) = resolve(&paths, &roots(job), &job.backend.view().workspace, matches!(job.backend, Backend::Container(_))) {

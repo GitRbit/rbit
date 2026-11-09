@@ -45,7 +45,7 @@ use rbit_core::{
 use rbit_workflow::{
     protocol::{PollRequest, valid_idempotency_key},
     secret::Secret,
-    spec::{CacheScopes, CheckoutSource, Contexts, JOB_SPEC_VERSION, JobResult, JobSpec, JobTemplate, Needed, StepAction},
+    spec::{CacheScopes, CheckoutSource, Contexts, JOB_SPEC_VERSION, JobResult, JobSpec, JobTemplate, Needed, RunCacheScope, StepAction},
 };
 use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
@@ -339,45 +339,16 @@ impl ActionsService {
     }
 }
 
-/// The cache scopes of a task of `run` (§12.5.6): read its own ref's scope, then the default
-/// branch's; write its own — `pull/<n>` for an untrusted run, so it can poison nothing
-/// another run reads first.
+/// The cache scopes of a task of `run` (§12.5.6), as [`CacheScopes::for_run`] decides them.
 pub fn cache_scopes(run: &Run, default_branch: &str) -> CacheScopes {
-    let write = match (run.trusted, run.pull_number) {
-        (true, _) => ref_scope(&run.reference),
-        (false, Some(number)) => format!("pull/{number}"),
-        (false, None) => format!("untrusted/{}", run.id.0),
-    };
-    let default = ref_scope(&format!("refs/heads/{default_branch}"));
-    let mut read = vec![write.clone()];
-    if default != write {
-        read.push(default);
-    }
-    CacheScopes { repository_id: run.repo_id.0, read, write }
-}
-
-/// A ref's cache scope: the ref without `refs/` (`heads/main`, `pull/3/head`), or a digest
-/// of it when it would not make a safe path.
-fn ref_scope(reference: &str) -> String {
-    let scope = reference.strip_prefix("refs/").unwrap_or(reference);
-    let safe = !scope.is_empty()
-        && scope.len() <= 200
-        && !scope.split('/').any(|part| part.is_empty() || part == "." || part == "..")
-        && !scope.contains(['\\', '\0']);
-    if safe {
-        scope.to_owned()
-    } else {
-        use sha2::{Digest, Sha256};
-        let digest = Sha256::digest(reference.as_bytes());
-        format!(
-            "ref/{}",
-            digest.iter().take(16).fold(String::new(), |mut hex, byte| {
-                use std::fmt::Write as _;
-                let _ = write!(hex, "{byte:02x}");
-                hex
-            })
-        )
-    }
+    CacheScopes::for_run(&RunCacheScope {
+        repository_id: run.repo_id.0,
+        run_id: run.id.0,
+        reference: &run.reference,
+        trusted: run.trusted,
+        pull_number: run.pull_number,
+        default_branch,
+    })
 }
 
 /// The name a step is listed under: its `name`, else what it uses, else the first line of
@@ -495,7 +466,7 @@ mod tests {
         for scopes in [push, main, trusted_pull, untrusted] {
             scopes.validate().unwrap();
         }
-        assert!(ref_scope(&format!("refs/heads/{}", "x".repeat(300))).starts_with("ref/"));
+        assert!(rbit_workflow::spec::cache_ref_scope(&format!("refs/heads/{}", "x".repeat(300))).starts_with("ref/"));
     }
 
     #[test]

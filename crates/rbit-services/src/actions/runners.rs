@@ -763,7 +763,7 @@ impl Declared {
             .map(|label| label.name.parse::<RunnerLabel>().map_err(|error| RunnerError::bad_request(error.to_string())))
             .collect::<Result<Vec<_>, _>>()?;
         let host_labels =
-            labels.iter().zip(&parsed).filter(|(label, _)| label.backend == Backend::Host).map(|(_, parsed)| parsed.clone()).collect();
+            labels.iter().zip(&parsed).filter(|(label, _)| !label.backend.isolates_jobs()).map(|(_, parsed)| parsed.clone()).collect();
         let backends = capabilities
             .backends
             .iter()
