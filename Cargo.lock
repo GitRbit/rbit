@@ -4215,6 +4215,7 @@ dependencies = [
 name = "rbit-actions"
 version = "0.2.0"
 dependencies = [
+ "aho-corasick",
  "flate2",
  "rbit-access",
  "rbit-workflow",

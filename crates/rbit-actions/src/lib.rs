@@ -11,5 +11,6 @@ pub mod caches;
 pub mod claims;
 pub mod downloads;
 pub mod environments;
+pub mod logs;
 pub mod secrets;
 pub mod trust;

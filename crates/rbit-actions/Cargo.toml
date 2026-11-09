@@ -1,6 +1,6 @@
 [package]
 name = "rbit-actions"
-description = "Static Actions job-claim, task-lease, run-trust, secret and environment application authority."
+description = "Static Actions job-claim, task-lease, run-trust, secret, environment and log application authority."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,6 +8,8 @@ license.workspace = true
 
 [dependencies]
 rbit-access.workspace = true
+# The server masking pass over task logs.
+aho-corasick.workspace = true
 # The runner contract: cache and artifact rules, scopes and archive layout.
 rbit-workflow.workspace = true
 # Artifact downloads: the stored tar.gz read, rewritten as zip or tar.gz.
