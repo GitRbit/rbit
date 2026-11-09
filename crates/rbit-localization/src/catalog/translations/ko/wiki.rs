@@ -108,5 +108,16 @@ entries! { Ko:
             text.literal("”와(과) 일치하는 페이지가 없습니다.");
         }
         WikiMessage::MorePages => text.literal("페이지 더 보기"),
+        WikiMessage::DeleteKeepsHistory => text.literal("페이지가 위키에서 제거됩니다. 기록은 보존되며, 쓰기 권한이 있는 사람은 삭제된 페이지에서 복원할 수 있습니다."),
+        WikiMessage::DeletedPages => text.literal("삭제된 페이지"),
+        WikiMessage::NoDeletedPages => text.literal("삭제된 페이지가 없습니다."),
+        WikiMessage::DeletedNotice => text.literal("이 페이지는 삭제되었습니다. 기록은 보존되어 있습니다."),
+        WikiMessage::RestorePage => text.literal("페이지 복원"),
+        WikiMessage::MoreDeletedPages => text.literal("이전 삭제 항목"),
+        WikiMessage::RestoreBlocked => text.literal("다른 페이지가 이 경로를 사용하고 있습니다. 먼저 그 페이지의 이름을 변경한 다음 이 페이지를 복원하세요."),
+        WikiMessage::RenamedFrom { path, .. } => {
+            text.argument(path);
+            text.literal("에서 이름 변경됨");
+        }
     }
 }

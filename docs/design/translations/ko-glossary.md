@@ -198,6 +198,13 @@ mainstream developer tools (GitHub in particular).
 | unarchive | 보관 해제 |
 | upstream / remote | 업스트림 / 원격 저장소 |
 | wait timer / required reviewers | 대기 타이머 / 필수 리뷰어 |
+| actor (run filter) / triggered by | 사용자 / 트리거한 사용자 |
+| colorblind (themes) / theme family | 색각 이상 지원 / 테마 계열 |
+| display language / preferred language | 표시 언어 / 선호 언어 |
+| dispatch (workflow event) / schedule | 디스패치 / 예약 |
+| queued / in progress / skipped (run status) | 대기열에 있음 / 진행 중 / 건너뜀 |
+| re-run | 다시 실행 |
+| skip to content | 본문으로 건너뛰기 |
 
 ## Split sentences
 
