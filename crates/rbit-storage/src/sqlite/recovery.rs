@@ -11,46 +11,12 @@
 use std::collections::HashSet;
 
 use super::pool::Pool;
-use rbit_core::{AccountId, AccountName, Email, Timestamp};
+use rbit_core::{AccountId, Email, Timestamp};
 
 use crate::StorageError;
 
-/// What a token lets its holder do.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TokenPurpose {
-    /// Choose a new password without knowing the old one.
-    Reset,
-    /// Prove control of the address the token was sent to.
-    Verify,
-}
-
-impl TokenPurpose {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Reset => "reset",
-            Self::Verify => "verify",
-        }
-    }
-}
-
-/// A token to store. `digest` is the SHA-256 of the secret that went into the link.
-#[derive(Debug, Clone)]
-pub struct NewEmailToken {
-    pub digest: [u8; 32],
-    pub account_id: AccountId,
-    pub purpose: TokenPurpose,
-    /// The address the link is sent to.
-    pub email: Email,
-    pub expires_at: Timestamp,
-}
-
-/// A token that is currently honoured.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EmailTokenRecord {
-    pub account_id: AccountId,
-    pub email: Email,
-    pub expires_at: Timestamp,
-}
+/// Link records are identity-owned; these paths stay compatible.
+pub use rbit_identity_models::recovery::{EmailTokenRecord, NewEmailToken, RecoveryAccount, TokenPurpose};
 
 #[derive(Debug, sqlx::FromRow)]
 struct TokenRow {
@@ -69,16 +35,6 @@ impl TryFrom<TokenRow> for EmailTokenRecord {
             expires_at: Timestamp(row.expires_at),
         })
     }
-}
-
-/// The parts of a user that recovery flows need.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RecoveryAccount {
-    pub id: AccountId,
-    pub name: AccountName,
-    pub email: Email,
-    pub suspended: bool,
-    pub email_verified_at: Option<Timestamp>,
 }
 
 #[derive(Debug, sqlx::FromRow)]

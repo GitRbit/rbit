@@ -23,6 +23,8 @@ mod identity_access_tokens;
 mod identity_accounts;
 mod identity_epoch_sessions;
 mod identity_profiles;
+mod identity_recovery;
+pub use identity_recovery::RecoveryCredentials;
 mod identity_sessions;
 pub mod identity_upgrade;
 pub mod kv;
