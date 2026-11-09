@@ -40,7 +40,9 @@ function members(source) {
   // This repository uses a literal, non-glob member list. Other TOML forms are
   // conservative rather than guessed; Cargo still owns manifest parsing/freshness.
   const section = source.split(/^\[workspace\][ \t]*\r?$/m)[1]?.split(/^\[/m)[0];
-  const list = section?.match(/^members\s*=\s*\[([\s\S]*?)^\]/m)?.[1];
+  // Multi-line, or on one line without comments as in the pinned main baseline.
+  const list = section?.match(/^members\s*=\s*\[([\s\S]*?)^\]/m)?.[1]
+    ?? section?.match(/^members\s*=\s*\[([^\]#\r\n]*)\][ \t]*\r?$/m)?.[1];
   if (!list) throw new Error("WORKSPACE_LAYOUT_UNOBSERVED");
   const parsed = JSON.parse(`[${list.replace(/#[^\r\n]*/g, "").replace(/,\s*$/, "")}]`);
   if (!Array.isArray(parsed) || !parsed.length || parsed.length > 256 || new Set(parsed).size !== parsed.length

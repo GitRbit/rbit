@@ -91,6 +91,23 @@ test("input drift and unsupported workspace layouts never become a known schedul
   await writeFile(join(ctx.checkout, "Cargo.toml"), '[workspace]\nmembers=["crates/*"]\n');
   const snapshot = await policySnapshot(ctx, namespace, request.command, request.args, request.env, read);
   assert.equal(snapshot.graph.confidence, "conservative");
+  for (const list of ['members = ["crates/model", "crates/*"]', 'members = ["crates/model"] # ]']) {
+    await writeFile(join(ctx.checkout, "Cargo.toml"), `[workspace]\n${list}\n`);
+    assert.equal((await policySnapshot(ctx, namespace, request.command, request.args, request.env, read)).inputId, null, list);
+  }
+});
+
+test("a one-line member list, as pinned main writes it, is observed like the multi-line form", async t => {
+  const { ctx, read, request } = await fixture(t);
+  const capture = () => policySnapshot(ctx, namespace, request.command, request.args, request.env, read);
+  const multiLine = await capture();
+  assert.ok(multiLine.inputId);
+  await writeFile(join(ctx.checkout, "Cargo.toml"), '[workspace]\nmembers = ["crates/model"]\n[workspace.package]\nversion="1.0.0"\n');
+  const oneLine = await capture();
+  assert.ok(oneLine.inputId);
+  assert.equal(oneLine.graph.confidence, multiLine.graph.confidence);
+  await writeFile(join(ctx.root, "crates", "model", "Cargo.toml"), '[package]\nname="model"\nversion="2.0.0"\n');
+  assert.notEqual((await capture()).inputId, oneLine.inputId, "member manifests are still hashed");
 });
 
 test("records are bounded replacement files and unknown existing files are never overwritten", async t => {
