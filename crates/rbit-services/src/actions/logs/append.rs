@@ -1,12 +1,13 @@
 //! Serialized append/ack, crash recovery and durable progress commits.
 use super::{
-    MAX_LINES_PER_CALL, Masker,
+    Masker,
     types::{LogFiles, Progress},
 };
 use crate::{
     ActionsService, ServiceError,
     actions::runners::{CachedRunner, RunnerError},
 };
+use rbit_actions::logs::{Append, accept_append, layout, split_body};
 use rbit_core::actions::{Job, LogState, Task, TaskId};
 use rbit_workflow::protocol::{LogsResponse, MAX_LOG_LINE_BYTES};
 use std::{
@@ -34,13 +35,7 @@ impl ActionsService {
     /// that names the line to resend from. Answers the line count after the append.
     pub async fn append_log(&self, runner: &CachedRunner, id: TaskId, from: u64, body: &[u8]) -> Result<LogsResponse, RunnerError> {
         let text = String::from_utf8_lossy(body);
-        let mut lines: Vec<&str> = if text.is_empty() { Vec::new() } else { text.split('\n').collect() };
-        if text.ends_with('\n') {
-            lines.pop();
-        }
-        if lines.len() > MAX_LINES_PER_CALL {
-            return Err(RunnerError::too_large(format!("send at most {MAX_LINES_PER_CALL} lines per call")));
-        }
+        let lines = split_body(&text).map_err(RunnerError::too_large)?;
         let lock = self.log_lock(id);
         let mut checked = lock.lock().await;
         let store = self.ctx().database.actions_runs();
@@ -52,13 +47,11 @@ impl ActionsService {
             return Err(RunnerError::conflict("the task has ended; its log is closed"));
         }
         let current = u64::try_from(task.log_lines).unwrap_or_default();
-        if from > current {
-            return Err(RunnerError::log_gap(current));
-        }
-        let skip = usize::try_from(current - from).unwrap_or(usize::MAX);
-        if skip >= lines.len() {
-            return Ok(LogsResponse { next_line: current });
-        }
+        let skip = match accept_append(from, current, lines.len()) {
+            Append::Gap { current } => return Err(RunnerError::log_gap(current)),
+            Append::Nothing { current } => return Ok(LogsResponse { next_line: current }),
+            Append::Store { skip } => skip,
+        };
         let job = store.job(task.job_id).await?.ok_or_else(|| RunnerError::not_found("there is no such task"))?;
         let masker = self.masker(&task, &job).await?;
         let fresh: Vec<String> = lines[skip..].iter().map(|line| clean_line(&masker, line)).collect();
@@ -106,17 +99,7 @@ impl ActionsService {
 
 /// A line as stored: masked, without a trailing `\r`, at most `MAX_LOG_LINE_BYTES`.
 pub(super) fn clean_line(masker: &Masker, line: &str) -> String {
-    const MARKER: &str = " [line truncated]";
-    let mut line = masker.mask(line.strip_suffix('\r').unwrap_or(line));
-    if line.len() > MAX_LOG_LINE_BYTES {
-        let mut end = MAX_LOG_LINE_BYTES - MARKER.len();
-        while !line.is_char_boundary(end) {
-            end -= 1;
-        }
-        line.truncate(end);
-        line.push_str(MARKER);
-    }
-    line
+    rbit_actions::logs::clean_line(masker, line, MAX_LOG_LINE_BYTES)
 }
 
 /// Appends `lines` after `stored`, within `max_bytes`; with `recover`, first cuts the files
@@ -154,29 +137,10 @@ pub(super) fn append_lines(
     }
     let mut log = OpenOptions::new().create(true).append(true).open(&files.log)?;
     let mut index = OpenOptions::new().create(true).append(true).open(&files.index)?;
-    let mut text = Vec::new();
-    let mut ends = Vec::new();
-    for line in lines {
-        progress.lines += 1;
-        if progress.truncated {
-            continue;
-        }
-        let size = u64::try_from(line.len()).unwrap_or(u64::MAX).saturating_add(1);
-        if progress.bytes.saturating_add(size) > max_bytes {
-            let marker = format!("rbit: the log was cut here: a task may write at most {max_bytes} bytes\n");
-            progress.bytes += u64::try_from(marker.len()).unwrap_or_default();
-            text.extend_from_slice(marker.as_bytes());
-            progress.truncated = true;
-            continue;
-        }
-        text.extend_from_slice(line.as_bytes());
-        text.push(b'\n');
-        progress.bytes += size;
-        ends.extend_from_slice(&progress.bytes.to_le_bytes());
-    }
-    log.write_all(&text)?;
-    index.write_all(&ends)?;
+    let laid = layout(progress, lines, max_bytes);
+    log.write_all(&laid.text)?;
+    index.write_all(&laid.ends)?;
     log.sync_data()?;
     index.sync_data()?;
-    Ok(progress)
+    Ok(laid.progress)
 }

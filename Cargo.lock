@@ -4551,7 +4551,6 @@ name = "rbit-services"
 version = "0.2.0"
 dependencies = [
  "aes-gcm",
- "aho-corasick",
  "axum",
  "base64 0.23.1",
  "flate2",

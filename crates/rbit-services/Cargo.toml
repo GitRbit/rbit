@@ -51,7 +51,6 @@ base64.workspace = true
 # M: importing (the source's API objects).
 serde.workspace = true
 # Actions: S. The masking pass over job outputs and log lines, and gzipped task logs.
-aho-corasick.workspace = true
 flate2.workspace = true
 
 [dev-dependencies]

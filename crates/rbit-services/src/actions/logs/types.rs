@@ -2,8 +2,8 @@
 use rbit_core::{RepoId, actions::TaskId};
 use std::path::{Path, PathBuf};
 
-/// Most lines one append may carry.
-pub const MAX_LINES_PER_CALL: usize = 10_000;
+/// Most lines one append may carry (`rbit_actions::logs`).
+pub use rbit_actions::logs::MAX_LINES_PER_CALL;
 /// What a job page's step view shows at most: the last lines of the step.
 pub const STEP_VIEW_LINES: usize = 10_000;
 /// … and at most this many bytes of them.
@@ -69,14 +69,8 @@ impl LogFiles {
     }
 }
 
-/// How much of a task's log is written: the protocol's line count, the bytes on disk and
-/// whether later lines were dropped.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct Progress {
-    pub lines: u64,
-    pub bytes: u64,
-    pub truncated: bool,
-}
+/// How much of a task's log is written (`rbit_actions::logs::LogProgress`).
+pub(super) use rbit_actions::logs::LogProgress as Progress;
 
 /// Maximum retained lines and bytes for one step, with at least one stored line.
 #[derive(Debug, Clone, Copy)]
