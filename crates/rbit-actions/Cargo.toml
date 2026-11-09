@@ -1,6 +1,6 @@
 [package]
 name = "rbit-actions"
-description = "Static Actions job-claim, task-lease and run-trust application authority."
+description = "Static Actions job-claim, task-lease, run-trust, secret and environment application authority."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
