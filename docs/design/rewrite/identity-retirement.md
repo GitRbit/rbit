@@ -15,7 +15,7 @@ in `rbit-identity` and selected by production today:
 | `identity.bootstrap` | `rbit_identity::accounts::{AccountRegistration, bootstrap_setup_token}` | Retire |
 | `identity.sessions` | `rbit_identity::accounts::PasswordAuthentication`, `rbit_identity::sessions::SessionApplication` | Retire |
 | `identity.profile` | `rbit_identity::profiles::ProfileApplication` | Retired later; see [profile acceptance](identity-profile-acceptance.md) |
-| `identity.recovery` | none: `rbit-services/src/recovery.rs` | Out of scope |
+| `identity.recovery` | `rbit_identity::recovery::{RecoveryLinks, RecoveryPasswords}` | Retired later; see [recovery acceptance](identity-recovery-acceptance.md) |
 | `identity.mfa` | none: `rbit-services/src/two_factor.rs` | Out of scope |
 | `identity.passkeys` | none: `rbit-auth/src/webauthn.rs`, `rbit-services` | Out of scope |
 | `identity.external` | none: `rbit-services/src/external_auth.rs` | Out of scope |
