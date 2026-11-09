@@ -1,10 +1,19 @@
-# Actions scheduling: run admission, concurrency and leases
+# Actions scheduling retirement acceptance
 
-Evidence for a slice of the `actions.scheduling` ledger row (dependencies, concurrency,
-queue, leases, retries, cancel/rerun). The owner is `rbit-actions`. The row stays
-`baseline-retained` with a progress note: this slice moves run admission, concurrency
-groups and task lease checks; other parts of the row remain (see below). It follows the
-[identity retirement](identity-retirement.md) pattern.
+Acceptance evidence for the `actions.scheduling` ledger row (dependencies, concurrency,
+queue, leases, retries, cancel/rerun). The owner is `rbit-actions`, and the row is
+`ported`. Three slices retire it, each recorded below: the first moved run admission,
+concurrency groups and task lease checks (`rbit_actions::scheduling`); the second the
+long poll and the sweeper's stale-task passes (`rbit_actions::polling`,
+`rbit_actions::stale_tasks`); the third the job decisions after each settle, the cancel,
+rerun, approval and review request rules and the lease answers
+(`rbit_actions::scheduling::{jobs, requests, leases}`). Runner claims and idempotent
+task-token replay were prepared earlier (`rbit_actions::claims`). The services keep
+adapters only: `actions/task_leases.rs`, `actions/scheduler/poll_queue.rs` and
+`actions/stale_task_port.rs`. The review gate and the wait timer stay SQL predicates by
+design: they are evaluated inside the store's transactions and are the race authority
+(see the third slice). It follows the [identity retirement](identity-retirement.md)
+pattern.
 
 The atomic SQL in `rbit-storage/src/sqlite/actions_runs.rs` stays the race authority, as
 before: creating a run with its jobs, settling jobs, claiming, cancelling, releasing,
@@ -30,20 +39,21 @@ Services adapters:
 - `task_leases.rs` implements `TaskLeases` over the task store and answers a `Refusal` as
   before: not found, forbidden or conflict, with the same message.
 
-## What stays (progress)
+## What stayed after the first slice
 
 - Already prepared before this slice: runner claims and idempotent task-token replay
   (`rbit_actions::claims`, selected by the poll through `scheduler/claim_bridge.rs`).
 - Still in services or storage:
-  - job dependencies and `if:` decisions after each settle (`conditions.rs`, "join");
-  - the poll loop and its version and `Notify` wake-ups;
-  - the sweeper's zombie and timeout passes;
+  - job dependencies and `if:` decisions after each settle (`conditions.rs`, "join"),
+    done in the third slice;
+  - the poll loop and its version and `Notify` wake-ups, done in the second slice;
+  - the sweeper's zombie and timeout passes, done in the second slice;
   - the lease checks of `task_state` and log appends, which answer differently: a
-    stopped task is told to cancel, and a closed log has its own message;
-  - cancel, rerun and approval request validation;
-  - the review gate and wait timer in SQL.
-
-  Each is either SQL race authority or I/O orchestration, and is left for later slices.
+    stopped task is told to cancel, and a closed log has its own message; done in the
+    third slice;
+  - cancel, rerun and approval request validation, done in the third slice;
+  - the review gate and wait timer in SQL, which stay there by design as the race
+    authority (third slice).
 
 ## Boundary that fails if the moved decisions return
 
@@ -114,7 +124,7 @@ Estimate: the remaining parts are each about one session, except the sweeper and
 This slice retires two of the parts listed as remaining above: the poll loop with its
 wake-ups, and the sweeper's zombie, endless and abandoned passes. Request validation,
 `conditions.rs`, the `task_state` and log lease answers and the review and wait gates are
-untouched. The row stays `baseline-retained`.
+untouched here; the third slice moved them.
 
 ### What moved
 
@@ -172,11 +182,11 @@ wiring (+308); tests: 2 new files (+271); `rbit-services`: 2 new adapters (+141)
 edited files (+42 / −126); checker: a 41-line guard, a 38-line test and two lines in
 `check.mjs`. About one session.
 
-### What still remains for the row
+### What remained for the row after this slice
 
 The dependency and `if:` decisions after each settle (`conditions.rs`), the `task_state`
 and log lease answers, cancel, rerun and approval request validation, and the review gate
-and wait timer (in progress by the actions agent).
+and wait timer: all handled by the third slice below.
 
 ## Third slice: job decisions, requests, lease answers and the review gate
 
@@ -214,7 +224,7 @@ open the window the transaction closes. What surrounds them is decided in `rbit-
   secrets row);
 - what a review request selects and answers (`requests`, above).
 
-The SQL is kept, as the coordinator's brief asked.
+The SQL is kept by design.
 
 ### Boundary
 
