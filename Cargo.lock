@@ -4402,8 +4402,10 @@ dependencies = [
 name = "rbit-notifications"
 version = "0.2.0"
 dependencies = [
+ "hmac",
  "rbit-collaboration",
  "rbit-contracts",
+ "sha2 0.11.1",
  "tokio",
 ]
 

@@ -14,21 +14,8 @@ use rbit_core::{AccountId, IssueId, IssueKind, IssueNumber, RepoId, Timestamp, c
 use super::notifications::NotificationReason;
 use crate::StorageError;
 
-/// A notification that waits for a digest instead of being emailed.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NewDigestItem {
-    pub account: AccountId,
-    pub repo: RepoId,
-    pub issue: IssueId,
-    pub reason: NotificationReason,
-    /// One sentence, e.g. `bob commented on issue #3.`
-    pub headline: String,
-    /// An excerpt of the text, already shortened, or empty.
-    pub excerpt: String,
-    /// The fragment of the thread page to link to.
-    pub anchor: Option<String>,
-    pub created_at: Timestamp,
-}
+/// Digest records are feature policy; this store decodes and claims them.
+pub use rbit_notifications::mail::records::{Claim, ClaimedDigest, DigestItem, DigestState, NewDigestItem};
 
 /// A user with notifications waiting for a digest, and their digest settings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,79 +25,6 @@ pub struct DigestCandidate {
     pub delivery: EmailDelivery,
     /// `None` follows the instance's default digest hour.
     pub digest_hour: Option<u8>,
-}
-
-/// A digest claimed for one user and period.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ClaimedDigest {
-    pub id: i64,
-    pub account: AccountId,
-    pub period: Timestamp,
-    /// The items attached to it.
-    pub items: u64,
-}
-
-/// The outcome of [`EmailDigestStore::claim`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Claim {
-    /// The period was claimed before (by this or another sender): nothing to do.
-    Taken,
-    /// Nothing queued before the period is left to send; no digest is recorded.
-    Nothing {
-        /// Items deleted because their thread was read in the app.
-        skipped_read: u64,
-    },
-    /// The digest to send now.
-    Claimed {
-        digest: ClaimedDigest,
-        /// Items left out because their thread was read in the app.
-        skipped_read: u64,
-    },
-}
-
-/// One notification of a claimed digest, with the current names of its thread.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DigestItem {
-    pub repo: RepoId,
-    pub issue: IssueId,
-    pub reason: NotificationReason,
-    pub headline: String,
-    pub excerpt: String,
-    pub anchor: Option<String>,
-    pub created_at: Timestamp,
-    pub number: IssueNumber,
-    pub kind: IssueKind,
-    pub title: String,
-    pub owner: String,
-    pub repo_name: String,
-}
-
-/// What became of a claimed digest.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DigestState {
-    /// Claimed; sending has not finished (or the process stopped while sending).
-    Claimed,
-    /// The mail transport accepted it.
-    Sent,
-    /// The mail transport refused it or timed out. It is not retried.
-    Failed,
-    /// Nothing was left to send once access and preferences were checked again.
-    Empty,
-}
-
-impl DigestState {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Claimed => "claimed",
-            Self::Sent => "sent",
-            Self::Failed => "failed",
-            Self::Empty => "empty",
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        [Self::Claimed, Self::Sent, Self::Failed, Self::Empty].into_iter().find(|state| state.as_str() == value)
-    }
 }
 
 #[derive(Debug, sqlx::FromRow)]

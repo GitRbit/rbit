@@ -1,8 +1,11 @@
-//! Feature-owned inbox, subscription, fan-out and retention policy behind static ports.
-//! Concrete stores keep SQL authority; mail and background lifecycle stay with composition.
+//! Feature-owned inbox, subscription, fan-out, retention and email policy behind static
+//! ports.
+//! Concrete stores keep SQL authority; templates, transports and background lifecycle stay
+//! with composition.
 mod activity;
 pub mod application;
 pub mod fanout;
+pub mod mail;
 mod models;
 mod page;
 pub mod port;

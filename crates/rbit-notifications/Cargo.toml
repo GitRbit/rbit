@@ -1,6 +1,6 @@
 [package]
 name = "rbit-notifications"
-description = "Notification inbox models and borrowed read application policy."
+description = "Notification inbox, fan-out and email policy behind static borrowed ports."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,6 +9,8 @@ license.workspace = true
 [dependencies]
 rbit-contracts = { workspace = true, default-features = false }
 rbit-collaboration = { workspace = true, default-features = false }
+hmac.workspace = true
+sha2.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
