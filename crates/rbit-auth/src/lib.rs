@@ -4,7 +4,7 @@
 //!
 //! * [`session`] — unguessable session tokens; only their digests are ever stored.
 //! * [`access_token`] — personal access token secrets (`rbit_…`; legacy `rit_…`), likewise stored as digests.
-//! * [`policy`] — who may read, write or administer a repository.
+//! * [`policy`] — compatibility path for repository access, owned by `rbit-access`.
 //! * [`totp`] — time-based one-time passwords (RFC 6238) and recovery codes.
 //! * [`webauthn`] — passkeys and security keys as a second factor.
 //! * [`oidc`] — external sign-in: sealed flow state, PKCE and ID token validation.
@@ -17,7 +17,11 @@
 
 pub mod access_token;
 pub mod oidc;
-pub mod policy;
+/// Repository access compatibility path: the rules and grant loading are owned by
+/// `rbit_access::grants`; `rbit_core::access` projects the domain records onto them.
+pub mod policy {
+    pub use rbit_core::access::{Grants, repo_access};
+}
 // Actions: S.
 pub mod runner_token;
 mod secret;

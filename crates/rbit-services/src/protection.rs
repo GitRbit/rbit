@@ -22,7 +22,7 @@ use rbit_access::{
     organizations::AccessError,
     protection::{Principal, ProtectionGate, RuleDirectory, RuleDraft, RuleManagement, RuleScope, Writer},
 };
-use rbit_auth::repo_access;
+use rbit_core::access::repo_access;
 pub use rbit_core::protection::{MergeRules, PushActor, PushVerdict, Refusal};
 use rbit_core::{
     AccountId, AccountKind, RefUpdate, RepoId, User,

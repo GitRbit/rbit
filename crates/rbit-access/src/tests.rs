@@ -114,3 +114,39 @@ fn stronger_collaborator_and_member_grants_never_reduce_effective_access() {
         }
     }
 }
+
+#[test]
+fn stored_grants_count_only_for_viewers_they_can_change() {
+    use crate::grants::{GrantRepository, Repository, RepositoryGrants, Viewer, access, viewer_grants};
+    use crate::{OrgRole, organizations::tests::ready};
+
+    /// Every viewer is a member with a write team grant; loads are counted.
+    struct Store(std::sync::atomic::AtomicUsize);
+    impl GrantRepository for Store {
+        type Error = ();
+        type Id = u32;
+        type Repo = ();
+        type Permission = RepoAccess;
+        fn grants(&self, (): (), _: u32, _: u32) -> impl std::future::Future<Output = Result<RepositoryGrants<RepoAccess>, ()>> + Send {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            std::future::ready(Ok(RepositoryGrants {
+                org_role: Some(OrgRole::Member),
+                team: Some(RepoAccess::Write),
+                ..RepositoryGrants::default()
+            }))
+        }
+    }
+    let store = Store(std::sync::atomic::AtomicUsize::new(0));
+    let viewer = |id, site_admin| Some(Viewer { id, site_admin });
+    for skipped in [None, viewer(1, false), viewer(2, true)] {
+        assert_eq!(ready(viewer_grants(&store, skipped, (), 1)).unwrap(), RepositoryGrants::default());
+    }
+    assert_eq!(store.0.load(std::sync::atomic::Ordering::Relaxed), 0, "owner, admins and anonymous visitors load nothing");
+    let member = ready(viewer_grants(&store, viewer(3, false), (), 1)).unwrap();
+    let org = Repository { owner: 1, public: false, organization: true };
+    assert_eq!(access(viewer(3, false).as_ref(), &org, &member), RepoAccess::Write);
+    let personal = Repository { organization: false, ..org };
+    assert_eq!(access(viewer(3, false).as_ref(), &personal, &member), RepoAccess::None, "organisation grants need an organisation");
+    assert_eq!(access(viewer(1, false).as_ref(), &personal, &RepositoryGrants::<RepoAccess>::default()), RepoAccess::Admin);
+    assert_eq!(access::<u32, RepoAccess>(None, &Repository { public: true, ..org }, &member), RepoAccess::Read);
+}

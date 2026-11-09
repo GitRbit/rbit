@@ -1,8 +1,8 @@
 //! Repository lifecycle and permission-checked access.
 //!
-//! Access follows [`rbit_auth::repo_access`]: this service looks up what the viewer was
+//! Access follows [`rbit_access::grants`]: this service loads what the viewer was
 //! granted (organisation role and base permission, team grants, collaborator permission)
-//! in one query and lets the pure policy decide. Listings filter with the store's shared
+//! through the grant port in one query and lets the pure policy decide. Listings filter with the store's shared
 //! readable-by predicate, which expresses the same rules in SQL.
 //!
 //! Renamed and transferred repositories remain reachable under their old names (see
@@ -11,7 +11,7 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use rbit_auth::{Grants, repo_access};
+use rbit_core::access::{Grants, repo_access};
 use rbit_core::{Account, AccountId, Config, Permission, RepoAccess, RepoId, User, mirror::Mirror, repository::OwnedRepository};
 use rbit_git::{RepositoryReader, RepositoryStorage};
 use rbit_storage::{
@@ -246,29 +246,18 @@ pub(crate) async fn authorised_owner(store: &RepositoryStore, actor: &User, owne
     rbit_repositories::creation::RepositoryOwnership::resolve(store, actor, owner).await.map_err(creation::owner_error)
 }
 
-/// What `viewer` was granted on `repo`, for [`repo_access`]. Skips the query when the
-/// answer cannot change the outcome (anonymous viewers, site admins, the personal owner).
+/// What `viewer` was granted on `repo`, for [`repo_access`], loaded through the
+/// `rbit-access` grant port only when it can change the outcome.
 pub(crate) async fn viewer_grants(store: &RepositoryStore, viewer: Option<&User>, repo: &OwnedRepository) -> Result<Grants, ServiceError> {
-    let Some(user) = grant_holder(viewer, repo) else {
-        return Ok(Grants::default());
-    };
-    Ok(policy_grants(store.grants(repo.repo.id, repo.repo.owner_id, user.id()).await?))
-}
-
-/// The viewer whose grants on `repo` matter: signed in, neither a site administrator nor
-/// the owner (who have full access whatever they were granted).
-fn grant_holder<'u>(viewer: Option<&'u User>, repo: &OwnedRepository) -> Option<&'u User> {
-    viewer.filter(|user| !user.is_admin && user.id() != repo.repo.owner_id)
+    let viewer = viewer.map(rbit_core::access::viewer);
+    Ok(rbit_access::grants::viewer_grants(store, viewer, repo.repo.id, repo.repo.owner_id).await?)
 }
 
 /// `stored` grants of `viewer` read together with `repo` (already for this viewer),
-/// as [`viewer_grants`] would have looked them up.
+/// counted only when [`viewer_grants`] would have looked them up.
 fn page_grants(viewer: Option<&User>, repo: &OwnedRepository, stored: ViewerGrants) -> Grants {
-    grant_holder(viewer, repo).map_or_else(Grants::default, |_| policy_grants(stored))
-}
-
-fn policy_grants(stored: ViewerGrants) -> Grants {
-    Grants { org_role: stored.org_role, org_base: stored.org_base.permission(), team: stored.team, collaborator: stored.collaborator }
+    let applies = viewer.is_some_and(|user| rbit_access::grants::grants_apply(&rbit_core::access::viewer(user), &repo.repo.owner_id));
+    if applies { stored.into() } else { Grants::default() }
 }
 
 #[cfg(test)]

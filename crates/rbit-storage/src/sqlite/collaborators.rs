@@ -14,8 +14,7 @@ use super::rows::AccountRow;
 use crate::StorageError;
 
 /// What one viewer was granted on one repository, as stored (see
-/// `RepositoryStore::grants`). The repository service turns it into
-/// `rbit_auth::policy::Grants`.
+/// `RepositoryStore::grants`), projected onto `rbit_access::grants::RepositoryGrants`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ViewerGrants {
     /// The viewer's role in the owning account, if it is an organisation they belong to.

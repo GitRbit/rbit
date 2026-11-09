@@ -12,7 +12,7 @@
 //! Workstream T (triggers and runs) owns this file.
 
 use rbit_actions::trust::{ActorFacts, PullRequestTrust, RunTrust, TrustFacts};
-use rbit_auth::repo_access;
+use rbit_core::access::repo_access;
 use rbit_core::{AccountId, repository::OwnedRepository};
 use rbit_storage::sqlite::pulls::{PullFilter, PullStateFilter};
 

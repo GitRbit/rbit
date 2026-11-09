@@ -4228,7 +4228,6 @@ dependencies = [
  "getrandom 0.4.3",
  "hmac",
  "p256",
- "rbit-access",
  "rbit-core",
  "rbit-identity",
  "rsa",

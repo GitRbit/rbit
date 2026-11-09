@@ -1,7 +1,7 @@
 //! Runtime composition of feature-owned inbox behavior; no background owner enters the port.
 use super::{InboxPage, NOTIFICATIONS_PER_PAGE, Notification, NotificationService, Subscription};
 use crate::{ServiceError, repositories::viewer_grants};
-use rbit_auth::repo_access;
+use rbit_core::access::repo_access;
 use rbit_core::{AccountId, IssueId, RepoId, Timestamp, User, repository::OwnedRepository};
 use rbit_notifications::{
     application::{InboxApplication, InboxError},

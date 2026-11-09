@@ -3,7 +3,7 @@
 //! The permission levels (`read`, `write`, `admin`), the organisation base permission,
 //! collaborators, teams and their members and repositories live here as validated
 //! domain types. Who ends up with which [`RepoAccess`] is decided by
-//! `rbit_auth::policy::repo_access`; this module only describes what was granted.
+//! `rbit_core::access::repo_access`; this module only describes what was granted.
 //!
 //! Milestone 2 workstream A (access) owns this file.
 

@@ -7,6 +7,7 @@
 //! storage keeps race authority.
 
 pub mod collaborators;
+pub mod grants;
 pub mod organizations;
 mod policy;
 pub mod protection;

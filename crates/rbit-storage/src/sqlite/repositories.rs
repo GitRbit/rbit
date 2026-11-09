@@ -1,6 +1,6 @@
 //! Repository metadata, the shared "readable by" predicate and per-viewer grants.
 //!
-//! Who may read a repository is decided by `rbit_auth::policy::repo_access`. Listings
+//! Who may read a repository is decided by `rbit_core::access::repo_access`. Listings
 //! that must filter in SQL use [`readable_by!`], the same rules expressed once as a
 //! `'static` SQL fragment; `rbit-services/tests/access.rs` checks that the two agree on
 //! a fixture matrix.
@@ -72,7 +72,7 @@ macro_rules! select_owned_repo {
 /// `"?2"`, `NULL` when anonymous) may read repository `r`; `$is_admin` is a boolean
 /// parameter (or literal) saying whether that viewer is a site administrator.
 ///
-/// The rules of `rbit_auth::policy::repo_access` reduced to "access ≥ read": public,
+/// The rules of `rbit_core::access::repo_access` reduced to "access ≥ read": public,
 /// site admin, personal owner, collaborator with any permission, or a member of the
 /// owning organisation who is an owner, has a base permission other than `none`, or is
 /// on a team of that organisation that was granted the repository.

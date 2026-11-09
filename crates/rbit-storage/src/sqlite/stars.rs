@@ -97,7 +97,7 @@ impl StarStore {
 
     /// Repositories starred by `account` that `viewer` may read, most recently starred first.
     ///
-    /// Readable follows `rbit_auth::policy::repo_access`, expressed in SQL by the shared
+    /// Readable follows `rbit_core::access::repo_access`, expressed in SQL by the shared
     /// `readable_by!` predicate so the list can be filtered without loading every repository.
     pub async fn starred_by(
         &self,

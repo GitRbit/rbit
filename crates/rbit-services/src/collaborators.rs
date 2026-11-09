@@ -19,7 +19,7 @@
 //! acting user, so the caller has already proven the repository is visible to them.
 
 use rbit_access::collaborators::{CollaboratorRepository, CollaboratorScope, Collaborators, SetOutcome};
-use rbit_auth::repo_access;
+use rbit_core::access::repo_access;
 use rbit_core::{
     Account, AccountId, RepoAccess, RepoId, User,
     membership::{Collaborator, Permission, TeamGrant},

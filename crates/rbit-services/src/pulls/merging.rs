@@ -19,7 +19,7 @@
 
 use std::collections::HashSet;
 
-use rbit_auth::policy::{Grants, repo_access};
+use rbit_core::access::{Grants, repo_access};
 use rbit_core::{
     AccountId, PushSource, StateReason, TimelineEvent, Timestamp, User,
     issue::MergeStrategy,

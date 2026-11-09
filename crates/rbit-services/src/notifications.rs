@@ -25,7 +25,7 @@ use std::{
     time::Duration,
 };
 
-use rbit_auth::{Grants, repo_access};
+use rbit_core::access::{Grants, repo_access};
 use rbit_core::{Timestamp, User, repository::OwnedRepository};
 use rbit_notifications::retention;
 pub use rbit_notifications::{InboxPage, NOTIFICATIONS_PER_PAGE};

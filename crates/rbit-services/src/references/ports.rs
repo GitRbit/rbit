@@ -1,11 +1,11 @@
 //! Concrete reference adapters preserve batched SQL and the shared grant calculation.
 use crate::{ServiceError, ThreadServices, repositories::viewer_grants};
-use rbit_auth::repo_access;
 use rbit_collaboration::{
     references::{CrossReferencePort, ReferenceReadPort, RemoteRef, RemoteReferencePort},
     threads::{Issue, IssueId, IssueNumber},
     timeline::IssueRef,
 };
+use rbit_core::access::repo_access;
 use rbit_core::{Account, AccountId, RepoId, TimelineEvent, Timestamp, User, repository::OwnedRepository};
 use rbit_storage::{Database, RepositoryStore};
 #[derive(Debug, Clone, Copy)]

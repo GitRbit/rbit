@@ -317,7 +317,7 @@ impl ActionsService {
         };
         let user = database.accounts().find_user(account.id).await?.ok_or(ServiceError::NotFound)?;
         let grants = crate::repositories::viewer_grants(&database.repositories(), Some(&user), &repo.repo).await?;
-        Ok((account, rbit_auth::repo_access(Some(&user), &repo.repo, &grants)))
+        Ok((account, rbit_core::access::repo_access(Some(&user), &repo.repo, &grants)))
     }
 }
 

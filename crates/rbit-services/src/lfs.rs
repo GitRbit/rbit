@@ -51,7 +51,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use rbit_auth::{Grants, repo_access};
+use rbit_core::access::{Grants, repo_access};
 use rbit_core::{
     RepoAccess, RepoId, Timestamp, User,
     lfs::{LfsOid, LfsOperation},
