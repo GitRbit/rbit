@@ -59,6 +59,16 @@ pub fn reviewer_refusal(name: &str) -> String {
     format!("{name} cannot be asked to review this pull request")
 }
 
+/// Whether a new line comment goes into the commenter's pending review: when they start
+/// one, or already have one (`has_pending` is only asked when they do not start one).
+/// Otherwise it is posted at once as a comment-only review.
+pub async fn joins_pending_review<E>(
+    start_review: bool,
+    has_pending: impl std::future::Future<Output = Result<bool, E>>,
+) -> Result<bool, E> {
+    Ok(start_review || has_pending.await?)
+}
+
 /// The refusal for requesting the pull request's author.
 pub const AUTHOR_REVIEW_REFUSAL: &str = "the author cannot review their own pull request";
 

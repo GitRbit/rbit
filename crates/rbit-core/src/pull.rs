@@ -85,14 +85,7 @@ stored_enum!(
     }
 );
 
-stored_enum!(
-    /// The side of a unified diff a review comment is anchored to: `Left` is the old file
-    /// (a removed line), `Right` the new one (an added or context line).
-    ReviewSide {
-        Left => "left",
-        Right => "right",
-    }
-);
+pub use rbit_collaboration::pulls::ReviewSide;
 
 /// A pull request's own row, keyed by its issue row.
 #[derive(Debug, Clone, PartialEq, Eq)]

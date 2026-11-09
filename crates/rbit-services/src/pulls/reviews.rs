@@ -15,7 +15,7 @@
 
 use std::collections::HashMap;
 
-use rbit_collaboration::pulls::review_threads;
+use rbit_collaboration::pulls::{AnchorLine, LineMark, ReviewRequestPlan, ReviewRequests, may_request_reviews, review_threads};
 use rbit_core::{
     Account, AccountId, IssueText, ReviewId, TimelineEvent, Timestamp, User,
     issue::{IssueAction, ReviewAction, ReviewState, issue_permissions},
@@ -27,11 +27,11 @@ use rbit_git::{
 };
 use rbit_storage::sqlite::reviews::{NewReview, NewReviewComment};
 
-use super::{PullContext, PullService};
+use super::{
+    PullContext, PullService,
+    review_requests::{RequestView, request_error},
+};
 use crate::{DomainEvent, ServiceError};
-
-/// Diff lines kept with a comment (ending at the commented line).
-pub const DIFF_HUNK_LINES: usize = 4;
 
 /// A comment on one line of the Files changed tab, as submitted.
 #[derive(Debug, Clone)]
@@ -226,7 +226,8 @@ impl PullService {
         };
         self.spend(actor)?;
         let now = Timestamp::now();
-        if input.start_review || store.pending(ctx.issue().id, actor.id()).await?.is_some() {
+        let has_pending = async { Ok::<_, ServiceError>(store.pending(ctx.issue().id, actor.id()).await?.is_some()) };
+        if review_threads::joins_pending_review(input.start_review, has_pending).await? {
             let (_, comment) = store.add_pending_comment(ctx.issue().id, actor.id(), &head, &new, now).await?;
             return Ok(comment);
         }
@@ -335,32 +336,15 @@ impl PullService {
     pub async fn request_reviewers(&self, actor: &User, ctx: &PullContext, names: &[String]) -> Result<Vec<Account>, ServiceError> {
         Self::require_triage(actor, ctx)?;
         let store = self.ctx().database.reviews();
-        let mut accounts = Vec::new();
-        for name in names.iter().map(|name| name.trim()).filter(|name| !name.is_empty()) {
-            let account = self.ctx().database.accounts().find_account_by_name(name).await?;
-            let account = match account {
-                Some(account)
-                    if account.kind == rbit_core::AccountKind::User && self.access_of(account.id, &ctx.repo().repo).await?.can_read() =>
-                {
-                    account
-                }
-                // The same answer whether the account does not exist or cannot read the repository.
-                _ => return Err(ServiceError::Invalid(review_threads::reviewer_refusal(name))),
-            };
-            if Some(account.id) == ctx.issue().author {
-                return Err(ServiceError::Invalid(review_threads::AUTHOR_REVIEW_REFUSAL.to_owned()));
-            }
-            accounts.push(account);
-        }
-        let existing = store.requested(ctx.issue().id).await?;
-        let new: Vec<&Account> = accounts.iter().filter(|account| !existing.contains(&account.id)).collect();
-        review_threads::requests_fit(existing.len(), new.len()).map_err(ServiceError::Invalid)?;
+        let view = RequestView { service: self, ctx };
+        let ReviewRequestPlan { accounts, new } =
+            ReviewRequests::new(&view, ctx.issue().author).plan(names).await.map_err(request_error)?;
         let now = Timestamp::now();
         let timeline = self.inner.timeline.writer();
-        for account in new {
-            if store.request(ctx.issue().id, account.id, actor.id(), now).await? {
-                timeline.record(ctx.issue().id, Some(actor.id()), TimelineEvent::ReviewRequested { reviewer: account.id }).await?;
-                self.publish(ctx.issue(), Some(actor.id()), IssueAction::ReviewRequested { reviewer: account.id });
+        for reviewer in new {
+            if store.request(ctx.issue().id, reviewer, actor.id(), now).await? {
+                timeline.record(ctx.issue().id, Some(actor.id()), TimelineEvent::ReviewRequested { reviewer }).await?;
+                self.publish(ctx.issue(), Some(actor.id()), IssueAction::ReviewRequested { reviewer });
             }
         }
         Ok(accounts)
@@ -371,14 +355,19 @@ impl PullService {
         Self::require_triage(actor, ctx)?;
         let store = self.ctx().database.reviews();
         let timeline = self.inner.timeline.writer();
-        for name in names.iter().map(|name| name.trim()).filter(|name| !name.is_empty()) {
-            let Some(account) = self.ctx().database.accounts().find_account_by_name(name).await? else { continue };
-            if store.remove_request(ctx.issue().id, account.id).await? {
-                timeline.record(ctx.issue().id, Some(actor.id()), TimelineEvent::ReviewRequestRemoved { reviewer: account.id }).await?;
-                self.publish(ctx.issue(), Some(actor.id()), IssueAction::ReviewRequestRemoved { reviewer: account.id });
-            }
-        }
-        Ok(())
+        let view = RequestView { service: self, ctx };
+        ReviewRequests::new(&view, ctx.issue().author)
+            .withdraw(names, |reviewer| {
+                let (store, timeline) = (&store, &timeline);
+                async move {
+                    if store.remove_request(ctx.issue().id, reviewer).await? {
+                        timeline.record(ctx.issue().id, Some(actor.id()), TimelineEvent::ReviewRequestRemoved { reviewer }).await?;
+                        self.publish(ctx.issue(), Some(actor.id()), IssueAction::ReviewRequestRemoved { reviewer });
+                    }
+                    Ok(())
+                }
+            })
+            .await
     }
 
     /// Up to [`DIFF_HUNK_LINES`] diff lines ending at `line` on `side` of `path`, with the
@@ -400,7 +389,7 @@ impl PullService {
 
     fn require_triage(actor: &User, ctx: &PullContext) -> Result<(), ServiceError> {
         let permissions = issue_permissions(Some(actor), ctx.repo().access, ctx.issue());
-        if !(permissions.can_triage || (ctx.issue().is_author(actor) && permissions.can_comment)) {
+        if !may_request_reviews(permissions.can_triage, ctx.issue().is_author(actor), permissions.can_comment) {
             return Err(ServiceError::Forbidden);
         }
         ctx.repo().ensure_writable()
@@ -419,32 +408,19 @@ impl PullService {
     }
 }
 
-/// The hunk header and up to [`DIFF_HUNK_LINES`] lines ending at `line` on `side`, in
-/// unified diff form; `None` when no such line is shown.
+/// [`rbit_collaboration::pulls::hunk_excerpt`] over Git's diff hunks.
 pub fn hunk_excerpt(hunks: &[Hunk], side: ReviewSide, line: u32) -> Option<String> {
-    let line = usize::try_from(line).ok()?;
-    for hunk in hunks {
-        let position = hunk.lines.iter().position(|diff_line| match side {
-            ReviewSide::Left => diff_line.kind != LineKind::Added && diff_line.old_number == Some(line),
-            ReviewSide::Right => diff_line.kind != LineKind::Removed && diff_line.new_number == Some(line),
-        });
-        if let Some(end) = position {
-            let start = (end + 1).saturating_sub(DIFF_HUNK_LINES);
-            let mut excerpt = hunk.header.clone();
-            for diff_line in &hunk.lines[start..=end] {
-                let sign = match diff_line.kind {
-                    LineKind::Added => '+',
-                    LineKind::Removed => '-',
-                    LineKind::Context => ' ',
-                };
-                excerpt.push('\n');
-                excerpt.push(sign);
-                excerpt.push_str(&diff_line.text);
-            }
-            return Some(excerpt);
-        }
-    }
-    None
+    let hunks = hunks.iter().map(|hunk| (hunk.header.as_str(), hunk.lines.as_slice()));
+    rbit_collaboration::pulls::hunk_excerpt(hunks, side, line, |line| AnchorLine {
+        mark: match line.kind {
+            LineKind::Context => LineMark::Context,
+            LineKind::Added => LineMark::Added,
+            LineKind::Removed => LineMark::Removed,
+        },
+        old_number: line.old_number,
+        new_number: line.new_number,
+        text: &line.text,
+    })
 }
 
 #[cfg(test)]

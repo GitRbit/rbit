@@ -21,9 +21,8 @@
 //! * [`json`] and [`hooks`] — GitHub-shaped objects and the `pull_request` and
 //!   `pull_request_review` payloads.
 //!
-//! Comments, the title, the description, closing, reopening and locking go through the
-//! shared [`crate::TimelineService`]; this service never writes the issue tables itself
-//! except through `PullStore::create` (which uses `IssueStore::insert_in`).
+//! Comments, the title, the description, closing, reopening and locking go through the shared [`crate::TimelineService`];
+//! this service never writes the issue tables itself except through `PullStore::create` (which uses `IssueStore::insert_in`).
 
 mod background;
 mod creation;
@@ -31,6 +30,7 @@ pub mod hooks;
 pub mod json;
 pub mod lifecycle;
 mod merging;
+mod review_requests;
 mod reviews;
 
 use std::{
