@@ -11,6 +11,7 @@ import { checkRepositoryTransferRetirement } from "./repository-transfer-retirem
 import { checkActionsDiscoveryRetirement } from "./actions-discovery-retirement.mjs";
 import { checkNotificationsRetirement } from "./notifications-retirement.mjs";
 import { checkActionsRunnerRetirement } from "./actions-runner-retirement.mjs";
+import { checkOperationsUpdatesRetirement } from "./operations-updates-retirement.mjs";
 import { checkCollaborationFeatures, checkCollaborationGraphs } from "./collaboration-features.mjs";
 import { checkUnifiedModelBoundary } from "./identity-model-boundary.mjs";
 import { checkInventoryCompileIsolation } from "./inventory-isolation.mjs";
@@ -187,6 +188,7 @@ export function check(root) {
     ...checkActionsDiscoveryRetirement(files),
     ...checkNotificationsRetirement(files),
     ...checkActionsRunnerRetirement(files),
+    ...checkOperationsUpdatesRetirement(files),
     ...checkPlatformBoundary(root, files), ...checkMigrations(root, baseline), ...checkLedger(root, ledger)] };
 }
 
