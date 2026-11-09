@@ -220,3 +220,17 @@ pub struct ReviewFormView {
     /// Approve and Request changes are offered (not to the author).
     pub can_decide: bool,
 }
+
+impl rbit_services::pulls::review_threads::ThreadEntry for ReviewCommentView {
+    fn is_reply(&self) -> bool {
+        self.is_reply
+    }
+
+    fn root(&self) -> i64 {
+        self.reply_to
+    }
+
+    fn set_replies(&mut self, replies: Vec<Self>) {
+        self.replies = replies;
+    }
+}

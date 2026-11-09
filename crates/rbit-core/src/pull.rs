@@ -21,8 +21,7 @@ use crate::{
 
 /// Conflicting paths stored (and shown) at most per pull request.
 pub const MAX_CONFLICT_PATHS: usize = 100;
-/// Reviewers that can be requested on one pull request.
-pub const MAX_REQUESTED_REVIEWERS: usize = 15;
+pub use rbit_collaboration::pulls::review_threads::MAX_REQUESTED_REVIEWERS;
 
 /// Database id of a review comment on a diff line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]

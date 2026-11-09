@@ -30,7 +30,7 @@ use rbit_localization::{Locale, Localized, PullMessage};
 use rbit_services::{
     RepoContext, ServiceError,
     issues::MetadataNeeds,
-    pulls::{LineComment, MergeFailure, MergeInput, NewPullInput, PullContext, ReviewData, ReviewVerdict},
+    pulls::{LineComment, MergeFailure, MergeInput, NewPullInput, PullContext, ReviewData, ReviewVerdict, review_threads},
     timeline::{IssueContext, TimelineCursor},
 };
 use serde::Deserialize;
@@ -129,7 +129,7 @@ async fn review_views(
     let refs = state.services.references.resolve(ctx.repo(), &texts).await?;
     let refs = ref_context(ctx, refs);
     let urls = PullUrls::for_context(ctx);
-    let can_dismiss = viewer.is_some() && ctx.repo().can_write_content();
+    let can_dismiss = review_threads::may_dismiss_reviews(viewer.is_some(), ctx.repo().can_write_content());
     let sources: std::collections::HashMap<_, _> = data.visible_comments().map(|(comment, _)| (comment.id.0, comment)).collect();
     let mut comments: Vec<ReviewCommentView> = Vec::new();
     for entry in &data.reviews {
@@ -143,24 +143,13 @@ async fn review_views(
     // A reply may be submitted in a different review. Keep it with its root, and
     // inherit resolution from that root, rather than collapsing individual replies.
     let group = |comments: Vec<ReviewCommentView>| {
-        let mut replies: std::collections::HashMap<i64, Vec<ReviewCommentView>> = std::collections::HashMap::new();
-        let mut roots = Vec::new();
-        for mut comment in comments {
-            if comment.is_reply {
-                replies.entry(comment.reply_to).or_default().push(comment);
-            } else {
-                let author = sources.get(&comment.reply_to).and_then(|source| source.author);
-                let can_resolve = !comment.pending
-                    && ctx.thread.permissions.can_comment
-                    && viewer.is_some_and(|user| ctx.repo().access.can_write() || author == Some(user.id()));
-                comment.resolution.action_url = can_resolve.then(|| format!("{}/comments/{}/resolution", urls.page, comment.reply_to));
-                roots.push(comment);
-            }
-        }
-        for root in &mut roots {
-            root.replies = replies.remove(&root.reply_to).unwrap_or_default();
-        }
-        roots
+        review_threads::group_threads(comments, |comment| {
+            let author = sources.get(&comment.reply_to).and_then(|source| source.author);
+            let can_resolve = !comment.pending
+                && ctx.thread.permissions.can_comment
+                && viewer.is_some_and(|user| review_threads::may_resolve(ctx.repo().access.can_write(), user.id(), author));
+            comment.resolution.action_url = can_resolve.then(|| format!("{}/comments/{}/resolution", urls.page, comment.reply_to));
+        })
     };
     let submitted = group(comments.iter().filter(|comment| !comment.pending).cloned().collect());
     let mut by_review: std::collections::HashMap<i64, Vec<ReviewCommentView>> = std::collections::HashMap::new();
@@ -176,7 +165,7 @@ async fn review_views(
             let at = entry.review.submitted_at.unwrap_or(entry.review.created_at).seconds();
             let threads = by_review.remove(&entry.review.id.0).unwrap_or_default();
             // Comment-only replies now live with their root; avoid an empty review card.
-            if threads.is_empty() && entry.review.state == ReviewState::Commented && entry.review.body.trim().is_empty() {
+            if !review_threads::shows_review_card(threads.len(), entry.review.state == ReviewState::Commented, &entry.review.body) {
                 return None;
             }
             Some((at, ReviewView::new(entry, threads, can_dismiss, &urls, &refs)))
@@ -189,15 +178,9 @@ fn review_form(ctx: &PullContext, data: &ReviewData, viewer: Option<&User>) -> O
     let viewer = viewer?;
     let can_comment = ctx.thread.permissions.can_comment;
     let pending_comments = data.pending.as_ref().map_or(0, |entry| entry.comments.len());
-    (can_comment && (ctx.issue().is_open() || pending_comments > 0)).then(|| {
-        let urls = PullUrls::for_context(ctx);
-        ReviewFormView {
-            action_url: urls.reviews,
-            discard_url: urls.discard_review,
-            pending_comments,
-            can_decide: ctx.issue().is_open() && !ctx.issue().is_author(viewer),
-        }
-    })
+    let can_decide = review_threads::review_form(can_comment, ctx.issue().is_open(), pending_comments, ctx.issue().is_author(viewer))?;
+    let urls = PullUrls::for_context(ctx);
+    Some(ReviewFormView { action_url: urls.reviews, discard_url: urls.discard_review, pending_comments, can_decide })
 }
 
 /// The header of a tab that does not diff (Conversation, Commits): the counts a Files

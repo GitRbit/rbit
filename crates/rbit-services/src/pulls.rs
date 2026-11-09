@@ -53,6 +53,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use creation::{CreationView, creation_error};
 
+pub use rbit_collaboration::pulls::review_threads;
 pub use rbit_storage::sqlite::pulls::{PullFilter, PullSort, PullStateFilter};
 
 /// The file limit of the diffs whose counts are cached: the default one.

@@ -15,10 +15,11 @@
 
 use std::collections::HashMap;
 
+use rbit_collaboration::pulls::review_threads;
 use rbit_core::{
     Account, AccountId, IssueText, ReviewId, TimelineEvent, Timestamp, User,
     issue::{IssueAction, ReviewAction, ReviewState, issue_permissions},
-    pull::{MAX_REQUESTED_REVIEWERS, Review, ReviewComment, ReviewCommentId, ReviewSide},
+    pull::{Review, ReviewComment, ReviewCommentId, ReviewSide},
 };
 use rbit_git::{
     DiffLimits, FileDiffBody,
@@ -125,7 +126,7 @@ impl PullService {
             return Err(ServiceError::NotFound);
         }
         Self::require_comment(actor, ctx)?;
-        if !ctx.repo().access.can_write() && root.author != Some(actor.id()) {
+        if !review_threads::may_resolve(ctx.repo().access.can_write(), actor.id(), root.author) {
             return Err(ServiceError::Forbidden);
         }
         if root.resolved_at.is_some() != resolved {
@@ -196,11 +197,9 @@ impl PullService {
         let new = if let Some(parent) = input.in_reply_to {
             {
                 let parent = store.find_comment(ctx.issue().id, parent).await?.ok_or(ServiceError::NotFound)?;
-                let visible = match store.find(ctx.issue().id, parent.review_id).await? {
-                    Some(review) => review.state != ReviewState::Pending || review.reviewer == Some(actor.id()),
-                    None => false,
-                };
-                if !visible {
+                let review = store.find(ctx.issue().id, parent.review_id).await?;
+                if !review_threads::reply_visible(review.map(|review| (review.state == ReviewState::Pending, review.reviewer)), actor.id())
+                {
                     return Err(ServiceError::NotFound);
                 }
                 NewReviewComment {
@@ -209,7 +208,7 @@ impl PullService {
                     line: parent.line,
                     commit_sha: parent.commit_sha,
                     diff_hunk: parent.diff_hunk,
-                    in_reply_to: Some(parent.in_reply_to.unwrap_or(parent.id)),
+                    in_reply_to: Some(review_threads::thread_root(parent.id, parent.in_reply_to)),
                     body: body.into(),
                 }
             }
@@ -346,18 +345,16 @@ impl PullService {
                     account
                 }
                 // The same answer whether the account does not exist or cannot read the repository.
-                _ => return Err(ServiceError::Invalid(format!("{name} cannot be asked to review this pull request"))),
+                _ => return Err(ServiceError::Invalid(review_threads::reviewer_refusal(name))),
             };
             if Some(account.id) == ctx.issue().author {
-                return Err(ServiceError::Invalid("the author cannot review their own pull request".to_owned()));
+                return Err(ServiceError::Invalid(review_threads::AUTHOR_REVIEW_REFUSAL.to_owned()));
             }
             accounts.push(account);
         }
         let existing = store.requested(ctx.issue().id).await?;
         let new: Vec<&Account> = accounts.iter().filter(|account| !existing.contains(&account.id)).collect();
-        if existing.len() + new.len() > MAX_REQUESTED_REVIEWERS {
-            return Err(ServiceError::Invalid(format!("at most {MAX_REQUESTED_REVIEWERS} reviewers can be requested")));
-        }
+        review_threads::requests_fit(existing.len(), new.len()).map_err(ServiceError::Invalid)?;
         let now = Timestamp::now();
         let timeline = self.inner.timeline.writer();
         for account in new {

@@ -4,6 +4,7 @@
 
 mod branches;
 mod head;
+pub mod review_threads;
 
 pub use branches::branch_ref;
 pub use head::select_head;
