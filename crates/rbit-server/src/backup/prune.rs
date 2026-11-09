@@ -6,7 +6,9 @@
 //! expired, an LFS object was pruned. The live database has dropped the row by then too,
 //! or is about to; a release file or artifact also has its row inserted just before its
 //! file is renamed into place. Either way the backup now records the state as if that
-//! deletion, or the unfinished upload, came before the snapshot.
+//! deletion, or the unfinished upload, came before the snapshot. A wiki whose object store
+//! vanished loses its whole catalog (the cascade removes its revisions and pages), as
+//! when its repository's deletion comes first.
 
 use std::path::Path;
 
@@ -17,8 +19,9 @@ use super::copy::{Copied, CopiedBlobs};
 
 /// Deletes the rows of everything `repositories` and `blobs` report missing from the
 /// snapshot at `snapshot`, in one transaction.
-pub async fn prune(snapshot: &Path, repositories: &Copied, blobs: &CopiedBlobs) -> anyhow::Result<()> {
+pub async fn prune(snapshot: &Path, repositories: &Copied, blobs: &CopiedBlobs, wikis: &[i64]) -> anyhow::Result<()> {
     let nothing = repositories.missing.is_empty()
+        && wikis.is_empty()
         && blobs.attachments.missing.is_empty()
         && blobs.lfs.missing.is_empty()
         && blobs.artifacts.missing.is_empty()
@@ -37,6 +40,9 @@ pub async fn prune(snapshot: &Path, repositories: &Copied, blobs: &CopiedBlobs) 
             .execute(&mut *tx)
             .await
             .with_context(|| format!("cannot leave repository {id}, deleted during the backup, out of it; take the backup again"))?;
+    }
+    for repository in wikis {
+        sqlx::query("DELETE FROM wiki_repositories WHERE repo_id = ?").bind(repository).execute(&mut *tx).await?;
     }
     for id in &blobs.attachments.missing {
         sqlx::query("DELETE FROM release_assets WHERE id = ?").bind(id).execute(&mut *tx).await?;

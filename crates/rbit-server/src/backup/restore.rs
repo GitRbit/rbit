@@ -11,13 +11,16 @@
 //!   next restore wipes what an interrupted one left and starts over.
 //! * Every file is checked as it is copied: the database against the digest in the
 //!   manifest and with `PRAGMA quick_check`, every repository with `git fsck`, every
-//!   stored file against the size and SHA-256 its row records. Anything the database
+//!   stored file against the size and SHA-256 its row records, every object the wiki
+//!   catalog's revisions reach by re-hashing it. Anything the database
 //!   refers to and the backup lacks fails the restore (a backup in format 5 or later never
 //!   lacks anything; older ones list what they lacked, which is tolerated with a warning).
 //! * The secret key is restored from the backup, or taken from `[storage]
 //!   secret_key_file`, and must open the credentials sealed in the database. The Actions
 //!   secrets key is never in a backup: a warning says so when secrets need it.
 //! * The key/value store is not restored: everyone signs in again.
+//! * A backup older than format 6 holds no wiki objects: its wikis are restored without
+//!   their pages (a warning says how many), so no catalog row refers to a missing object.
 
 use std::path::{Path, PathBuf};
 
@@ -28,6 +31,7 @@ use rbit_storage::{error::StorageError, sqlite::snapshot};
 use super::{
     FORMAT_VERSION, Manifest, SECRET_KEY_FILE, copy, durable,
     inventory::{self, Blob, Kind},
+    wikis,
 };
 
 /// Present in a data directory while a restore into it is incomplete.
@@ -55,6 +59,7 @@ pub fn refuse_interrupted(config: &Config) -> anyhow::Result<()> {
 pub struct Restored {
     pub repositories: u64,
     pub files: u64,
+    pub wikis: u64,
     pub warnings: Vec<String>,
 }
 
@@ -67,6 +72,7 @@ pub async fn run(config: Config, from: PathBuf) -> anyhow::Result<()> {
         data_dir = %config.storage.data_dir.display(),
         repositories = restored.repositories,
         files = restored.files,
+        wikis = restored.wikis,
         "restore complete; start rbit, and everyone signs in again"
     );
     Ok(())
@@ -111,6 +117,7 @@ pub async fn restore(config: &Config, from: &Path) -> anyhow::Result<Restored> {
             bail!("the backup is damaged: {} is missing", blob.path.display());
         }
     }
+    restored.wikis = restore_wikis(&manifest, from, target, &database, &mut restored.warnings).await?;
     actions_key_warning(config, &database, &mut restored.warnings).await?;
 
     durable::sync_tree(target).await?;
@@ -236,6 +243,32 @@ fn listed_missing(manifest: &Manifest, blob: &Blob) -> bool {
     }
 }
 
+async fn restore_wikis(
+    manifest: &Manifest,
+    from: &Path,
+    target: &Path,
+    database: &Path,
+    warnings: &mut Vec<String>,
+) -> anyhow::Result<u64> {
+    if manifest.format >= wikis::SINCE_FORMAT {
+        let mut connection = inventory::read_only(database).await?;
+        let listed = wikis::read(&mut connection).await?;
+        sqlx::Connection::close(connection).await?;
+        return wikis::restore(from, target, listed).await;
+    }
+    let options = rbit_storage::sqlite::writer_compatibility::register(sqlx::sqlite::SqliteConnectOptions::new())
+        .filename(database)
+        .foreign_keys(true);
+    let mut connection = sqlx::ConnectOptions::connect(&options).await.with_context(|| format!("cannot open {}", database.display()))?;
+    let forgotten = wikis::forget_pages(&mut connection).await?;
+    sqlx::Connection::close(connection).await?;
+    if forgotten > 0 {
+        warnings
+            .push(format!("{forgotten} wikis lost their pages: backups older than format {} hold no wiki objects", wikis::SINCE_FORMAT));
+    }
+    Ok(0)
+}
+
 async fn actions_key_warning(config: &Config, database: &Path, warnings: &mut Vec<String>) -> anyhow::Result<()> {
     let mut connection = inventory::read_only(database).await?;
     let secrets: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM actions_secrets").fetch_one(&mut connection).await?;
@@ -250,7 +283,7 @@ async fn actions_key_warning(config: &Config, database: &Path, warnings: &mut Ve
     Ok(())
 }
 
-async fn copy_tree(from: &Path, to: &Path) -> anyhow::Result<()> {
+pub(super) async fn copy_tree(from: &Path, to: &Path) -> anyhow::Result<()> {
     let (from, to) = (from.to_owned(), to.to_owned());
     tokio::task::spawn_blocking(move || {
         let mut pending = vec![(from, to)];

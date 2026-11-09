@@ -27,7 +27,9 @@ async fn a_backup_restores_repositories_files_rows_and_sealed_credentials() {
 
     succeeded(&rbit(&data, &["backup", "--output", backup.to_str().unwrap()], &[]), "backup");
     let manifest = manifest(&backup);
-    assert_eq!(manifest["format"], 5);
+    assert_eq!(manifest["format"], 6);
+    assert_eq!((manifest["wikis"].as_u64(), manifest["missing_wikis"].clone()), (Some(1), serde_json::json!([])));
+    assert!(manifest["wiki_objects"].as_u64().unwrap() >= 8, "commits, trees and page blobs");
     let counts = ["repositories", "attachments", "lfs_objects", "artifacts", "caches", "logs"].map(|key| manifest[key].as_u64().unwrap());
     assert_eq!(counts, [2, 1, 2, 1, 1, 4], "two log indexes, a compressed and a live log");
     for key in ["missing_repositories", "missing_attachments", "missing_lfs_objects", "missing_artifacts", "missing_caches", "missing_logs"]
@@ -45,7 +47,7 @@ async fn a_backup_restores_repositories_files_rows_and_sealed_credentials() {
 
     let found = consistency::check(&restored).await;
     assert_eq!((found.repositories, found.releases, found.assets, found.lfs), (2, 1, 1, 2));
-    assert_eq!((found.artifacts, found.caches, found.logs), (1, 1, 2));
+    assert_eq!((found.artifacts, found.caches, found.logs, found.wikis), (1, 1, 2, 1));
     let relative = |path: &Path| restored.join(path.strip_prefix(&data).unwrap());
     assert_eq!(git(dir.path(), &[&git_dir(&relative(&seeded.project)), "show-ref"]), refs, "every branch and tag");
     assert_eq!(std::fs::read_to_string(relative(&seeded.empty).join("HEAD")).unwrap(), "ref: refs/heads/trunk\n");
@@ -65,6 +67,7 @@ async fn a_backup_restores_repositories_files_rows_and_sealed_credentials() {
     assert_eq!(open.database.server_secrets().get_or_insert("probe", b"other").await.unwrap(), SERVER_SECRET);
     assert_eq!(open.database.two_factor().find(ada.id()).await.unwrap().unwrap().secret, TOTP_SEED);
     assert!(open.services.accounts.resume_session(&session).await.unwrap().is_none(), "everyone signs in again");
+    wiki_restored(&open, &ada).await;
     let actions = open.services.actions.as_ref().unwrap();
     let run = open.database.actions_runs().run(rbit_core::actions::RunId(seeded.run)).await.unwrap().unwrap();
     assert!(actions.task_secrets(&run).await.is_err(), "no Actions key, no secrets");
@@ -75,6 +78,23 @@ async fn a_backup_restores_repositories_files_rows_and_sealed_credentials() {
     let actions = open.services.actions.as_ref().unwrap();
     assert_eq!(actions.task_secrets(&run).await.unwrap().get("DEPLOY").map(String::as_str), Some(ACTIONS_SECRET));
     open.close().await;
+}
+
+/// The wiki's pages, rename alias, deleted page and its history came back.
+async fn wiki_restored(open: &instance::Open, ada: &rbit_core::User) {
+    use rbit_services::wikis::pages::WikiLookup;
+    let repo = open.services.repositories.open(Some(ada), "ada", "project").await.unwrap();
+    let wikis = &open.services.wikis;
+    let home = wikis.page(&repo, Some(ada), &"Home".parse().unwrap()).await.unwrap();
+    assert!(matches!(&home, WikiLookup::Page(view) if view.content.as_str() == "# Project wiki\n"), "{home:?}");
+    let old = wikis.page(&repo, Some(ada), &"Notes".parse().unwrap()).await.unwrap();
+    assert!(matches!(&old, WikiLookup::Moved(path) if path.as_str() == "Guide/Notes"), "{old:?}");
+    let deleted = wikis.deleted(&repo, Some(ada), None).await.unwrap();
+    assert_eq!(deleted.entries.iter().map(|entry| entry.path.as_str()).collect::<Vec<_>>(), ["Draft"]);
+    let draft = &deleted.entries[0];
+    let restored = wikis.undelete(&repo, ada, draft.id, draft.deleted).await.unwrap();
+    let WikiLookup::Page(view) = wikis.page(&repo, Some(ada), &restored).await.unwrap() else { panic!("not restored") };
+    assert_eq!(view.content.as_str(), "draft\n");
 }
 
 #[tokio::test]

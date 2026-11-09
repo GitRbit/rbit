@@ -12,6 +12,7 @@
 //! ├── actions/artifacts/<run>/<id>.tar.gz   # workflow artifacts
 //! ├── actions/caches/<repo>/<id>.tar.gz     # `actions/cache` entries
 //! ├── actions/logs/<repo>/<task>.{log,log.gz,idx}  # job logs
+//! ├── wikis/<repo>/<wiki>.git        # wiki objects the snapshot's revisions reach
 //! ├── secret.key                     # the key that seals stored credentials (see below)
 //! └── manifest.json                  # written last: its presence marks a complete backup
 //! ```
@@ -31,6 +32,9 @@
 //!    since is decompressed back. Uploads in progress and files the snapshot does not know
 //!    are skipped; files deleted in between are reported as missing, and their rows are
 //!    removed from the snapshot ([`prune`]) so a restore never refers to them.
+//!    Repository wikis are copied the same way ([`wikis`]): exactly the immutable objects
+//!    the snapshot's finalized wiki revisions reach, each re-hashed; a wiki whose store
+//!    vanished in between has its catalog removed from the snapshot.
 //! 4. The secret key file is copied, when it lives in the data directory (the default).
 //!    Without it the credentials sealed in the database (TOTP seeds, webhook and push
 //!    mirror secrets, saved SMTP and OIDC secrets) cannot be read after a restore. A key
@@ -68,10 +72,12 @@ mod durable;
 mod inventory;
 mod prune;
 pub mod restore;
+mod wikis;
 
 /// Bumped whenever the layout of a backup directory changes (2: release attachments,
-/// 3: Git LFS objects, 4: the secret key file, 5: Actions artifacts, caches and logs).
-pub const FORMAT_VERSION: u32 = 5;
+/// 3: Git LFS objects, 4: the secret key file, 5: Actions artifacts, caches and logs,
+/// 6: repository wiki objects).
+pub const FORMAT_VERSION: u32 = 6;
 /// The secret key file's name inside the backup, as in the data directory.
 const SECRET_KEY_FILE: &str = "secret.key";
 
@@ -115,6 +121,14 @@ pub struct Manifest {
     pub logs: u64,
     #[serde(default)]
     pub missing_logs: Vec<i64>,
+    /// Wiki object stores copied into `wikis/`, the objects in them, and the
+    /// repositories whose wiki store was missing (format 6 and later).
+    #[serde(default)]
+    pub wikis: u64,
+    #[serde(default)]
+    pub wiki_objects: u64,
+    #[serde(default)]
+    pub missing_wikis: Vec<i64>,
     /// [`SECRET_KEY_FILE`] when included, otherwise where the key must be backed up from.
     #[serde(default)]
     pub secret_key: String,
@@ -140,6 +154,7 @@ pub async fn run(config: Config, output: PathBuf) -> anyhow::Result<()> {
         artifacts = manifest.artifacts,
         caches = manifest.caches,
         logs = manifest.logs,
+        wikis = manifest.wikis,
         "backup complete"
     );
     Ok(())
@@ -170,8 +185,15 @@ pub async fn create(config: &Config, output: &Path) -> anyhow::Result<Manifest> 
     let target = RepositoryStorage::new(output.join("repositories"));
     let repositories = copy::copy_repositories(&config.repository.git_binary, &storage, &target, &inventory.repositories).await?;
     let blobs = copy::copy_blobs(&config.storage.data_dir, output, &inventory.blobs).await?;
+    let listed = {
+        let mut connection = inventory::read_only(&snapshot).await?;
+        let listed = wikis::read(&mut connection).await?;
+        sqlx::Connection::close(connection).await?;
+        listed
+    };
+    let wikis = wikis::copy(&config.storage.data_dir, output, listed).await?;
     let secret_key = copy_secret_key(config, &output.join(SECRET_KEY_FILE)).await?;
-    prune::prune(&snapshot, &repositories, &blobs).await?;
+    prune::prune(&snapshot, &repositories, &blobs, &wikis.missing).await?;
     let (_, database_digest) = rbit_services::file_digest::sha256(&snapshot).await?;
     let actions_key = config.actions.secrets_key_path(&config.storage);
 
@@ -193,6 +215,9 @@ pub async fn create(config: &Config, output: &Path) -> anyhow::Result<Manifest> 
         missing_caches: blobs.caches.missing,
         logs: blobs.logs.copied,
         missing_logs: blobs.logs.missing,
+        wikis: wikis.copied,
+        wiki_objects: wikis.objects,
+        missing_wikis: wikis.missing,
         secret_key,
         actions_secrets_key: format!("not included: kept at {}; back it up separately", actions_key.display()),
         kv_store: "not included: it holds only sessions and caches, which are rebuilt".to_owned(),

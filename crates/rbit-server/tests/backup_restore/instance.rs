@@ -1,8 +1,8 @@
 //! A realistic instance: an administrator with a pending authenticator secret, a
 //! repository with branches, lightweight and annotated tags, Git LFS objects,
 //! a release with a file, an Actions secret, a finished run with an artifact, a cache
-//! entry and a compressed log, and a running task with a live log; plus an empty
-//! repository with a non-default `HEAD`.
+//! entry and a compressed log, and a running task with a live log, a wiki with a renamed
+//! and a deleted page; plus an empty repository with a non-default `HEAD`.
 
 use std::{
     io::Write as _,
@@ -12,7 +12,12 @@ use std::{
 };
 
 use rbit_core::{Config, Timestamp, User, Visibility, actions::SecretVisibility, lfs::LfsOid};
-use rbit_services::{CreateRepository, Services, SignUp, actions::secrets::ActionsTarget, releases::ReleaseInput};
+use rbit_services::{
+    CreateRepository, RepoContext, Services, SignUp,
+    actions::secrets::ActionsTarget,
+    releases::ReleaseInput,
+    wikis::{pages::WikiLookup, publish::WikiPageInput},
+};
 use rbit_storage::{kv::KvStore, sqlite::Database};
 use sha2::{Digest, Sha256};
 use sqlx::{ConnectOptions, Connection, SqliteConnection};
@@ -147,6 +152,8 @@ pub async fn populate(data: &Path) -> Seeded {
     let mut files =
         vec![(Path::new("attachments").join(repo.repo.repo.id.0.to_string()).join(asset.id.0.to_string()), b"release bytes".to_vec())];
 
+    seed_wiki(services, &repo, &ada).await;
+
     let actions = services.actions.as_ref().expect("Actions is enabled");
     open.database.actions_settings().set_enabled(repo.repo.repo.id, true, Timestamp::now()).await.unwrap();
     actions.put_secret(&ada, ActionsTarget::Repository(&repo), "DEPLOY", ACTIONS_SECRET, SecretVisibility::All).await.unwrap();
@@ -154,6 +161,24 @@ pub async fn populate(data: &Path) -> Seeded {
     files.extend(action_files);
     open.close().await;
     Seeded { project: paths.remove(0), empty: paths.remove(0), work, run, lfs, files }
+}
+
+pub fn wiki_input(title: &str, path: &str, content: &str) -> WikiPageInput {
+    WikiPageInput { title: title.into(), path: path.into(), content: content.into() }
+}
+
+/// `Home`, `Guide/Notes` (renamed from `Notes`) and the deleted `Draft`.
+async fn seed_wiki(services: &Services, repo: &RepoContext, ada: &User) {
+    let wikis = &services.wikis;
+    wikis.set_enabled(repo, true).await.unwrap();
+    wikis.create(repo, ada, &wiki_input("Home", "", "# Project wiki\n")).await.unwrap();
+    let notes = wikis.create(repo, ada, &wiki_input("Notes", "", "first notes\n")).await.unwrap();
+    let WikiLookup::Page(notes) = wikis.page(repo, Some(ada), &notes).await.unwrap() else { panic!("no notes") };
+    let base = notes.page.head.generation;
+    wikis.edit(repo, ada, notes.page.id, base, &wiki_input("Notes", "Guide/Notes", "kept notes\n")).await.unwrap();
+    let draft = wikis.create(repo, ada, &wiki_input("Draft", "", "draft\n")).await.unwrap();
+    let WikiLookup::Page(draft) = wikis.page(repo, Some(ada), &draft).await.unwrap() else { panic!("no draft") };
+    wikis.delete(repo, ada, draft.page.id, draft.page.head.generation).await.unwrap();
 }
 
 pub async fn connect(data: &Path) -> SqliteConnection {

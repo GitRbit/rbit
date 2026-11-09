@@ -105,6 +105,25 @@ async fn interrupted_and_torn_backups_are_refused() {
             "does not match",
         ),
         (
+            "changed wiki object",
+            Box::new(move |b: &Path| {
+                let object = find(&b.join("wikis"), &|path| path.to_string_lossy().replace('\\', "/").contains("/objects/"));
+                overwrite(&object, |bytes| {
+                    let middle = bytes.len() / 2;
+                    bytes[middle] ^= 0xff;
+                });
+            }),
+            "fails verification",
+        ),
+        (
+            "lost wiki",
+            Box::new(move |b: &Path| {
+                let store = find(&b.join("wikis"), &|path| path.ends_with("wiki-incarnation-v1"));
+                std::fs::remove_dir_all(store.parent().unwrap()).unwrap();
+            }),
+            "is missing",
+        ),
+        (
             "lost log",
             Box::new(move |b: &Path| std::fs::remove_file(find(&b.join("actions").join("logs"), &ends(".log.gz"))).unwrap()),
             "is missing",
@@ -133,7 +152,7 @@ async fn a_backup_from_a_newer_rbit_is_refused() {
     let newer_format = dir.path().join("newer-format");
     copy_tree(&backup, &newer_format);
     let mut document = manifest(&newer_format);
-    document["format"] = 6.into();
+    document["format"] = 7.into();
     std::fs::write(newer_format.join("manifest.json"), serde_json::to_vec(&document).unwrap()).unwrap();
     let target = dir.path().join("restored-format");
     failed_with(&rbit(&target, &["restore", "--from", newer_format.to_str().unwrap()], &[]), "newer than this rbit reads");

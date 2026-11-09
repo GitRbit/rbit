@@ -17,6 +17,7 @@ pub struct Counts {
     pub artifacts: usize,
     pub caches: usize,
     pub logs: usize,
+    pub wikis: usize,
 }
 
 /// Panics, naming the row, unless everything the database at `data` refers to is present.
@@ -86,6 +87,21 @@ pub async fn check(data: &Path) -> Counts {
         };
         assert!(i64::try_from(lines.len()).unwrap() >= *bytes, "task {task}'s log is shorter than its record");
         counts.logs += 1;
+    }
+    // Every wiki revision the catalog records is an intact commit in its wiki's store.
+    let wikis: Vec<(i64, i64)> =
+        sqlx::query_as("SELECT repo_id, id FROM wiki_repositories WHERE generation IS NOT NULL").fetch_all(&mut db).await.unwrap();
+    for (repo, wiki) in &wikis {
+        let path = data.join("wikis").join(repo.to_string()).join(format!("{wiki}.git"));
+        assert!(path.is_dir(), "the wiki of repository {repo} has no objects");
+        let revisions: Vec<String> =
+            sqlx::query_scalar("SELECT revision FROM wiki_revisions WHERE repo_id = ?").bind(repo).fetch_all(&mut db).await.unwrap();
+        for revision in &revisions {
+            assert_eq!(git(data, &[&git_dir(&path), "cat-file", "-t", revision]).trim(), "commit", "wiki revision {revision}");
+            git(data, &[&git_dir(&path), "ls-tree", revision]);
+        }
+        git(data, &[&git_dir(&path), "fsck", "--no-progress", "--no-dangling"]);
+        counts.wikis += 1;
     }
     db.close().await.unwrap();
     counts

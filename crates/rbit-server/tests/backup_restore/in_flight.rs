@@ -1,10 +1,11 @@
-//! A backup taken while pushes, releases, LFS uploads, artifact uploads and deletions run
+//! A backup taken while pushes, releases, LFS uploads, artifact uploads, wiki changes and
+//! deletions run
 //! restores into an instance where every row finds what it refers to.
 
 use std::path::Path;
 
 use rbit_core::{Visibility, lfs::LfsOid};
-use rbit_services::{CreateRepository, releases::ReleaseInput};
+use rbit_services::{CreateRepository, releases::ReleaseInput, wikis::pages::WikiLookup};
 use sqlx::Connection;
 
 use super::{
@@ -71,6 +72,13 @@ async fn a_backup_taken_during_writes_restores_consistently() {
         let oid = LfsOid::from_digest(sha256(&content));
         open.services.lfs.store(&repo, &oid, content.len() as u64, &content[..]).await.unwrap();
         upload_artifact(&data, repo_id, seeded.run, rounds).await;
+        // Wiki pages are created, and every third round one is deleted again.
+        let wikis = &open.services.wikis;
+        let created = wikis.create(&repo, &ada, &instance::wiki_input(&format!("Round {rounds}"), "", "round\n")).await.unwrap();
+        if rounds.is_multiple_of(3) {
+            let WikiLookup::Page(view) = wikis.page(&repo, Some(&ada), &created).await.unwrap() else { panic!("no page") };
+            wikis.delete(&repo, &ada, view.page.id, view.page.head.generation).await.unwrap();
+        }
         if let Some(status) = backup_process.try_wait().unwrap() {
             assert!(status.success(), "backup failed");
             break;
@@ -87,6 +95,7 @@ async fn a_backup_taken_during_writes_restores_consistently() {
     assert_eq!(manifest["lfs_objects"].as_u64().unwrap(), found.lfs as u64);
     assert_eq!(manifest["artifacts"].as_u64().unwrap(), found.artifacts as u64);
     assert!(found.releases >= 1 && found.lfs >= 2 && found.artifacts >= 1);
+    assert_eq!((found.wikis, manifest["wikis"].as_u64()), (1, Some(1)));
 }
 
 /// Records an artifact, then moves its file into place, in the Actions service's order.

@@ -4496,6 +4496,7 @@ dependencies = [
  "rbit-ssh",
  "rbit-storage",
  "rbit-web",
+ "rbit-wikis",
  "reqwest",
  "serde",
  "serde_json",
