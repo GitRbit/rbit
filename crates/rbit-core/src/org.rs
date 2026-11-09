@@ -3,53 +3,10 @@
 //! An organisation is an [`Account`] of kind [`crate::AccountKind::Organization`] plus
 //! profile fields and a member list. Every member has exactly one [`OrgRole`].
 
-use serde::{Deserialize, Serialize};
-
 use crate::Account;
 
-/// What a user may do within an organisation.
-///
-/// Variants are ordered, so `role >= OrgRole::Owner` reads naturally.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub enum OrgRole {
-    /// Push to the organisation's repositories and create new ones.
-    Member,
-    /// Everything a member can do, plus administering repositories, managing members
-    /// and changing or deleting the organisation.
-    Owner,
-}
-
-impl OrgRole {
-    /// Every role, lowest first (the order role pickers list them in).
-    pub const ALL: [Self; 2] = [Self::Member, Self::Owner];
-
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Owner => "owner",
-            Self::Member => "member",
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "owner" => Some(Self::Owner),
-            "member" => Some(Self::Member),
-            _ => None,
-        }
-    }
-
-    /// Capitalised name for display.
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Owner => "Owner",
-            Self::Member => "Member",
-        }
-    }
-
-    pub const fn is_owner(self) -> bool {
-        matches!(self, Self::Owner)
-    }
-}
+/// Role ownership lives in `rbit-access`; this path stays for existing callers.
+pub use rbit_access::OrgRole;
 
 /// An organisation with its public profile.
 #[derive(Debug, Clone)]

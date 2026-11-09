@@ -4206,6 +4206,9 @@ dependencies = [
 [[package]]
 name = "rbit-access"
 version = "0.2.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "rbit-actions"

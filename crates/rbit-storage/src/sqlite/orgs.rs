@@ -28,33 +28,10 @@ macro_rules! select_org {
     };
 }
 
-/// Everything needed to create an organisation. Values are already validated.
-#[derive(Debug)]
-pub struct NewOrganization {
-    pub name: AccountName,
-    pub display_name: Option<String>,
-    pub description: Option<String>,
-    /// Becomes the first owner.
-    pub creator: AccountId,
-}
+pub use rbit_access::organizations::{MembershipChange, OrgProfileUpdate};
 
-/// New profile values. Values are already validated; `None` clears a field.
-#[derive(Debug, Default)]
-pub struct OrgProfileUpdate {
-    pub display_name: Option<String>,
-    pub description: Option<String>,
-    pub website: Option<String>,
-}
-
-/// Result of a membership change that must keep at least one owner.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MembershipChange {
-    Done,
-    /// The user is not a member of the organisation.
-    NotMember,
-    /// Refused: the change would leave the organisation without an owner.
-    LastOwner,
-}
+/// Everything needed to create an organisation; the shape is owned by `rbit-access`.
+pub type NewOrganization = rbit_access::organizations::NewOrganization<AccountName, AccountId>;
 
 #[derive(Debug, sqlx::FromRow)]
 struct OrgRow {

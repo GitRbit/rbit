@@ -31,30 +31,8 @@ impl RegistrationMode {
     }
 }
 
-/// Who may create organisations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum OrgCreationPolicy {
-    #[default]
-    AnyUser,
-    AdminsOnly,
-}
-
-impl OrgCreationPolicy {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::AnyUser => "any_user",
-            Self::AdminsOnly => "admins_only",
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "any_user" => Some(Self::AnyUser),
-            "admins_only" => Some(Self::AdminsOnly),
-            _ => None,
-        }
-    }
-}
+/// Creation policy ownership lives in `rbit-access`; this path stays for existing callers.
+pub use rbit_access::OrgCreationPolicy;
 
 /// The effective instance settings (defaults merged with administrator overrides).
 #[derive(Debug, Clone, PartialEq, Eq)]

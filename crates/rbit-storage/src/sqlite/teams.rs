@@ -67,13 +67,7 @@ struct TeamRepositoryRow {
 }
 
 /// Result of a change that needs a precondition checked in the same statement.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TeamChange {
-    Done,
-    /// Adding a member: the user is not a member of the team's organisation.
-    /// Granting a repository: it does not belong to the team's organisation.
-    OutsideOrganization,
-}
+pub use rbit_access::teams::TeamChange;
 
 #[derive(Debug, Clone)]
 pub struct TeamStore {

@@ -9,6 +9,8 @@
 //!
 //! Stores speak in `rbit-core` domain types; SQL rows never leak out of this crate.
 
+mod access_organizations;
+mod access_teams;
 mod collaboration_comments;
 mod collaboration_labels;
 mod collaboration_milestones;
@@ -33,6 +35,8 @@ pub mod sealing;
 pub mod sqlite;
 mod work;
 
+pub use access_organizations::OrganizationAccessStore;
+pub use access_teams::TeamAccessStore;
 pub use error::StorageError;
 pub use kv::{
     AppliedSessionRevocation, CredentialRecoveryGate, CredentialRecoveryPermit, EpochSessionStore, EpochSnapshot, KvStore, SessionRecord,

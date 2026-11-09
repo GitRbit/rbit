@@ -1,10 +1,13 @@
 [package]
 name = "rbit-access"
-description = "Pure repository access decisions over resolved, trusted authorization facts."
+description = "Pure repository, organisation and team access decisions over trusted facts and storage ports."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+
+[dependencies]
+serde.workspace = true
 
 [lints]
 workspace = true
