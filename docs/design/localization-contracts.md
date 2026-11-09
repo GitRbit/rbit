@@ -188,9 +188,9 @@ entries! { De:
             text.number(line);
         }
         ReviewMessage::RemoveRequestFor { name } => {
-            text.literal("Prüfanfrage an ");
+            text.literal("Review-Anfrage an ");
             text.argument(name);
-            text.literal(" zurückziehen");
+            text.literal(" entfernen");
         }
         ReviewMessage::OutdatedComments { count } => {
             text.number(count);
