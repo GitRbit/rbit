@@ -4528,6 +4528,7 @@ dependencies = [
  "metrics",
  "p256",
  "percent-encoding",
+ "rbit-access",
  "rbit-actions",
  "rbit-auth",
  "rbit-collaboration",

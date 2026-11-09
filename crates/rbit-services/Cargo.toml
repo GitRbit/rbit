@@ -15,6 +15,7 @@ rbit-identity-models.workspace = true
 rbit-actions.workspace = true
 rbit-collaboration = { workspace = true, default-features = false, features = ["applications"] }
 rbit-repositories.workspace = true
+rbit-access.workspace = true
 rbit-core.workspace = true
 rbit-storage.workspace = true
 rbit-auth.workspace = true
