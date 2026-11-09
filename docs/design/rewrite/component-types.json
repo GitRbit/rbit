@@ -34,6 +34,8 @@
         "lib::notification_email::outbox::DigestView",
         "lib::webhooks::ports::StoreQueue",
         "lib::webhooks::ports::Worker",
+        "lib::mirrors::port::SyncView",
+        "lib::push_mirrors::port::PushView",
         "lib::forks::ForkService",
         "lib::forks::effects::ForkEffects",
         "lib::edits::EditView",
