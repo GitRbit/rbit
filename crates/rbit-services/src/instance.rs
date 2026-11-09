@@ -13,7 +13,7 @@ use rbit_storage::sqlite::{admin::AdminStore, instance::InstanceSettingsStore};
 use crate::{ServiceContext, ServiceError};
 
 /// Bounds on the site name, which appears in every page title and the PWA manifest.
-pub const SITE_NAME_MAX_LEN: usize = 50;
+pub use rbit_core::instance::SITE_NAME_MAX_LEN;
 
 /// Storage keys. Renaming one orphans existing overrides, so treat them as a format.
 mod key {
@@ -96,20 +96,10 @@ impl InstanceService {
     }
 }
 
-/// Trims and checks a site name: 1–50 characters, no control characters.
+/// Trims and checks a site name: 1–50 characters, no control characters (the rule is
+/// shared with the deployment configuration document in `rbit-core`).
 pub fn validate_site_name(name: &str) -> Result<String, ServiceError> {
-    let name = name.trim();
-    let length = name.chars().count();
-    if length == 0 {
-        return Err(ServiceError::Invalid("site name must not be empty".to_owned()));
-    }
-    if length > SITE_NAME_MAX_LEN {
-        return Err(ServiceError::Invalid(format!("site name must be at most {SITE_NAME_MAX_LEN} characters")));
-    }
-    if name.chars().any(char::is_control) {
-        return Err(ServiceError::Invalid("site name must not contain control characters".to_owned()));
-    }
-    Ok(name.to_owned())
+    rbit_core::instance::checked_site_name(name).map_err(ServiceError::Invalid)
 }
 
 /// Applies one stored override. Unknown keys and unparsable values are ignored (and

@@ -13,14 +13,15 @@ rbit-identity-models.workspace = true
 rbit-access.workspace = true
 rbit-contracts.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 time.workspace = true
+url.workspace = true
 # I: references are scanned only in Markdown text (not code or link text).
 pulldown-cmark.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
-serde_json.workspace = true
 
 [lints]
 workspace = true

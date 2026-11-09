@@ -59,3 +59,22 @@ impl InstanceSettings {
         }
     }
 }
+
+/// Longest site name, in characters.
+pub const SITE_NAME_MAX_LEN: usize = 50;
+
+/// Trims and checks a site name: 1–50 characters, no control characters.
+pub fn checked_site_name(name: &str) -> Result<String, String> {
+    let name = name.trim();
+    let length = name.chars().count();
+    if length == 0 {
+        return Err("site name must not be empty".to_owned());
+    }
+    if length > SITE_NAME_MAX_LEN {
+        return Err(format!("site name must be at most {SITE_NAME_MAX_LEN} characters"));
+    }
+    if name.chars().any(char::is_control) {
+        return Err("site name must not contain control characters".to_owned());
+    }
+    Ok(name.to_owned())
+}

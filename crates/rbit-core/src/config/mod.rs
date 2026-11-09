@@ -8,6 +8,7 @@ mod api;
 mod branding;
 // Milestone 3: editing files in the browser (E).
 mod auth;
+pub mod document;
 mod editor;
 // Milestone 3: importing and push mirrors (M).
 mod imports;

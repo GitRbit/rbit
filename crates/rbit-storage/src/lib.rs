@@ -24,6 +24,7 @@ mod collaboration_thread_lifecycle;
 mod collaboration_thread_state;
 mod collaboration_thread_text;
 mod collaboration_threads;
+pub mod deployment_config;
 pub mod error;
 mod identity_access_tokens;
 mod identity_accounts;

@@ -179,11 +179,8 @@ impl SealingKey {
     }
 }
 
-/// Whether a configuration field holds a credential, judged by its name
-/// (`smtp_password`, `client_secret`, `metrics_token`, …).
-pub fn is_secret_field(name: &str) -> bool {
-    name.ends_with("password") || name.ends_with("secret") || name.ends_with("token")
-}
+/// The secret-field rule is owned by the configuration document in `rbit-core`.
+pub use rbit_core::config::document::is_secret_field;
 
 /// Whether a stored value is sealed (rather than legacy plaintext).
 pub fn is_sealed(stored: &[u8]) -> bool {
