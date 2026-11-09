@@ -11,12 +11,12 @@ const STORAGE_MODELS = /\brbit_storage::sqlite::notifications::\{?[^;]*\b(?:Noti
 const OWNERS = ["crates/rbit-storage/", "crates/rbit-notifications/"];
 
 /** Comments are not code; strip line and block comments before matching. */
-function code(source) {
+export function code(source) {
   return source.replace(/\/\*[\s\S]*?\*\//gu, "").replace(/\/\/[^\n]*/gu, "");
 }
 
 /** Unit-test modules inside sources are fixtures; integration tests are excluded by path. */
-function withoutTestModules(text) {
+export function withoutTestModules(text) {
   let result = text;
   for (let at = result.search(/#\[cfg\(test\)\]\s*(?:#\[[^\]]*\]\s*)*mod\s+\w+\s*\{/u); at >= 0;
     at = result.search(/#\[cfg\(test\)\]\s*(?:#\[[^\]]*\]\s*)*mod\s+\w+\s*\{/u)) {
