@@ -34,6 +34,7 @@
         "lib::notification_email::outbox::DigestView",
         "lib::forks::ForkService",
         "lib::forks::effects::ForkEffects",
+        "lib::edits::EditView",
         "lib::forks::reading::ParentAccess",
         "lib::external_auth::original::OriginalExternalSignIn",
         "lib::external_auth::original::Completion",

@@ -1,28 +1,15 @@
 //! Editing files in the browser: creating, editing, renaming, deleting and uploading files,
 //! each as exactly one commit.
 //!
-//! Milestone 3 workstream E (editing files in the browser) owns this file.
-//!
-//! Rules, in the order they are checked:
-//! * the actor needs write access ([`ServiceError::Forbidden`]); pull mirrors are read-only
-//!   (they only change by fetching; [`MIRROR_READ_ONLY`]) and so are archived repositories
-//!   ([`rbit_core::repository::ARCHIVED_READ_ONLY`]), both refused by
-//!   [`EditService::read_only_reason`];
-//! * a commit lands on the branch the editor was opened on, or on a new branch starting at
-//!   the same commit ([`CommitTarget`]). Committing to the branch passes the push gate
-//!   ([`crate::ProtectionService::check_push`], as a push updating it would): a refusal is
-//!   [`EditFailure::Protected`], so the form can offer the new branch and a pull request
-//!   instead. A new branch needs a valid, unused name and passes the gate as a created ref;
-//! * paths are [`FilePath`]s; the tree checks (no clobbering, no paths through files) are
-//!   `rbit_git::edit`'s. Text is limited to `[repository] max_render_bytes` and written in
-//!   the file's existing line-ending style ([`rbit_core::file_edit::prepare_text`]); files
-//!   that are binary, larger than that or Git LFS pointers cannot be edited (they can still be renamed by
-//!   uploading, deleted or replaced by an upload). Uploads are bounded by `[editor]`;
-//! * the commit's author and committer are the actor with their noreply address
-//!   (`[pulls] noreply_domain`), as for merges;
-//! * the commit is one `update-ref` compare-and-swap against the commit the editor was
-//!   opened at: a branch that moved meanwhile is [`EditFailure::BranchMoved`], never
-//!   rebased.
+//! [`rbit_repositories::edits`] owns who may commit and where (write access, read-only
+//! archives and mirrors, the editor's branch, new-branch names, the moved-branch check
+//! and the single push-gate update). This module keeps the Git side: paths are
+//! [`FilePath`]s and the tree checks are `rbit_git::edit`'s; text is limited to
+//! `[repository] max_render_bytes` and written in the file's existing line-ending style;
+//! binary, oversized and Git LFS pointer files cannot be edited; uploads are bounded by
+//! `[editor]`; author and committer are the actor's noreply address; the commit is one
+//! `update-ref` compare-and-swap against the commit the editor was opened at, never
+//! rebased ([`EditFailure::BranchMoved`]).
 //!
 //! The git work is wrapped in [`crate::PushService`], exactly like a merge, so
 //! `RepositoryPushed` reports the ref update and everything downstream (webhooks, commit
@@ -40,58 +27,17 @@ use rbit_git::{
     edit::{BlobId, Change, EditError, EditSpec, EditWorkspace, is_valid_branch_name},
     merge::MergeEnvironment,
 };
+use rbit_repositories::edits::{BranchUpdate, EditPort, EditRefusal, RepositoryEdits, admit_upload, require_upload};
+pub use rbit_repositories::edits::{CommitInput, CommitTarget, EditAccess, Edited, MIRROR_READ_ONLY};
 use tokio::io::AsyncRead;
 
 use crate::{PushService, RepoContext, ServiceContext, ServiceError, protection::PushActor, releases::human_bytes};
-
-/// Why a pull mirror cannot be edited.
-pub const MIRROR_READ_ONLY: &str = "This repository is a mirror and cannot be edited; change its upstream instead";
 
 #[derive(Debug, Clone)]
 pub struct EditService {
     ctx: ServiceContext,
     protection: crate::ProtectionService,
     pushes: PushService,
-}
-
-/// Where a commit goes.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CommitTarget {
-    /// The branch the editor was opened on.
-    Branch,
-    /// A new branch with this name, starting at the commit the editor was opened at.
-    NewBranch(String),
-}
-
-/// The commit form, as submitted.
-#[derive(Debug, Clone)]
-pub struct CommitInput {
-    /// The branch the editor was opened on.
-    pub branch: String,
-    /// The commit the editor was opened at (the form carries it).
-    pub parent: String,
-    pub target: CommitTarget,
-    /// Empty: the default title for the change.
-    pub title: String,
-    pub description: String,
-}
-
-/// How the actor may commit to a branch.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum EditAccess {
-    /// Directly to the branch (or to a new branch).
-    Direct,
-    /// Only to a new branch; the reason committing directly is refused.
-    NewBranchOnly(String),
-}
-
-/// A commit that landed.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Edited {
-    pub commit: String,
-    pub branch: String,
-    /// The commit created `branch` (a [`CommitTarget::NewBranch`]).
-    pub new_branch: bool,
 }
 
 /// Why an edit was not committed.
@@ -142,12 +88,7 @@ impl Upload {
             return Ok(());
         }
         FilePath::parse(name).map_err(|error| EditFailure::Invalid(format!("{name}: {error}")))?;
-        if self.files.iter().any(|(existing, _)| existing == name) {
-            return Err(EditFailure::Invalid(format!("{name} was chosen twice")));
-        }
-        if self.files.len() >= self.max_files {
-            return Err(EditFailure::Invalid(format!("at most {} files can be uploaded at once", self.max_files)));
-        }
+        admit_upload(self.names(), name, self.files.len(), self.max_files).map_err(EditFailure::Invalid)?;
         let blob = match self.workspace.write_blob(body, self.max_bytes).await {
             Ok(blob) => blob,
             Err(EditError::TooLarge(limit)) => {
@@ -184,38 +125,29 @@ impl EditService {
         self.ctx.config.repository.max_render_bytes
     }
 
+    fn edits<'a>(view: &'a EditView<'a>) -> RepositoryEdits<'a, EditView<'a>> {
+        RepositoryEdits::new(view, &view.repo.repo.repo, view.repo.access.can_write())
+    }
+
     /// Why nobody may edit `repo` even with write access (it is archived, or a mirror),
     /// or `None`.
     pub async fn read_only_reason(&self, repo: &RepoContext) -> Result<Option<&'static str>, ServiceError> {
-        if repo.repo.repo.is_archived() {
-            return Ok(Some(rbit_core::repository::ARCHIVED_READ_ONLY));
-        }
-        Ok(self.ctx.database.mirrors().is_mirror(repo.repo.repo.id).await?.then_some(MIRROR_READ_ONLY))
+        Self::edits(&EditView { service: self, repo }).read_only_reason().await
     }
 
     /// Write access and a repository that is not read-only.
     async fn writable(&self, repo: &RepoContext) -> Result<(), EditFailure> {
-        if !repo.access.can_write() {
-            return Err(ServiceError::Forbidden.into());
-        }
-        match self.read_only_reason(repo).await? {
-            Some(reason) => Err(EditFailure::Invalid(reason.to_owned())),
-            None => Ok(()),
-        }
+        Self::edits(&EditView { service: self, repo }).writable().await.map_err(refused)
     }
 
     /// Whether `actor` may edit `repo` at all (the buttons and forms are shown).
     pub async fn can_edit(&self, repo: &RepoContext) -> Result<bool, ServiceError> {
-        Ok(repo.access.can_write() && self.read_only_reason(repo).await?.is_none())
+        Self::edits(&EditView { service: self, repo }).can_edit().await
     }
 
     /// How `actor` may commit to `branch` (an existing branch of `repo`).
     pub async fn access(&self, actor: &User, repo: &RepoContext, branch: &str) -> Result<EditAccess, EditFailure> {
-        self.writable(repo).await?;
-        Ok(match self.protection.branch_update_refusal(repo, actor, branch).await? {
-            None => EditAccess::Direct,
-            Some(reason) => EditAccess::NewBranchOnly(reason),
-        })
+        Self::edits(&EditView { service: self, repo }).access(actor, branch).await.map_err(refused)
     }
 
     /// The suggested name for a new branch: the first free `{username}-patch-{n}`.
@@ -314,9 +246,7 @@ impl EditService {
         directory: &str,
     ) -> Result<Edited, EditFailure> {
         let checked = self.check(actor, repo, input).await?;
-        if upload.files.is_empty() {
-            return Err(EditFailure::Invalid("choose at least one file to upload".to_owned()));
-        }
+        require_upload(upload.files.len()).map_err(EditFailure::Invalid)?;
         let mut changes = Vec::with_capacity(upload.files.len());
         for (name, blob) in &upload.files {
             let path = FilePath::join(directory, name).map_err(|error| EditFailure::Invalid(format!("{name}: {error}")))?;
@@ -350,39 +280,7 @@ impl EditService {
     /// Everything decided before any object is written: access, the branch, the target and
     /// the push gate.
     async fn check(&self, actor: &User, repo: &RepoContext, input: &CommitInput) -> Result<Checked, EditFailure> {
-        self.writable(repo).await?;
-        let Some(tip) = self.branch_tip(repo, &input.branch).await? else {
-            return Err(ServiceError::NotFound.into());
-        };
-        let update = match &input.target {
-            CommitTarget::Branch => {
-                RefUpdate { name: format!("refs/heads/{}", input.branch), before: Some(tip.clone()), after: Some(tip.clone()) }
-            }
-            CommitTarget::NewBranch(name) => {
-                if name.is_empty() {
-                    return Err(EditFailure::Invalid("enter a name for the new branch".to_owned()));
-                }
-                if !is_valid_branch_name(name) {
-                    return Err(EditFailure::Invalid(format!("{name} is not a valid branch name")));
-                }
-                if self.branch_tip(repo, name).await?.is_some() {
-                    return Err(EditFailure::Invalid(format!("a branch called {name} already exists")));
-                }
-                RefUpdate { name: format!("refs/heads/{name}"), before: None, after: Some(tip.clone()) }
-            }
-        };
-        if input.target == CommitTarget::Branch && input.parent != tip {
-            // Refused before any work; the lease would refuse it anyway.
-            return Err(EditFailure::BranchMoved { current: Some(tip) });
-        }
-        let actor_for_gate = PushActor { user: Some(actor), deploy_key: false, access: repo.access };
-        let verdict = self.protection.check_push(repo, &actor_for_gate, &[update]).await?;
-        if let Some(refusal) = verdict.refusals.into_iter().next() {
-            return Err(match input.target {
-                CommitTarget::Branch => EditFailure::Protected(refusal.reason),
-                CommitTarget::NewBranch(_) => EditFailure::Invalid(refusal.reason),
-            });
-        }
+        Self::edits(&EditView { service: self, repo }).check(actor, input).await.map_err(refused)?;
         Ok(Checked { identity: self.identity(actor) })
     }
 
@@ -467,4 +365,43 @@ fn parse_path(path: &str) -> Result<FilePath, EditFailure> {
 
 fn message(input: &CommitInput, action: EditAction<'_>) -> Result<String, EditFailure> {
     file_edit::commit_message(&input.title, &input.description, action).map_err(EditFailure::Invalid)
+}
+
+/// The loaded repository's facts and push gate for [`RepositoryEdits`].
+struct EditView<'a> {
+    service: &'a EditService,
+    repo: &'a RepoContext,
+}
+
+impl EditPort for EditView<'_> {
+    type Error = ServiceError;
+    async fn is_mirror(&self) -> Result<bool, ServiceError> {
+        Ok(self.service.ctx.database.mirrors().is_mirror(self.repo.repo.repo.id).await?)
+    }
+    async fn branch_tip(&self, branch: &str) -> Result<Option<String>, ServiceError> {
+        self.service.branch_tip(self.repo, branch).await
+    }
+    fn valid_branch_name(&self, name: &str) -> bool {
+        is_valid_branch_name(name)
+    }
+    async fn push_refusal(&self, actor: &User, update: BranchUpdate) -> Result<Option<String>, ServiceError> {
+        let update = RefUpdate { name: update.name, before: update.before, after: Some(update.after) };
+        let gate_actor = PushActor { user: Some(actor), deploy_key: false, access: self.repo.access };
+        let verdict = self.service.protection.check_push(self.repo, &gate_actor, &[update]).await?;
+        Ok(verdict.refusals.into_iter().next().map(|refusal| refusal.reason))
+    }
+    async fn branch_update_refusal(&self, actor: &User, branch: &str) -> Result<Option<String>, ServiceError> {
+        self.service.protection.branch_update_refusal(self.repo, actor, branch).await
+    }
+}
+
+fn refused(refusal: EditRefusal<ServiceError>) -> EditFailure {
+    match refusal {
+        EditRefusal::Forbidden => ServiceError::Forbidden.into(),
+        EditRefusal::NotFound => ServiceError::NotFound.into(),
+        EditRefusal::BranchMoved { current } => EditFailure::BranchMoved { current },
+        EditRefusal::Protected(reason) => EditFailure::Protected(reason),
+        EditRefusal::Invalid(message) => EditFailure::Invalid(message),
+        EditRefusal::Port(error) => error.into(),
+    }
 }

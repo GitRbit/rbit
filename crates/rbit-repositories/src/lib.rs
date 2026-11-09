@@ -8,6 +8,7 @@
 pub mod aliases;
 pub mod contributions;
 pub mod discovery;
+pub mod edits;
 pub mod forks;
 pub mod stars;
 pub mod transfer;
