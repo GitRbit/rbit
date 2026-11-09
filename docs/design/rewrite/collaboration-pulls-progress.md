@@ -1,7 +1,8 @@
-# Pull request retirement progress
+# Pull request and review-thread retirement progress
 
-Progress for the `collaboration.pulls` ledger row ("Cross-fork pulls, reviews, base
-selection, merge/squash/rebase"), which stays `baseline-retained`. This slice moves the
+Progress for the `collaboration.pulls` ("Cross-fork pulls, reviews, base selection,
+merge/squash/rebase") and `collaboration.review-threads` ("Line comments, resolvable
+conversations and review requests") ledger rows, which both stay `baseline-retained`. This slice moves the
 decisions of opening a pull request; merging, reviews, base changes and background
 work keep their current owners. It follows the [identity retirement](identity-retirement.md)
 pattern for what moves, what is removed and which boundary keeps it from returning.
@@ -68,8 +69,28 @@ RESULTS_PLACEHOLDER
 - The pure pull models (`rbit_core::pull`) depend on `MergeRules`; they move once
   protection's models have a home `rbit-collaboration` can depend on.
 
-`collaboration.review-threads` (`rbit-web/src/routes/pulls.rs`) was not started in
-this slice.
+## Review threads
+
+| Behaviour | Owner after this slice |
+| --- | --- |
+| Conversations: replies kept with their root wherever they were submitted, in order; orphan replies dropped | `rbit_collaboration::pulls::review_threads::group_threads` over the `ThreadEntry` trait (implemented by the web view) |
+| A reply's root (`in_reply_to` of the parent, else the parent) | `review_threads::thread_root` |
+| Who may resolve or reopen: writers or the root's author, after the comment permission | `review_threads::may_resolve`, used by both `PullService::set_thread_resolved` and the page's resolve button |
+| Replies to a pending review's comment: only its reviewer | `review_threads::reply_visible` |
+| Comment-only reviews with an empty body and no remaining threads get no card | `review_threads::shows_review_card` |
+| The review form (who may comment; closed pull requests only to finish pending comments; authors cannot approve or request changes) and who sees the dismiss action | `review_threads::{review_form, may_dismiss_reviews}` |
+| At most 15 requested reviewers and the request refusal text | `review_threads::{MAX_REQUESTED_REVIEWERS, requests_fit, reviewer_refusal, AUTHOR_REVIEW_REFUSAL}` (`rbit-core` re-exports the limit) |
+
+`scripts/rewrite/review-threads-retirement.mjs` fails if the route groups replies or
+decides resolve/form/card rules itself, if the review service compares root authors,
+normalizes roots or checks pending reviewers inline again, or if the request limit or
+refusals are defined outside `rbit-collaboration/src`
+(`scripts/tests/review-threads-retirement.test.mjs`).
+
+Remaining for `collaboration.review-threads`: line anchoring (the diff hunk excerpt kept
+with each comment, `pulls/reviews.rs::hunk_excerpt`, over `rbit-git` diff types),
+routing comments into a pending review, and the requested reviewers' account and
+access lookups. Review submission and dismissal policy belong to `collaboration.pulls`.
 
 ## Cost
 
