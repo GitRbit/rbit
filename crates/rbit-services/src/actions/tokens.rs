@@ -32,7 +32,7 @@ use std::{
 use rbit_auth::TaskTokenSecret;
 use rbit_core::{
     RefUpdate, RepoAccess, RepoId,
-    actions::{JobId, PermissionLevel, RunId, RunTrust, TaskId, TokenPermissions, token_permissions},
+    actions::{JobId, PermissionLevel, RunId, TaskId, TokenPermissions, token_permissions},
     protection::Refusal,
 };
 use rbit_repositories::aliases::RepositoryAliases;
@@ -104,7 +104,7 @@ impl ActionsService {
         }
         let Some(run) = database.actions_runs().run(job.run_id).await? else { return Ok(None) };
         let declared = job.permissions.as_deref().and_then(|json| serde_json::from_str::<TokenPermissions>(json).ok());
-        let trust = if run.trusted { RunTrust::Trusted } else { RunTrust::Untrusted { awaits_approval: false } };
+        let trust = rbit_actions::trust::RunTrust::from_stored(run.trusted);
         // The repository's default, capped by its owner's ceiling.
         let default = self.effective_policies(job.repo_id).await?.token_permission;
         let mut permissions = token_permissions(default, None, declared, trust);

@@ -5,8 +5,9 @@
 //!   the database and on the wire agree; [`aggregate`] derives a run's status from its jobs.
 //! * [`RunnerScope`] and [`runner_sees`] decide which runners may take which jobs;
 //!   [`runs_on`] matches a job's `runs-on` labels against a runner's labels.
-//! * [`classify_pull_request`] decides whether a pull request run is trusted (§11.1), and
-//!   [`token_permissions`] what its task token may do (§11.4).
+//! * [`classify_pull_request`] (owned by `rbit_actions::trust`, re-exported here) decides
+//!   whether a pull request run is trusted (§11.1), and [`token_permissions`] what its task
+//!   token may do (§11.4).
 //! * [`RunnerLabel`], [`SecretName`] and [`VariableName`] are validated at construction.
 //! * [`records`] holds the stored records (runs, jobs, tasks, runners, secrets, …).
 //!
@@ -16,7 +17,7 @@ use std::{fmt, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{AccountId, RepoAccess, RepoId};
+use crate::{AccountId, RepoId};
 
 // Actions: settings API.
 pub mod permissions;
@@ -428,64 +429,9 @@ impl SecretScope {
     }
 }
 
-/// The actor whose action caused a pull request event: the author for `opened`,
-/// `reopened`, `ready_for_review` and `edited`, the pusher of the new head for
-/// `synchronize`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TriggeringActor {
-    /// The pusher of the head is not known (or the head moved without a user push).
-    Unknown,
-    Known {
-        /// The actor's access to the base repository now.
-        access: RepoAccess,
-        suspended: bool,
-        /// The actor is the pull request's author.
-        is_author: bool,
-    },
-}
-
-/// What the base repository knows about a pull request's author.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AuthorStanding {
-    /// Nothing that vouches for them.
-    Unknown,
-    /// Listed in the repository's trusted users, or has a pull request merged into it.
-    Vouched,
-    /// Suspended: never approved automatically.
-    Suspended,
-}
-
-/// How a pull request run may run (§11.1 of the design).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RunTrust {
-    /// Secrets, variables, and the repository's token permission.
-    Trusted,
-    /// A read-only token, no secrets and no variables — whoever approves it.
-    Untrusted {
-        /// The run waits for a writer's approval before any job is dispatched.
-        awaits_approval: bool,
-    },
-}
-
-impl RunTrust {
-    pub const fn is_trusted(self) -> bool {
-        matches!(self, Self::Trusted)
-    }
-}
-
-/// Classifies a `pull_request` run when it is created. Trusted only when the actor who
-/// caused the event can write to the base repository now and is not suspended. An untrusted
-/// run skips the approval wait only when the actor is the author and the author is vouched
-/// for — approval never grants secrets.
-pub fn classify_pull_request(actor: TriggeringActor, author: AuthorStanding) -> RunTrust {
-    match actor {
-        TriggeringActor::Known { access, suspended: false, .. } if access.can_write() => RunTrust::Trusted,
-        TriggeringActor::Known { suspended: false, is_author: true, .. } => {
-            RunTrust::Untrusted { awaits_approval: author != AuthorStanding::Vouched }
-        }
-        TriggeringActor::Known { .. } | TriggeringActor::Unknown => RunTrust::Untrusted { awaits_approval: true },
-    }
-}
+// Pull request trust and the fork policy are decided in `rbit_actions::trust`; the old
+// paths stay for the records, services and tests that name them.
+pub use rbit_actions::trust::{AuthorStanding, RunTrust, TriggeringActor, classify_pull_request};
 
 /// One coarse permission of a task token.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
@@ -757,46 +703,6 @@ mod tests {
         // A repository id that happens to equal an account id grants nothing.
         assert!(!runner_sees(RunnerScope::Repository(RepoId(10)), repo, owner, true));
         assert!(!runner_sees(RunnerScope::Owner(AccountId(1)), repo, owner, true));
-    }
-
-    #[test]
-    fn pull_request_trust_table() {
-        use AuthorStanding::{Suspended, Unknown, Vouched};
-        let known = |access, suspended, is_author| TriggeringActor::Known { access, suspended, is_author };
-        let trusted = RunTrust::Trusted;
-        let waits = RunTrust::Untrusted { awaits_approval: true };
-        let runs = RunTrust::Untrusted { awaits_approval: false };
-        let accesses = [RepoAccess::None, RepoAccess::Read, RepoAccess::Write, RepoAccess::Admin];
-        for author in [Unknown, Vouched, Suspended] {
-            assert_eq!(classify_pull_request(TriggeringActor::Unknown, author), waits, "unknown pusher, {author:?}");
-            for access in accesses {
-                for is_author in [false, true] {
-                    // A suspended actor is never trusted and never skips the wait.
-                    assert_eq!(classify_pull_request(known(access, true, is_author), author), waits);
-                    let expected = if access.can_write() {
-                        trusted
-                    } else if is_author && author == Vouched {
-                        runs
-                    } else {
-                        waits
-                    };
-                    assert_eq!(
-                        classify_pull_request(known(access, false, is_author), author),
-                        expected,
-                        "{access:?} {is_author} {author:?}"
-                    );
-                }
-            }
-        }
-        // The cases §11.1 calls out.
-        assert_eq!(classify_pull_request(known(RepoAccess::Read, false, true), Unknown), waits, "same-repository pull from a reader");
-        assert_eq!(
-            classify_pull_request(known(RepoAccess::Read, false, false), Vouched),
-            waits,
-            "someone else pushed a vouched author's head"
-        );
-        assert_eq!(classify_pull_request(known(RepoAccess::Write, false, false), Unknown), trusted, "a writer pushed the head");
-        assert_eq!(classify_pull_request(known(RepoAccess::Read, false, true), Suspended), waits);
     }
 
     #[test]

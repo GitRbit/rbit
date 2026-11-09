@@ -11,6 +11,8 @@ rbit-collaboration = { workspace = true, default-features = false }
 rbit-repositories.workspace = true
 rbit-identity-models.workspace = true
 rbit-access.workspace = true
+# Run trust and the fork policy (`rbit_actions::trust`), re-exported at their old paths.
+rbit-actions.workspace = true
 rbit-contracts.workspace = true
 serde.workspace = true
 thiserror.workspace = true

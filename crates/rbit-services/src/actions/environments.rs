@@ -282,7 +282,7 @@ impl ActionsService {
                 environment.name
             )));
         }
-        if !run.trusted {
+        if !rbit_actions::trust::Grants::of_stored(run.trusted).secrets_and_variables {
             return Ok(Ok(EnvironmentValues::default()));
         }
         let scope = SecretScope::Environment(environment.id);

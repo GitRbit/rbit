@@ -441,7 +441,7 @@ impl ActionsService {
     /// visible to it. Untrusted runs receive none. Fails closed, naming the secret, when one
     /// cannot be opened.
     pub async fn task_secrets(&self, run: &Run) -> Result<BTreeMap<String, String>, ServiceError> {
-        if !run.trusted {
+        if !rbit_actions::trust::Grants::of_stored(run.trusted).secrets_and_variables {
             return Ok(BTreeMap::new());
         }
         let Some(owner) = self.run_owner(run).await? else {
@@ -469,7 +469,7 @@ impl ActionsService {
     /// The variables a task of `run` receives (the `vars` context): the repository's, then
     /// the owner's. Untrusted runs receive none.
     pub async fn task_variables(&self, run: &Run) -> Result<BTreeMap<String, String>, ServiceError> {
-        if !run.trusted {
+        if !rbit_actions::trust::Grants::of_stored(run.trusted).secrets_and_variables {
             return Ok(BTreeMap::new());
         }
         let Some(owner) = self.run_owner(run).await? else {

@@ -31,7 +31,7 @@ digest keeps its exact bytes.
 | At most 10 `restore-keys`; version is 64 lowercase hex | `services::caches::{MAX_RESTORE_KEYS, valid_version}` | `protocol::{MAX_RESTORE_KEYS, valid_cache_version}` |
 | Restore order: exact key per read scope, then each prefix per read scope | loops in `services::caches::find_task_cache` and `runner::steps::cache::Store::find` | `protocol::{restore_probes, CacheProbe}` |
 | Scope ↔ ref naming of the cache REST API | `services::caches::{scope_ref, ref_to_scope}` | `protocol::{scope_ref, ref_to_scope}` |
-| Task scopes from run ref, trust, pull number; unsafe refs named `ref/<digest>`; scope path safety | `services::scheduler::{cache_scopes, ref_scope}`, `spec::CacheScopes::validate` closure | `spec::{CacheScopes::for_run, RunCacheScope, cache_ref_scope}`; `scheduler::cache_scopes` is a field-mapping adapter |
+| Task scopes from run ref, trust, pull number; unsafe refs named `ref/<digest>`; scope path safety | `services::scheduler::{cache_scopes, ref_scope}`, `spec::CacheScopes::validate` closure | `spec::{CacheScopes::for_run, RunCacheScope, cache_ref_scope}`; the write scope of an untrusted run is `rbit_actions::trust::Isolation::cache_write_scope`, and `scheduler::cache_scopes` only composes the two |
 | `Rbit-Content-Sha256` parsing | `services::artifacts::digest_from_hex` | `protocol::sha256_from_hex` |
 | Archive roots `w` (workspace) and `h` (home) | `services::downloads::STORED_ROOT`, runner `Area::prefix` and `extract` | `protocol::{ARCHIVE_WORKSPACE_DIR, ARCHIVE_HOME_DIR}` |
 

@@ -20,9 +20,10 @@
 
 use std::{collections::BTreeSet, time::Duration};
 
+use rbit_actions::trust::RunTrust;
 use rbit_core::{
     RepoId, Timestamp,
-    actions::{Run, RunEvent, RunTrust, ScheduleEntry, Status},
+    actions::{Run, RunEvent, ScheduleEntry, Status},
     repository::OwnedRepository,
 };
 use rbit_storage::sqlite::{actions_runs::RunFilter, actions_schedules::NewSchedule};

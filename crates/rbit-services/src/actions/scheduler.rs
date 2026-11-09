@@ -35,7 +35,10 @@ use std::{
     },
 };
 
-use rbit_actions::claims::RunnerClaims;
+use rbit_actions::{
+    claims::RunnerClaims,
+    trust::{Grants, Isolation},
+};
 use rbit_auth::TaskTokenSecret;
 use rbit_core::{
     Timestamp,
@@ -45,7 +48,7 @@ use rbit_core::{
 use rbit_workflow::{
     protocol::{PollRequest, valid_idempotency_key},
     secret::Secret,
-    spec::{CacheScopes, CheckoutSource, Contexts, JOB_SPEC_VERSION, JobResult, JobSpec, JobTemplate, Needed, RunCacheScope, StepAction},
+    spec::{CacheScopes, CheckoutSource, Contexts, JOB_SPEC_VERSION, JobResult, JobSpec, JobTemplate, Needed, RunCacheScope, StepAction, cache_ref_scope},
 };
 use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
@@ -229,7 +232,7 @@ impl ActionsService {
                 Err(reason) => return Ok(Err(reason)),
             }
         };
-        let (secrets, vars) = if run.trusted {
+        let (secrets, vars) = if Grants::of_stored(run.trusted).secrets_and_variables {
             let secrets = self.task_secrets(&run).await?.into_iter().map(|(name, value)| (name, Secret::new(value))).collect();
             let vars = database
                 .actions_secrets()
@@ -339,16 +342,11 @@ impl ActionsService {
     }
 }
 
-/// The cache scopes of a task of `run` (§12.5.6), as [`CacheScopes::for_run`] decides them.
+/// The cache scopes of a task of `run` (§12.5.6): it writes where [`Isolation`] puts it, and
+/// [`CacheScopes::for_run`] adds the default branch's scope to what it reads.
 pub fn cache_scopes(run: &Run, default_branch: &str) -> CacheScopes {
-    CacheScopes::for_run(&RunCacheScope {
-        repository_id: run.repo_id.0,
-        run_id: run.id.0,
-        reference: &run.reference,
-        trusted: run.trusted,
-        pull_number: run.pull_number,
-        default_branch,
-    })
+    let write = Isolation::of(run.trusted, run.pull_number).cache_write_scope(|| cache_ref_scope(&run.reference), run.id.0);
+    CacheScopes::for_run(&RunCacheScope { repository_id: run.repo_id.0, write, default_branch })
 }
 
 /// The name a step is listed under: its `name`, else what it uses, else the first line of

@@ -42,9 +42,10 @@ use std::{
     time::Duration,
 };
 
+use rbit_actions::trust::RunTrust;
 use rbit_core::{
     AccountId, IssueId, IssueKind, PushSource, RepoId, Timestamp,
-    actions::{Run, RunEvent, RunTrust, Status},
+    actions::{Run, RunEvent, Status},
     issue::IssueAction,
     repository::OwnedRepository,
 };

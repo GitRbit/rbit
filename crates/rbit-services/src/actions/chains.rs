@@ -19,9 +19,10 @@
 //!
 //! Evaluation (Git reads and YAML) runs on the bounded evaluation semaphore, as for pushes.
 
+use rbit_actions::trust::RunTrust;
 use rbit_core::{
     RepoId, User,
-    actions::{Run, RunEvent, RunId, RunTrust},
+    actions::{Run, RunEvent, RunId},
     repository::OwnedRepository,
 };
 use rbit_workflow::{Event, GroupContext, model::WorkflowRunType};

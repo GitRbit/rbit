@@ -21,9 +21,10 @@
 
 use std::collections::BTreeMap;
 
+use rbit_actions::trust::RunTrust;
 use rbit_core::{
     User,
-    actions::{Run, RunEvent, RunTrust},
+    actions::{Run, RunEvent},
 };
 use rbit_git::{GitError, RefKind};
 use rbit_workflow::{

@@ -26,9 +26,10 @@
 //!
 //! Workstream T (triggers and runs) owns this file.
 
+use rbit_actions::trust::{Isolation, RunTrust};
 use rbit_core::{
     Account, AccountId, IssueNumber, RepoId, Timestamp, User,
-    actions::{PermissionLevel, Run, RunEvent, RunId, RunTrust, Status, TokenPermissions},
+    actions::{PermissionLevel, Run, RunEvent, RunId, Status, TokenPermissions},
     repository::OwnedRepository,
 };
 pub use rbit_storage::sqlite::actions_runs::Rerun;
@@ -400,7 +401,7 @@ impl ActionsService {
     /// Whether an untrusted run waits for approval when it starts again: the rule of its
     /// creation (`trust::classify_pull_request`), with today's standing.
     async fn awaits_approval(&self, repo: &OwnedRepository, run: &Run) -> Result<bool, ServiceError> {
-        if run.trusted {
+        if RunTrust::from_stored(run.trusted).is_trusted() {
             return Ok(false);
         }
         let author = self.pull_author(repo.repo.id, run).await?.map(|author| author.id);
@@ -463,11 +464,7 @@ fn new_run<'a>(trigger: &Trigger<'a>, path: &'a str, name: &'a str, title: &'a s
 /// An untrusted run's group lives under its pull request (`pr-<number>/<group>`), so it
 /// can never cancel or hold a run of anyone else.
 fn namespaced_group(trigger: &Trigger<'_>, group: &str) -> String {
-    let group = match (trigger.trust, trigger.pull_number) {
-        (RunTrust::Untrusted { .. }, Some(number)) => format!("pr-{number}/{group}"),
-        (RunTrust::Untrusted { .. }, None) => format!("untrusted/{group}"),
-        (RunTrust::Trusted, _) => group.to_owned(),
-    };
+    let group = Isolation::of(trigger.trust.is_trusted(), trigger.pull_number).namespaced_group(group);
     truncate_chars(&group, MAX_TEXT_CHARS)
 }
 
