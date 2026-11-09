@@ -14,6 +14,7 @@ pub mod downloads;
 pub mod environments;
 pub mod logs;
 pub mod runners;
+pub mod scheduling;
 pub mod secrets;
 pub mod triggers;
 pub mod trust;
