@@ -1,4 +1,4 @@
-//! The configuration schema's text: every key renders in English, falls back to it in
+//! The configuration schema's text: every key renders in English, is translated in
 //! Spanish, and has its own id; an unknown key renders as itself.
 use std::collections::BTreeSet;
 
@@ -8,7 +8,7 @@ use rbit_localization::{
 };
 
 #[test]
-fn every_schema_key_renders_in_english_and_falls_back_in_spanish() {
+fn every_schema_key_renders_in_english_and_translates_to_spanish() {
     let all = ConfigText::all();
     assert!(all.len() > 300, "fields, sections and choices are listed");
     let mut ids = BTreeSet::new();
@@ -19,12 +19,11 @@ fn every_schema_key_renders_in_english_and_falls_back_in_spanish() {
         let english = message.text(&Locale::English);
         assert!(!english.as_str().is_empty() && !english.fallback(), "{message:?}");
         let spanish = message.text(&Locale::Spanish);
-        assert_eq!(spanish.as_str(), english.as_str(), "{message:?}");
-        assert!(spanish.fallback(), "{message:?}");
+        assert!(!spanish.as_str().is_empty() && !spanish.fallback(), "{message:?} is translated");
     }
     for &message in ConfigMessage::ALL {
         assert!(ids.insert(message.id()), "{message:?} has a distinct id");
-        assert!(Catalog::new(Locale::Spanish).localized(message).fallback());
+        assert!(!Catalog::new(Locale::Spanish).localized(message).fallback(), "{message:?} is translated");
     }
 }
 
@@ -49,4 +48,5 @@ fn an_unknown_key_renders_as_itself() {
     assert!(!unknown.exists());
     assert_eq!(unknown.id(), "admin.configuration.unknown");
     assert_eq!(unknown.text(&Locale::English).as_str(), "made_up");
+    assert_eq!(unknown.text(&Locale::Spanish).as_str(), "made_up", "an unknown key has no Spanish entry either");
 }
