@@ -192,6 +192,12 @@ fn envelopes_are_forward_compatible_and_enums_closed() {
 }
 
 #[test]
+fn only_the_container_backend_isolates_jobs() {
+    assert!(Backend::Container.isolates_jobs());
+    assert!(!Backend::Host.isolates_jobs());
+}
+
+#[test]
 fn runner_validation() {
     let request = |change: fn(&mut RegisterRequest)| {
         let mut request =

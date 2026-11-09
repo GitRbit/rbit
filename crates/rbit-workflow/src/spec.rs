@@ -16,6 +16,7 @@
 //! [`crate::secret::Secret`]s, so printing a spec never prints them. Types only: building templates from a
 //! plan and evaluating them belong to [`crate::plan`] and [`crate::expr`].
 
+mod cache_scopes;
 mod job;
 mod limits;
 mod permissions;
@@ -24,6 +25,7 @@ mod runtime;
 mod templates;
 mod validation;
 
+pub use self::cache_scopes::{RunCacheScope, cache_ref_scope};
 pub use self::job::{CacheScopes, CheckoutSource, Contexts, JobResult, JobSpec, Needed};
 pub use self::limits::{
     DEFAULT_TIMEOUT_MINUTES, Env, JOB_SPEC_VERSION, JOB_TEMPLATE_VERSION, MAX_ENVIRONMENT_NAME_BYTES, MAX_NAME_BYTES, MAX_SECRET_BYTES,

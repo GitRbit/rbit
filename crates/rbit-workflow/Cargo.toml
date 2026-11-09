@@ -11,6 +11,8 @@ regex-automata.workspace = true
 serde.workspace = true
 serde-saphyr.workspace = true
 serde_json.workspace = true
+# Cache scopes: a ref too unusual to name a scope is named by its digest.
+sha2.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]

@@ -22,6 +22,15 @@ pub enum Backend {
     Host,
 }
 
+impl Backend {
+    /// Whether jobs on this backend are isolated from the runner's host. The labels of a
+    /// backend that is not are the runner's host labels: the server stores them apart, shows
+    /// them as running without isolation and never gives them an untrusted run's jobs.
+    pub const fn isolates_jobs(self) -> bool {
+        matches!(self, Self::Container)
+    }
+}
+
 /// A `runs-on` label a runner serves, and the one backend its jobs run on.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeclaredLabel {

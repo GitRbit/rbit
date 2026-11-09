@@ -151,12 +151,7 @@ impl CheckoutSource {
 
 impl CacheScopes {
     pub fn validate(&self) -> Result<(), ValidationError> {
-        let valid = |scope: &String| {
-            !scope.is_empty()
-                && scope.len() <= 255
-                && !scope.split('/').any(|part| part.is_empty() || part == "." || part == "..")
-                && !scope.contains(['\\', '\0'])
-        };
+        let valid = |scope: &String| super::cache_scopes::safe_scope(scope, 255);
         ensure(valid(&self.write) && self.read.iter().all(valid), || "a cache scope is malformed".to_owned())
     }
 }

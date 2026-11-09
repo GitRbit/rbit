@@ -22,6 +22,7 @@
 //! runner credential ([`valid_runner_credential`]). Times are Unix seconds.
 
 mod artifacts;
+mod caches;
 mod endpoints;
 mod errors;
 mod limits;
@@ -31,8 +32,12 @@ mod tokens;
 mod validation;
 
 pub use self::artifacts::{
-    ArtifactInfo, ArtifactList, ArtifactQuery, ArtifactRunQuery, CacheEntryInfo, CacheLookupRequest, CacheLookupResponse, CacheSaveQuery,
-    valid_artifact_name,
+    ARCHIVE_HOME_DIR, ARCHIVE_WORKSPACE_DIR, ArtifactInfo, ArtifactList, ArtifactQuery, ArtifactRunQuery, CacheEntryInfo,
+    CacheLookupRequest, CacheLookupResponse, CacheSaveQuery, sha256_from_hex, valid_artifact_name,
+};
+pub use self::caches::{
+    CacheProbe, MAX_CACHE_KEY_CHARS, MAX_RESTORE_KEYS, cache_key_fits, ref_to_scope, restore_probes, scope_ref, valid_cache_key,
+    valid_cache_version,
 };
 pub use self::endpoints::Endpoint;
 pub use self::errors::{ErrorBody, ErrorCode};

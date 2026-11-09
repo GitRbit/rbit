@@ -11,6 +11,26 @@ pub fn valid_artifact_name(name: &str) -> bool {
         && name.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
 }
 
+/// The directory of a stored artifact or cache archive that holds the workspace's files;
+/// a runner packs and unpacks them there, and the server's downloads read only it.
+pub const ARCHIVE_WORKSPACE_DIR: &str = "w";
+
+/// The directory of a cache archive that holds files of the runner user's home (host
+/// backend only).
+pub const ARCHIVE_HOME_DIR: &str = "h";
+
+/// A [`crate::protocol::CONTENT_SHA256_HEADER`] value as 32 bytes: 64 hex digits, either case.
+pub fn sha256_from_hex(hex: &str) -> Option<[u8; 32]> {
+    if hex.len() != 64 {
+        return None;
+    }
+    let mut digest = [0u8; 32];
+    for (index, byte) in digest.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(hex.get(index * 2..index * 2 + 2)?, 16).ok()?;
+    }
+    Some(digest)
+}
+
 /// The query of an artifact upload.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArtifactQuery {
