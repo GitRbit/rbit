@@ -54,7 +54,7 @@ pub mod conditions;
 pub mod context;
 pub mod dispatch;
 // Actions: artifact downloads as zip and tar.gz, owned by rbit-actions.
-pub use rbit_actions::downloads;
+pub use rbit_actions::{availability::Availability, downloads};
 pub mod environments;
 pub mod hooks;
 pub mod logs;
@@ -132,32 +132,31 @@ struct Inner {
 }
 
 impl ActionsService {
-    /// The service, or `None` when `[actions] enabled` is off.
+    /// The service, or `None` when `[actions] enabled` is off ([`Availability::provide`]).
     pub fn new(ctx: ServiceContext) -> Option<Self> {
-        if !ctx.config.actions.enabled {
-            return None;
-        }
-        let evaluations = Arc::new(Semaphore::new(ctx.config.actions.evaluation_concurrency));
-        Some(Self {
-            inner: Arc::new(Inner {
-                ctx,
-                shutdown: CancellationToken::new(),
-                tasks: TaskTracker::new(),
-                started: AtomicBool::new(false),
-                tasks_version: AtomicI64::new(initial_tasks_version()),
-                evaluations,
-                // Actions: triggers (T).
-                groups: tokio::sync::Mutex::new(()),
-                missed_events: AtomicU64::new(0),
-                // Actions: interface and secrets (U).
-                secrets_key: tokio::sync::OnceCell::new(),
-                // Actions: S.
-                runners: tokio::sync::OnceCell::new(),
-                wake: tokio::sync::Notify::new(),
-                polls: scheduler::Polls::default(),
-                masks: std::sync::Mutex::default(),
-                log_locks: std::sync::Mutex::default(),
-            }),
+        Availability::of(ctx.config.actions.enabled).provide(|| {
+            let evaluations = Arc::new(Semaphore::new(ctx.config.actions.evaluation_concurrency));
+            Self {
+                inner: Arc::new(Inner {
+                    ctx,
+                    shutdown: CancellationToken::new(),
+                    tasks: TaskTracker::new(),
+                    started: AtomicBool::new(false),
+                    tasks_version: AtomicI64::new(initial_tasks_version()),
+                    evaluations,
+                    // Actions: triggers (T).
+                    groups: tokio::sync::Mutex::new(()),
+                    missed_events: AtomicU64::new(0),
+                    // Actions: interface and secrets (U).
+                    secrets_key: tokio::sync::OnceCell::new(),
+                    // Actions: S.
+                    runners: tokio::sync::OnceCell::new(),
+                    wake: tokio::sync::Notify::new(),
+                    polls: scheduler::Polls::default(),
+                    masks: std::sync::Mutex::default(),
+                    log_locks: std::sync::Mutex::default(),
+                }),
+            }
         })
     }
 

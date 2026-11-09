@@ -60,6 +60,7 @@ use axum::{
 use error::ApiError;
 use openapi_document::openapi;
 use rbit_core::Config;
+use rbit_services::actions::Availability;
 use tower_http::{compression::CompressionLayer, set_header::SetResponseHeaderLayer, timeout::TimeoutLayer};
 
 use crate::AppState;
@@ -200,14 +201,13 @@ pub fn table(config: &Config) -> Vec<ApiRoute> {
     // Milestone 3: commit statuses (S).
     routes.extend(statuses::routes());
     // Actions: foundation (F). Only when Actions is enabled.
-    if config.actions.enabled {
+    if Availability::of(config.actions.enabled).is_enabled() {
         routes.extend(actions_routes());
     }
     routes
 }
 
-/// The Actions endpoints (served only when Actions is enabled). The integration workstream
-/// (I) adds them with their `openapi/actions.json` fragment ([`ACTIONS_FRAGMENTS`]).
+/// The Actions endpoints, served only while Actions is on, with `openapi/actions.json` ([`ACTIONS_FRAGMENTS`]).
 fn actions_routes() -> Vec<ApiRoute> {
     // Actions: integration (I).
     let mut routes = actions::routes();

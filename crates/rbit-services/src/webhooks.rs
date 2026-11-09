@@ -55,9 +55,9 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
     DomainEvent, OrgContext, RepoContext, ServiceContext, ServiceError,
+    actions::Availability,
     audit::{AuditAction, AuditEntry, AuditService},
-    events::CollaboratorChange,
-    events::Published,
+    events::{CollaboratorChange, Published},
 };
 
 use ports::{StoreQueue, Worker};
@@ -228,7 +228,7 @@ impl WebhookService {
         require_manager(target)?;
         let owner = target.owner();
         let url = self.validate_url(&input.url)?;
-        let events = parse_events(&input.events, self.inner.ctx.config.actions.enabled)?;
+        let events = parse_events(&input.events, Availability::of(self.inner.ctx.config.actions.enabled))?;
         let secret = match input.secret {
             SecretUpdate::Set(secret) => validate_secret(&secret)?,
             SecretUpdate::Keep | SecretUpdate::Clear => None,
@@ -251,7 +251,7 @@ impl WebhookService {
     pub async fn update(&self, actor: &User, target: HookTarget<'_>, id: WebhookId, input: WebhookInput) -> Result<Webhook, ServiceError> {
         require_manager(target)?;
         let url = self.validate_url(&input.url)?;
-        let events = parse_events(&input.events, self.inner.ctx.config.actions.enabled)?;
+        let events = parse_events(&input.events, Availability::of(self.inner.ctx.config.actions.enabled))?;
         let secret = match input.secret {
             SecretUpdate::Set(secret) => match validate_secret(&secret)? {
                 Some(secret) => SecretUpdate::Set(secret),
@@ -744,15 +744,14 @@ fn other_tips<'a>(tips: impl Iterator<Item = &'a str>, own: &str) -> Vec<String>
     .collect()
 }
 
-/// Subscribable events, sorted and de-duplicated. `ping` is implicit and dropped. The
-/// Actions events are refused while Actions is off (`actions_enabled`).
-fn parse_events(names: &[String], actions_enabled: bool) -> Result<Vec<WebhookEvent>, ServiceError> {
+/// Subscribable events, sorted and de-duplicated, `ping` dropped; Actions events only while on ([`Availability::is_enabled`]).
+fn parse_events(names: &[String], actions: impl Into<Availability>) -> Result<Vec<WebhookEvent>, ServiceError> {
     let catalog = EventCatalog {
         parse: WebhookEvent::parse,
         ping: |event| event == WebhookEvent::Ping,
         needs_actions: |event| WebhookEvent::ACTIONS.contains(&event),
     };
-    subscribed_events(names, &catalog, actions_enabled).map_err(|error| ServiceError::Invalid(error.to_string()))
+    subscribed_events(names, &catalog, actions.into().is_enabled()).map_err(|error| ServiceError::Invalid(error.to_string()))
 }
 
 /// `None` for an empty secret.

@@ -4,6 +4,7 @@
 use std::sync::LazyLock;
 
 use axum::{extract::State, http::header, response::IntoResponse};
+use rbit_services::actions::Availability;
 use serde_json::Value;
 
 use super::auth::Caller;
@@ -68,7 +69,7 @@ pub(super) fn merged_document(actions: bool) -> (Value, Vec<String>) {
 
 /// `GET /openapi.json`
 pub(super) async fn openapi(State(state): State<AppState>, _caller: Caller) -> impl IntoResponse {
-    let document = if state.config.actions.enabled { DOCUMENT_WITH_ACTIONS.as_str() } else { DOCUMENT.as_str() };
+    let document = Availability::of(state.config.actions.enabled).choose(DOCUMENT_WITH_ACTIONS.as_str(), DOCUMENT.as_str());
     ([(header::CONTENT_TYPE, "application/json")], document)
 }
 
