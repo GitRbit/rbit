@@ -1,6 +1,5 @@
 //! Every key of the shell families (sign-in, recovery, home, inbox, shared pages)
-//! renders in English and every diagnostic catalog, and falls back to the same English
-//! text, marked as fallback, in Spanish, which has not translated them.
+//! renders in English and every diagnostic catalog, and has its own Spanish entry.
 use std::collections::BTreeSet;
 
 use rbit_localization::{
@@ -15,7 +14,7 @@ use rbit_localization::{
 };
 
 /// Unique ids, non-empty text everywhere, English-derived catalogs never fall back and
-/// Spanish shows the English text marked as fallback.
+/// Spanish has its own entry for every key.
 fn check_family<M: MessageFamily + std::fmt::Debug>(messages: &[M]) {
     let ids: BTreeSet<_> = messages.iter().map(|&message| message.id()).collect();
     assert_eq!(ids.len(), messages.len(), "every listed message has its own id");
@@ -27,8 +26,8 @@ fn check_family<M: MessageFamily + std::fmt::Debug>(messages: &[M]) {
             assert!(text.as_str().starts_with('[') && !text.fallback(), "{message:?} in {locale:?}");
         }
         let spanish = Catalog::new(Locale::Spanish).localized(message);
-        assert_eq!(spanish.as_str(), english.as_str(), "{message:?}");
-        assert!(spanish.fallback(), "{message:?} is untranslated in Spanish");
+        assert!(!spanish.as_str().is_empty(), "{message:?}");
+        assert!(!spanish.fallback(), "{message:?} is translated in Spanish");
     }
 }
 
@@ -37,7 +36,7 @@ fn english<M: MessageFamily>(message: M) -> String {
 }
 
 #[test]
-fn auth_keys_render_and_fall_back() {
+fn auth_keys_render_and_translate() {
     use AuthMessage as M;
     check_family(&[
         M::SignInTitle,
@@ -106,7 +105,7 @@ fn auth_counts_and_arguments_read_naturally() {
 }
 
 #[test]
-fn recovery_keys_render_and_fall_back() {
+fn recovery_keys_render_and_translate() {
     use RecoveryMessage as M;
     check_family(&[
         M::ResetTitle,
@@ -142,7 +141,7 @@ fn recovery_keys_render_and_fall_back() {
 }
 
 #[test]
-fn home_keys_render_and_fall_back() {
+fn home_keys_render_and_translate() {
     use HomeMessage as M;
     let mut all = vec![
         M::SearchPublic,
@@ -205,7 +204,7 @@ fn home_keys_render_and_fall_back() {
 }
 
 #[test]
-fn inbox_keys_render_and_fall_back() {
+fn inbox_keys_render_and_translate() {
     use InboxMessage as M;
     let mut all = vec![
         M::Notifications,
@@ -240,7 +239,7 @@ fn inbox_keys_render_and_fall_back() {
 }
 
 #[test]
-fn page_keys_render_and_fall_back() {
+fn page_keys_render_and_translate() {
     use PageMessage as M;
     let mut all = vec![
         M::NotFoundText,
