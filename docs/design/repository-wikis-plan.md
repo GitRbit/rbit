@@ -4,8 +4,11 @@ Added to the comprehensive rewrite scope on 2026-11-06 at the user's request.
 Status: new feature in progress. W0 pure contracts and W1 real catalog/native
 object read adapters are prepared. Pages UI and publication (page, list, title search,
 history, revision, compare, create/edit/rename/restore/delete with conflict detection)
-are served through one rechecking SQL transaction over prepared objects; recovery,
-lifecycle, media, aliases, tombstones and Git ingress are not implemented. See [W0 contracts](wiki-domain-contracts.md) and [W1 read adapter scope](wiki-read-adapters.md)
+are served through one rechecking SQL transaction over prepared objects. Lifecycle is
+in place for the legacy writer: tombstones with undelete, rename aliases (308 to the
+current path, reclaimable by a new page), wiki data following repository transfer and
+removed with repository deletion, and wiki objects in backups (format 6) verified on
+restore. Managed-writer recovery, media and Git ingress are not implemented. See [W0 contracts](wiki-domain-contracts.md) and [W1 read adapter scope](wiki-read-adapters.md)
 for exact limits and mandatory remaining runtime gaps. Pinned main has no supported wiki feature: the older milestone-3
 plan excludes it and its import design shows wiki import as unsupported. This addition
 supersedes that scope exclusion for the rewrite, without rewriting historical evidence.

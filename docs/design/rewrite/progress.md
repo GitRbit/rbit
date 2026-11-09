@@ -154,11 +154,23 @@ renderer. Reads follow repository read access (anonymous on public repositories)
 changes need write access, administrators turn the wiki on or off, and archived
 repositories are read-only; service and router tests cover these and the conflicts.
 Writes run only in the legacy writer-protocol mode and are serialized per process.
-Not done: tombstones/undelete and aliases (deletion drops the page's history; a
-rename breaks old links), content search, media, link integrity, table of contents,
-HTMX enhancements, request-token replay, Git clone/push ingress, managed-writer and
-recovery integration, wiki objects (data_dir/wikis) in backup/restore, transfer/deletion lifecycle, measured budgets,
-translations beyond English, and browser accessibility acceptance.
+Lifecycle (migration 0073): deleting a page keeps its history and leaves a tombstone;
+readers see the deleted pages and their history, writers restore one (same page ID,
+its last content and names) through the same rechecking publish transaction, and a
+path another page took meanwhile is refused with 409. A rename records the old path
+as an alias that answers 308 (`no-store`) to the current path; a page taking that path
+removes the alias in the same transaction, so redirects never chain or loop, and
+history shows "Renamed from". Wikis stay keyed by repository ID, so a transfer or
+rename keeps them; deleting a repository cascades the catalog and a subscriber (plus a
+start-up sweep) removes the objects of wiki incarnations the catalog no longer knows.
+Backups are format 6: the objects the snapshot's wiki revisions reach are copied and
+re-hashed, a vanished store prunes its catalog, and a restore verifies every object;
+older backups restore their wikis without pages, with a warning.
+Not done: content search, media, link integrity, table of contents, HTMX enhancements,
+request-token replay, Git clone/push ingress, managed-writer and recovery integration
+(including tombstones and aliases in the intent path), restoring a deleted page under
+a new path, measured budgets, translations of the new lifecycle text beyond English,
+and browser accessibility acceptance.
 
 The repository/filesystem part of the third group (case aliases, traversal,
 reparse points, archive links, LFS object scope and upload cancellation) and the
