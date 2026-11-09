@@ -27,13 +27,16 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use rbit_actions::archives::{ArtifactDirectory, ORPHAN_AGE, STALE_UPLOAD_AGE, UPLOADS_DIRECTORY};
+use rbit_actions::{
+    archives::{ArtifactDirectory, ORPHAN_AGE, STALE_UPLOAD_AGE, UPLOADS_DIRECTORY},
+    stale_tasks::{StaleTasks, Timeouts},
+};
 use rbit_core::{
     Timestamp,
-    actions::{RunId, Status, TaskId},
+    actions::{RunId, TaskId},
 };
 
-use super::ActionsService;
+use super::{ActionsService, stale_task_port::StaleTaskSession};
 use crate::ServiceError;
 
 /// How often the sweep runs.
@@ -104,20 +107,13 @@ impl ActionsService {
         let store = self.ctx().database.actions_runs();
         let mut swept = Swept::default();
 
-        let silent = store.silent_tasks(before(now, config.zombie_timeout_seconds)).await?;
-        let reason = format!("the runner sent no word for {} seconds, so the task failed", config.zombie_timeout_seconds);
-        for task in silent {
-            swept.zombies += usize::from(self.time_out(task, &reason, now).await?);
-        }
-        let endless = store.long_running_tasks(before(now, config.endless_timeout_seconds)).await?;
-        let reason = format!("the task ran longer than {} seconds, so it failed", config.endless_timeout_seconds);
-        for task in endless {
-            swept.endless += usize::from(self.time_out(task, &reason, now).await?);
-        }
-        for settled in store.cancel_abandoned(before(now, config.abandoned_timeout_seconds), now).await? {
-            swept.abandoned += 1;
-            self.settled(&settled).await?;
-        }
+        let timeouts = Timeouts {
+            zombie_seconds: config.zombie_timeout_seconds,
+            endless_seconds: config.endless_timeout_seconds,
+            abandoned_seconds: config.abandoned_timeout_seconds,
+        };
+        let stale = StaleTasks::sweep(&StaleTaskSession::new(self), &timeouts, now.0).await?;
+        (swept.zombies, swept.endless, swept.abandoned) = (stale.zombies, stale.endless, stale.abandoned);
         // Actions: join (J).
         swept.decided = self.decide_stragglers().await?;
         // Actions: artifacts (A).
@@ -159,26 +155,6 @@ impl ActionsService {
             self.ctx().database.actions_runners().delete_stale_registration_tokens(Timestamp(now.0 - STALE_TOKEN_GRACE_SECONDS)).await?;
         self.flush_seen().await?;
         Ok(swept)
-    }
-
-    /// Fails running task `task` with `reason` in its log; deletes its runner when that was
-    /// ephemeral. False when it was no longer running.
-    async fn time_out(&self, task: TaskId, reason: &str, now: Timestamp) -> Result<bool, ServiceError> {
-        let store = self.ctx().database.actions_runs();
-        let Some(stored) = store.task(task).await? else { return Ok(false) };
-        self.write_system_line(task, reason).await?;
-        let Some(settled) = store.finish_task(task, Status::Failure, now).await? else { return Ok(false) };
-        tracing::info!(task = task.0, %reason, "task timed out");
-        self.forget_masks(task);
-        self.finalise_log(task).await?;
-        self.settled(&settled).await?;
-        if let Some(runner) = stored.runner_id
-            && self.ctx().database.actions_runners().delete_ephemeral(runner).await?
-        {
-            self.runner_cache().await?.remove(runner);
-            tracing::info!(runner = runner.0, "ephemeral runner removed: its task timed out");
-        }
-        Ok(true)
     }
 
     /// Deletes the logs of up to `limit` runs finished before `cutoff`, oldest first, and
@@ -290,9 +266,9 @@ async fn remove(file: &Path) -> bool {
     }
 }
 
-/// `seconds` before `now`.
+/// `seconds` before `now` ([`rbit_actions::stale_tasks::before`]).
 fn before(now: Timestamp, seconds: u64) -> Timestamp {
-    Timestamp(now.0.saturating_sub(i64::try_from(seconds).unwrap_or(i64::MAX)))
+    Timestamp(rbit_actions::stale_tasks::before(now.0, seconds))
 }
 
 #[cfg(test)]

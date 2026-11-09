@@ -26,17 +26,11 @@
 //!
 //! The server side of the runner protocol (stream S) owns this file.
 
-use std::{
-    collections::{BTreeMap, HashMap},
-    pin::pin,
-    sync::{
-        Arc, Mutex, PoisonError,
-        atomic::{AtomicU64, Ordering},
-    },
-};
+use std::{collections::BTreeMap, sync::Arc};
 
 use rbit_actions::{
     claims::RunnerClaims,
+    polling::{LongPoll, PollEnd, PollRefusal, PollSlots, admit},
     trust::{Grants, Isolation},
 };
 use rbit_auth::TaskTokenSecret;
@@ -46,7 +40,7 @@ use rbit_core::{
 };
 
 use rbit_workflow::{
-    protocol::{PollRequest, valid_idempotency_key},
+    protocol::PollRequest,
     secret::Secret,
     spec::{
         CacheScopes, CheckoutSource, Contexts, JOB_SPEC_VERSION, JobResult, JobSpec, JobTemplate, Needed, RunCacheScope, StepAction,
@@ -63,6 +57,7 @@ use super::{
 use crate::ServiceError;
 
 mod claim_bridge;
+mod poll_queue;
 
 /// Longest stored step name, in characters (the column's CHECK).
 const MAX_STEP_NAME_CHARS: usize = 1024;
@@ -70,54 +65,30 @@ const MAX_STEP_NAME_CHARS: usize = 1024;
 type Resumed = rbit_actions::claims::Resumed<JobSpec>;
 type Claim = rbit_actions::claims::Claim<JobSpec>;
 
-/// The polls held open, one per runner, and how many there are.
-#[derive(Debug, Default)]
-pub struct Polls {
-    by_runner: Mutex<HashMap<RunnerId, (u64, CancellationToken)>>,
-    next: AtomicU64,
-}
+/// The polls held open, one per runner ([`rbit_actions::polling::PollSlots`]).
+pub type Polls = PollSlots<RunnerId, PollEnded>;
 
-/// A poll's place in [`Polls`]; dropping it frees the place.
-#[derive(Debug)]
-struct PollSlot<'a> {
-    polls: &'a Polls,
-    runner: RunnerId,
-    id: u64,
-    ended: CancellationToken,
-}
+/// Ends a poll when a newer one of its runner takes its place.
+#[derive(Debug, Clone, Default)]
+pub struct PollEnded(CancellationToken);
 
-impl Polls {
-    /// Takes a place for `runner`'s poll, ending the poll it may already have. `None` when
-    /// `max` polls are already held open by other runners.
-    fn enter(&self, runner: RunnerId, max: usize) -> Option<PollSlot<'_>> {
-        let mut polls = self.by_runner.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some((_, previous)) = polls.get(&runner) {
-            previous.cancel();
-        } else if polls.len() >= max {
-            return None;
-        }
-        let id = self.next.fetch_add(1, Ordering::SeqCst);
-        let ended = CancellationToken::new();
-        polls.insert(runner, (id, ended.clone()));
-        Some(PollSlot { polls: self, runner, id, ended })
+impl PollEnded {
+    pub fn is_cancelled(&self) -> bool {
+        self.0.is_cancelled()
     }
 
-    /// Polls held open now.
-    pub fn len(&self) -> usize {
-        self.by_runner.lock().unwrap_or_else(PoisonError::into_inner).len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
+    async fn cancelled(&self) {
+        self.0.cancelled().await;
     }
 }
 
-impl Drop for PollSlot<'_> {
-    fn drop(&mut self) {
-        let mut polls = self.polls.by_runner.lock().unwrap_or_else(PoisonError::into_inner);
-        if polls.get(&self.runner).is_some_and(|(id, _)| *id == self.id) {
-            polls.remove(&self.runner);
-        }
+impl PollEnd for PollEnded {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn end(&self) {
+        self.0.cancel();
     }
 }
 
@@ -125,47 +96,15 @@ impl ActionsService {
     /// `POST poll`: a task for `runner`, or `None` once the long poll has passed, the runner
     /// polled again, or the server is shutting down. See the module documentation.
     pub async fn poll(&self, runner: &Arc<CachedRunner>, request: &PollRequest, key: Option<&str>) -> Result<Option<JobSpec>, RunnerError> {
-        request.validate().map_err(|error| RunnerError::bad_request(error.message))?;
-        if key.is_some_and(|key| !valid_idempotency_key(key)) {
-            return Err(RunnerError::bad_request("the Idempotency-Key must be 1 to 64 letters, digits, '-' or '_'"));
-        }
-        if runner.disabled {
-            return Err(RunnerError::forbidden("this runner is disabled and takes no new jobs; an administrator can enable it again"));
-        }
+        admit(request, key, runner.disabled).map_err(|refusal| match refusal {
+            PollRefusal::Disabled => RunnerError::forbidden(refusal.message()),
+            refusal => RunnerError::bad_request(refusal.message()),
+        })?;
         let Some(slot) = self.inner.polls.enter(runner.id, self.config().max_polls) else {
-            return Err(RunnerError::unavailable("the server holds as many polls as it may; try again shortly"));
+            return Err(RunnerError::unavailable(PollRefusal::Full.message()));
         };
-        if let Some(key) = key {
-            match self.resume(runner, key).await? {
-                Resumed::Task(spec) => return Ok(Some(*spec)),
-                // The key's task has stopped: there is nothing to resend, and the key may
-                // not claim again. The runner polls anew with a new key.
-                Resumed::Spent => return Ok(None),
-                Resumed::Unknown => {}
-            }
-        }
         let deadline = tokio::time::Instant::now() + self.config().long_poll();
-        loop {
-            // Registered before the version is read, so a move in between still wakes it.
-            let mut woken = pin!(self.inner.wake.notified());
-            woken.as_mut().enable();
-            let version = self.tasks_version();
-            if version != runner.idle_version.load(Ordering::SeqCst) {
-                match self.claim_for(runner, key).await? {
-                    Claim::Task(spec) => return Ok(Some(*spec)),
-                    Claim::Nothing => runner.idle_version.store(version, Ordering::SeqCst),
-                    // The key went to a task that could not run: the runner polls again
-                    // with a new one, and finds the rest of the queue then.
-                    Claim::Spent => return Ok(None),
-                }
-            }
-            tokio::select! {
-                () = woken => {}
-                () = tokio::time::sleep_until(deadline) => return Ok(None),
-                () = slot.ended.cancelled() => return Ok(None),
-                () = self.inner.shutdown.cancelled() => return Ok(None),
-            }
-        }
+        LongPoll::wait_for_work(&poll_queue::PollSession::new(self, runner, key, deadline, &slot.ended), key).await
     }
 
     /// Polls held open now.
