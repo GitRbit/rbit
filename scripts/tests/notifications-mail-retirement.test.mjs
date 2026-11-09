@@ -36,6 +36,20 @@ test("moved mail and webhook policy cannot be redefined beside its adapters", ()
   assert.deepEqual(check("crates/rbit-services/src/webhooks.rs", "pub use rbit_notifications::webhooks::policy::MAX_HOOKS_PER_OWNER;\n"), []);
 });
 
+test("webhook queueing, attempts and envelopes stay behind the feature ports", () => {
+  for (const source of [
+    "async fn f(&self) { self.inner.store.enqueue(deliveries).await; }\n",
+    "async fn f(&self) { self.inner.store.claim_due(now, 1).await; }\n",
+    "fn f() -> AttemptOutcome { AttemptOutcome::Failed }\n",
+  ]) {
+    assert.match(check("crates/rbit-services/src/webhooks.rs", source)[0], /webhook ports/u, source);
+    assert.deepEqual(check("crates/rbit-services/src/webhooks/ports.rs", source), []);
+  }
+  for (const source of ["const ZEN: &[&str] = &[];\n", "pub const NULL_SHA: &str = \"0\";\n", "hooks.retain(|hook| *hook <= newest);\n"]) {
+    assert.match(check("crates/rbit-services/src/webhooks/payloads.rs", source)[0], /belongs to rbit-notifications/u, source);
+  }
+});
+
 test("comments, tests and unit-test modules are not production paths", () => {
   assert.deepEqual(checkNotificationsMailRetirement([
     ["crates/rbit-services/src/notification_email.rs", "// fn verify_link was moved\n/* db.email_digests() */ fn f() {}\n"],

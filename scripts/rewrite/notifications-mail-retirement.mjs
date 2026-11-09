@@ -12,6 +12,10 @@ const CLAIM_OR_RECIPIENTS = /\.(?:claim_many|recipients)\(/u;
 const POLICY_FN = /\bfn\s+(?:sign_link|verify_link|link_mac|wants|reason_clause|message_id_host|excerpt_of|one_line_excerpt|capitalised|prune_cutoff|signature|retry_delay|request_headers|check_secret|next_step)\b/u;
 const POLICY_TOKEN = /\bHmac\s*<|\b(?:RETRY_DELAYS_SECONDS|LINK_PURPOSE|MIN_PENDING_RETENTION|FIRST_MONDAY)\b/u;
 const POLICY_CONST = /\bconst\s+(?:MAX_SECRET_LEN|MAX_HOOKS_PER_OWNER|MAX_RESPONSE_BODY|MAX_RESPONSE_HEADERS|USER_AGENT|MAX_EXCERPT_CHARS)\b/u;
+// Webhook queueing and worker bookkeeping reach the store only through the port adapter.
+const WEBHOOK_PORTS = "crates/rbit-services/src/webhooks/ports.rs";
+const WEBHOOK_STORE_CALL = /\.store\.(?:subscribed|enqueue|claim_due|record_attempt)\(|\bAttemptOutcome::/u;
+const WEBHOOK_POLICY = /\bconst\s+(?:ZEN|NULL_SHA|MAX_PUSH_COMMITS)\b|\.retain\(\|hook\|/u;
 const FEATURE_ADAPTERS = /^crates\/rbit-services\/src\/(?:notification_email|webhooks)(?:\.rs|\/)/u;
 
 const production = (path) => /^crates\/[^/]+\/src\//u.test(path);
@@ -31,7 +35,10 @@ export function checkNotificationsMailRetirement(sources) {
     if (path !== OUTBOX && MAIL_STORE.test(text) && CLAIM_OR_RECIPIENTS.test(text)) {
       violations.push(`${path}: email claims and recipient reads go through the rbit-notifications mail ports`);
     }
-    if (FEATURE_ADAPTERS.test(path) && (POLICY_FN.test(text) || POLICY_TOKEN.test(text) || POLICY_CONST.test(text))) {
+    if (path !== WEBHOOK_PORTS && WEBHOOK_STORE_CALL.test(text)) {
+      violations.push(`${path}: webhook queueing and attempts go through the rbit-notifications webhook ports`);
+    }
+    if (FEATURE_ADAPTERS.test(path) && (POLICY_FN.test(text) || POLICY_TOKEN.test(text) || POLICY_CONST.test(text) || WEBHOOK_POLICY.test(text))) {
       violations.push(`${path}: mail and webhook delivery policy belongs to rbit-notifications`);
     }
   }
