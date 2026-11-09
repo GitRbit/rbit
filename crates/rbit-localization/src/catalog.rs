@@ -42,7 +42,7 @@ pub use theme_preview::ThemePreviewMessage;
 mod repo;
 pub use repo::{
     ContributionLabel, ContributionMessage, ReleaseLabel, ReleaseMessage, RepoBrowseLabel, RepoBrowseMessage, RepoCreateLabel,
-    RepoCreateMessage, RepoEditLabel, RepoEditMessage, RepoHistoryLabel, RepoHistoryMessage, RepoNavLabel, RepoNavMessage,
+    RepoCreateMessage, RepoEditLabel, RepoEditMessage, RepoHistoryLabel, RepoHistoryMessage, RepoNavLabel, RepoNavMessage, RepoNavSentence,
     RepoSettingsLabel, RepoSettingsMessage,
 };
 mod wiki;

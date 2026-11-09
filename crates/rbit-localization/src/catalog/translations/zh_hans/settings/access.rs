@@ -1,16 +1,14 @@
 //! Simplified Chinese (`zh-Hans`) entries for `catalog/settings/access.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::access::AccessSentence;
 use crate::catalog::settings::access::{AccessMessage, AccessText};
 
 entries! { ZhHans:
     AccessMessage => MessageWriter |text| {
         AccessMessage::Settings => text.literal("设置"),
         AccessMessage::Collaborators => text.literal("协作者"),
-        AccessMessage::IntroLead => text.literal("在此添加的人员将获得对 "),
-        AccessMessage::IntroDirectly => text.literal(" 的直接访问权限"),
-        AccessMessage::IntroOrganization => text.literal("，无论他们是否属于该组织"),
-        AccessMessage::IntroTail => text.literal("。"),
         AccessMessage::AddCollaborator => text.literal("添加协作者"),
         AccessMessage::Username => text.literal("用户名"),
         AccessMessage::Permission => text.literal("权限"),
@@ -67,6 +65,17 @@ entries! { ZhHans:
         AccessText::TransferTitle(repository) => {
             text.literal("转移 · ");
             text.argument(repository);
+        }
+    }
+    AccessSentence => RichWriter |text| {
+        AccessSentence::CollaboratorsIntro { organization } => {
+            text.literal("在此添加的人员将获得对 ");
+            text.slot(0);
+            text.literal(" 的直接访问权限");
+            if organization {
+                text.literal("，无论他们是否属于该组织");
+            }
+            text.literal("。");
         }
     }
 }

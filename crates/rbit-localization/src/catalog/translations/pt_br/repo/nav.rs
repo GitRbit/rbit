@@ -1,13 +1,13 @@
 //! Brazilian Portuguese (`pt-BR`) entries for `catalog/repo/nav.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::repo::nav::RepoNavSentence;
 use crate::catalog::repo::nav::{RepoNavLabel, RepoNavMessage};
 use crate::plural::Plural;
 
 entries! { PtBr:
     RepoNavLabel => MessageWriter |text| {
-        RepoNavLabel::ForkedFrom => text.literal("fork de"),
-        RepoNavLabel::MirrorOf => text.literal("espelho de"),
         RepoNavLabel::ArchivedNote => {
             text.literal(
                 "Este repositório foi arquivado. Ele é somente leitura: você pode cloná-lo, fazer fork dele e \
@@ -36,9 +36,8 @@ entries! { PtBr:
         RepoNavLabel::SshCloneUrl => text.literal("URL de clone SSH"),
         RepoNavLabel::CopySshCloneUrl => text.literal("Copiar URL de clone SSH"),
         RepoNavLabel::Copy => text.literal("Copiar"),
-        RepoNavLabel::SshKeyNote => text.literal("O SSH exige uma chave em "),
-        RepoNavLabel::YourSettingsEnd => text.literal("."),
         RepoNavLabel::YourSettings => text.literal("suas configurações"),
+        RepoNavLabel::YourSettingsEnd => text.literal("."),
         RepoNavLabel::DownloadZip => text.literal("Baixar ZIP"),
         RepoNavLabel::Star => text.literal("Estrela"),
         RepoNavLabel::Starred => text.literal("Com estrela"),
@@ -61,6 +60,21 @@ entries! { PtBr:
                 Plural::One => " estrela",
                 _ => " estrelas",
             });
+        }
+    }
+    RepoNavSentence => RichWriter |text| {
+        RepoNavSentence::ForkedFrom => {
+            text.literal("fork de ");
+            text.slot(0);
+        }
+        RepoNavSentence::MirrorOf => {
+            text.literal("espelho de ");
+            text.slot(0);
+        }
+        RepoNavSentence::SshKeyNote => {
+            text.literal("O SSH exige uma chave em ");
+            text.slot(0);
+            text.literal(".");
         }
     }
 }

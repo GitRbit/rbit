@@ -113,7 +113,6 @@ fn recovery_keys_render_and_translate() {
         M::ForgotWithoutEmail,
         M::CheckEmail,
         M::LinkSent,
-        M::NothingArrived,
         M::TryAgain,
         M::SendResetLink,
         M::RequestNewLink,

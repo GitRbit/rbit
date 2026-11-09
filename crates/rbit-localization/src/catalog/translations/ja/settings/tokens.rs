@@ -1,17 +1,13 @@
 //! Japanese (`ja`) entries for `catalog/settings/tokens.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::tokens::TokensSentence;
 use crate::catalog::settings::tokens::{TokenText, TokensMessage};
 
 entries! { Ja:
     TokensMessage => MessageWriter |text| {
         TokensMessage::Title => text.literal("アクセストークン"),
-        TokensMessage::IntroLead => text.literal("HTTPS 経由の Git では、パスワードの代わりにトークンを使います。ユーザー名"),
-        TokensMessage::IntroUsername => text.literal("を入力し、Git にパスワードを求められたらトークンを貼り付けてください。REST API（"),
-        TokensMessage::IntroApi => text.literal("）では、トークンを"),
-        TokensMessage::IntroPrefix => text.literal("として渡します。トークンは"),
-        TokensMessage::IntroLegacy => text.literal("で始まります。以前のリリースのトークンは"),
-        TokensMessage::IntroTail => text.literal("で始まり、引き続き使用できます。"),
         TokensMessage::CopyNow => text.literal("新しいトークンを今すぐコピーしてください。再表示することはできません。"),
         TokensMessage::CopyToken => text.literal("トークンをコピー"),
         TokensMessage::Copy => text.literal("コピー"),
@@ -63,6 +59,21 @@ entries! { Ja:
         TokenText::Expired(date) => {
             text.literal("期限切れ：");
             text.argument(date);
+        }
+    }
+    TokensSentence => RichWriter |text| {
+        TokensSentence::Intro => {
+            text.literal("HTTPS 経由の Git では、パスワードの代わりにトークンを使います。ユーザー名 ");
+            text.slot(0);
+            text.literal(" を入力し、Git にパスワードを求められたらトークンを貼り付けてください。REST API（");
+            text.slot(1);
+            text.literal("）では、トークンを ");
+            text.slot(2);
+            text.literal(" として渡します。トークンは ");
+            text.slot(3);
+            text.literal(" で始まります。以前のリリースのトークンは ");
+            text.slot(4);
+            text.literal(" で始まり、引き続き使用できます。");
         }
     }
 }

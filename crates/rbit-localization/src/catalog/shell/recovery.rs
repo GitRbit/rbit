@@ -9,9 +9,7 @@ pub enum RecoveryMessage<'a> {
     ForgotWithoutEmail,
     CheckEmail,
     LinkSent,
-    NothingArrived,
     TryAgain,
-    TryAgainEnd,
     SendResetLink,
     RequestNewLink,
     NewLinkWithoutEmail,
@@ -44,9 +42,7 @@ impl MessageFamily for RecoveryMessage<'_> {
             Self::ForgotWithoutEmail => "recovery.forgot.no-email",
             Self::CheckEmail => "recovery.forgot.check-email",
             Self::LinkSent => "recovery.forgot.sent",
-            Self::NothingArrived => "recovery.forgot.nothing-arrived",
             Self::TryAgain => "recovery.forgot.try-again",
-            Self::TryAgainEnd => "recovery.forgot.try-again-end",
             Self::SendResetLink => "recovery.forgot.submit",
             Self::RequestNewLink => "recovery.reset.request-new-link",
             Self::NewLinkWithoutEmail => "recovery.reset.no-email",
@@ -85,9 +81,7 @@ impl MessageFamily for RecoveryMessage<'_> {
                 "If an account uses that address, we've sent it a link to choose a new password. The link works once and \
                  expires in an hour."
             }
-            Self::NothingArrived => "Nothing arrived? Check your spam folder, or ",
             Self::TryAgain => "try again",
-            Self::TryAgainEnd => ".",
             Self::SendResetLink => "Send reset link",
             Self::RequestNewLink => "Request a new link",
             Self::NewLinkWithoutEmail => {
@@ -126,6 +120,8 @@ impl MessageFamily for RecoveryMessage<'_> {
 pub enum RecoverySentence {
     /// Under the reset form. Slot 0: the sign-in link, worded by `RecoveryMessage::SignIn`.
     RememberedSignIn,
+    /// After a reset link was requested. Slot 0: the retry link, worded by `RecoveryMessage::TryAgain`.
+    NothingArrived,
 }
 
 impl RecoverySentence {
@@ -139,6 +135,7 @@ impl crate::catalog::collab::rich::RichFamily for RecoverySentence {
     fn id(self) -> &'static str {
         match self {
             Self::RememberedSignIn => "recovery.forgot.remembered",
+            Self::NothingArrived => "recovery.forgot.nothing-arrived",
         }
     }
 
@@ -147,6 +144,11 @@ impl crate::catalog::collab::rich::RichFamily for RecoverySentence {
             Self::RememberedSignIn => {
                 text.literal("Remembered it? ");
                 text.slot(0);
+            }
+            Self::NothingArrived => {
+                text.literal("Nothing arrived? Check your spam folder, or ");
+                text.slot(0);
+                text.literal(".");
             }
         }
     }

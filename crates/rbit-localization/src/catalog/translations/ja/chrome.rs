@@ -33,7 +33,6 @@ entries! { Ja:
         ChromeMessage::DarkMode => text.literal("ダークモード"),
         ChromeMessage::UpdateAvailable => text.literal("アップデートがあります"),
         ChromeMessage::TimingHelp => text.literal("直前のページまたは更新にかかったサーバー時間"),
-        ChromeMessage::RenderedIn => text.literal("描画時間"),
         ChromeMessage::Footer => text.literal("フッター"),
         ChromeMessage::Support => text.literal("ヘルプ"),
         ChromeMessage::Terms => text.literal("利用規約"),
@@ -45,6 +44,10 @@ entries! { Ja:
         }
     }
     ChromeSentence => RichWriter |text| {
+        ChromeSentence::RenderedIn => {
+            text.literal("描画時間 ");
+            text.slot(0);
+        }
         ChromeSentence::PoweredBy => {
             text.slot(0);
             text.literal(" で動作");

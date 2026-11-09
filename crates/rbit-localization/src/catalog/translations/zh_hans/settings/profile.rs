@@ -3,6 +3,7 @@
 use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 use crate::catalog::settings::profile::GallerySentence;
+use crate::catalog::settings::profile::ProfileSentence;
 use crate::catalog::settings::profile::{
     AppearanceMessage, GalleryMessage, GalleryText, NotificationsMessage, NotificationsText, ProfileMessage,
 };
@@ -93,6 +94,18 @@ entries! { ZhHans:
             text.literal(" 的 base16 和 base24 配色方案（MIT）生成；将鼠标悬停在主题上可查看其作者。");
             text.slot(1);
             text.literal("。");
+        }
+    }
+    ProfileSentence => RichWriter |text| {
+        ProfileSentence::ProfileIntro => {
+            text.literal("显示在");
+            text.slot(0);
+            text.literal("以及你的动态旁边。这里的所有内容都是公开且可选的。");
+        }
+        ProfileSentence::NotificationsIntro => {
+            text.literal("所有通知仍会显示在");
+            text.slot(0);
+            text.literal("中。请选择还要发送到你邮箱地址的通知。");
         }
     }
 }

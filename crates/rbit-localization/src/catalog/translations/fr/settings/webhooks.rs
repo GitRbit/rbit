@@ -1,6 +1,8 @@
 //! French (`fr`) entries for `catalog/settings/webhooks.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::webhooks::WebhookSentence;
 use crate::catalog::settings::webhooks::{WebhookMessage, WebhookText};
 use crate::plural::Plural;
 
@@ -9,13 +11,6 @@ entries! { Fr:
         WebhookMessage::TickToConfirm => text.literal("Cochez la case pour confirmer."),
         WebhookMessage::Settings => text.literal("Paramètres"),
         WebhookMessage::Webhooks => text.literal("Webhooks"),
-        WebhookMessage::IntroSigned => text.literal("envoie une requête"),
-        WebhookMessage::IntroPayload => text.literal(
-            "signée, avec une charge utile JSON, à chaque URL lorsque les événements auxquels elle est abonnée se \
-             produisent dans",
-        ),
-        WebhookMessage::IntroOrgTail => text.literal("ou l’un de ses dépôts"),
-        WebhookMessage::IntroTail => text.literal("."),
         WebhookMessage::AddWebhook => text.literal("Ajouter un webhook"),
         WebhookMessage::NoWebhooks => text.literal("Aucun webhook"),
         WebhookMessage::NoWebhooksText => text.literal(
@@ -126,6 +121,19 @@ entries! { Fr:
             text.argument(guid);
             text.literal(" · ");
             text.argument(name);
+        }
+    }
+    WebhookSentence => RichWriter |text| {
+        WebhookSentence::Intro { organization } => {
+            text.slot(0);
+            text.literal(" envoie une requête ");
+            text.slot(1);
+            text.literal(" signée, avec une charge utile JSON, à chaque URL lorsque les événements auxquels elle est abonnée se produisent dans ");
+            text.slot(2);
+            if organization {
+                text.literal(" ou l’un de ses dépôts");
+            }
+            text.literal(".");
         }
     }
 }

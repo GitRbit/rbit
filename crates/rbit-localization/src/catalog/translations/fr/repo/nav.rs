@@ -1,13 +1,13 @@
 //! French (`fr`) entries for `catalog/repo/nav.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::repo::nav::RepoNavSentence;
 use crate::catalog::repo::nav::{RepoNavLabel, RepoNavMessage};
 use crate::plural::Plural;
 
 entries! { Fr:
     RepoNavLabel => MessageWriter |text| {
-        RepoNavLabel::ForkedFrom => text.literal("fork de"),
-        RepoNavLabel::MirrorOf => text.literal("miroir de"),
         RepoNavLabel::ArchivedNote => text.literal(
             "Ce dépôt a été archivé. Il est en lecture seule\u{a0}: vous pouvez le cloner, en créer un fork et lui \
              ajouter une étoile, mais pas le modifier.",
@@ -34,9 +34,8 @@ entries! { Fr:
         RepoNavLabel::SshCloneUrl => text.literal("URL de clonage SSH"),
         RepoNavLabel::CopySshCloneUrl => text.literal("Copier l’URL de clonage SSH"),
         RepoNavLabel::Copy => text.literal("Copier"),
-        RepoNavLabel::SshKeyNote => text.literal("SSH nécessite une clé dans "),
-        RepoNavLabel::YourSettingsEnd => text.literal("."),
         RepoNavLabel::YourSettings => text.literal("vos paramètres"),
+        RepoNavLabel::YourSettingsEnd => text.literal("."),
         RepoNavLabel::DownloadZip => text.literal("Télécharger le ZIP"),
         RepoNavLabel::Star => text.literal("Ajouter une étoile"),
         RepoNavLabel::Starred => text.literal("Étoile ajoutée"),
@@ -60,6 +59,21 @@ entries! { Fr:
                 Plural::One => " étoile",
                 _ => " étoiles",
             });
+        }
+    }
+    RepoNavSentence => RichWriter |text| {
+        RepoNavSentence::ForkedFrom => {
+            text.literal("fork de ");
+            text.slot(0);
+        }
+        RepoNavSentence::MirrorOf => {
+            text.literal("miroir de ");
+            text.slot(0);
+        }
+        RepoNavSentence::SshKeyNote => {
+            text.literal("SSH nécessite une clé dans ");
+            text.slot(0);
+            text.literal(".");
         }
     }
 }

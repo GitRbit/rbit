@@ -76,6 +76,6 @@ pub use contributions::{ContributionLabel, ContributionMessage};
 pub use create::{RepoCreateLabel, RepoCreateMessage};
 pub use edit::{RepoEditLabel, RepoEditMessage};
 pub use history::{RepoHistoryLabel, RepoHistoryMessage};
-pub use nav::{RepoNavLabel, RepoNavMessage};
+pub use nav::{RepoNavLabel, RepoNavMessage, RepoNavSentence};
 pub use releases::{ReleaseLabel, ReleaseMessage};
 pub use settings::{RepoSettingsLabel, RepoSettingsMessage};

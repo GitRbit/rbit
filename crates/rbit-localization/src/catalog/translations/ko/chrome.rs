@@ -33,7 +33,6 @@ entries! { Ko:
         ChromeMessage::DarkMode => text.literal("다크 모드"),
         ChromeMessage::UpdateAvailable => text.literal("업데이트 사용 가능"),
         ChromeMessage::TimingHelp => text.literal("마지막 페이지 또는 업데이트의 서버 처리 시간"),
-        ChromeMessage::RenderedIn => text.literal("렌더링 시간"),
         ChromeMessage::Footer => text.literal("바닥글"),
         ChromeMessage::Support => text.literal("지원"),
         ChromeMessage::Terms => text.literal("이용 약관"),
@@ -45,6 +44,10 @@ entries! { Ko:
         }
     }
     ChromeSentence => RichWriter |text| {
+        ChromeSentence::RenderedIn => {
+            text.literal("렌더링 시간 ");
+            text.slot(0);
+        }
         ChromeSentence::PoweredBy => {
             text.slot(0);
             text.literal(" 기반");

@@ -36,7 +36,6 @@ pub enum ChromeMessage<'a> {
     DarkMode,
     UpdateAvailable,
     TimingHelp,
-    RenderedIn,
     Footer,
     Support,
     Terms,
@@ -74,7 +73,6 @@ impl ChromeMessage<'_> {
             Self::DarkMode => "chrome.dark-mode",
             Self::UpdateAvailable => "chrome.update",
             Self::TimingHelp => "chrome.timing-help",
-            Self::RenderedIn => "chrome.rendered-in",
             Self::Footer => "chrome.footer",
             Self::Support => "chrome.support",
             Self::Terms => "chrome.terms",
@@ -115,7 +113,6 @@ impl ChromeMessage<'_> {
             Self::DarkMode => "Dark mode",
             Self::UpdateAvailable => "Update available",
             Self::TimingHelp => "Server time for the last page or update",
-            Self::RenderedIn => "rendered in",
             Self::Footer => "Footer",
             Self::Support => "Support",
             Self::Terms => "Terms",
@@ -179,6 +176,8 @@ impl fmt::Display for ChromeDisplay<'_> {
 pub enum ChromeSentence {
     /// The footer credit. Slot 0: the product name.
     PoweredBy,
+    /// The footer's page timing. Slot 0: the duration.
+    RenderedIn,
 }
 
 impl ChromeSentence {
@@ -192,6 +191,7 @@ impl RichFamily for ChromeSentence {
     fn id(self) -> &'static str {
         match self {
             Self::PoweredBy => "chrome.powered-by",
+            Self::RenderedIn => "chrome.rendered-in",
         }
     }
 
@@ -199,6 +199,10 @@ impl RichFamily for ChromeSentence {
         match self {
             Self::PoweredBy => {
                 text.literal("Powered by ");
+                text.slot(0);
+            }
+            Self::RenderedIn => {
+                text.literal("rendered in ");
                 text.slot(0);
             }
         }

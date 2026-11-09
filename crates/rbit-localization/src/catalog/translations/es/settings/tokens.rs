@@ -1,22 +1,14 @@
 //! Spanish (`es`) entries for `catalog/settings/tokens.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::tokens::TokensSentence;
 use crate::catalog::settings::tokens::{TokenText, TokensMessage};
 use crate::plural::Plural;
 
 entries! { Es:
     TokensMessage => MessageWriter |text| {
         TokensMessage::Title => text.literal("Tokens de acceso"),
-        TokensMessage::IntroLead => text.literal(
-            "Usa un token en lugar de tu contraseña para Git por HTTPS: introduce tu nombre de usuario",
-        ),
-        TokensMessage::IntroUsername => text.literal(
-            "y pega el token cuando Git te pida una contraseña. La API REST de",
-        ),
-        TokensMessage::IntroApi => text.literal("lo acepta como"),
-        TokensMessage::IntroPrefix => text.literal(". Los tokens empiezan por"),
-        TokensMessage::IntroLegacy => text.literal("; los tokens de versiones anteriores empiezan por"),
-        TokensMessage::IntroTail => text.literal("y siguen funcionando."),
         TokensMessage::CopyNow => text.literal("Copia ahora tu nuevo token. No podrás volver a verlo."),
         TokensMessage::CopyToken => text.literal("Copiar token"),
         TokensMessage::Copy => text.literal("Copiar"),
@@ -78,6 +70,21 @@ entries! { Es:
         TokenText::Expired(date) => {
             text.literal("Caducó ");
             text.argument(date);
+        }
+    }
+    TokensSentence => RichWriter |text| {
+        TokensSentence::Intro => {
+            text.literal("Usa un token en lugar de tu contraseña para Git por HTTPS: introduce tu nombre de usuario ");
+            text.slot(0);
+            text.literal(" y pega el token cuando Git te pida una contraseña. La API REST de ");
+            text.slot(1);
+            text.literal(" lo acepta como ");
+            text.slot(2);
+            text.literal(". Los tokens empiezan por ");
+            text.slot(3);
+            text.literal("; los tokens de versiones anteriores empiezan por ");
+            text.slot(4);
+            text.literal(" y siguen funcionando.");
         }
     }
 }

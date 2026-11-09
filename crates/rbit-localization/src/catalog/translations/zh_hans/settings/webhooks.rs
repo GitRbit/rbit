@@ -1,6 +1,8 @@
 //! Simplified Chinese (`zh-Hans`) entries for `catalog/settings/webhooks.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::webhooks::WebhookSentence;
 use crate::catalog::settings::webhooks::{WebhookMessage, WebhookText};
 
 entries! { ZhHans:
@@ -8,10 +10,6 @@ entries! { ZhHans:
         WebhookMessage::TickToConfirm => text.literal("请勾选复选框以确认。"),
         WebhookMessage::Settings => text.literal("设置"),
         WebhookMessage::Webhooks => text.literal("Webhook"),
-        WebhookMessage::IntroSigned => text.literal("会在所订阅的事件发生时，向每个 URL 发送一个已签名的"),
-        WebhookMessage::IntroPayload => text.literal("请求（附带 JSON 负载），事件来源为"),
-        WebhookMessage::IntroOrgTail => text.literal("或其任一仓库"),
-        WebhookMessage::IntroTail => text.literal("。"),
         WebhookMessage::AddWebhook => text.literal("添加 Webhook"),
         WebhookMessage::NoWebhooks => text.literal("没有 Webhook"),
         WebhookMessage::NoWebhooksText => {
@@ -106,6 +104,19 @@ entries! { ZhHans:
             text.argument(guid);
             text.literal(" · ");
             text.argument(name);
+        }
+    }
+    WebhookSentence => RichWriter |text| {
+        WebhookSentence::Intro { organization } => {
+            text.slot(0);
+            text.literal(" 会在所订阅的事件发生时，向每个 URL 发送一个已签名的 ");
+            text.slot(1);
+            text.literal(" 请求（附带 JSON 负载），事件来源为 ");
+            text.slot(2);
+            if organization {
+                text.literal(" 或其任一仓库");
+            }
+            text.literal("。");
         }
     }
 }

@@ -1,13 +1,13 @@
 {% import "macros.html" as ui %}
 {#- Repository tabs, star and fork buttons and clone menu under the top bar; expects `header: RepoHeader` and `page: Page` fields. -#}
 {% if let Some(parent) = header.forked_from %}
-<p class="mx-auto flex max-w-[96rem] items-center gap-1.5 px-4 pt-2 text-xs text-ink-muted sm:px-6">{% call ui::icon("git-fork", "size-3 shrink-0") %}{% endcall %}<span class="truncate">{% call ui::localized(rbit_localization::RepoNavLabel::ForkedFrom.text(page.locale)) %}{% endcall %} <a class="font-medium text-ink hover:underline hover:underline-offset-4" href="{{ parent.url }}">{{ parent.full_name }}</a></span></p>
+<p class="mx-auto flex max-w-[96rem] items-center gap-1.5 px-4 pt-2 text-xs text-ink-muted sm:px-6">{% call ui::icon("git-fork", "size-3 shrink-0") %}{% endcall %}{% let forked = rbit_localization::RepoNavSentence::ForkedFrom.rich(page.locale) %}<span class="truncate"{% if forked.fallback() %} lang="en"{% endif %}>{% for part in forked.parts() %}{% if part.is_slot(0) %}<a class="font-medium text-ink hover:underline hover:underline-offset-4" href="{{ parent.url }}">{{ parent.full_name }}</a>{% else %}{{ part.text() }}{% endif %}{% endfor %}</span></p>
 {% endif %}
 {% if header.archived %}
 <div class="mx-auto max-w-[96rem] px-4 pt-2 sm:px-6"><p class="flex items-start gap-2 rounded-(--radius-ui) border border-line bg-subtle px-3 py-2 text-[13px] text-ink-muted" role="note">{% call ui::icon("archive", "mt-0.5 size-3.5 shrink-0") %}{% endcall %}<span>{% call ui::localized(rbit_localization::RepoNavLabel::ArchivedNote.text(page.locale)) %}{% endcall %}</span></p></div>
 {% endif %}
 {% if let Some(upstream) = header.mirror_url %}
-<p class="mx-auto flex max-w-[96rem] items-center gap-1.5 px-4 pt-2 text-xs text-ink-muted sm:px-6">{% call ui::icon("refresh", "size-3 shrink-0") %}{% endcall %}<span class="truncate">{% call ui::localized(rbit_localization::RepoNavLabel::MirrorOf.text(page.locale)) %}{% endcall %} <span class="font-mono text-ink" dir="ltr">{{ upstream }}</span></span></p>
+<p class="mx-auto flex max-w-[96rem] items-center gap-1.5 px-4 pt-2 text-xs text-ink-muted sm:px-6">{% call ui::icon("refresh", "size-3 shrink-0") %}{% endcall %}{% let mirror = rbit_localization::RepoNavSentence::MirrorOf.rich(page.locale) %}<span class="truncate"{% if mirror.fallback() %} lang="en"{% endif %}>{% for part in mirror.parts() %}{% if part.is_slot(0) %}<span class="font-mono text-ink" dir="ltr">{{ upstream }}</span>{% else %}{{ part.text() }}{% endif %}{% endfor %}</span></p>
 {% endif %}
 {#- `data-repo-scope` lets nav.js swap only <main> and these tabs between pages of the same repository;
     the markers are where `partial.rs` cuts them out for partial responses (the div must open exactly so).
@@ -69,7 +69,7 @@
           <input id="ssh-clone-url" class="input h-8 rounded-e-none font-mono text-xs sm:h-8" value="{{ ssh_url }}" readonly aria-label="{{ rbit_localization::RepoNavLabel::SshCloneUrl.text(page.locale) }}">
           <button type="button" class="btn btn-icon -ms-px h-8 rounded-s-none sm:h-8" data-copy="ssh-clone-url" aria-label="{{ rbit_localization::RepoNavLabel::CopySshCloneUrl.text(page.locale) }}" title="{{ rbit_localization::RepoNavLabel::Copy.text(page.locale) }}">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
         </div>
-        <p class="mt-2 text-xs text-ink-faint">{% call ui::localized(rbit_localization::RepoNavLabel::SshKeyNote.text(page.locale)) %}{% endcall %}<a class="underline hover:text-ink" href="/settings/keys">{% call ui::localized(rbit_localization::RepoNavLabel::YourSettings.text(page.locale)) %}{% endcall %}</a>{% call ui::localized(rbit_localization::RepoNavLabel::YourSettingsEnd.text(page.locale)) %}{% endcall %}</p>
+        {% let note = rbit_localization::RepoNavSentence::SshKeyNote.rich(page.locale) %}<p class="mt-2 text-xs text-ink-faint"{% if note.fallback() %} lang="en"{% endif %}>{% for part in note.parts() %}{% if part.is_slot(0) %}<a class="underline hover:text-ink" href="/settings/keys">{% call ui::localized(rbit_localization::RepoNavLabel::YourSettings.text(page.locale)) %}{% endcall %}</a>{% else %}{{ part.text() }}{% endif %}{% endfor %}</p>
         {% endif %}
         <a class="btn mt-3 w-full justify-center" href="{{ header.zip_url }}" hx-boost="false" download>{% call ui::icon("archive", "size-3.5") %}{% endcall %}{% call ui::localized(rbit_localization::RepoNavLabel::DownloadZip.text(page.locale)) %}{% endcall %}</a>
       </div>

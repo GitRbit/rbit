@@ -1,18 +1,14 @@
 //! Russian (`ru`) entries for `catalog/settings/tokens.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::tokens::TokensSentence;
 use crate::catalog::settings::tokens::{TokenText, TokensMessage};
 use crate::plural::Plural;
 
 entries! { Ru:
     TokensMessage => MessageWriter |text| {
         TokensMessage::Title => text.literal("Токены доступа"),
-        TokensMessage::IntroLead => text.literal("Используйте токен вместо пароля для Git по HTTPS: введите имя пользователя"),
-        TokensMessage::IntroUsername => text.literal("и вставьте токен, когда Git запросит пароль. REST API по адресу"),
-        TokensMessage::IntroApi => text.literal("принимает его в заголовке"),
-        TokensMessage::IntroPrefix => text.literal(". Токены начинаются с"),
-        TokensMessage::IntroLegacy => text.literal("; токены из ранних выпусков начинаются с"),
-        TokensMessage::IntroTail => text.literal("и продолжают работать."),
         TokensMessage::CopyNow => text.literal("Скопируйте новый токен сейчас. Больше вы его не увидите."),
         TokensMessage::CopyToken => text.literal("Скопировать токен"),
         TokensMessage::Copy => text.literal("Скопировать"),
@@ -69,6 +65,21 @@ entries! { Ru:
         TokenText::Expired(date) => {
             text.literal("Истёк ");
             text.argument(date);
+        }
+    }
+    TokensSentence => RichWriter |text| {
+        TokensSentence::Intro => {
+            text.literal("Используйте токен вместо пароля для Git по HTTPS: введите имя пользователя ");
+            text.slot(0);
+            text.literal(" и вставьте токен, когда Git запросит пароль. REST API по адресу ");
+            text.slot(1);
+            text.literal(" принимает его в заголовке ");
+            text.slot(2);
+            text.literal(". Токены начинаются с ");
+            text.slot(3);
+            text.literal("; токены из ранних выпусков начинаются с ");
+            text.slot(4);
+            text.literal(" и продолжают работать.");
         }
     }
 }

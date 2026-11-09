@@ -33,7 +33,6 @@ entries! { ZhHans:
         ChromeMessage::DarkMode => text.literal("深色模式"),
         ChromeMessage::UpdateAvailable => text.literal("有可用更新"),
         ChromeMessage::TimingHelp => text.literal("上一个页面或更新的服务器耗时"),
-        ChromeMessage::RenderedIn => text.literal("渲染耗时"),
         ChromeMessage::Footer => text.literal("页脚"),
         ChromeMessage::Support => text.literal("帮助"),
         ChromeMessage::Terms => text.literal("条款"),
@@ -45,6 +44,10 @@ entries! { ZhHans:
         }
     }
     ChromeSentence => RichWriter |text| {
+        ChromeSentence::RenderedIn => {
+            text.literal("渲染耗时 ");
+            text.slot(0);
+        }
         ChromeSentence::PoweredBy => {
             text.literal("由 ");
             text.slot(0);

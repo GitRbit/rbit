@@ -1,18 +1,13 @@
 //! Brazilian Portuguese (`pt-BR`) entries for `catalog/settings/keys.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::keys::KeysSentence;
 use crate::catalog::settings::keys::{KeyLabel, KeysMessage};
 
 entries! { PtBr:
     KeysMessage => MessageWriter |text| {
         KeysMessage::Title => text.literal("Chaves SSH"),
-        KeysMessage::IntroLead => {
-            text.literal(
-                "As chaves permitem clonar, buscar e fazer push por SSH sem senha. Cole o conteúdo do arquivo da sua \
-                 chave pública, geralmente",
-            );
-        }
-        KeysMessage::IntroTail => text.literal("."),
         KeysMessage::NewKey => text.literal("Nova chave SSH"),
         KeysMessage::TitleLabel => text.literal("Título"),
         KeysMessage::Optional => text.literal("opcional"),
@@ -37,6 +32,13 @@ entries! { PtBr:
         KeyLabel::Delete(title) => {
             text.literal("Excluir ");
             text.argument(title);
+        }
+    }
+    KeysSentence => RichWriter |text| {
+        KeysSentence::Intro => {
+            text.literal("As chaves permitem clonar, buscar e fazer push por SSH sem senha. Cole o conteúdo do arquivo da sua chave pública, geralmente ");
+            text.slot(0);
+            text.literal(".");
         }
     }
 }

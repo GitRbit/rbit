@@ -1,16 +1,14 @@
 //! Brazilian Portuguese (`pt-BR`) entries for `catalog/settings/access.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::access::AccessSentence;
 use crate::catalog::settings::access::{AccessMessage, AccessText};
 
 entries! { PtBr:
     AccessMessage => MessageWriter |text| {
         AccessMessage::Settings => text.literal("Configurações"),
         AccessMessage::Collaborators => text.literal("Colaboradores"),
-        AccessMessage::IntroLead => text.literal("As pessoas adicionadas aqui recebem acesso a "),
-        AccessMessage::IntroDirectly => text.literal(" diretamente"),
-        AccessMessage::IntroOrganization => text.literal(", pertençam ou não à organização"),
-        AccessMessage::IntroTail => text.literal("."),
         AccessMessage::AddCollaborator => text.literal("Adicionar um colaborador"),
         AccessMessage::Username => text.literal("Nome de usuário"),
         AccessMessage::Permission => text.literal("Permissão"),
@@ -81,6 +79,17 @@ entries! { PtBr:
         AccessText::TransferTitle(repository) => {
             text.literal("Transferir · ");
             text.argument(repository);
+        }
+    }
+    AccessSentence => RichWriter |text| {
+        AccessSentence::CollaboratorsIntro { organization } => {
+            text.literal("As pessoas adicionadas aqui recebem acesso a ");
+            text.slot(0);
+            text.literal(" diretamente");
+            if organization {
+                text.literal(", pertençam ou não à organização");
+            }
+            text.literal(".");
         }
     }
 }

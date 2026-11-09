@@ -3,6 +3,7 @@
 use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 use crate::catalog::settings::profile::GallerySentence;
+use crate::catalog::settings::profile::ProfileSentence;
 use crate::catalog::settings::profile::{
     AppearanceMessage, GalleryMessage, GalleryText, NotificationsMessage, NotificationsText, ProfileMessage,
 };
@@ -85,6 +86,18 @@ entries! { Ja:
             text.slot(0);
             text.literal(" の base16 および base24 スキーム（MIT）から生成されています。テーマにカーソルを合わせると作者が表示されます。");
             text.slot(1);
+        }
+    }
+    ProfileSentence => RichWriter |text| {
+        ProfileSentence::ProfileIntro => {
+            text.literal("ここでの内容は");
+            text.slot(0);
+            text.literal("やアクティビティの横に表示されます。すべて公開され、入力は任意です。");
+        }
+        ProfileSentence::NotificationsIntro => {
+            text.literal("すべての通知は引き続き");
+            text.slot(0);
+            text.literal("に表示されます。メールアドレスにも送信する通知を選択してください。");
         }
     }
 }

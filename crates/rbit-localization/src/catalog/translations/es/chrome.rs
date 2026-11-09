@@ -33,7 +33,6 @@ entries! { Es:
         ChromeMessage::DarkMode => text.literal("Modo oscuro"),
         ChromeMessage::UpdateAvailable => text.literal("Actualización disponible"),
         ChromeMessage::TimingHelp => text.literal("Tiempo del servidor para la última página o actualización"),
-        ChromeMessage::RenderedIn => text.literal("generado en"),
         ChromeMessage::Footer => text.literal("Pie de página"),
         ChromeMessage::Support => text.literal("Ayuda"),
         ChromeMessage::Terms => text.literal("Condiciones"),
@@ -45,6 +44,10 @@ entries! { Es:
         }
     }
     ChromeSentence => RichWriter |text| {
+        ChromeSentence::RenderedIn => {
+            text.literal("generado en ");
+            text.slot(0);
+        }
         ChromeSentence::PoweredBy => {
             text.literal("Funciona con ");
             text.slot(0);

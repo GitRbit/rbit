@@ -1,12 +1,12 @@
 //! Korean (`ko`) entries for `catalog/repo/nav.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::repo::nav::RepoNavSentence;
 use crate::catalog::repo::nav::{RepoNavLabel, RepoNavMessage};
 
 entries! { Ko:
     RepoNavLabel => MessageWriter |text| {
-        RepoNavLabel::ForkedFrom => text.literal("포크 원본:"),
-        RepoNavLabel::MirrorOf => text.literal("미러 원본:"),
         RepoNavLabel::ArchivedNote => text.literal("이 저장소는 보관되었습니다. 읽기 전용이므로 클론, 포크, 스타는 할 수 있지만 변경할 수는 없습니다."),
         RepoNavLabel::Private => text.literal("비공개"),
         RepoNavLabel::Public => text.literal("공개"),
@@ -30,9 +30,8 @@ entries! { Ko:
         RepoNavLabel::SshCloneUrl => text.literal("SSH 클론 URL"),
         RepoNavLabel::CopySshCloneUrl => text.literal("SSH 클론 URL 복사"),
         RepoNavLabel::Copy => text.literal("복사"),
-        RepoNavLabel::SshKeyNote => text.literal("SSH를 사용하려면 다음 위치에 키가 필요합니다: "),
-        RepoNavLabel::YourSettingsEnd => text.literal("."),
         RepoNavLabel::YourSettings => text.literal("내 설정"),
+        RepoNavLabel::YourSettingsEnd => text.literal("."),
         RepoNavLabel::DownloadZip => text.literal("ZIP 다운로드"),
         RepoNavLabel::Star => text.literal("스타"),
         RepoNavLabel::Starred => text.literal("스타 표시함"),
@@ -51,6 +50,21 @@ entries! { Ko:
             text.literal("스타 ");
             text.number(count.unsigned_abs());
             text.literal("개");
+        }
+    }
+    RepoNavSentence => RichWriter |text| {
+        RepoNavSentence::ForkedFrom => {
+            text.literal("포크 원본: ");
+            text.slot(0);
+        }
+        RepoNavSentence::MirrorOf => {
+            text.literal("미러 원본: ");
+            text.slot(0);
+        }
+        RepoNavSentence::SshKeyNote => {
+            text.literal("SSH를 사용하려면 다음 위치에 키가 필요합니다: ");
+            text.slot(0);
+            text.literal(".");
         }
     }
 }

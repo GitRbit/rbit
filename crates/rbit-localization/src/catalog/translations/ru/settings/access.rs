@@ -1,16 +1,14 @@
 //! Russian (`ru`) entries for `catalog/settings/access.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::access::AccessSentence;
 use crate::catalog::settings::access::{AccessMessage, AccessText};
 
 entries! { Ru:
     AccessMessage => MessageWriter |text| {
         AccessMessage::Settings => text.literal("Настройки"),
         AccessMessage::Collaborators => text.literal("Соавторы"),
-        AccessMessage::IntroLead => text.literal("Люди, добавленные здесь, получают доступ к "),
-        AccessMessage::IntroDirectly => text.literal(" напрямую"),
-        AccessMessage::IntroOrganization => text.literal(", независимо от того, состоят ли они в организации"),
-        AccessMessage::IntroTail => text.literal("."),
         AccessMessage::AddCollaborator => text.literal("Добавить соавтора"),
         AccessMessage::Username => text.literal("Имя пользователя"),
         AccessMessage::Permission => text.literal("Права"),
@@ -63,6 +61,17 @@ entries! { Ru:
         AccessText::TransferTitle(repository) => {
             text.literal("Передача · ");
             text.argument(repository);
+        }
+    }
+    AccessSentence => RichWriter |text| {
+        AccessSentence::CollaboratorsIntro { organization } => {
+            text.literal("Люди, добавленные здесь, получают доступ к ");
+            text.slot(0);
+            text.literal(" напрямую");
+            if organization {
+                text.literal(", независимо от того, состоят ли они в организации");
+            }
+            text.literal(".");
         }
     }
 }

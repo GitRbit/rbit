@@ -4,7 +4,8 @@
 <div class="mt-1 flex items-start justify-between gap-4">
   <div class="min-w-0">
     <h1 class="text-xl font-semibold tracking-tight">{% call ui::localized(WebhookMessage::Webhooks.text(page.locale)) %}{% endcall %}</h1>
-    <p class="mt-1 text-[13px] text-ink-muted">{{ page.site_name }} {% call ui::localized(WebhookMessage::IntroSigned.text(page.locale)) %}{% endcall %} <span class="font-mono text-ink" dir="ltr">POST</span> {% call ui::localized(WebhookMessage::IntroPayload.text(page.locale)) %}{% endcall %} <span class="text-ink">{{ frame.name }}</span>{% if frame.org.is_some() %} {% call ui::localized(WebhookMessage::IntroOrgTail.text(page.locale)) %}{% endcall %}{% endif %}{% call ui::localized(WebhookMessage::IntroTail.text(page.locale)) %}{% endcall %}</p>
+    {% let intro = rbit_localization::settings::webhooks::WebhookSentence::Intro { organization: frame.org.is_some() }.rich(page.locale) %}
+    <p class="mt-1 text-[13px] text-ink-muted"{% if intro.fallback() %} lang="en"{% endif %}>{% for part in intro.parts() %}{% if part.is_slot(0) %}{{ page.site_name }}{% else if part.is_slot(1) %}<span class="font-mono text-ink" dir="ltr">POST</span>{% else if part.is_slot(2) %}<span class="text-ink">{{ frame.name }}</span>{% else %}{{ part.text() }}{% endif %}{% endfor %}</p>
   </div>
   {% if can_add %}
   <a href="{{ new_url }}" class="btn btn-primary shrink-0">{% call ui::icon("plus", "size-3.5") %}{% endcall %}{% call ui::localized(WebhookMessage::AddWebhook.text(page.locale)) %}{% endcall %}</a>

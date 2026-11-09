@@ -21,8 +21,6 @@ entries! { Es:
             "Si alguna cuenta usa esa dirección, le enviamos un enlace para elegir una contraseña nueva. El enlace \
              funciona una sola vez y caduca en una hora.",
         ),
-        RecoveryMessage::NothingArrived => text.literal("¿No llegó nada? Revisa tu carpeta de spam o "),
-        RecoveryMessage::TryAgainEnd => text.literal("."),
         RecoveryMessage::TryAgain => text.literal("vuelve a intentarlo"),
         RecoveryMessage::SendResetLink => text.literal("Enviar enlace de restablecimiento"),
         RecoveryMessage::RequestNewLink => text.literal("Solicitar un enlace nuevo"),
@@ -67,6 +65,11 @@ entries! { Es:
         RecoveryMessage::SignIn => text.literal("Iniciar sesión"),
     }
     RecoverySentence => RichWriter |text| {
+        RecoverySentence::NothingArrived => {
+            text.literal("¿No llegó nada? Revisa tu carpeta de spam o ");
+            text.slot(0);
+            text.literal(".");
+        }
         RecoverySentence::RememberedSignIn => {
             text.literal("¿La recordaste? ");
             text.slot(0);

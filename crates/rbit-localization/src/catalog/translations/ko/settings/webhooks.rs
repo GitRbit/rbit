@@ -1,6 +1,8 @@
 //! Korean (`ko`) entries for `catalog/settings/webhooks.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::webhooks::WebhookSentence;
 use crate::catalog::settings::webhooks::{WebhookMessage, WebhookText};
 
 entries! { Ko:
@@ -8,10 +10,6 @@ entries! { Ko:
         WebhookMessage::TickToConfirm => text.literal("확인하려면 체크 상자를 선택하세요."),
         WebhookMessage::Settings => text.literal("설정"),
         WebhookMessage::Webhooks => text.literal("웹훅"),
-        WebhookMessage::IntroSigned => text.literal("인스턴스는 구독한 이벤트가 발생하면 각 URL로 서명된"),
-        WebhookMessage::IntroPayload => text.literal("요청(JSON 페이로드 포함)을 보냅니다. 대상:"),
-        WebhookMessage::IntroOrgTail => text.literal("및 이 조직의 모든 저장소"),
-        WebhookMessage::IntroTail => text.literal("."),
         WebhookMessage::AddWebhook => text.literal("웹훅 추가"),
         WebhookMessage::NoWebhooks => text.literal("웹훅 없음"),
         WebhookMessage::NoWebhooksText => text.literal("웹훅을 추가하여 푸시, 릴리스 등의 이벤트를 CI 서버, 채팅 봇 또는 다른 서비스에 알리세요."),
@@ -108,6 +106,19 @@ entries! { Ko:
             text.argument(guid);
             text.literal(" · ");
             text.argument(name);
+        }
+    }
+    WebhookSentence => RichWriter |text| {
+        WebhookSentence::Intro { organization } => {
+            text.slot(0);
+            text.literal(" 인스턴스는 구독한 이벤트가 발생하면 각 URL로 서명된 ");
+            text.slot(1);
+            text.literal(" 요청(JSON 페이로드 포함)을 보냅니다. 대상: ");
+            text.slot(2);
+            if organization {
+                text.literal(" 및 이 조직의 모든 저장소");
+            }
+            text.literal(".");
         }
     }
 }

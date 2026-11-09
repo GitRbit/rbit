@@ -1,16 +1,14 @@
 //! Korean (`ko`) entries for `catalog/settings/access.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::access::AccessSentence;
 use crate::catalog::settings::access::{AccessMessage, AccessText};
 
 entries! { Ko:
     AccessMessage => MessageWriter |text| {
         AccessMessage::Settings => text.literal("설정"),
         AccessMessage::Collaborators => text.literal("공동 작업자"),
-        AccessMessage::IntroLead => text.literal("여기에 추가한 사람은 "),
-        AccessMessage::IntroDirectly => text.literal(" 저장소에 직접 액세스할 수 있습니다"),
-        AccessMessage::IntroOrganization => text.literal("(조직 소속 여부와 관계없음)"),
-        AccessMessage::IntroTail => text.literal("."),
         AccessMessage::AddCollaborator => text.literal("공동 작업자 추가"),
         AccessMessage::Username => text.literal("사용자 이름"),
         AccessMessage::Permission => text.literal("권한"),
@@ -63,6 +61,17 @@ entries! { Ko:
         AccessText::TransferTitle(repository) => {
             text.literal("이전 · ");
             text.argument(repository);
+        }
+    }
+    AccessSentence => RichWriter |text| {
+        AccessSentence::CollaboratorsIntro { organization } => {
+            text.literal("여기에 추가한 사람은 ");
+            text.slot(0);
+            text.literal(" 저장소에 직접 액세스할 수 있습니다");
+            if organization {
+                text.literal("(조직 소속 여부와 관계없음)");
+            }
+            text.literal(".");
         }
     }
 }

@@ -4,8 +4,6 @@ use crate::catalog::fallback::{MessageFamily, MessageWriter};
 labels! {
     /// Fixed text of the repository header (`repo/subnav.html`, `repo/star_button.html`).
     RepoNavLabel {
-        ForkedFrom => "repo.nav.forked-from", "forked from";
-        MirrorOf => "repo.nav.mirror-of", "mirror of";
         ArchivedNote => "repo.nav.archived-note", "This repository has been archived. It is read-only: you can clone, fork and star it, but not change it.";
         Private => "repo.nav.private", "Private";
         Public => "repo.nav.public", "Public";
@@ -29,7 +27,6 @@ labels! {
         SshCloneUrl => "repo.nav.ssh-clone-url", "SSH clone URL";
         CopySshCloneUrl => "repo.nav.copy-ssh-clone-url", "Copy SSH clone URL";
         Copy => "repo.nav.copy", "Copy";
-        SshKeyNote => "repo.nav.ssh-key-note", "SSH needs a key in ";
         YourSettingsEnd => "repo.nav.your-settings-end", ".";
         YourSettings => "repo.nav.your-settings", "your settings";
         DownloadZip => "repo.nav.download-zip", "Download ZIP";
@@ -78,3 +75,53 @@ impl MessageFamily for RepoNavMessage {
 }
 
 lookup!(RepoNavMessage);
+
+/// Repository header sentences that embed markup; the template renders each slot.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RepoNavSentence {
+    /// Above the tabs of a fork. Slot 0: the parent repository link.
+    ForkedFrom,
+    /// Above the tabs of a mirror. Slot 0: the upstream URL.
+    MirrorOf,
+    /// Under the SSH clone URL. Slot 0: the settings link, worded by `RepoNavLabel::YourSettings`.
+    SshKeyNote,
+}
+
+impl RepoNavSentence {
+    /// This sentence in `locale`, or its English text marked as a fallback.
+    pub fn rich(self, locale: impl std::borrow::Borrow<crate::Locale>) -> crate::catalog::collab::rich::Rich {
+        crate::catalog::collab::rich::render(*locale.borrow(), self)
+    }
+}
+
+impl crate::catalog::collab::rich::RichFamily for RepoNavSentence {
+    fn id(self) -> &'static str {
+        match self {
+            Self::ForkedFrom => "repo.nav.forked-from",
+            Self::MirrorOf => "repo.nav.mirror-of",
+            Self::SshKeyNote => "repo.nav.ssh-key-note",
+        }
+    }
+
+    fn english(self, text: &mut crate::catalog::collab::rich::RichWriter) {
+        match self {
+            Self::ForkedFrom => {
+                text.literal("forked from ");
+                text.slot(0);
+            }
+            Self::MirrorOf => {
+                text.literal("mirror of ");
+                text.slot(0);
+            }
+            Self::SshKeyNote => {
+                text.literal("SSH needs a key in ");
+                text.slot(0);
+                text.literal(".");
+            }
+        }
+    }
+
+    fn translate(self, locale: crate::Locale, text: &mut crate::catalog::collab::rich::RichWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
+    }
+}

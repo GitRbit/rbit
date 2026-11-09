@@ -1,22 +1,14 @@
 //! German (`de`) entries for `catalog/settings/tokens.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::tokens::TokensSentence;
 use crate::catalog::settings::tokens::{TokenText, TokensMessage};
 use crate::plural::Plural;
 
 entries! { De:
     TokensMessage => MessageWriter |text| {
         TokensMessage::Title => text.literal("Zugriffstokens"),
-        TokensMessage::IntroLead => text.literal(
-            "Verwenden Sie für Git über HTTPS ein Token statt Ihres Passworts: Geben Sie Ihren Benutzernamen",
-        ),
-        TokensMessage::IntroUsername => text.literal(
-            "ein und fügen Sie das Token ein, wenn Git nach einem Passwort fragt. Die REST-API unter",
-        ),
-        TokensMessage::IntroApi => text.literal("akzeptiert es als"),
-        TokensMessage::IntroPrefix => text.literal(". Tokens beginnen mit"),
-        TokensMessage::IntroLegacy => text.literal("; Tokens aus früheren Versionen beginnen mit"),
-        TokensMessage::IntroTail => text.literal("und funktionieren weiterhin."),
         TokensMessage::CopyNow => text.literal(
             "Kopieren Sie Ihr neues Token jetzt. Sie können es später nicht mehr einsehen.",
         ),
@@ -79,6 +71,21 @@ entries! { De:
         TokenText::Expired(date) => {
             text.literal("Abgelaufen am ");
             text.argument(date);
+        }
+    }
+    TokensSentence => RichWriter |text| {
+        TokensSentence::Intro => {
+            text.literal("Verwenden Sie für Git über HTTPS ein Token statt Ihres Passworts: Geben Sie Ihren Benutzernamen ");
+            text.slot(0);
+            text.literal(" ein und fügen Sie das Token ein, wenn Git nach einem Passwort fragt. Die REST-API unter ");
+            text.slot(1);
+            text.literal(" akzeptiert es als ");
+            text.slot(2);
+            text.literal(". Tokens beginnen mit ");
+            text.slot(3);
+            text.literal("; Tokens aus früheren Versionen beginnen mit ");
+            text.slot(4);
+            text.literal(" und funktionieren weiterhin.");
         }
     }
 }

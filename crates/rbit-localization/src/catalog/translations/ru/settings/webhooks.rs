@@ -1,6 +1,8 @@
 //! Russian (`ru`) entries for `catalog/settings/webhooks.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::webhooks::WebhookSentence;
 use crate::catalog::settings::webhooks::{WebhookMessage, WebhookText};
 use crate::plural::Plural;
 
@@ -9,10 +11,6 @@ entries! { Ru:
         WebhookMessage::TickToConfirm => text.literal("Поставьте флажок для подтверждения."),
         WebhookMessage::Settings => text.literal("Настройки"),
         WebhookMessage::Webhooks => text.literal("Вебхуки"),
-        WebhookMessage::IntroSigned => text.literal("отправляет подписанный"),
-        WebhookMessage::IntroPayload => text.literal("запрос с данными JSON на каждый URL, когда происходят выбранные для него события в"),
-        WebhookMessage::IntroOrgTail => text.literal("или любом из её репозиториев"),
-        WebhookMessage::IntroTail => text.literal("."),
         WebhookMessage::AddWebhook => text.literal("Добавить вебхук"),
         WebhookMessage::NoWebhooks => text.literal("Вебхуков нет"),
         WebhookMessage::NoWebhooksText => text.literal("Добавьте вебхук, чтобы уведомлять CI-сервер, чат-бота или любой другой сервис об отправках, релизах и других событиях."),
@@ -119,6 +117,19 @@ entries! { Ru:
             text.argument(guid);
             text.literal(" · ");
             text.argument(name);
+        }
+    }
+    WebhookSentence => RichWriter |text| {
+        WebhookSentence::Intro { organization } => {
+            text.slot(0);
+            text.literal(" отправляет подписанный ");
+            text.slot(1);
+            text.literal(" запрос с данными JSON на каждый URL, когда происходят выбранные для него события в ");
+            text.slot(2);
+            if organization {
+                text.literal(" или любом из её репозиториев");
+            }
+            text.literal(".");
         }
     }
 }

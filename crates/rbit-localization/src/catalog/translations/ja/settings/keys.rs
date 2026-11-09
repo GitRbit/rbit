@@ -1,13 +1,13 @@
 //! Japanese (`ja`) entries for `catalog/settings/keys.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::keys::KeysSentence;
 use crate::catalog::settings::keys::{KeyLabel, KeysMessage};
 
 entries! { Ja:
     KeysMessage => MessageWriter |text| {
         KeysMessage::Title => text.literal("SSH キー"),
-        KeysMessage::IntroLead => text.literal("キーを登録すると、パスワードなしで SSH 経由のクローン、フェッチ、プッシュができます。公開鍵ファイル（通常は"),
-        KeysMessage::IntroTail => text.literal("）の内容を貼り付けてください。"),
         KeysMessage::NewKey => text.literal("新しい SSH キー"),
         KeysMessage::TitleLabel => text.literal("タイトル"),
         KeysMessage::Optional => text.literal("任意"),
@@ -30,6 +30,13 @@ entries! { Ja:
         KeyLabel::Delete(title) => {
             text.argument(title);
             text.literal(" を削除");
+        }
+    }
+    KeysSentence => RichWriter |text| {
+        KeysSentence::Intro => {
+            text.literal("キーを登録すると、パスワードなしで SSH 経由のクローン、フェッチ、プッシュができます。公開鍵ファイル（通常は ");
+            text.slot(0);
+            text.literal("）の内容を貼り付けてください。");
         }
     }
 }

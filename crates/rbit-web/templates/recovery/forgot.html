@@ -20,7 +20,7 @@
     <div role="status" class="text-[13px]">
       <p class="flex items-center gap-2 font-medium">{% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}{% call ui::text(page, rbit_localization::shell::recovery::RecoveryMessage::CheckEmail) %}{% endcall %}</p>
       <p class="mt-2 text-ink-muted">{% call ui::text(page, rbit_localization::shell::recovery::RecoveryMessage::LinkSent) %}{% endcall %}</p>
-      <p class="mt-2 text-ink-muted">{% call ui::text(page, rbit_localization::shell::recovery::RecoveryMessage::NothingArrived) %}{% endcall %}<a href="/password/forgot" class="link">{% call ui::text(page, rbit_localization::shell::recovery::RecoveryMessage::TryAgain) %}{% endcall %}</a>{% call ui::text(page, rbit_localization::shell::recovery::RecoveryMessage::TryAgainEnd) %}{% endcall %}</p>
+      {% let retry = rbit_localization::shell::recovery::RecoverySentence::NothingArrived.rich(page.locale) %}<p class="mt-2 text-ink-muted"{% if retry.fallback() %} lang="en"{% endif %}>{% for part in retry.parts() %}{% if part.is_slot(0) %}<a href="/password/forgot" class="link">{% call ui::text(page, rbit_localization::shell::recovery::RecoveryMessage::TryAgain) %}{% endcall %}</a>{% else %}{{ part.text() }}{% endif %}{% endfor %}</p>
     </div>
     {% else %}
     <form method="post" action="/password/forgot" novalidate>

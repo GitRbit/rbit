@@ -3,6 +3,7 @@
 use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 use crate::catalog::settings::profile::GallerySentence;
+use crate::catalog::settings::profile::ProfileSentence;
 use crate::catalog::settings::profile::{
     AppearanceMessage, GalleryMessage, GalleryText, NotificationsMessage, NotificationsText, ProfileMessage,
 };
@@ -112,6 +113,18 @@ entries! { De:
             text.literal(" erzeugt; fahren Sie mit der Maus über ein Design, um seinen Autor zu sehen. ");
             text.slot(1);
             text.literal(".");
+        }
+    }
+    ProfileSentence => RichWriter |text| {
+        ProfileSentence::ProfileIntro => {
+            text.literal("Wird auf ");
+            text.slot(0);
+            text.literal(" und neben Ihren Aktivitäten angezeigt. Alle Angaben hier sind öffentlich und freiwillig.");
+        }
+        ProfileSentence::NotificationsIntro => {
+            text.literal("Alles erscheint weiterhin in ");
+            text.slot(0);
+            text.literal(". Wählen Sie, was zusätzlich an Ihre E-Mail-Adresse gesendet wird.");
         }
     }
 }

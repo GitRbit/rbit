@@ -6,10 +6,6 @@ labels! {
         TickToConfirm = "tick-to-confirm" => "Tick the box to confirm.",
         Settings = "settings" => "Settings",
         Webhooks = "title" => "Webhooks",
-        IntroSigned = "intro-signed" => "sends a signed",
-        IntroPayload = "intro-payload" => "with a JSON payload to each URL when the events it subscribes to happen in",
-        IntroOrgTail = "intro-org-tail" => "or any of its repositories",
-        IntroTail = "intro-tail" => ".",
         AddWebhook = "add" => "Add webhook",
         NoWebhooks = "empty-title" => "No webhooks",
         NoWebhooksText = "empty-text" => "Add a webhook to notify a CI server, a chat bot or any other service about pushes, releases and more.",
@@ -70,5 +66,47 @@ messages! {
         NewTitle(name: &'a str) = "new-title" => ["New webhook · ", {name}],
         EditTitle(name: &'a str) = "edit-title" => ["Webhook · ", {name}],
         DeliveryTitle(guid: &'a str, name: &'a str) = "delivery-title" => ["Delivery ", {guid}, " · ", {name}],
+    }
+}
+
+/// Webhook page sentences that embed markup; the template renders each slot.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WebhookSentence {
+    /// Under the webhooks title; `organization` on an organization's list. Slot 0: the site name; 1: the HTTP method; 2: the repository or organization.
+    Intro { organization: bool },
+}
+
+impl WebhookSentence {
+    /// This sentence in `locale`, or its English text marked as a fallback.
+    pub fn rich(self, locale: impl std::borrow::Borrow<crate::Locale>) -> crate::catalog::collab::rich::Rich {
+        crate::catalog::collab::rich::render(*locale.borrow(), self)
+    }
+}
+
+impl crate::catalog::collab::rich::RichFamily for WebhookSentence {
+    fn id(self) -> &'static str {
+        match self {
+            Self::Intro { .. } => "webhooks.intro",
+        }
+    }
+
+    fn english(self, text: &mut crate::catalog::collab::rich::RichWriter) {
+        match self {
+            Self::Intro { organization } => {
+                text.slot(0);
+                text.literal(" sends a signed ");
+                text.slot(1);
+                text.literal(" with a JSON payload to each URL when the events it subscribes to happen in ");
+                text.slot(2);
+                if organization {
+                    text.literal(" or any of its repositories");
+                }
+                text.literal(".");
+            }
+        }
+    }
+
+    fn translate(self, locale: crate::Locale, text: &mut crate::catalog::collab::rich::RichWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
     }
 }

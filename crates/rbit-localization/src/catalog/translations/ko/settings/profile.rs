@@ -3,6 +3,7 @@
 use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 use crate::catalog::settings::profile::GallerySentence;
+use crate::catalog::settings::profile::ProfileSentence;
 use crate::catalog::settings::profile::{
     AppearanceMessage, GalleryMessage, GalleryText, NotificationsMessage, NotificationsText, ProfileMessage,
 };
@@ -87,6 +88,18 @@ entries! { Ko:
             text.literal(" 프로젝트의 base16 및 base24 스킴(MIT)에서 생성되었습니다. 테마에 마우스를 올리면 작성자를 볼 수 있습니다. ");
             text.slot(1);
             text.literal(".");
+        }
+    }
+    ProfileSentence => RichWriter |text| {
+        ProfileSentence::ProfileIntro => {
+            text.literal("이 정보는 ");
+            text.slot(0);
+            text.literal(" 및 내 활동 옆에 표시됩니다. 여기의 모든 항목은 공개되며 선택 사항입니다.");
+        }
+        ProfileSentence::NotificationsIntro => {
+            text.literal("모든 알림은 계속 ");
+            text.slot(0);
+            text.literal("에 표시됩니다. 이메일 주소로도 받을 항목을 선택하세요.");
         }
     }
 }

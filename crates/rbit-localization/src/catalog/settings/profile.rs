@@ -125,3 +125,47 @@ impl crate::catalog::collab::rich::RichFamily for GallerySentence {
         crate::catalog::translations::write(self, locale, text)
     }
 }
+
+/// Profile and notification settings sentences that embed markup; the template renders each slot.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProfileSentence {
+    /// Under the profile title. Slot 0: the profile link, worded by `ProfileMessage::IntroLink`.
+    ProfileIntro,
+    /// Under the notification settings title. Slot 0: the inbox link, worded by `NotificationsMessage::IntroLink`.
+    NotificationsIntro,
+}
+
+impl ProfileSentence {
+    /// This sentence in `locale`, or its English text marked as a fallback.
+    pub fn rich(self, locale: impl std::borrow::Borrow<crate::Locale>) -> crate::catalog::collab::rich::Rich {
+        crate::catalog::collab::rich::render(*locale.borrow(), self)
+    }
+}
+
+impl crate::catalog::collab::rich::RichFamily for ProfileSentence {
+    fn id(self) -> &'static str {
+        match self {
+            Self::ProfileIntro => "settings.profile.intro",
+            Self::NotificationsIntro => "settings.notifications.intro",
+        }
+    }
+
+    fn english(self, text: &mut crate::catalog::collab::rich::RichWriter) {
+        match self {
+            Self::ProfileIntro => {
+                text.literal("Shown on ");
+                text.slot(0);
+                text.literal(" and next to your activity. Everything here is public and optional.");
+            }
+            Self::NotificationsIntro => {
+                text.literal("Everything still appears in ");
+                text.slot(0);
+                text.literal(". Choose what is also sent to your email address.");
+            }
+        }
+    }
+
+    fn translate(self, locale: crate::Locale, text: &mut crate::catalog::collab::rich::RichWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
+    }
+}

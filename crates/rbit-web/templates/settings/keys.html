@@ -2,7 +2,8 @@
 {% import "macros.html" as ui %}
 {% block settings_content %}
 <h2 class="text-xl font-semibold tracking-tight">{% call ui::localized(KeysMessage::Title.text(page.locale)) %}{% endcall %}</h2>
-<p class="mt-1 text-[13px] text-ink-muted">{% call ui::localized(KeysMessage::IntroLead.text(page.locale)) %}{% endcall %} <span class="font-mono text-ink" dir="ltr">~/.ssh/id_ed25519.pub</span>{% call ui::localized(KeysMessage::IntroTail.text(page.locale)) %}{% endcall %}</p>
+{% let intro = rbit_localization::settings::keys::KeysSentence::Intro.rich(page.locale) %}
+<p class="mt-1 text-[13px] text-ink-muted"{% if intro.fallback() %} lang="en"{% endif %}>{% for part in intro.parts() %}{% if part.is_slot(0) %}<span class="font-mono text-ink" dir="ltr">~/.ssh/id_ed25519.pub</span>{% else %}{{ part.text() }}{% endif %}{% endfor %}</p>
 
 <form method="post" action="/settings/keys" class="box mt-6" novalidate>
   <div class="box-header">

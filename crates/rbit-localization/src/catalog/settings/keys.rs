@@ -4,8 +4,6 @@ labels! {
     /// Fixed labels of `/settings/keys`.
     KeysMessage, "settings.keys" {
         Title = "title" => "SSH keys",
-        IntroLead = "intro-lead" => "Keys let you clone, fetch and push over SSH without a password. Paste the contents of your public key file, usually",
-        IntroTail = "intro-tail" => ".",
         NewKey = "new" => "New SSH key",
         TitleLabel = "title-label" => "Title",
         Optional = "optional" => "optional",
@@ -30,5 +28,43 @@ messages! {
     /// Labels of `/settings/keys` that name a key.
     KeyLabel<'a>, "settings.keys" {
         Delete(title: &'a str) = "delete-label" => ["Delete ", {title}],
+    }
+}
+
+/// SSH key page sentences that embed markup; the template renders each slot.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum KeysSentence {
+    /// Under the title. Slot 0: the usual public key path.
+    Intro,
+}
+
+impl KeysSentence {
+    /// This sentence in `locale`, or its English text marked as a fallback.
+    pub fn rich(self, locale: impl std::borrow::Borrow<crate::Locale>) -> crate::catalog::collab::rich::Rich {
+        crate::catalog::collab::rich::render(*locale.borrow(), self)
+    }
+}
+
+impl crate::catalog::collab::rich::RichFamily for KeysSentence {
+    fn id(self) -> &'static str {
+        match self {
+            Self::Intro => "settings.keys.intro",
+        }
+    }
+
+    fn english(self, text: &mut crate::catalog::collab::rich::RichWriter) {
+        match self {
+            Self::Intro => {
+                text.literal(
+                    "Keys let you clone, fetch and push over SSH without a password. Paste the contents of your public key file, usually ",
+                );
+                text.slot(0);
+                text.literal(".");
+            }
+        }
+    }
+
+    fn translate(self, locale: crate::Locale, text: &mut crate::catalog::collab::rich::RichWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
     }
 }

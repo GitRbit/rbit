@@ -26,8 +26,6 @@ entries! { PtBr:
                  funciona uma vez e expira em uma hora.",
             );
         }
-        RecoveryMessage::NothingArrived => text.literal("Não chegou nada? Verifique sua pasta de spam ou "),
-        RecoveryMessage::TryAgainEnd => text.literal("."),
         RecoveryMessage::TryAgain => text.literal("tente novamente"),
         RecoveryMessage::SendResetLink => text.literal("Enviar link de redefinição"),
         RecoveryMessage::RequestNewLink => text.literal("Solicitar um novo link"),
@@ -78,6 +76,11 @@ entries! { PtBr:
         RecoveryMessage::SignIn => text.literal("Entrar"),
     }
     RecoverySentence => RichWriter |text| {
+        RecoverySentence::NothingArrived => {
+            text.literal("Não chegou nada? Verifique sua pasta de spam ou ");
+            text.slot(0);
+            text.literal(".");
+        }
         RecoverySentence::RememberedSignIn => {
             text.literal("Lembrou? ");
             text.slot(0);

@@ -21,10 +21,6 @@ entries! { De:
             "Falls ein Konto diese Adresse verwendet, haben wir einen Link zum Festlegen eines neuen Passworts \
              gesendet. Der Link funktioniert einmal und läuft nach einer Stunde ab.",
         ),
-        RecoveryMessage::NothingArrived => text.literal(
-            "Nichts angekommen? Prüfen Sie Ihren Spam-Ordner oder ",
-        ),
-        RecoveryMessage::TryAgainEnd => text.literal("."),
         RecoveryMessage::TryAgain => text.literal("versuchen Sie es erneut"),
         RecoveryMessage::SendResetLink => text.literal("Link zum Zurücksetzen senden"),
         RecoveryMessage::RequestNewLink => text.literal("Neuen Link anfordern"),
@@ -69,6 +65,11 @@ entries! { De:
         RecoveryMessage::SignIn => text.literal("Anmelden"),
     }
     RecoverySentence => RichWriter |text| {
+        RecoverySentence::NothingArrived => {
+            text.literal("Nichts angekommen? Prüfen Sie Ihren Spam-Ordner oder ");
+            text.slot(0);
+            text.literal(".");
+        }
         RecoverySentence::RememberedSignIn => {
             text.literal("Wieder eingefallen? ");
             text.slot(0);

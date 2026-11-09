@@ -1,16 +1,14 @@
 //! Japanese (`ja`) entries for `catalog/settings/access.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::access::AccessSentence;
 use crate::catalog::settings::access::{AccessMessage, AccessText};
 
 entries! { Ja:
     AccessMessage => MessageWriter |text| {
         AccessMessage::Settings => text.literal("設定"),
         AccessMessage::Collaborators => text.literal("コラボレーター"),
-        AccessMessage::IntroLead => text.literal("ここで追加したユーザーは "),
-        AccessMessage::IntroDirectly => text.literal(" に直接アクセスできます"),
-        AccessMessage::IntroOrganization => text.literal("。組織に所属しているかどうかは問いません"),
-        AccessMessage::IntroTail => text.literal("。"),
         AccessMessage::AddCollaborator => text.literal("コラボレーターを追加"),
         AccessMessage::Username => text.literal("ユーザー名"),
         AccessMessage::Permission => text.literal("権限"),
@@ -63,6 +61,17 @@ entries! { Ja:
         AccessText::TransferTitle(repository) => {
             text.literal("移管 · ");
             text.argument(repository);
+        }
+    }
+    AccessSentence => RichWriter |text| {
+        AccessSentence::CollaboratorsIntro { organization } => {
+            text.literal("ここで追加したユーザーは ");
+            text.slot(0);
+            text.literal(" に直接アクセスできます");
+            if organization {
+                text.literal("。組織に所属しているかどうかは問いません");
+            }
+            text.literal("。");
         }
     }
 }

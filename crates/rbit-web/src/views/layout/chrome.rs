@@ -124,8 +124,9 @@ impl PageChrome {
         self.catalog.localized(Message::TimingHelp)
     }
 
-    pub fn rendered_in(&self) -> Localized {
-        self.catalog.localized(Message::RenderedIn)
+    /// The footer's page timing; slot 0 is the duration.
+    pub fn rendered_in(&self) -> Rich {
+        ChromeSentence::RenderedIn.rich(self.catalog.locale())
     }
 
     pub fn footer(&self) -> Localized {

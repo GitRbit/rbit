@@ -1,13 +1,13 @@
 //! Russian (`ru`) entries for `catalog/settings/keys.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::keys::KeysSentence;
 use crate::catalog::settings::keys::{KeyLabel, KeysMessage};
 
 entries! { Ru:
     KeysMessage => MessageWriter |text| {
         KeysMessage::Title => text.literal("SSH-ключи"),
-        KeysMessage::IntroLead => text.literal("Ключи позволяют клонировать, получать и отправлять изменения по SSH без пароля. Вставьте содержимое файла открытого ключа — обычно это"),
-        KeysMessage::IntroTail => text.literal("."),
         KeysMessage::NewKey => text.literal("Новый SSH-ключ"),
         KeysMessage::TitleLabel => text.literal("Название"),
         KeysMessage::Optional => text.literal("необязательно"),
@@ -30,6 +30,13 @@ entries! { Ru:
         KeyLabel::Delete(title) => {
             text.literal("Удалить ");
             text.argument(title);
+        }
+    }
+    KeysSentence => RichWriter |text| {
+        KeysSentence::Intro => {
+            text.literal("Ключи позволяют клонировать, получать и отправлять изменения по SSH без пароля. Вставьте содержимое файла открытого ключа — обычно это ");
+            text.slot(0);
+            text.literal(".");
         }
     }
 }

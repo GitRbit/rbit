@@ -1,22 +1,14 @@
 //! Brazilian Portuguese (`pt-BR`) entries for `catalog/settings/tokens.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::tokens::TokensSentence;
 use crate::catalog::settings::tokens::{TokenText, TokensMessage};
 use crate::plural::Plural;
 
 entries! { PtBr:
     TokensMessage => MessageWriter |text| {
         TokensMessage::Title => text.literal("Tokens de acesso"),
-        TokensMessage::IntroLead => {
-            text.literal("Use um token em vez da sua senha para Git por HTTPS: digite seu nome de usuário");
-        }
-        TokensMessage::IntroUsername => {
-            text.literal("e cole o token quando o Git pedir uma senha. A API REST em");
-        }
-        TokensMessage::IntroApi => text.literal("o recebe como"),
-        TokensMessage::IntroPrefix => text.literal(". Os tokens começam com"),
-        TokensMessage::IntroLegacy => text.literal("; tokens de versões anteriores começam com"),
-        TokensMessage::IntroTail => text.literal("e continuam funcionando."),
         TokensMessage::CopyNow => {
             text.literal("Copie seu novo token agora. Você não poderá vê-lo novamente.");
         }
@@ -81,6 +73,21 @@ entries! { PtBr:
         TokenText::Expired(date) => {
             text.literal("Expirou em ");
             text.argument(date);
+        }
+    }
+    TokensSentence => RichWriter |text| {
+        TokensSentence::Intro => {
+            text.literal("Use um token em vez da sua senha para Git por HTTPS: digite seu nome de usuário ");
+            text.slot(0);
+            text.literal(" e cole o token quando o Git pedir uma senha. A API REST em ");
+            text.slot(1);
+            text.literal(" o recebe como ");
+            text.slot(2);
+            text.literal(". Os tokens começam com ");
+            text.slot(3);
+            text.literal("; tokens de versões anteriores começam com ");
+            text.slot(4);
+            text.literal(" e continuam funcionando.");
         }
     }
 }

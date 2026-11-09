@@ -2,7 +2,8 @@
 {% import "macros.html" as ui %}
 {% block settings_content %}
 <h2 class="text-xl font-semibold tracking-tight">{% call ui::localized(NotificationsMessage::Title.text(page.locale)) %}{% endcall %}</h2>
-<p class="mt-1 text-[13px] text-ink-muted">{% call ui::localized(NotificationsMessage::IntroLead.text(page.locale)) %}{% endcall %} <a class="link" href="/notifications">{% call ui::localized(NotificationsMessage::IntroLink.text(page.locale)) %}{% endcall %}</a>{% call ui::localized(NotificationsMessage::IntroTail.text(page.locale)) %}{% endcall %}</p>
+{% let intro = rbit_localization::settings::profile::ProfileSentence::NotificationsIntro.rich(page.locale) %}
+<p class="mt-1 text-[13px] text-ink-muted"{% if intro.fallback() %} lang="en"{% endif %}>{% for part in intro.parts() %}{% if part.is_slot(0) %}<a class="link" href="/notifications">{% call ui::localized(NotificationsMessage::IntroLink.text(page.locale)) %}{% endcall %}</a>{% else %}{{ part.text() }}{% endif %}{% endfor %}</p>
 
 {% if saved %}
 <p role="status" class="mt-6 flex items-center gap-2 rounded-(--radius-ui) border border-line px-3 py-2.5 text-[13px]">

@@ -12,8 +12,6 @@ entries! { Ru:
         RecoveryMessage::ForgotWithoutEmail => text.literal("Электронная почта на этом сервере недоступна, поэтому пароль нельзя сбросить по почте. Попросите администратора задать вам новый пароль."),
         RecoveryMessage::CheckEmail => text.literal("Проверьте почту"),
         RecoveryMessage::LinkSent => text.literal("Если этот адрес принадлежит учётной записи, мы отправили на него ссылку для выбора нового пароля. Ссылка одноразовая и действует один час."),
-        RecoveryMessage::NothingArrived => text.literal("Письмо не пришло? Проверьте папку «Спам» или "),
-        RecoveryMessage::TryAgainEnd => text.literal("."),
         RecoveryMessage::TryAgain => text.literal("попробуйте ещё раз"),
         RecoveryMessage::SendResetLink => text.literal("Отправить ссылку для сброса"),
         RecoveryMessage::RequestNewLink => text.literal("Запросить новую ссылку"),
@@ -45,6 +43,11 @@ entries! { Ru:
         RecoveryMessage::SignIn => text.literal("Войти"),
     }
     RecoverySentence => RichWriter |text| {
+        RecoverySentence::NothingArrived => {
+            text.literal("Письмо не пришло? Проверьте папку «Спам» или ");
+            text.slot(0);
+            text.literal(".");
+        }
         RecoverySentence::RememberedSignIn => {
             text.literal("Вспомнили пароль? ");
             text.slot(0);

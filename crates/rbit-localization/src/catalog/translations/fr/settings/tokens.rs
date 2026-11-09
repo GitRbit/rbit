@@ -1,22 +1,14 @@
 //! French (`fr`) entries for `catalog/settings/tokens.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::tokens::TokensSentence;
 use crate::catalog::settings::tokens::{TokenText, TokensMessage};
 use crate::plural::Plural;
 
 entries! { Fr:
     TokensMessage => MessageWriter |text| {
         TokensMessage::Title => text.literal("Jetons d’accès"),
-        TokensMessage::IntroLead => text.literal(
-            "Utilisez un jeton à la place de votre mot de passe pour Git en HTTPS\u{a0}: saisissez votre nom d’utilisateur",
-        ),
-        TokensMessage::IntroUsername => text.literal(
-            "et collez le jeton lorsque Git demande un mot de passe. L’API REST à l’adresse",
-        ),
-        TokensMessage::IntroApi => text.literal("l’accepte sous la forme"),
-        TokensMessage::IntroPrefix => text.literal(". Les jetons commencent par"),
-        TokensMessage::IntroLegacy => text.literal("\u{202f}; ceux des versions précédentes commencent par"),
-        TokensMessage::IntroTail => text.literal("et continuent de fonctionner."),
         TokensMessage::CopyNow => text.literal("Copiez votre nouveau jeton maintenant. Vous ne pourrez plus le voir."),
         TokensMessage::CopyToken => text.literal("Copier le jeton"),
         TokensMessage::Copy => text.literal("Copier"),
@@ -77,6 +69,21 @@ entries! { Fr:
         TokenText::Expired(date) => {
             text.literal("Expiré ");
             text.argument(date);
+        }
+    }
+    TokensSentence => RichWriter |text| {
+        TokensSentence::Intro => {
+            text.literal("Utilisez un jeton à la place de votre mot de passe pour Git en HTTPS\u{a0}: saisissez votre nom d’utilisateur ");
+            text.slot(0);
+            text.literal(" et collez le jeton lorsque Git demande un mot de passe. L’API REST à l’adresse ");
+            text.slot(1);
+            text.literal(" l’accepte sous la forme ");
+            text.slot(2);
+            text.literal(". Les jetons commencent par ");
+            text.slot(3);
+            text.literal("\u{202f}; ceux des versions précédentes commencent par ");
+            text.slot(4);
+            text.literal(" et continuent de fonctionner.");
         }
     }
 }

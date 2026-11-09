@@ -12,8 +12,6 @@ entries! { Ko:
         RecoveryMessage::ForgotWithoutEmail => text.literal("이 서버에서는 이메일을 사용할 수 없어 이메일로 비밀번호를 재설정할 수 없습니다. 관리자에게 새 비밀번호 설정을 요청하세요."),
         RecoveryMessage::CheckEmail => text.literal("이메일을 확인하세요"),
         RecoveryMessage::LinkSent => text.literal("해당 주소를 사용하는 계정이 있으면 새 비밀번호를 설정할 수 있는 링크를 보냈습니다. 링크는 한 번만 사용할 수 있으며 1시간 후에 만료됩니다."),
-        RecoveryMessage::NothingArrived => text.literal("메일이 오지 않았나요? 스팸 폴더를 확인하거나 "),
-        RecoveryMessage::TryAgainEnd => text.literal("."),
         RecoveryMessage::TryAgain => text.literal("다시 시도하세요"),
         RecoveryMessage::SendResetLink => text.literal("재설정 링크 보내기"),
         RecoveryMessage::RequestNewLink => text.literal("새 링크 요청"),
@@ -44,6 +42,11 @@ entries! { Ko:
         RecoveryMessage::SignIn => text.literal("로그인"),
     }
     RecoverySentence => RichWriter |text| {
+        RecoverySentence::NothingArrived => {
+            text.literal("메일이 오지 않았나요? 스팸 폴더를 확인하거나 ");
+            text.slot(0);
+            text.literal(".");
+        }
         RecoverySentence::RememberedSignIn => {
             text.literal("비밀번호가 기억나셨나요? ");
             text.slot(0);

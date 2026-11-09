@@ -1,13 +1,13 @@
 //! Russian (`ru`) entries for `catalog/repo/nav.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::repo::nav::RepoNavSentence;
 use crate::catalog::repo::nav::{RepoNavLabel, RepoNavMessage};
 use crate::plural::Plural;
 
 entries! { Ru:
     RepoNavLabel => MessageWriter |text| {
-        RepoNavLabel::ForkedFrom => text.literal("форк репозитория"),
-        RepoNavLabel::MirrorOf => text.literal("зеркало репозитория"),
         RepoNavLabel::ArchivedNote => text.literal("Этот репозиторий архивирован. Он доступен только для чтения: его можно клонировать, форкнуть и отметить звездой, но нельзя изменить."),
         RepoNavLabel::Private => text.literal("Приватный"),
         RepoNavLabel::Public => text.literal("Публичный"),
@@ -31,9 +31,8 @@ entries! { Ru:
         RepoNavLabel::SshCloneUrl => text.literal("SSH-URL для клонирования"),
         RepoNavLabel::CopySshCloneUrl => text.literal("Скопировать SSH-URL для клонирования"),
         RepoNavLabel::Copy => text.literal("Скопировать"),
-        RepoNavLabel::SshKeyNote => text.literal("Для SSH нужен ключ в "),
-        RepoNavLabel::YourSettingsEnd => text.literal("."),
         RepoNavLabel::YourSettings => text.literal("ваших настройках"),
+        RepoNavLabel::YourSettingsEnd => text.literal("."),
         RepoNavLabel::DownloadZip => text.literal("Скачать ZIP"),
         RepoNavLabel::Star => text.literal("Звезда"),
         RepoNavLabel::Starred => text.literal("Со звездой"),
@@ -60,6 +59,21 @@ entries! { Ru:
                 Plural::Few => "звезды",
                 _ => "звёзд",
             });
+        }
+    }
+    RepoNavSentence => RichWriter |text| {
+        RepoNavSentence::ForkedFrom => {
+            text.literal("форк репозитория ");
+            text.slot(0);
+        }
+        RepoNavSentence::MirrorOf => {
+            text.literal("зеркало репозитория ");
+            text.slot(0);
+        }
+        RepoNavSentence::SshKeyNote => {
+            text.literal("Для SSH нужен ключ в ");
+            text.slot(0);
+            text.literal(".");
         }
     }
 }

@@ -28,7 +28,7 @@ pub use catalog::{
 };
 pub use catalog::{
     ContributionLabel, ContributionMessage, ReleaseLabel, ReleaseMessage, RepoBrowseLabel, RepoBrowseMessage, RepoCreateLabel,
-    RepoCreateMessage, RepoEditLabel, RepoEditMessage, RepoHistoryLabel, RepoHistoryMessage, RepoNavLabel, RepoNavMessage,
+    RepoCreateMessage, RepoEditLabel, RepoEditMessage, RepoHistoryLabel, RepoHistoryMessage, RepoNavLabel, RepoNavMessage, RepoNavSentence,
     RepoSettingsLabel, RepoSettingsMessage,
 };
 pub use locale::{Direction, Locale};

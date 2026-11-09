@@ -33,7 +33,6 @@ entries! { Ru:
         ChromeMessage::DarkMode => text.literal("Тёмная тема"),
         ChromeMessage::UpdateAvailable => text.literal("Доступно обновление"),
         ChromeMessage::TimingHelp => text.literal("Время обработки последней страницы или обновления на сервере"),
-        ChromeMessage::RenderedIn => text.literal("сформировано за"),
         ChromeMessage::Footer => text.literal("Подвал"),
         ChromeMessage::Support => text.literal("Поддержка"),
         ChromeMessage::Terms => text.literal("Условия использования"),
@@ -45,6 +44,10 @@ entries! { Ru:
         }
     }
     ChromeSentence => RichWriter |text| {
+        ChromeSentence::RenderedIn => {
+            text.literal("сформировано за ");
+            text.slot(0);
+        }
         ChromeSentence::PoweredBy => {
             text.literal("Работает на ");
             text.slot(0);

@@ -5,10 +5,6 @@ labels! {
     AccessMessage, "settings.access" {
         Settings = "settings" => "Settings",
         Collaborators = "collaborators.title" => "Collaborators",
-        IntroLead = "collaborators.intro-lead" => "People added here get access to ",
-        IntroDirectly = "collaborators.intro-directly" => " directly",
-        IntroOrganization = "collaborators.intro-organization" => ", whether or not they belong to the organization",
-        IntroTail = "collaborators.intro-tail" => ".",
         AddCollaborator = "collaborators.add-title" => "Add a collaborator",
         Username = "collaborators.username" => "Username",
         Permission = "collaborators.permission" => "Permission",
@@ -48,5 +44,45 @@ messages! {
         Added(date: &'a str) = "collaborators.added" => ["Added ", {date}],
         CollaboratorsTitle(repository: &'a str) = "collaborators.page-title" => ["Collaborators · ", {repository}],
         TransferTitle(repository: &'a str) = "transfer.page-title" => ["Transfer · ", {repository}],
+    }
+}
+
+/// Repository access sentences that embed markup; the template renders each slot.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AccessSentence {
+    /// Under the collaborators title; `organization` when an organization owns the repository. Slot 0: the repository's full name.
+    CollaboratorsIntro { organization: bool },
+}
+
+impl AccessSentence {
+    /// This sentence in `locale`, or its English text marked as a fallback.
+    pub fn rich(self, locale: impl std::borrow::Borrow<crate::Locale>) -> crate::catalog::collab::rich::Rich {
+        crate::catalog::collab::rich::render(*locale.borrow(), self)
+    }
+}
+
+impl crate::catalog::collab::rich::RichFamily for AccessSentence {
+    fn id(self) -> &'static str {
+        match self {
+            Self::CollaboratorsIntro { .. } => "settings.access.collaborators.intro",
+        }
+    }
+
+    fn english(self, text: &mut crate::catalog::collab::rich::RichWriter) {
+        match self {
+            Self::CollaboratorsIntro { organization } => {
+                text.literal("People added here get access to ");
+                text.slot(0);
+                text.literal(" directly");
+                if organization {
+                    text.literal(", whether or not they belong to the organization");
+                }
+                text.literal(".");
+            }
+        }
+    }
+
+    fn translate(self, locale: crate::Locale, text: &mut crate::catalog::collab::rich::RichWriter) -> bool {
+        crate::catalog::translations::write(self, locale, text)
     }
 }

@@ -1,6 +1,8 @@
 //! Japanese (`ja`) entries for `catalog/settings/webhooks.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::webhooks::WebhookSentence;
 use crate::catalog::settings::webhooks::{WebhookMessage, WebhookText};
 
 entries! { Ja:
@@ -8,10 +10,6 @@ entries! { Ja:
         WebhookMessage::TickToConfirm => text.literal("確認のためチェックボックスをオンにしてください。"),
         WebhookMessage::Settings => text.literal("設定"),
         WebhookMessage::Webhooks => text.literal("Webhook"),
-        WebhookMessage::IntroSigned => text.literal("は、署名付きの"),
-        WebhookMessage::IntroPayload => text.literal("リクエストを JSON ペイロード付きで各 URL に送信します。送信されるのは、購読しているイベントが次で発生したときです："),
-        WebhookMessage::IntroOrgTail => text.literal("およびそのすべてのリポジトリ"),
-        WebhookMessage::IntroTail => text.literal("。"),
         WebhookMessage::AddWebhook => text.literal("Webhook を追加"),
         WebhookMessage::NoWebhooks => text.literal("Webhook はありません"),
         WebhookMessage::NoWebhooksText => text.literal("Webhook を追加すると、プッシュやリリースなどを CI サーバー、チャットボット、その他のサービスに通知できます。"),
@@ -107,6 +105,19 @@ entries! { Ja:
             text.argument(guid);
             text.literal(" · ");
             text.argument(name);
+        }
+    }
+    WebhookSentence => RichWriter |text| {
+        WebhookSentence::Intro { organization } => {
+            text.slot(0);
+            text.literal(" は、署名付きの ");
+            text.slot(1);
+            text.literal(" リクエストを JSON ペイロード付きで各 URL に送信します。送信されるのは、購読しているイベントが次で発生したときです：");
+            text.slot(2);
+            if organization {
+                text.literal(" およびそのすべてのリポジトリ");
+            }
+            text.literal("。");
         }
     }
 }

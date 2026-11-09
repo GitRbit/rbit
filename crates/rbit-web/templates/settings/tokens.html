@@ -2,7 +2,8 @@
 {% import "macros.html" as ui %}
 {% block settings_content %}
 <h2 class="text-xl font-semibold tracking-tight">{% call ui::localized(TokensMessage::Title.text(page.locale)) %}{% endcall %}</h2>
-<p class="mt-1 text-[13px] text-ink-muted">{% call ui::localized(TokensMessage::IntroLead.text(page.locale)) %}{% endcall %} <span class="font-mono text-ink" dir="ltr">{{ username }}</span> {% call ui::localized(TokensMessage::IntroUsername.text(page.locale)) %}{% endcall %} <span class="font-mono text-ink" dir="ltr">/api/v1</span> {% call ui::localized(TokensMessage::IntroApi.text(page.locale)) %}{% endcall %} <span class="font-mono text-ink" dir="ltr">Authorization: Bearer</span>{% call ui::localized(TokensMessage::IntroPrefix.text(page.locale)) %}{% endcall %} <span class="font-mono text-ink" dir="ltr">rbit_</span>{% call ui::localized(TokensMessage::IntroLegacy.text(page.locale)) %}{% endcall %} <span class="font-mono text-ink" dir="ltr">rit_</span> {% call ui::localized(TokensMessage::IntroTail.text(page.locale)) %}{% endcall %}</p>
+{% let intro = rbit_localization::settings::tokens::TokensSentence::Intro.rich(page.locale) %}
+<p class="mt-1 text-[13px] text-ink-muted"{% if intro.fallback() %} lang="en"{% endif %}>{% for part in intro.parts() %}{% if part.is_slot(0) %}<span class="font-mono text-ink" dir="ltr">{{ username }}</span>{% else if part.is_slot(1) %}<span class="font-mono text-ink" dir="ltr">/api/v1</span>{% else if part.is_slot(2) %}<span class="font-mono text-ink" dir="ltr">Authorization: Bearer</span>{% else if part.is_slot(3) %}<span class="font-mono text-ink" dir="ltr">rbit_</span>{% else if part.is_slot(4) %}<span class="font-mono text-ink" dir="ltr">rit_</span>{% else %}{{ part.text() }}{% endif %}{% endfor %}</p>
 
 {% if let Some(created) = created %}
 {#- hx-history="false" keeps this page (and the secret) out of htmx's localStorage history cache. -#}

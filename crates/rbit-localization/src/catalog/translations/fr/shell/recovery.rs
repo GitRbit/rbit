@@ -20,8 +20,6 @@ entries! { Fr:
             "Si un compte utilise cette adresse, nous lui avons envoyé un lien pour choisir un nouveau mot de passe. Le \
              lien ne fonctionne qu’une fois et expire au bout d’une heure.",
         ),
-        RecoveryMessage::NothingArrived => text.literal("Rien reçu\u{202f}? Vérifiez votre dossier de courrier indésirable, ou "),
-        RecoveryMessage::TryAgainEnd => text.literal("."),
         RecoveryMessage::TryAgain => text.literal("réessayez"),
         RecoveryMessage::SendResetLink => text.literal("Envoyer le lien de réinitialisation"),
         RecoveryMessage::RequestNewLink => text.literal("Demander un nouveau lien"),
@@ -62,6 +60,11 @@ entries! { Fr:
         RecoveryMessage::SignIn => text.literal("Se connecter"),
     }
     RecoverySentence => RichWriter |text| {
+        RecoverySentence::NothingArrived => {
+            text.literal("Rien reçu\u{202f}? Vérifiez votre dossier de courrier indésirable, ou ");
+            text.slot(0);
+            text.literal(".");
+        }
         RecoverySentence::RememberedSignIn => {
             text.literal("Il vous est revenu\u{202f}? ");
             text.slot(0);

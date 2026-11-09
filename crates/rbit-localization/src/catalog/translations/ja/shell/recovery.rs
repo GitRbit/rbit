@@ -18,10 +18,6 @@ entries! { Ja:
         RecoveryMessage::LinkSent => text.literal(
             "そのアドレスを使用しているアカウントがあれば、新しいパスワードを設定するためのリンクを送信しました。リンクは 1 回だけ使用でき、1 時間で期限切れになります。",
         ),
-        RecoveryMessage::NothingArrived => {
-            text.literal("メールが届きませんか？迷惑メールフォルダーを確認するか、");
-        }
-        RecoveryMessage::TryAgainEnd => text.literal("。"),
         RecoveryMessage::TryAgain => text.literal("もう一度お試しください"),
         RecoveryMessage::SendResetLink => text.literal("リセットリンクを送信"),
         RecoveryMessage::RequestNewLink => text.literal("新しいリンクをリクエスト"),
@@ -61,6 +57,11 @@ entries! { Ja:
         RecoveryMessage::SignIn => text.literal("サインイン"),
     }
     RecoverySentence => RichWriter |text| {
+        RecoverySentence::NothingArrived => {
+            text.literal("メールが届きませんか？迷惑メールフォルダーを確認するか、");
+            text.slot(0);
+            text.literal("。");
+        }
         RecoverySentence::RememberedSignIn => {
             text.literal("パスワードを思い出しましたか？");
             text.slot(0);

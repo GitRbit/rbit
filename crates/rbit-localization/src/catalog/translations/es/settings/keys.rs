@@ -1,16 +1,13 @@
 //! Spanish (`es`) entries for `catalog/settings/keys.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::keys::KeysSentence;
 use crate::catalog::settings::keys::{KeyLabel, KeysMessage};
 
 entries! { Es:
     KeysMessage => MessageWriter |text| {
         KeysMessage::Title => text.literal("Claves SSH"),
-        KeysMessage::IntroLead => text.literal(
-            "Las claves te permiten clonar, obtener y enviar por SSH sin contraseña. Pega el contenido de tu archivo \
-             de clave pública, normalmente",
-        ),
-        KeysMessage::IntroTail => text.literal("."),
         KeysMessage::NewKey => text.literal("Nueva clave SSH"),
         KeysMessage::TitleLabel => text.literal("Título"),
         KeysMessage::Optional => text.literal("opcional"),
@@ -35,6 +32,13 @@ entries! { Es:
         KeyLabel::Delete(title) => {
             text.literal("Eliminar ");
             text.argument(title);
+        }
+    }
+    KeysSentence => RichWriter |text| {
+        KeysSentence::Intro => {
+            text.literal("Las claves te permiten clonar, obtener y enviar por SSH sin contraseña. Pega el contenido de tu archivo de clave pública, normalmente ");
+            text.slot(0);
+            text.literal(".");
         }
     }
 }

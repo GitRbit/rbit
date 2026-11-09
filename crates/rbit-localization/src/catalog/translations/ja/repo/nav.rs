@@ -1,12 +1,12 @@
 //! Japanese (`ja`) entries for `catalog/repo/nav.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::repo::nav::RepoNavSentence;
 use crate::catalog::repo::nav::{RepoNavLabel, RepoNavMessage};
 
 entries! { Ja:
     RepoNavLabel => MessageWriter |text| {
-        RepoNavLabel::ForkedFrom => text.literal("フォーク元："),
-        RepoNavLabel::MirrorOf => text.literal("ミラー元："),
         RepoNavLabel::ArchivedNote => text.literal("このリポジトリはアーカイブされています。読み取り専用のため、クローン、フォーク、スターはできますが、変更はできません。"),
         RepoNavLabel::Private => text.literal("プライベート"),
         RepoNavLabel::Public => text.literal("パブリック"),
@@ -30,9 +30,8 @@ entries! { Ja:
         RepoNavLabel::SshCloneUrl => text.literal("SSH クローン URL"),
         RepoNavLabel::CopySshCloneUrl => text.literal("SSH クローン URL をコピー"),
         RepoNavLabel::Copy => text.literal("コピー"),
-        RepoNavLabel::SshKeyNote => text.literal("SSH を使うには、キーを登録してください："),
-        RepoNavLabel::YourSettingsEnd => text.literal("。"),
         RepoNavLabel::YourSettings => text.literal("設定"),
+        RepoNavLabel::YourSettingsEnd => text.literal("。"),
         RepoNavLabel::DownloadZip => text.literal("ZIP をダウンロード"),
         RepoNavLabel::Star => text.literal("スター"),
         RepoNavLabel::Starred => text.literal("スター済み"),
@@ -51,6 +50,21 @@ entries! { Ja:
             text.literal("スター ");
             text.number(count.unsigned_abs());
             text.literal(" 件");
+        }
+    }
+    RepoNavSentence => RichWriter |text| {
+        RepoNavSentence::ForkedFrom => {
+            text.literal("フォーク元：");
+            text.slot(0);
+        }
+        RepoNavSentence::MirrorOf => {
+            text.literal("ミラー元：");
+            text.slot(0);
+        }
+        RepoNavSentence::SshKeyNote => {
+            text.literal("SSH を使うには、キーを登録してください：");
+            text.slot(0);
+            text.literal("。");
         }
     }
 }

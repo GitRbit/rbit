@@ -1,13 +1,13 @@
 //! Korean (`ko`) entries for `catalog/settings/keys.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::keys::KeysSentence;
 use crate::catalog::settings::keys::{KeyLabel, KeysMessage};
 
 entries! { Ko:
     KeysMessage => MessageWriter |text| {
         KeysMessage::Title => text.literal("SSH 키"),
-        KeysMessage::IntroLead => text.literal("키를 사용하면 비밀번호 없이 SSH로 클론, 페치, 푸시할 수 있습니다. 공개 키 파일의 내용을 붙여 넣으세요. 공개 키 파일은 보통"),
-        KeysMessage::IntroTail => text.literal("입니다."),
         KeysMessage::NewKey => text.literal("새 SSH 키"),
         KeysMessage::TitleLabel => text.literal("제목"),
         KeysMessage::Optional => text.literal("선택 사항"),
@@ -30,6 +30,13 @@ entries! { Ko:
         KeyLabel::Delete(title) => {
             text.argument(title);
             text.literal(" 삭제");
+        }
+    }
+    KeysSentence => RichWriter |text| {
+        KeysSentence::Intro => {
+            text.literal("키를 사용하면 비밀번호 없이 SSH로 클론, 페치, 푸시할 수 있습니다. 공개 키 파일의 내용을 붙여 넣으세요. 공개 키 파일은 보통 ");
+            text.slot(0);
+            text.literal("입니다.");
         }
     }
 }

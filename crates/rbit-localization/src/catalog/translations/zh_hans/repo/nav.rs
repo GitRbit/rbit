@@ -1,12 +1,12 @@
 //! Simplified Chinese (`zh-Hans`) entries for `catalog/repo/nav.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::repo::nav::RepoNavSentence;
 use crate::catalog::repo::nav::{RepoNavLabel, RepoNavMessage};
 
 entries! { ZhHans:
     RepoNavLabel => MessageWriter |text| {
-        RepoNavLabel::ForkedFrom => text.literal("复刻自"),
-        RepoNavLabel::MirrorOf => text.literal("镜像自"),
         RepoNavLabel::ArchivedNote => {
             text.literal("此仓库已归档，处于只读状态：你可以克隆、复刻它或为它加星标，但不能修改它。");
         }
@@ -32,9 +32,8 @@ entries! { ZhHans:
         RepoNavLabel::SshCloneUrl => text.literal("SSH 克隆 URL"),
         RepoNavLabel::CopySshCloneUrl => text.literal("复制 SSH 克隆 URL"),
         RepoNavLabel::Copy => text.literal("复制"),
-        RepoNavLabel::SshKeyNote => text.literal("使用 SSH 需要先添加密钥，请前往"),
-        RepoNavLabel::YourSettingsEnd => text.literal("。"),
         RepoNavLabel::YourSettings => text.literal("你的设置"),
+        RepoNavLabel::YourSettingsEnd => text.literal("。"),
         RepoNavLabel::DownloadZip => text.literal("下载 ZIP"),
         RepoNavLabel::Star => text.literal("加星标"),
         RepoNavLabel::Starred => text.literal("已加星标"),
@@ -51,6 +50,21 @@ entries! { ZhHans:
         RepoNavMessage::StargazerCount { count } => {
             text.number(count.unsigned_abs());
             text.literal(" 位星标用户");
+        }
+    }
+    RepoNavSentence => RichWriter |text| {
+        RepoNavSentence::ForkedFrom => {
+            text.literal("复刻自 ");
+            text.slot(0);
+        }
+        RepoNavSentence::MirrorOf => {
+            text.literal("镜像自 ");
+            text.slot(0);
+        }
+        RepoNavSentence::SshKeyNote => {
+            text.literal("使用 SSH 需要先添加密钥，请前往");
+            text.slot(0);
+            text.literal("。");
         }
     }
 }

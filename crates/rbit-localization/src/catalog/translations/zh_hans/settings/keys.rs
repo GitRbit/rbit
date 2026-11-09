@@ -1,15 +1,13 @@
 //! Simplified Chinese (`zh-Hans`) entries for `catalog/settings/keys.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::keys::KeysSentence;
 use crate::catalog::settings::keys::{KeyLabel, KeysMessage};
 
 entries! { ZhHans:
     KeysMessage => MessageWriter |text| {
         KeysMessage::Title => text.literal("SSH 密钥"),
-        KeysMessage::IntroLead => {
-            text.literal("有了密钥，你无需密码即可通过 SSH 克隆、获取和推送。请粘贴公钥文件的内容，该文件通常是");
-        }
-        KeysMessage::IntroTail => text.literal("。"),
         KeysMessage::NewKey => text.literal("新建 SSH 密钥"),
         KeysMessage::TitleLabel => text.literal("标题"),
         KeysMessage::Optional => text.literal("可选"),
@@ -32,6 +30,13 @@ entries! { ZhHans:
         KeyLabel::Delete(title) => {
             text.literal("删除 ");
             text.argument(title);
+        }
+    }
+    KeysSentence => RichWriter |text| {
+        KeysSentence::Intro => {
+            text.literal("有了密钥，你无需密码即可通过 SSH 克隆、获取和推送。请粘贴公钥文件的内容，该文件通常是 ");
+            text.slot(0);
+            text.literal("。");
         }
     }
 }

@@ -3,6 +3,7 @@
 use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 use crate::catalog::settings::profile::GallerySentence;
+use crate::catalog::settings::profile::ProfileSentence;
 use crate::catalog::settings::profile::{
     AppearanceMessage, GalleryMessage, GalleryText, NotificationsMessage, NotificationsText, ProfileMessage,
 };
@@ -111,6 +112,18 @@ entries! { Es:
             text.literal(" (MIT); pasa el puntero por un tema para ver su autor. ");
             text.slot(1);
             text.literal(".");
+        }
+    }
+    ProfileSentence => RichWriter |text| {
+        ProfileSentence::ProfileIntro => {
+            text.literal("Se muestra en ");
+            text.slot(0);
+            text.literal(" y junto a tu actividad. Todo lo que hay aquí es público y opcional.");
+        }
+        ProfileSentence::NotificationsIntro => {
+            text.literal("Todo sigue apareciendo en ");
+            text.slot(0);
+            text.literal(". Elige qué se envía también a tu dirección de correo electrónico.");
         }
     }
 }

@@ -3,6 +3,7 @@
 use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 use crate::catalog::settings::profile::GallerySentence;
+use crate::catalog::settings::profile::ProfileSentence;
 use crate::catalog::settings::profile::{
     AppearanceMessage, GalleryMessage, GalleryText, NotificationsMessage, NotificationsText, ProfileMessage,
 };
@@ -92,6 +93,18 @@ entries! { Ru:
             text.literal(" (MIT); наведите указатель на тему, чтобы увидеть её автора. ");
             text.slot(1);
             text.literal(".");
+        }
+    }
+    ProfileSentence => RichWriter |text| {
+        ProfileSentence::ProfileIntro => {
+            text.literal("Показывается на ");
+            text.slot(0);
+            text.literal(" и рядом с вашей активностью. Всё здесь публично и необязательно.");
+        }
+        ProfileSentence::NotificationsIntro => {
+            text.literal("Всё по-прежнему появляется ");
+            text.slot(0);
+            text.literal(". Выберите, что также отправлять на ваш адрес электронной почты.");
         }
     }
 }

@@ -1,17 +1,13 @@
 //! Simplified Chinese (`zh-Hans`) entries for `catalog/settings/tokens.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::tokens::TokensSentence;
 use crate::catalog::settings::tokens::{TokenText, TokensMessage};
 
 entries! { ZhHans:
     TokensMessage => MessageWriter |text| {
         TokensMessage::Title => text.literal("访问令牌"),
-        TokensMessage::IntroLead => text.literal("通过 HTTPS 使用 Git 时，可用令牌代替密码：输入你的用户名"),
-        TokensMessage::IntroUsername => text.literal("，并在 Git 要求输入密码时粘贴令牌。位于"),
-        TokensMessage::IntroApi => text.literal("的 REST API 以如下形式接受令牌："),
-        TokensMessage::IntroPrefix => text.literal("。令牌以"),
-        TokensMessage::IntroLegacy => text.literal("开头；早期版本的令牌以"),
-        TokensMessage::IntroTail => text.literal("开头，并且仍然有效。"),
         TokensMessage::CopyNow => text.literal("请立即复制你的新令牌。之后将无法再次查看。"),
         TokensMessage::CopyToken => text.literal("复制令牌"),
         TokensMessage::Copy => text.literal("复制"),
@@ -66,6 +62,21 @@ entries! { ZhHans:
             text.literal("已于 ");
             text.argument(date);
             text.literal(" 过期");
+        }
+    }
+    TokensSentence => RichWriter |text| {
+        TokensSentence::Intro => {
+            text.literal("通过 HTTPS 使用 Git 时，可用令牌代替密码：输入你的用户名 ");
+            text.slot(0);
+            text.literal("，并在 Git 要求输入密码时粘贴令牌。位于 ");
+            text.slot(1);
+            text.literal(" 的 REST API 以如下形式接受令牌：");
+            text.slot(2);
+            text.literal("。令牌以 ");
+            text.slot(3);
+            text.literal(" 开头；早期版本的令牌以 ");
+            text.slot(4);
+            text.literal(" 开头，并且仍然有效。");
         }
     }
 }

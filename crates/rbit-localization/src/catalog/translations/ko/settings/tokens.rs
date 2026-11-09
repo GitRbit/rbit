@@ -1,17 +1,13 @@
 //! Korean (`ko`) entries for `catalog/settings/tokens.rs`.
 
+use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
+use crate::catalog::settings::tokens::TokensSentence;
 use crate::catalog::settings::tokens::{TokenText, TokensMessage};
 
 entries! { Ko:
     TokensMessage => MessageWriter |text| {
         TokensMessage::Title => text.literal("액세스 토큰"),
-        TokensMessage::IntroLead => text.literal("HTTPS로 Git을 사용할 때 비밀번호 대신 토큰을 사용하세요. 사용자 이름에는"),
-        TokensMessage::IntroUsername => text.literal("값을 입력하고, Git이 비밀번호를 물으면 토큰을 붙여 넣으세요."),
-        TokensMessage::IntroApi => text.literal("경로의 REST API는 토큰을 다음 형식으로 받습니다:"),
-        TokensMessage::IntroPrefix => text.literal(". 토큰은"),
-        TokensMessage::IntroLegacy => text.literal("(으)로 시작합니다. 이전 릴리스에서 만든 토큰은"),
-        TokensMessage::IntroTail => text.literal("접두사를 사용하며 계속 작동합니다."),
         TokensMessage::CopyNow => text.literal("지금 새 토큰을 복사하세요. 다시 볼 수 없습니다."),
         TokensMessage::CopyToken => text.literal("토큰 복사"),
         TokensMessage::Copy => text.literal("복사"),
@@ -63,6 +59,21 @@ entries! { Ko:
         TokenText::Expired(date) => {
             text.literal("만료됨: ");
             text.argument(date);
+        }
+    }
+    TokensSentence => RichWriter |text| {
+        TokensSentence::Intro => {
+            text.literal("HTTPS로 Git을 사용할 때 비밀번호 대신 토큰을 사용하세요. 사용자 이름에는 ");
+            text.slot(0);
+            text.literal(" 값을 입력하고, Git이 비밀번호를 물으면 토큰을 붙여 넣으세요. ");
+            text.slot(1);
+            text.literal(" 경로의 REST API는 토큰을 다음 형식으로 받습니다: ");
+            text.slot(2);
+            text.literal(". 토큰은 ");
+            text.slot(3);
+            text.literal("(으)로 시작합니다. 이전 릴리스에서 만든 토큰은 ");
+            text.slot(4);
+            text.literal(" 접두사를 사용하며 계속 작동합니다.");
         }
     }
 }

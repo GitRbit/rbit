@@ -3,6 +3,7 @@
 use crate::catalog::collab::rich::RichWriter;
 use crate::catalog::fallback::MessageWriter;
 use crate::catalog::settings::profile::GallerySentence;
+use crate::catalog::settings::profile::ProfileSentence;
 use crate::catalog::settings::profile::{
     AppearanceMessage, GalleryMessage, GalleryText, NotificationsMessage, NotificationsText, ProfileMessage,
 };
@@ -111,6 +112,18 @@ entries! { Fr:
             text.literal(" base16 et base24 (MIT)\u{202f}; survolez un thème pour voir son auteur. ");
             text.slot(1);
             text.literal(".");
+        }
+    }
+    ProfileSentence => RichWriter |text| {
+        ProfileSentence::ProfileIntro => {
+            text.literal("Affiché sur ");
+            text.slot(0);
+            text.literal(" et à côté de votre activité. Tout ce qui figure ici est public et facultatif.");
+        }
+        ProfileSentence::NotificationsIntro => {
+            text.literal("Tout continue d’apparaître dans ");
+            text.slot(0);
+            text.literal(". Choisissez ce qui est aussi envoyé à votre adresse e-mail.");
         }
     }
 }
