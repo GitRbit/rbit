@@ -38,6 +38,7 @@ mod repository_creation;
 mod repository_forks;
 pub use repository_forks::{ForkCreationStore, ForkReadStore};
 mod repository_aliases;
+mod repository_contributions;
 mod repository_discovery;
 mod repository_stars;
 mod repository_transfer;

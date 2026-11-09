@@ -1,11 +1,15 @@
-//! Visibility-filtered contribution counts derived from default-branch Git history.
+//! Contribution calendars: default-branch history scans, caches and worker admission
+//! around [`rbit_repositories::contributions`], which owns repository selection, the
+//! private-email rule and day tallying.
 use std::{
-    collections::{BTreeMap, HashSet, VecDeque},
+    collections::VecDeque,
     hash::{Hash, Hasher},
     sync::Arc,
 };
 
 use rbit_core::{Account, User};
+pub use rbit_repositories::contributions::Contributions;
+use rbit_repositories::contributions::{self as rules, AccountTally};
 
 use crate::{RepoContext, ServiceContext, ServiceError};
 
@@ -13,14 +17,6 @@ type Records = rbit_storage::kv::CachedContributions;
 type DailyRecords = VecDeque<(String, Arc<Contributions>)>;
 
 type HotRecords = VecDeque<((String, String), Arc<Records>)>;
-
-#[derive(Debug, Default, Clone)]
-pub struct Contributions {
-    /// Unix day (UTC) to authored commit count.
-    pub days: BTreeMap<i64, usize>,
-    pub repositories: usize,
-    pub partial: bool,
-}
 
 #[derive(Debug, Clone)]
 pub struct ContributionService {
@@ -112,30 +108,17 @@ impl ContributionService {
     }
 
     pub async fn account(&self, viewer: Option<&User>, account: &Account, start: i64, end: i64) -> Result<Contributions, ServiceError> {
-        let store = self.ctx.database.repositories();
-        let repos = if account.is_organization() {
-            store.list_by_owner(account.id, viewer.map(User::id), viewer.is_some_and(|u| u.is_admin)).await?
-        } else {
-            store.contribution_repositories(viewer.map(User::id), viewer.is_some_and(|u| u.is_admin)).await?
-        };
-        // A user's commits are those authored with their noreply address, which is public.
-        // Their account email is private: matching it for anyone else would let a viewer
-        // confirm a guessed address by committing with it to a repository they can read,
-        // so it counts only when the user (or a site administrator) is looking.
-        let emails = if account.is_organization() {
-            None
-        } else {
+        let repos = rules::repositories(&self.ctx.database.repositories(), viewer, account).await?;
+        let emails = if rules::filters_authors(account) {
             let user = self.ctx.database.accounts().find_user(account.id).await?.ok_or(ServiceError::NotFound)?;
             let config = &self.ctx.config;
             let domain = rbit_core::pull::noreply_domain(&config.pulls.noreply_domain, &config.server.public_url);
-            let mut emails = vec![rbit_core::pull::noreply_email(user.name().as_str(), &domain)];
-            if viewer.is_some_and(|viewer| viewer.id() == account.id || viewer.is_admin) {
-                emails.push(user.email.to_string());
-            }
-            Some(emails)
+            let noreply = rbit_core::pull::noreply_email(user.name().as_str(), &domain);
+            Some(rules::author_emails(viewer, account.id, noreply, &user.email.to_string()))
+        } else {
+            None
         };
-        let mut result = Contributions::default();
-        let mut seen = HashSet::new();
+        let mut tally = AccountTally::new(emails, start, end);
         for repo in repos {
             let reader = self.ctx.repositories.reader(repo.repo.owner_id, repo.repo.id);
             // Fresh repositories and repositories without their configured default branch
@@ -150,23 +133,9 @@ impl ContributionService {
                 }
             };
             let history = self.history(&reader, tip).await?;
-            result.partial |= history.1;
-            let mut contributed = false;
-            for (id, seconds, author) in &history.0 {
-                if !(start..end).contains(seconds) {
-                    continue;
-                }
-                if emails.as_ref().is_some_and(|emails| !emails.iter().any(|email| author.eq_ignore_ascii_case(email))) {
-                    continue;
-                }
-                contributed = true;
-                if seen.insert(id.clone()) {
-                    *result.days.entry(seconds.div_euclid(86400)).or_default() += 1;
-                }
-            }
-            result.repositories += usize::from(contributed);
+            tally.add(&history.0, history.1);
         }
-        Ok(result)
+        Ok(tally.finish())
     }
 
     pub async fn repository(&self, repo: &RepoContext, start: i64, end: i64) -> Result<Contributions, ServiceError> {
@@ -179,9 +148,9 @@ impl ContributionService {
             Err(error) => return Err(error.into()),
         };
         // Public callers can request partial days; keep their exact second bounds.
-        if start.rem_euclid(86400) != 0 || end.rem_euclid(86400) != 0 {
+        if !rules::whole_days(start, end) {
             let history = self.history(&repo.reader, tip).await?;
-            return Ok(count_days(&history, start, end));
+            return Ok(rules::count_days(&history.0, history.1, start, end));
         }
         let cached = {
             let mut cache = self.daily.lock().await;
@@ -196,7 +165,9 @@ impl ContributionService {
         } else {
             let history = self.history(&repo.reader, tip.clone()).await?;
             let daily = Arc::new(
-                tokio::task::spawn_blocking(move || count_days(&history, i64::MIN, i64::MAX)).await.map_err(ServiceError::internal)?,
+                tokio::task::spawn_blocking(move || rules::count_days(&history.0, history.1, i64::MIN, i64::MAX))
+                    .await
+                    .map_err(ServiceError::internal)?,
             );
             let mut cache = self.daily.lock().await;
             cache.retain(|(id, _)| id != &tip);
@@ -210,24 +181,8 @@ impl ContributionService {
             }
             daily
         };
-        let days: BTreeMap<_, _> = if start < end {
-            daily.days.range(start.div_euclid(86400)..end.div_euclid(86400)).map(|(&day, &count)| (day, count)).collect()
-        } else {
-            BTreeMap::new()
-        };
-        Ok(Contributions { repositories: usize::from(!days.is_empty()), days, partial: daily.partial })
+        Ok(rules::day_window(&daily, start, end))
     }
-}
-
-fn count_days(history: &Records, start: i64, end: i64) -> Contributions {
-    let mut result = Contributions { partial: history.1, ..Contributions::default() };
-    for (_, seconds, _) in &history.0 {
-        if (start..end).contains(seconds) {
-            *result.days.entry(seconds.div_euclid(86400)).or_default() += 1;
-        }
-    }
-    result.repositories = usize::from(!result.days.is_empty());
-    result
 }
 
 #[cfg(test)]
@@ -236,16 +191,6 @@ mod tests {
     use rbit_core::Config;
     use rbit_git::{RepositoryReader, RepositoryStorage};
     use rbit_storage::{Database, KvStore};
-
-    #[test]
-    fn daily_counts_keep_second_bounds_negative_dates_and_partial_status() {
-        let records = (vec![("a".into(), -1, "a@b".into()), ("b".into(), 0, "a@b".into()), ("c".into(), 86400, "a@b".into())], true);
-        let all = count_days(&records, i64::MIN, i64::MAX);
-        assert_eq!(all.days, BTreeMap::from([(-1, 1), (0, 1), (1, 1)]));
-        assert!(all.partial);
-        assert_eq!(count_days(&records, -1, 86400).days, BTreeMap::from([(-1, 1), (0, 1)]));
-        assert_eq!(count_days(&records, 1, 86400).repositories, 0);
-    }
 
     async fn calendar_context(ctx: &ServiceContext, path: std::path::PathBuf, tip: &str) -> RepoContext {
         let owner = ctx
