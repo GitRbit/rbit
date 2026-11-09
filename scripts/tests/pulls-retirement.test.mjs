@@ -30,6 +30,25 @@ test("opening policy text and the insert outcome stay with the application and a
   assert.deepEqual(check([["crates/rbit-storage/src/sqlite/pulls.rs", insert]]), []);
 });
 
+test("pull models and merge gating stay in collaboration", () => {
+  for (const source of [
+    "pub struct PullRequest { pub issue_id: IssueId }\n",
+    "pub fn evaluate(facts: &MergeFacts<'_>, rules: &MergeRules) -> MergeEvaluation { todo!() }\n",
+    "pub fn tally(reviews: &[Review]) -> ReviewTally { todo!() }\n",
+  ]) {
+    assert.match(check([["crates/rbit-core/src/pull.rs", source]])[0], /belong to rbit_collaboration::pulls/u, source);
+    assert.deepEqual(check([["crates/rbit-collaboration/src/pulls/merge.rs", source]]), [], source);
+  }
+  for (const source of [
+    "let stale = base_tip.is_none() || ctx.pull.mergeable_base_sha != base_tip;\n",
+    "if !(input.bypass && evaluation.can_merge_with_bypass()) {}\n",
+    "let title = if input.title.trim().is_empty() { title } else { input.title.trim() };\n",
+  ]) {
+    assert.match(check([["crates/rbit-services/src/pulls/merging.rs", source]])[0], /merge gating returned/u, source);
+  }
+  assert.deepEqual(check([["crates/rbit-core/src/pull.rs", "pub use rbit_collaboration::pulls::{PullRequest, evaluate};\n"]]), []);
+});
+
 test("the current tree has no retired pull creation path", () => {
   const { files } = authoredSources(fileURLToPath(root));
   assert.ok(files.length > 100);
