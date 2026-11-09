@@ -15,6 +15,7 @@
 @import "./repo-documents.css";
 @import "./monitoring.css";
 @import "./direction.css";
+@import "./scripts.css";
 @plugin "@tailwindcss/typography";
 
 @source "../templates";

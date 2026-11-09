@@ -1,0 +1,56 @@
+/* ---------------------------------------------------------------- Writing systems */
+
+/* The interface languages written in Han, Kana and Hangul get a system font stack of their
+   own, and their line-breaking rules. Nothing is downloaded: every face named here ships
+   with an operating system (macOS/iOS, Windows, Android/ChromeOS, common Linux desktops),
+   and the generic families close each stack. The Latin faces stay first so names, numbers
+   and code-like text keep the house look; the CJK faces cover what they lack. Naming one
+   regional face per language matters because Unicode unifies Han characters: the same
+   code point is drawn differently in Chinese and Japanese, and a browser left to its own
+   fallback often picks the wrong region.
+
+   Cyrillic needs nothing extra: the existing stack (Geist, Inter, Segoe UI, Roboto,
+   system-ui) covers it on every platform.
+
+   The stacks override the `--font-sans` token where the language is declared, which is
+   the document (`<html lang>`): the body resolves `font-sans` there. English fallback
+   text inside such a page keeps the stack, whose Latin faces come first anyway. */
+@layer base {
+  :lang(zh-Hans) {
+    --font-sans: "Geist", "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei",
+      "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC", ui-sans-serif, system-ui, sans-serif;
+  }
+
+  :lang(ja) {
+    --font-sans: "Geist", "Inter", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo UI", "Meiryo",
+      "Noto Sans CJK JP", "Noto Sans JP", "Source Han Sans JP", ui-sans-serif, system-ui, sans-serif;
+  }
+
+  :lang(ko) {
+    --font-sans: "Geist", "Inter", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans CJK KR", "Noto Sans KR",
+      "Source Han Sans KR", ui-sans-serif, system-ui, sans-serif;
+  }
+
+  /* Chinese and Japanese break between any two characters, so the strict rule keeps
+     closing punctuation, small kana and iteration marks off the start of a line. */
+  :lang(zh-Hans),
+  :lang(ja) {
+    line-break: strict;
+  }
+
+  /* Korean separates words with spaces: break there, not inside a word as CJK text
+     would by default. A long unbroken run (a URL) may still wrap anywhere. */
+  :lang(ko) {
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
+
+  /* Han and Kana have no italic and synthesized slant is hard to read: emphasis in these
+     languages is shown by weight instead. */
+  :lang(zh-Hans) em,
+  :lang(ja) em,
+  :lang(ko) em {
+    font-style: normal;
+    font-weight: 600;
+  }
+}
