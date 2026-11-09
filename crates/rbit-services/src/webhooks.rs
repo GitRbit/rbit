@@ -59,10 +59,8 @@ use crate::{
     events::Published,
 };
 
-/// Hooks per repository or organisation.
-pub const MAX_HOOKS_PER_OWNER: i64 = 20;
-/// Longest accepted secret.
-const MAX_SECRET_LEN: usize = 256;
+pub use rbit_notifications::webhooks::policy::MAX_HOOKS_PER_OWNER;
+use rbit_notifications::webhooks::policy::{NextStep, check_secret, next_step, retention_cutoff};
 /// Most commits read from Git for one ref update (`total_commits` counts up to this).
 const MAX_COUNTED_COMMITS: usize = 2_048;
 /// How long [`WebhookService::shutdown`] waits for deliveries in flight.
@@ -71,7 +69,6 @@ const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
 /// How often old deliveries are pruned.
 const PRUNE_INTERVAL: Duration = Duration::from_hours(24);
-const SECONDS_PER_DAY: i64 = 24 * 60 * 60;
 
 /// A delivery body built outside this module (wave B's `issues::hooks::payload` and
 /// `pulls::hooks::payload`), queued by [`WebhookService::handle_event`] for every hook of
@@ -733,20 +730,13 @@ impl WebhookService {
             attempt = delivery::attempt(self.inner.client.as_ref(), &delivery, allow_private, self.inner.ctx.config.updates.report_version) => attempt,
         };
 
-        let failures = delivery.attempts + 1;
-        let max_attempts = self.inner.ctx.config.webhooks.max_attempts.max(1);
-        let outcome = if attempt.succeeded {
-            AttemptOutcome::Succeeded
-        } else if attempt.permanent || failures >= max_attempts {
-            AttemptOutcome::Failed
-        } else {
-            let delay = delivery::retry_delay(failures, delivery::random_unit());
-            AttemptOutcome::Retry(Timestamp(Timestamp::now().seconds() + i64::try_from(delay.as_secs()).unwrap_or(i64::MAX)))
-        };
-        let label = match outcome {
-            AttemptOutcome::Succeeded => "succeeded",
-            AttemptOutcome::Retry(_) => "retrying",
-            AttemptOutcome::Failed => "failed",
+        let max_attempts = self.inner.ctx.config.webhooks.max_attempts;
+        let step = next_step(attempt.succeeded, attempt.permanent, delivery.attempts, max_attempts, Timestamp::now, delivery::random_unit);
+        let label = step.label();
+        let outcome = match step {
+            NextStep::Succeeded => AttemptOutcome::Succeeded,
+            NextStep::Retry(at) => AttemptOutcome::Retry(at),
+            NextStep::Failed => AttemptOutcome::Failed,
         };
         metrics::counter!("rbit_webhook_attempts_total", "outcome" => label).increment(1);
         tracing::debug!(
@@ -778,8 +768,7 @@ impl WebhookService {
 
     /// Deletes finished deliveries older than `delivery_retention_days`.
     pub async fn prune(&self) -> Result<u64, ServiceError> {
-        let days = i64::from(self.inner.ctx.config.webhooks.delivery_retention_days);
-        let cutoff = Timestamp(Timestamp::now().seconds() - days * SECONDS_PER_DAY);
+        let cutoff = retention_cutoff(Timestamp::now(), self.inner.ctx.config.webhooks.delivery_retention_days);
         Ok(self.inner.store.prune(cutoff).await?)
     }
 }
@@ -834,21 +823,13 @@ fn parse_events(names: &[String], actions_enabled: bool) -> Result<Vec<WebhookEv
 
 /// `None` for an empty secret.
 fn validate_secret(secret: &str) -> Result<Option<String>, ServiceError> {
-    if secret.is_empty() {
-        return Ok(None);
-    }
-    if secret.len() > MAX_SECRET_LEN {
-        return Err(ServiceError::Invalid(format!("secret must be at most {MAX_SECRET_LEN} bytes")));
-    }
-    if secret.chars().any(char::is_control) {
-        return Err(ServiceError::Invalid("secret must not contain control characters".to_owned()));
-    }
-    Ok(Some(secret.to_owned()))
+    check_secret(secret).map_err(|error| ServiceError::Invalid(error.to_string()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rbit_notifications::webhooks::policy::MAX_SECRET_LEN;
 
     fn names(values: &[&str]) -> Vec<String> {
         values.iter().map(|&value| value.to_owned()).collect()
