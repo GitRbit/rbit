@@ -1,30 +1,19 @@
-//! Transferring a repository to another user or organisation.
+//! Repository transfer composition: the request's reader, disk relocation, events and
+//! audit around [`rbit_repositories::transfer::RepositoryTransfer`].
 //!
-//! Milestone 2 workstream A (access) owns this file.
-//!
-//! Rules:
-//! * Repository administrators may move a repository to their own account or to an
-//!   organisation where they may create repositories (the rule of
-//!   `RepositoryService::owner_for_new_repository`); site administrators may move it to
-//!   any user or organisation. Suspended users cannot receive repositories.
-//! * The full `owner/name` must be typed to confirm. A repository of the same name at the
-//!   new owner is a validation error and leaves everything as it was.
-//! * The bare repository is moved first (one same-filesystem rename), then the owner is
-//!   changed in a transaction that also drops the old organisation's team grants. If the
-//!   database step fails a compensating move is attempted. Cancellation or a failed
-//!   compensation can leave disk and metadata requiring reconciliation.
-//! * Collaborators, stars and everything else keyed by the repository id stay.
-//!   [`DomainEvent::RepositoryTransferred`] is published and the transfer is audited.
+//! The application owns administration, confirmation, destination authority,
+//! suspension, owner suggestions and compensation order; persistence is
+//! [`TransferStore`]. This adapter maps errors to [`ServiceError`] and publishes
+//! [`DomainEvent::RepositoryTransferred`] before the best-effort audit.
 
 use rbit_core::{Account, AccountId, RepoId, Repository, User, repository::OwnedRepository};
 use rbit_git::relocate::relocate;
-use rbit_repositories::transfer::{RepositoryTransfer, TransferError, TransferPort, TransferWriteError};
-use rbit_storage::StorageError;
+use rbit_repositories::transfer::{RepositoryTransfer, TransferError, TransferPort};
+use rbit_storage::TransferStore;
 
 use crate::{
     AuditService, DomainEvent, RepoContext, ServiceContext, ServiceError,
     audit::{AuditAction, AuditEntry},
-    repositories::authorised_owner,
 };
 
 #[derive(Debug, Clone)]
@@ -42,10 +31,9 @@ impl TransferService {
     /// their organisations), excluding the current owner. Site administrators may also
     /// enter any other name.
     pub async fn suggested_owners(&self, actor: &User, repo: &RepoContext) -> Result<Vec<Account>, ServiceError> {
-        require_admin(repo)?;
-        let memberships = self.ctx.database.orgs().memberships_of(actor.id()).await?;
-        let candidates = std::iter::once(actor.account.clone()).chain(memberships.into_iter().map(|m| m.org));
-        Ok(candidates.filter(|account| account.id != repo.repo.repo.owner_id).collect())
+        RepositoryTransfer::suggested_owners(&TransferStore::new(&self.ctx.database), actor, &repo.repo, repo.access.can_admin())
+            .await
+            .map_err(service_error)
     }
 
     /// Moves `repo` to the account called `new_owner` and returns it as now owned.
@@ -56,48 +44,28 @@ impl TransferService {
         new_owner: &str,
         confirmation: &str,
     ) -> Result<OwnedRepository, ServiceError> {
-        RepositoryTransfer::execute(
-            &TransferBridge { service: self, repo },
-            actor,
-            &repo.repo,
-            repo.access.can_admin(),
-            new_owner,
-            confirmation,
-        )
-        .await
-        .map_err(service_error)
+        let bridge = TransferBridge { service: self, repo, store: TransferStore::new(&self.ctx.database) };
+        RepositoryTransfer::execute(&bridge, actor, &repo.repo, repo.access.can_admin(), new_owner, confirmation)
+            .await
+            .map_err(service_error)
     }
 }
 
-fn require_admin(repo: &RepoContext) -> Result<(), ServiceError> {
-    if repo.access.can_admin() { Ok(()) } else { Err(ServiceError::Forbidden) }
-}
-
-// Borrowed request projection; no new store handle exists before target lookup.
+// Borrowed request projection; no store handle exists before target lookup.
 #[derive(Debug)]
 struct TransferBridge<'a> {
     service: &'a TransferService,
     repo: &'a RepoContext,
+    store: TransferStore<'a>,
 }
 
-impl TransferPort for TransferBridge<'_> {
+impl<'a> TransferPort for TransferBridge<'a> {
+    type Store = TransferStore<'a>;
     type Error = ServiceError;
     type MoveError = rbit_git::GitError;
 
-    async fn find_owner(&self, name: &str) -> Result<Option<Account>, Self::Error> {
-        Ok(self.service.ctx.database.repositories().find_owner(name).await?)
-    }
-
-    async fn authorized_owner(&self, actor: &User, name: &str) -> Result<Account, TransferError<Self::Error>> {
-        let store = self.service.ctx.database.repositories();
-        authorised_owner(&store, actor, name).await.map_err(|error| match error {
-            ServiceError::Invalid(message) => TransferError::Invalid(message),
-            other => TransferError::Failure(other),
-        })
-    }
-
-    async fn is_suspended(&self, account: AccountId) -> Result<bool, Self::Error> {
-        Ok(self.service.ctx.database.accounts().is_suspended(account).await?)
+    fn repository(&self) -> &TransferStore<'a> {
+        &self.store
     }
 
     fn close_reader(&self) {
@@ -111,13 +79,6 @@ impl TransferPort for TransferBridge<'_> {
 
     fn move_error(&self, error: Self::MoveError) -> Self::Error {
         error.into()
-    }
-
-    async fn transfer(&self, repo: RepoId, owner: AccountId) -> Result<(), TransferWriteError<Self::Error>> {
-        self.service.ctx.database.repositories().transfer(repo, owner).await.map_err(|error| match error {
-            StorageError::Conflict(_) => TransferWriteError::Conflict,
-            other => TransferWriteError::Failure(other.into()),
-        })
     }
 
     fn restore_failed(&self, error: &Self::MoveError, old_name: &str) {
@@ -139,10 +100,10 @@ impl TransferPort for TransferBridge<'_> {
     }
 }
 
-fn service_error(error: TransferError<ServiceError>) -> ServiceError {
+fn service_error<E: Into<ServiceError>>(error: TransferError<E>) -> ServiceError {
     match error {
         TransferError::Forbidden => ServiceError::Forbidden,
         TransferError::Invalid(message) => ServiceError::Invalid(message),
-        TransferError::Failure(error) => error,
+        TransferError::Failure(error) => error.into(),
     }
 }

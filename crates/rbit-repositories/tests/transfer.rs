@@ -3,12 +3,13 @@ use rbit_contracts::{AccountId, RepoId, Timestamp};
 use rbit_identity_models::{Account, AccountKind, User};
 use rbit_repositories::{
     OwnedRepository, Repository, Visibility,
-    transfer::{RepositoryTransfer, TransferError, TransferPort, TransferWriteError},
+    creation::{RepositoryMembership, RepositoryOwnerCatalog},
+    transfer::{RepositoryTransfer, TransferError, TransferPort, TransferRepository, TransferWriteError},
 };
 use std::{
     future::{Future, ready},
     pin::pin,
-    sync::Mutex,
+    sync::{Arc, Mutex},
     task::{Context, Poll, Waker},
 };
 
@@ -43,22 +44,43 @@ struct TransferFailures {
     conflict: bool,
     rollback: bool,
 }
+type Calls = Arc<Mutex<Vec<&'static str>>>;
+/// One destination lookup's catalog; the target is `bob`.
+#[derive(Debug)]
+struct Owners {
+    calls: Calls,
+    target: Account,
+    member: bool,
+}
+impl RepositoryOwnerCatalog for Owners {
+    type Error = &'static str;
+    fn owner_named(&self, _: &str) -> impl Future<Output = Result<Option<Account>, Self::Error>> + Send {
+        self.calls.lock().unwrap().push("owner");
+        ready(Ok(Some(self.target.clone())))
+    }
+    fn membership(&self, _: AccountId, _: AccountId) -> impl Future<Output = Result<Option<RepositoryMembership>, Self::Error>> + Send {
+        self.calls.lock().unwrap().push("member");
+        ready(Ok(self.member.then_some(RepositoryMembership::Member)))
+    }
+}
 #[derive(Debug)]
 struct Port {
-    calls: Mutex<Vec<&'static str>>,
+    calls: Calls,
     target: Account,
     suspended: bool,
     failures: TransferFailures,
-    denied: bool,
+    member: bool,
+    organizations: Vec<Account>,
 }
 impl Port {
     fn new() -> Self {
         Self {
-            calls: Mutex::new(Vec::new()),
-            target: account(2, "bob", AccountKind::User),
+            calls: Calls::default(),
+            target: account(2, "bob", AccountKind::Organization),
             suspended: false,
             failures: TransferFailures::default(),
-            denied: false,
+            member: true,
+            organizations: Vec::new(),
         }
     }
     fn record(&self, call: &'static str) {
@@ -68,20 +90,32 @@ impl Port {
         self.calls.lock().unwrap().clone()
     }
 }
-impl TransferPort for Port {
+impl TransferRepository for Port {
     type Error = &'static str;
-    type MoveError = &'static str;
-    fn find_owner(&self, _: &str) -> impl Future<Output = Result<Option<Account>, Self::Error>> + Send {
-        self.record("find");
-        ready(Ok(Some(self.target.clone())))
-    }
-    fn authorized_owner(&self, _: &User, _: &str) -> impl Future<Output = Result<Account, TransferError<Self::Error>>> + Send {
-        self.record("authorize");
-        ready(if self.denied { Err(TransferError::Invalid("old owner error".into())) } else { Ok(self.target.clone()) })
+    type Owners = Owners;
+    type Organizations = Vec<Account>;
+    fn owners(&self) -> Owners {
+        Owners { calls: self.calls.clone(), target: self.target.clone(), member: self.member }
     }
     fn is_suspended(&self, _: AccountId) -> impl Future<Output = Result<bool, Self::Error>> + Send {
         self.record("suspended");
         ready(Ok(self.suspended))
+    }
+    fn organizations_of(&self, _: AccountId) -> impl Future<Output = Result<Vec<Account>, Self::Error>> + Send {
+        self.record("organizations");
+        ready(Ok(self.organizations.clone()))
+    }
+    fn transfer(&self, _: RepoId, _: AccountId) -> impl Future<Output = Result<(), TransferWriteError<Self::Error>>> + Send {
+        self.record("sql");
+        ready(if self.failures.conflict { Err(TransferWriteError::Conflict) } else { Ok(()) })
+    }
+}
+impl TransferPort for Port {
+    type Store = Self;
+    type Error = &'static str;
+    type MoveError = &'static str;
+    fn repository(&self) -> &Self {
+        self
     }
     fn close_reader(&self) {
         self.record("close");
@@ -92,10 +126,6 @@ impl TransferPort for Port {
     }
     fn move_error(&self, error: Self::MoveError) -> Self::Error {
         error
-    }
-    fn transfer(&self, _: RepoId, _: AccountId) -> impl Future<Output = Result<(), TransferWriteError<Self::Error>>> + Send {
-        self.record("sql");
-        ready(if self.failures.conflict { Err(TransferWriteError::Conflict) } else { Ok(()) })
     }
     fn restore_failed(&self, _: &Self::Error, _: &str) {
         self.record("restore_failed");
@@ -127,32 +157,51 @@ fn archived_transfer_keeps_snapshot_and_order_without_archive_guard() {
     assert_eq!(moved.repo.owner_id, AccountId(2));
     assert_eq!(moved.repo.archived_at, repo.repo.archived_at);
     assert_eq!(moved.repo.updated_at, repo.repo.updated_at);
-    assert_eq!(port.calls(), ["authorize", "suspended", "close", "move", "sql", "publish_audit"]);
+    assert_eq!(port.calls(), ["owner", "member", "close", "move", "sql", "publish_audit"]);
 }
 #[test]
 fn suspension_and_denial_precede_reader_close_and_side_effects() {
-    let (actor, repo) = inputs();
+    let (mut actor, repo) = inputs();
+    actor.is_admin = true;
     let mut port = Port::new();
+    port.target.kind = AccountKind::User;
     port.suspended = true;
     assert!(
         matches!(run(RepositoryTransfer::execute(&port, &actor, &repo, true, "bob", "alice/project")), Err(TransferError::Invalid(message)) if message == "bob is suspended")
     );
-    assert_eq!(port.calls(), ["authorize", "suspended"]);
-    let mut port = Port::new();
-    port.denied = true;
-    assert!(
-        matches!(run(RepositoryTransfer::execute(&port, &actor, &repo, true, "bob", "alice/project")), Err(TransferError::Invalid(message)) if message == "you cannot transfer repositories to bob")
-    );
-    assert_eq!(port.calls(), ["authorize"]);
+    assert_eq!(port.calls(), ["owner", "suspended"]);
+    actor.is_admin = false;
+    for kind in [AccountKind::User, AccountKind::Organization] {
+        let mut port = Port::new();
+        port.target.kind = kind;
+        port.member = false;
+        assert!(
+            matches!(run(RepositoryTransfer::execute(&port, &actor, &repo, true, "bob", "alice/project")), Err(TransferError::Invalid(message)) if message == "you cannot transfer repositories to bob")
+        );
+        let expected: &[&str] = if kind == AccountKind::User { &["owner"] } else { &["owner", "member"] };
+        assert_eq!(port.calls(), expected);
+    }
 }
 #[test]
 fn site_admin_lookup_and_organization_skip_are_distinct_fast_paths() {
     let (mut actor, repo) = inputs();
     actor.is_admin = true;
-    let mut port = Port::new();
-    port.target.kind = AccountKind::Organization;
+    let port = Port::new();
     run(RepositoryTransfer::execute(&port, &actor, &repo, true, "bob", "alice/project")).unwrap();
-    assert_eq!(port.calls(), ["find", "close", "move", "sql", "publish_audit"]);
+    assert_eq!(port.calls(), ["owner", "close", "move", "sql", "publish_audit"]);
+    let mut port = Port::new();
+    port.target.kind = AccountKind::User;
+    run(RepositoryTransfer::execute(&port, &actor, &repo, true, "bob", "alice/project")).unwrap();
+    assert_eq!(port.calls(), ["owner", "suspended", "close", "move", "sql", "publish_audit"]);
+}
+#[test]
+fn own_account_is_resolved_without_lookup_and_rejected_as_the_same_owner() {
+    let (actor, repo) = inputs();
+    let port = Port::new();
+    assert!(
+        matches!(run(RepositoryTransfer::execute(&port, &actor, &repo, true, "ALICE", "alice/project")), Err(TransferError::Invalid(message)) if message == "alice/project already belongs to alice")
+    );
+    assert_eq!(port.calls(), ["suspended"]);
 }
 #[test]
 fn conflict_is_preserved_when_compensating_move_also_fails() {
@@ -163,5 +212,19 @@ fn conflict_is_preserved_when_compensating_move_also_fails() {
     assert!(
         matches!(run(RepositoryTransfer::execute(&port, &actor, &repo, true, "bob", "alice/project")), Err(TransferError::Invalid(message)) if message == "bob/project already exists; rename one of them first")
     );
-    assert_eq!(port.calls(), ["authorize", "suspended", "close", "move", "sql", "restore", "restore_failed"]);
+    assert_eq!(port.calls(), ["owner", "member", "close", "move", "sql", "restore", "restore_failed"]);
+}
+#[test]
+fn suggestions_need_administration_and_exclude_the_current_owner_in_order() {
+    let (actor, mut repo) = inputs();
+    let mut port = Port::new();
+    port.organizations = vec![account(3, "acme", AccountKind::Organization), account(4, "beta", AccountKind::Organization)];
+    drop(RepositoryTransfer::suggested_owners(&port, &actor, &repo, true));
+    assert!(matches!(run(RepositoryTransfer::suggested_owners(&port, &actor, &repo, false)), Err(TransferError::Forbidden)));
+    assert_eq!(port.calls(), Vec::<&str>::new());
+    let names = |owners: Vec<Account>| owners.into_iter().map(|account| account.name.to_string()).collect::<Vec<_>>();
+    assert_eq!(names(run(RepositoryTransfer::suggested_owners(&port, &actor, &repo, true)).unwrap()), ["acme", "beta"]);
+    repo.repo.owner_id = AccountId(3);
+    assert_eq!(names(run(RepositoryTransfer::suggested_owners(&port, &actor, &repo, true)).unwrap()), ["alice", "beta"]);
+    assert_eq!(port.calls(), ["organizations", "organizations"]);
 }

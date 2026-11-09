@@ -4,7 +4,7 @@
 //!
 //! Merged into the page router, so its routes get sessions, CSRF protection, security
 //! headers and error pages automatically. Repository administrators only; everyone else
-//! gets a 404. Every rule lives in `TransferService`.
+//! gets a 404. Every rule lives in `rbit_repositories::transfer`.
 
 use axum::{
     Form, Router,
