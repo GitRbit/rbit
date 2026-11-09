@@ -23,16 +23,13 @@
 //!
 //! Proof attempts are throttled per account ([`ThrottleScope::TwoFactor`]) and audited.
 
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex, PoisonError},
-    time::{Duration, Instant},
-};
+use std::sync::Arc;
 
-use rbit_auth::{Challenge, RelyingParty, SessionToken, TokenDigest};
+use rbit_auth::{Challenge, RelyingParty, SessionToken};
 use rbit_core::{AccountId, Timestamp, User};
 use rbit_identity::PasswordWork;
 use rbit_identity::passkeys::{ChallengeBook, PasskeyApplication, PasskeyError, PasskeyRejection};
+use rbit_identity::second_factor::{PendingSignIns, SecondFactorStep, SecondFactorThrottle, SecondStepError};
 use rbit_identity::two_factor::{TwoFactorApplication, TwoFactorError, formatted};
 use rbit_identity_models::sessions::ClientInfo;
 use rbit_storage::{
@@ -45,25 +42,20 @@ use crate::{
     audit::{AuditAction, AuditEntry, AuditService},
 };
 
-mod pending;
-use pending::PendingSignIn;
 mod password_checks;
 mod password_operations;
 mod password_sign_in;
+mod pending;
 pub use password_sign_in::OriginalSignInOutcome;
 mod sign_in;
 mod verification;
 
-/// Enrolment and the recovery-code count are identity-owned; these paths stay compatible.
-pub use rbit_identity::two_factor::{Enrolment, RECOVERY_CODE_COUNT};
-/// How long the second sign-in step may take.
-pub const PENDING_SIGN_IN_TTL: Duration = Duration::from_mins(5);
-/// Wrong codes allowed in one pending sign-in before the password must be entered again.
-const PENDING_SIGN_IN_ATTEMPTS: u8 = 5;
-/// Pending sign-ins kept at most (oldest beyond this are dropped).
-const MAX_PENDING_SIGN_INS: usize = 10_000;
 /// Passkey limits, ceremonies and registration outcomes are identity-owned; these paths stay compatible.
 pub use rbit_identity::passkeys::{Ceremony, MAX_PASSKEY_NAME, MAX_PASSKEYS, PasskeyRegistered};
+/// The pending-step lifetime and the proof types are identity-owned; these paths stay compatible.
+pub use rbit_identity::second_factor::{PENDING_SIGN_IN_TTL, SecondFactor, SecondFactorProof};
+/// Enrolment and the recovery-code count are identity-owned; these paths stay compatible.
+pub use rbit_identity::two_factor::{Enrolment, RECOVERY_CODE_COUNT};
 
 /// A user's second factors, for the settings page.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,35 +92,6 @@ impl From<PasskeyRecord> for Passkey {
     }
 }
 
-/// What the user presented as their second factor.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SecondFactorProof<'a> {
-    /// A 6-digit authenticator code or a recovery code, as typed.
-    Code(&'a str),
-    /// The browser's JSON answer to the passkey challenge on the page.
-    Passkey(&'a str),
-}
-
-impl<'a> From<&'a str> for SecondFactorProof<'a> {
-    fn from(code: &'a str) -> Self {
-        Self::Code(code)
-    }
-}
-
-impl<'a> From<&'a String> for SecondFactorProof<'a> {
-    fn from(code: &'a String) -> Self {
-        Self::Code(code)
-    }
-}
-
-/// Which second factor was presented.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SecondFactor {
-    Authenticator,
-    RecoveryCode,
-    Passkey,
-}
-
 /// Result of a correct password.
 #[derive(Debug)]
 pub enum SignInOutcome {
@@ -154,7 +117,7 @@ pub struct TwoFactorService {
     audit: AuditService,
     instance: InstanceService,
     public_url: String,
-    pending: Arc<Mutex<HashMap<TokenDigest, PendingSignIn>>>,
+    pending: Arc<PendingSignIns>,
     challenges: Arc<ChallengeBook>,
 }
 
@@ -219,13 +182,19 @@ impl TwoFactorService {
     /// The passkey application, bound to `server.public_url`: passkeys only work when the
     /// site is opened at that address.
     pub(super) fn passkeys(&self) -> PasskeyApplication<'_, TwoFactorStore> {
-        let relying_party = RelyingParty::from_public_url(&self.public_url, &self.instance.current().site_name);
-        PasskeyApplication::new(&self.store, &self.challenges, relying_party)
+        PasskeyApplication::new(&self.store, &self.challenges, self.relying_party())
     }
 
-    /// Takes the account's outstanding settings challenge for `ceremony` that `response` answers.
-    pub(super) fn take_challenge(&self, account: AccountId, ceremony: Ceremony, response: &str) -> Option<Challenge> {
-        self.challenges.take(account, ceremony, response)
+    fn relying_party(&self) -> Option<RelyingParty> {
+        RelyingParty::from_public_url(&self.public_url, &self.instance.current().site_name)
+    }
+
+    /// The second step and confirmations over this service's stores and the shared throttle.
+    pub(super) fn second_step<'a>(
+        &'a self,
+        throttle: &'a Throttle<'a>,
+    ) -> SecondFactorStep<'a, TwoFactorStore, AccountStore, Throttle<'a>> {
+        SecondFactorStep::new(&self.pending, &self.store, &self.challenges, self.relying_party(), &self.accounts, throttle, &self.passwords)
     }
 
     /// Options for `navigator.credentials.create` to register a new passkey.
@@ -250,9 +219,7 @@ impl TwoFactorService {
             return Ok(None);
         }
         let challenge = Challenge::generate();
-        if let Some(entry) = self.lock_pending().get_mut(&pending.digest()) {
-            entry.challenge = Some(challenge.clone());
-        }
+        self.pending.offer_challenge(pending, challenge.clone());
         self.passkeys().request_options(&passkeys, &challenge).map_err(|error| match error {
             PasskeyError::Rejected(rejection) => ServiceError::Invalid(rejection.to_string()),
             PasskeyError::Store(error) => error.into(),
@@ -272,6 +239,7 @@ fn convert<C>(error: TwoFactorError<StorageError, C>, claim: impl FnOnce(C) -> S
         TwoFactorError::Claim(error) => claim(error),
         TwoFactorError::Rejected(rejection) => ServiceError::Invalid(rejection.to_string()),
         TwoFactorError::InvalidCredentials => ServiceError::InvalidCredentials,
+        TwoFactorError::Invalidated => ServiceError::NotFound,
     }
 }
 
@@ -291,6 +259,22 @@ fn account_key(account: AccountId) -> String {
     format!("account:{}", account.0)
 }
 
+/// Per-account second-factor buckets of the shared throttle.
+pub(super) struct Throttle<'a>(pub(super) &'a crate::ThrottleService);
+
+impl SecondFactorThrottle for Throttle<'_> {
+    type Error = ServiceError;
+    fn check(&self, account: AccountId) -> Result<(), ServiceError> {
+        self.0.check(ThrottleScope::TwoFactor, &account.0.to_string())
+    }
+    fn record_failure(&self, account: AccountId) {
+        self.0.record_failure(ThrottleScope::TwoFactor, &account.0.to_string());
+    }
+    fn reset(&self, account: AccountId) {
+        self.0.reset(ThrottleScope::TwoFactor, &account.0.to_string());
+    }
+}
+
 /// Maps passkey outcomes; refusal reasons are logged and never shown.
 fn map_passkey<C>(error: PasskeyError<StorageError, C>, user: &User, claim: impl FnOnce(C) -> ServiceError) -> ServiceError {
     match error {
@@ -306,6 +290,20 @@ fn map_passkey<C>(error: PasskeyError<StorageError, C>, user: &User, claim: impl
             ServiceError::InvalidCredentials
         }
         PasskeyError::InvalidCredentials => ServiceError::InvalidCredentials,
+        PasskeyError::Invalidated => ServiceError::NotFound,
+    }
+}
+
+/// Maps second-step outcomes that are not audited as a wrong factor.
+fn map_step(error: SecondStepError<StorageError, ServiceError, StorageError>) -> ServiceError {
+    match error {
+        SecondStepError::Store(error) | SecondStepError::Claim(error) => error.into(),
+        SecondStepError::Throttle(error) => error,
+        SecondStepError::Rejected(rejection) => ServiceError::Invalid(rejection.to_string()),
+        SecondStepError::WrongFactor { .. } => ServiceError::InvalidCredentials,
+        SecondStepError::NotFound => ServiceError::NotFound,
+        SecondStepError::Admission(error) => error.into(),
+        SecondStepError::Password(error) => error.into(),
     }
 }
 

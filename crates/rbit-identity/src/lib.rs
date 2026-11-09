@@ -8,7 +8,8 @@
 //! personal access token application over static ports; `password-work` also carries the
 //! self-service profile application, and with `session-tokens` the recovery application. `two-factor` adds TOTP, recovery codes and the
 //! authenticator application; `passkeys` adds the `WebAuthn` ceremonies; `external` adds the OIDC flow and
-//! ID-token checks. No feature creates a
+//! ID-token checks. With `password-work`, `passkeys` also carries the second sign-in step.
+//! No feature creates a
 //! global budget, performs startup or imports a concrete store/protocol implementation.
 
 #[cfg(feature = "access-tokens")]
@@ -24,6 +25,8 @@ pub mod passkeys;
 pub mod profiles;
 #[cfg(all(feature = "password-work", feature = "session-tokens"))]
 pub mod recovery;
+#[cfg(all(feature = "passkeys", feature = "password-work"))]
+pub mod second_factor;
 pub mod sessions;
 pub mod token;
 #[cfg(feature = "two-factor")]

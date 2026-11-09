@@ -18,6 +18,7 @@ pub use rejection::PasskeyRejection;
 
 use crate::User;
 use crate::two_factor::{formatted, new_recovery_codes, recovery_digests};
+use rbit_identity_models::credential::CredentialProofWrite;
 use webauthn::{Challenge, RelyingParty, WebauthnError};
 
 /// Passkeys per account.
@@ -49,6 +50,8 @@ pub enum PasskeyError<Store, Claim = std::convert::Infallible> {
     AssertionRefused(WebauthnError),
     /// Unknown passkey, oversized or already used response, or a missing challenge.
     InvalidCredentials,
+    /// The counter claim found the credential changed underneath (an epoch-bound claim only).
+    Invalidated,
 }
 
 pub type PasskeyResult<T, Store, Claim = std::convert::Infallible> = Result<T, PasskeyError<Store, Claim>>;
@@ -163,10 +166,10 @@ impl<'a, S: PasskeyRepository> PasskeyApplication<'a, S> {
         };
         let count =
             rp.verify_assertion(challenge, response, &passkey.public_key, passkey.sign_count).map_err(PasskeyError::AssertionRefused)?;
-        if claims.use_passkey(user.id(), passkey.id, passkey.sign_count, count).await.map_err(PasskeyError::Claim)? {
-            Ok(())
-        } else {
-            Err(PasskeyError::InvalidCredentials)
+        match claims.use_passkey(user.id(), passkey.id, passkey.sign_count, count).await.map_err(PasskeyError::Claim)? {
+            CredentialProofWrite::Claimed => Ok(()),
+            CredentialProofWrite::Rejected => Err(PasskeyError::InvalidCredentials),
+            CredentialProofWrite::Invalidated => Err(PasskeyError::Invalidated),
         }
     }
 }

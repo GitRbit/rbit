@@ -10,6 +10,7 @@
 mod rejection;
 pub mod totp;
 
+pub use rbit_identity_models::credential::CredentialProofWrite;
 pub use rbit_identity_models::two_factor::{RecoveryDigest, SecondFactorClaims, TwoFactorRecord, TwoFactorRepository};
 pub use rejection::TwoFactorRejection;
 
@@ -44,9 +45,19 @@ pub enum TwoFactorError<Store, Claim = std::convert::Infallible> {
     Rejected(TwoFactorRejection),
     /// A wrong, reused or malformed code.
     InvalidCredentials,
+    /// The claim found the credential changed underneath (an epoch-bound claim only).
+    Invalidated,
 }
 
 pub type TwoFactorResult<T, Store, Claim = std::convert::Infallible> = Result<T, TwoFactorError<Store, Claim>>;
+
+fn claimed<S, C>(outcome: CredentialProofWrite) -> TwoFactorResult<(), S, C> {
+    match outcome {
+        CredentialProofWrite::Claimed => Ok(()),
+        CredentialProofWrite::Rejected => Err(TwoFactorError::InvalidCredentials),
+        CredentialProofWrite::Invalidated => Err(TwoFactorError::Invalidated),
+    }
+}
 
 /// Fresh recovery codes.
 pub fn new_recovery_codes() -> Vec<RecoveryCode> {
@@ -127,19 +138,16 @@ impl<'a, S: TwoFactorRepository> TwoFactorApplication<'a, S> {
     ) -> TwoFactorResult<CodeFactor, S::Error, C::Error> {
         if let Some(recovery) = RecoveryCode::parse(code) {
             let spent = claims.spend_recovery_code(user.id(), &recovery.digest(user.id().0)).await.map_err(TwoFactorError::Claim)?;
-            return if spent { Ok(CodeFactor::RecoveryCode) } else { Err(TwoFactorError::InvalidCredentials) };
+            return claimed(spent).map(|()| CodeFactor::RecoveryCode);
         }
         let enabled = self.store.find(user.id()).await.map_err(TwoFactorError::Store)?.filter(TwoFactorRecord::is_enabled);
         let Some(record) = enabled else {
             return Err(TwoFactorError::InvalidCredentials);
         };
         let secret = TotpSecret::from_bytes(&record.secret).ok_or(TwoFactorError::InvalidCredentials)?;
-        match secret.verify(code, Timestamp::now().seconds()) {
-            Some(step) if claims.claim_step(user.id(), &record.secret, step).await.map_err(TwoFactorError::Claim)? => {
-                Ok(CodeFactor::Authenticator)
-            }
-            _ => Err(TwoFactorError::InvalidCredentials),
-        }
+        let step = secret.verify(code, Timestamp::now().seconds()).ok_or(TwoFactorError::InvalidCredentials)?;
+        claimed(claims.claim_step(user.id(), &record.secret, step).await.map_err(TwoFactorError::Claim)?)
+            .map(|()| CodeFactor::Authenticator)
     }
 
     /// Replaces the recovery codes, invalidating the old ones. Callers check the password

@@ -66,6 +66,11 @@ name = "password_work"
 required-features = ["password-work"]
 
 [[test]]
+name = "second_factor_step"
+# Sessions supply the async test runtime; the step itself needs no runtime.
+required-features = ["passkeys", "password-work", "sessions"]
+
+[[test]]
 name = "passkey_application"
 # Sessions supply the async test runtime; the application itself needs no runtime.
 required-features = ["passkeys", "sessions"]

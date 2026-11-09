@@ -1,146 +1,63 @@
-//! One cryptographic verifier with static legacy/original proof-write adapters.
-use super::{
-    AccountId, Challenge, SecondFactor, SecondFactorProof, ServiceError, TwoFactorService, TwoFactorStore, User, convert, map_passkey,
-};
+//! Claim write adapters: legacy claims, and the inactive original-epoch claims selected
+//! only for receipted pending sign-ins.
+use super::{AccountId, TwoFactorStore};
 use crate::accounts::OriginalProofReceipt;
 use rbit_identity::passkeys::PasskeyClaims;
-use rbit_identity::two_factor::{CodeFactor, RecoveryDigest, SecondFactorClaims};
-use rbit_storage::sqlite::two_factor::CredentialProofWrite;
-use std::future::Future;
+use rbit_identity::two_factor::{CredentialProofWrite, RecoveryDigest, SecondFactorClaims};
+use rbit_identity_models::credential::CredentialEpoch;
+use rbit_storage::StorageError;
 
-impl TwoFactorService {
-    pub(super) async fn verify(
-        &self,
-        user: &User,
-        proof: SecondFactorProof<'_>,
-        challenge: Option<Challenge>,
-    ) -> Result<SecondFactor, ServiceError> {
-        self.verify_with(user, proof, challenge, Legacy).await
-    }
-    pub(super) async fn verify_original(
-        &self,
-        user: &User,
-        proof: SecondFactorProof<'_>,
-        challenge: Option<Challenge>,
-        receipt: &OriginalProofReceipt,
-    ) -> Result<SecondFactor, ServiceError> {
-        if receipt.account() != user.id() {
-            return Err(ServiceError::NotFound);
-        }
-        self.verify_with(user, proof, challenge, Original(receipt)).await
-    }
-    /// Checks a second factor for an enrolled account: a 6-digit code (each time step
-    /// works once), an unused recovery code (spent) or a passkey's answer to `challenge`.
-    /// [`ServiceError::InvalidCredentials`] otherwise.
-    async fn verify_with<M: ClaimMode>(
-        &self,
-        user: &User,
-        proof: SecondFactorProof<'_>,
-        challenge: Option<Challenge>,
-        mode: M,
-    ) -> Result<SecondFactor, ServiceError> {
-        let code = match proof {
-            SecondFactorProof::Code(code) => code,
-            SecondFactorProof::Passkey(response) => {
-                let challenge = challenge.ok_or(ServiceError::InvalidCredentials)?;
-                return self.verify_passkey_with(user, &challenge, response, mode).await.map(|()| SecondFactor::Passkey);
-            }
-        };
-        let claims = Claims { store: &self.store, mode };
-        match self.authenticator().verify_code(user, code, &claims).await.map_err(|error| convert(error, |error| error))? {
-            CodeFactor::RecoveryCode => Ok(SecondFactor::RecoveryCode),
-            CodeFactor::Authenticator => Ok(SecondFactor::Authenticator),
-        }
-    }
-
-    async fn verify_passkey_with<M: ClaimMode>(
-        &self,
-        user: &User,
-        challenge: &Challenge,
-        response: &str,
-        mode: M,
-    ) -> Result<(), ServiceError> {
-        let claims = Claims { store: &self.store, mode };
-        self.passkeys().verify_assertion(user, challenge, response, &claims).await.map_err(|error| map_passkey(error, user, |error| error))
-    }
+/// Which write a proof claim uses.
+#[derive(Debug, Clone, Copy)]
+enum Mode {
+    Legacy,
+    /// Guarded by the receipt's immutable pre-verification epoch.
+    Original(CredentialEpoch),
 }
 
-/// The identity claim port over a write mode: legacy claims or original-epoch claims.
-struct Claims<'a, M> {
+/// The identity claim ports over the two-factor store in one write mode.
+pub(super) struct Claims<'a> {
     store: &'a TwoFactorStore,
-    mode: M,
+    mode: Mode,
 }
 
-impl<M: ClaimMode> SecondFactorClaims for Claims<'_, M> {
-    type Error = ServiceError;
-    fn spend_recovery_code(&self, account: AccountId, digest: &RecoveryDigest) -> impl Future<Output = Result<bool, ServiceError>> + Send {
-        self.mode.recovery(self.store, account, digest)
+impl<'a> Claims<'a> {
+    pub(super) fn legacy(store: &'a TwoFactorStore) -> Self {
+        Self { store, mode: Mode::Legacy }
     }
-    fn claim_step(&self, account: AccountId, secret: &[u8], step: u64) -> impl Future<Output = Result<bool, ServiceError>> + Send {
-        self.mode.totp(self.store, account, secret, step)
-    }
-}
 
-impl<M: ClaimMode> PasskeyClaims for Claims<'_, M> {
-    type Error = ServiceError;
-    fn use_passkey(&self, account: AccountId, id: i64, seen: u32, next: u32) -> impl Future<Output = Result<bool, ServiceError>> + Send {
-        self.mode.passkey(self.store, account, id, seen, next)
+    pub(super) fn for_receipt(store: &'a TwoFactorStore, original: Option<&OriginalProofReceipt>) -> Self {
+        let mode = original.map_or(Mode::Legacy, |receipt| Mode::Original(receipt.original_epoch()));
+        Self { store, mode }
     }
 }
 
-trait ClaimMode: Copy + Send + Sync {
-    fn recovery(
-        self,
-        store: &TwoFactorStore,
-        account: AccountId,
-        digest: &[u8; 32],
-    ) -> impl Future<Output = Result<bool, ServiceError>> + Send;
-    fn totp(
-        self,
-        store: &TwoFactorStore,
-        account: AccountId,
-        secret: &[u8],
-        step: u64,
-    ) -> impl Future<Output = Result<bool, ServiceError>> + Send;
-    fn passkey(
-        self,
-        store: &TwoFactorStore,
-        account: AccountId,
-        id: i64,
-        seen: u32,
-        next: u32,
-    ) -> impl Future<Output = Result<bool, ServiceError>> + Send;
+fn legacy(claimed: bool) -> CredentialProofWrite {
+    if claimed { CredentialProofWrite::Claimed } else { CredentialProofWrite::Rejected }
 }
-#[derive(Clone, Copy)]
-struct Legacy;
-impl ClaimMode for Legacy {
-    async fn recovery(self, store: &TwoFactorStore, account: AccountId, digest: &[u8; 32]) -> Result<bool, ServiceError> {
-        Ok(store.spend_recovery_code(account, digest).await?)
+
+impl SecondFactorClaims for Claims<'_> {
+    type Error = StorageError;
+    async fn spend_recovery_code(&self, account: AccountId, digest: &RecoveryDigest) -> Result<CredentialProofWrite, StorageError> {
+        match self.mode {
+            Mode::Legacy => Ok(legacy(self.store.spend_recovery_code(account, digest).await?)),
+            Mode::Original(epoch) => self.store.spend_recovery_code_at_epoch(account, digest, epoch).await,
+        }
     }
-    async fn totp(self, store: &TwoFactorStore, account: AccountId, secret: &[u8], step: u64) -> Result<bool, ServiceError> {
-        Ok(store.claim_step(account, secret, step).await?)
-    }
-    async fn passkey(self, store: &TwoFactorStore, account: AccountId, id: i64, seen: u32, next: u32) -> Result<bool, ServiceError> {
-        Ok(store.use_passkey(account, id, seen, next).await?)
+    async fn claim_step(&self, account: AccountId, secret: &[u8], step: u64) -> Result<CredentialProofWrite, StorageError> {
+        match self.mode {
+            Mode::Legacy => Ok(legacy(self.store.claim_step(account, secret, step).await?)),
+            Mode::Original(epoch) => self.store.claim_step_at_epoch(account, secret, step, epoch).await,
+        }
     }
 }
-#[derive(Clone, Copy)]
-struct Original<'a>(&'a OriginalProofReceipt);
-impl ClaimMode for Original<'_> {
-    async fn recovery(self, store: &TwoFactorStore, account: AccountId, digest: &[u8; 32]) -> Result<bool, ServiceError> {
-        claim(store.spend_recovery_code_at_epoch(account, digest, self.0.original_epoch()).await?)
-    }
-    async fn totp(self, store: &TwoFactorStore, account: AccountId, secret: &[u8], step: u64) -> Result<bool, ServiceError> {
-        claim(store.claim_step_at_epoch(account, secret, step, self.0.original_epoch()).await?)
-    }
-    async fn passkey(self, store: &TwoFactorStore, account: AccountId, id: i64, seen: u32, next: u32) -> Result<bool, ServiceError> {
-        claim(store.use_passkey_at_epoch(account, id, seen, next, self.0.original_epoch()).await?)
-    }
-}
-fn claim(outcome: CredentialProofWrite) -> Result<bool, ServiceError> {
-    match outcome {
-        CredentialProofWrite::Claimed => Ok(true),
-        CredentialProofWrite::Rejected => Ok(false),
-        CredentialProofWrite::Invalidated => Err(ServiceError::NotFound),
+
+impl PasskeyClaims for Claims<'_> {
+    type Error = StorageError;
+    async fn use_passkey(&self, account: AccountId, id: i64, seen: u32, next: u32) -> Result<CredentialProofWrite, StorageError> {
+        match self.mode {
+            Mode::Legacy => Ok(legacy(self.store.use_passkey(account, id, seen, next).await?)),
+            Mode::Original(epoch) => self.store.use_passkey_at_epoch(account, id, seen, next, epoch).await,
+        }
     }
 }

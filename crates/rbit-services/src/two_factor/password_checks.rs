@@ -1,35 +1,14 @@
 //! Admission precedes one-use proof consumption; capacity failures are not bad credentials.
 
-use super::{Ceremony, GitPasswordOutcome, SecondFactorProof, TwoFactorService, ip_key};
-use crate::audit::{AuditAction, AuditEntry};
+use super::verification::Claims;
+use super::{GitPasswordOutcome, SecondFactorProof, Throttle, ip_key};
 use crate::{ServiceError, Services, ThrottleScope};
 use rbit_core::User;
-use rbit_identity::PasswordAttempt;
 use rbit_identity_models::sessions::ClientInfo;
 
-impl TwoFactorService {
-    /// Re-checks the account password for sensitive changes.
-    fn verify_password(
-        &self,
-        user: &User,
-        password: String,
-        attempt: PasswordAttempt,
-    ) -> impl std::future::Future<Output = Result<(), ServiceError>> {
-        let mut password = zeroize::Zeroizing::new(password);
-        async move {
-            let Some(record) = self.accounts.find_login_by_id(user.id()).await? else {
-                return Err(ServiceError::InvalidCredentials);
-            };
-            if attempt.verify(std::mem::take(&mut *password), record.password_hash).await? {
-                Ok(())
-            } else {
-                Err(ServiceError::InvalidCredentials)
-            }
-        }
-    }
-}
-
 impl Services {
+    /// Re-checks the password and a proof before a sensitive change (throttled and
+    /// audited per account); the identity step decides the order.
     pub(super) fn check_password_and_proof(
         &self,
         user: &User,
@@ -39,31 +18,12 @@ impl Services {
     ) -> impl std::future::Future<Output = Result<(), ServiceError>> {
         let mut password = zeroize::Zeroizing::new(password);
         async move {
-            let key = user.id().0.to_string();
-            self.throttle.check(ThrottleScope::TwoFactor, &key)?;
-            let attempt = self.two_factor.passwords.begin()?;
-            // Taken before anything is checked, so a failed attempt can't be retried with it.
-            let challenge = match proof {
-                SecondFactorProof::Passkey(response) => self.two_factor.take_challenge(user.id(), Ceremony::Confirm, response),
-                SecondFactorProof::Code(_) => None,
-            };
-            let verified = match self.two_factor.verify_password(user, std::mem::take(&mut *password), attempt).await {
-                Ok(()) => self.two_factor.verify(user, proof, challenge).await.map(drop),
-                Err(error) => Err(error),
-            };
-            match verified {
-                Ok(()) => {
-                    self.throttle.reset(ThrottleScope::TwoFactor, &key);
-                    Ok(())
-                }
-                Err(ServiceError::InvalidCredentials) => {
-                    self.throttle.record_failure(ThrottleScope::TwoFactor, &key);
-                    self.audit
-                        .record(AuditEntry::new(AuditAction::TwoFactorFailed).by(user).from_ip(client.ip).detail("in settings"))
-                        .await;
-                    Err(ServiceError::InvalidCredentials)
-                }
-                Err(other) => Err(other),
+            let throttle = Throttle(&self.throttle);
+            let claims = Claims::legacy(&self.two_factor.store);
+            let step = self.two_factor.second_step(&throttle);
+            match step.confirm(user, std::mem::take(&mut *password), proof, &claims).await {
+                Ok(()) => Ok(()),
+                Err(error) => Err(self.settings_failure(error, client).await),
             }
         }
     }

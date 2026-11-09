@@ -9,7 +9,7 @@ use rbit_identity::{
         PasskeyRecord, PasskeyRepository,
         webauthn::{Challenge, RelyingParty},
     },
-    two_factor::RecoveryDigest,
+    two_factor::{CredentialProofWrite, RecoveryDigest},
 };
 use std::{
     fmt,
@@ -44,12 +44,15 @@ impl PasskeyRepository for Store {
     ) -> impl Future<Output = Result<PasskeyAdded, Failure>> + Send {
         ready(Ok(PasskeyAdded::Added))
     }
+    fn remove_passkey(&self, _: AccountId, id: i64) -> impl Future<Output = Result<bool, Failure>> + Send {
+        ready(Ok(self.0.iter().any(|passkey| passkey.id == id)))
+    }
 }
 
 struct NoClaims;
 impl PasskeyClaims for NoClaims {
     type Error = &'static str;
-    fn use_passkey(&self, _: AccountId, _: i64, _: u32, _: u32) -> impl Future<Output = Result<bool, &'static str>> + Send {
+    fn use_passkey(&self, _: AccountId, _: i64, _: u32, _: u32) -> impl Future<Output = Result<CredentialProofWrite, &'static str>> + Send {
         ready(Err("must not be reached"))
     }
 }

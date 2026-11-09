@@ -4,8 +4,8 @@ use rbit_contracts::{AccountId, Timestamp};
 use rbit_identity::{
     Account, AccountKind, User,
     two_factor::{
-        CodeFactor, RECOVERY_CODE_COUNT, RecoveryDigest, SecondFactorClaims, TwoFactorApplication, TwoFactorError, TwoFactorRecord,
-        TwoFactorRepository,
+        CodeFactor, CredentialProofWrite, RECOVERY_CODE_COUNT, RecoveryDigest, SecondFactorClaims, TwoFactorApplication, TwoFactorError,
+        TwoFactorRecord, TwoFactorRepository,
         totp::{RecoveryCode, TotpSecret, time_step},
     },
 };
@@ -82,28 +82,39 @@ impl TwoFactorRepository for Store {
         }
         ready(Ok(enabled))
     }
+    fn disable(&self, _: AccountId) -> impl Future<Output = Result<bool, Failure>> + Send {
+        ready(Ok(self.0.lock().unwrap().record.take().is_some()))
+    }
 }
 
 impl SecondFactorClaims for Store {
     type Error = &'static str;
-    fn spend_recovery_code(&self, _: AccountId, digest: &RecoveryDigest) -> impl Future<Output = Result<bool, &'static str>> + Send {
+    fn spend_recovery_code(
+        &self,
+        _: AccountId,
+        digest: &RecoveryDigest,
+    ) -> impl Future<Output = Result<CredentialProofWrite, &'static str>> + Send {
         let mut state = self.0.lock().unwrap();
         let mut spent = false;
         if let Some(entry) = state.codes.iter_mut().find(|(stored, used)| stored == digest && !used) {
             entry.1 = true;
             spent = true;
         }
-        ready(Ok(spent))
+        ready(Ok(outcome(spent)))
     }
-    fn claim_step(&self, _: AccountId, _: &[u8], step: u64) -> impl Future<Output = Result<bool, &'static str>> + Send {
+    fn claim_step(&self, _: AccountId, _: &[u8], step: u64) -> impl Future<Output = Result<CredentialProofWrite, &'static str>> + Send {
         let mut state = self.0.lock().unwrap();
-        let Some(record) = state.record.as_mut() else { return ready(Ok(false)) };
+        let Some(record) = state.record.as_mut() else { return ready(Ok(CredentialProofWrite::Rejected)) };
         let fresh = record.last_used_step.is_none_or(|last| last < step);
         if fresh {
             record.last_used_step = Some(step);
         }
-        ready(Ok(fresh))
+        ready(Ok(outcome(fresh)))
     }
+}
+
+fn outcome(claimed: bool) -> CredentialProofWrite {
+    if claimed { CredentialProofWrite::Claimed } else { CredentialProofWrite::Rejected }
 }
 
 fn user() -> User {

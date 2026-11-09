@@ -5,6 +5,7 @@
 
 use std::future::Future;
 
+use crate::credential::CredentialProofWrite;
 use crate::two_factor::RecoveryDigest;
 use rbit_contracts::{AccountId, Timestamp};
 
@@ -61,12 +62,21 @@ pub trait PasskeyRepository: Sync {
         passkey: &NewPasskey<'_>,
         recovery: &[RecoveryDigest],
     ) -> impl Future<Output = Result<PasskeyAdded, Self::Error>> + Send;
+    /// Removes passkey `id` of the account, and the recovery codes too if no factor
+    /// remains. `true` if it existed.
+    fn remove_passkey(&self, account: AccountId, id: i64) -> impl Future<Output = Result<bool, Self::Error>> + Send;
 }
 
 /// One-use assertion claims; implementations decide the write mode.
 pub trait PasskeyClaims: Sync {
     type Error: Send;
     /// Moves passkey `id`'s counter from `seen` (the value the signature was checked
-    /// against) to `next`; `false` if another sign-in got there first.
-    fn use_passkey(&self, account: AccountId, id: i64, seen: u32, next: u32) -> impl Future<Output = Result<bool, Self::Error>> + Send;
+    /// against) to `next`; `Rejected` if another sign-in got there first.
+    fn use_passkey(
+        &self,
+        account: AccountId,
+        id: i64,
+        seen: u32,
+        next: u32,
+    ) -> impl Future<Output = Result<CredentialProofWrite, Self::Error>> + Send;
 }

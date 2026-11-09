@@ -1,21 +1,11 @@
-//! One proof-consumption/accounting worker for legacy and original-receipt MFA.
+//! The second sign-in step's adapter: the identity step decides, this records the audit.
+use super::verification::Claims;
 use super::{
-    AuditAction, AuditEntry, ClientInfo, SecondFactor, SecondFactorProof, ServiceError, Services, SessionToken, ThrottleScope, User,
+    AuditAction, AuditEntry, ClientInfo, SecondFactor, SecondFactorProof, ServiceError, Services, SessionToken, Throttle, User, map_step,
 };
-use crate::accounts::{OriginalProofReceipt, ProvenAccount};
+use crate::accounts::ProvenAccount;
+use rbit_identity::second_factor::{CompletedSignIn, SecondStepError};
 
-enum CompletedSignIn {
-    Legacy(User),
-    Original(ProvenAccount),
-}
-impl CompletedSignIn {
-    fn user(&self) -> &User {
-        match self {
-            Self::Legacy(user) => user,
-            Self::Original(proven) => proven.user(),
-        }
-    }
-}
 impl Services {
     /// Finishes a legacy pending sign-in with TOTP, recovery code or passkey proof.
     /// Expired/used pending returns `NotFound`; incorrect proof returns `InvalidCredentials`.
@@ -66,65 +56,33 @@ impl Services {
         original_only: bool,
         after_lookup: impl std::future::Future<Output = ()> + Send,
     ) -> Result<CompletedSignIn, ServiceError> {
-        let (account, original) = self.two_factor.pending_proof(pending).ok_or(ServiceError::NotFound)?;
-        if original.is_some() != original_only {
-            return Err(ServiceError::NotFound);
-        }
-        let key = account.0.to_string();
-        self.throttle.check(ThrottleScope::TwoFactor, &key)?;
-        let user = match &original {
-            Some(receipt) => {
-                self.two_factor.accounts.find_session_user_at_epoch(account, false, receipt.original_epoch()).await?.map(|row| row.user)
-            }
-            None => self.two_factor.accounts.find_active_user(account).await?,
-        };
-        let Some(user) = user else {
-            self.two_factor.end_pending(pending);
-            return Err(ServiceError::NotFound);
-        };
-        after_lookup.await;
-        let challenge = matches!(proof, SecondFactorProof::Passkey(_)).then(|| self.two_factor.take_pending_challenge(pending)).flatten();
-        let verified = match original.as_ref() {
-            Some(receipt) => self.two_factor.verify_original(&user, proof, challenge, receipt).await,
-            None => self.two_factor.verify(&user, proof, challenge).await,
-        };
-        match verified {
-            Ok(factor) => {
-                let method = self.claim_sign_in(pending, original.as_ref()).ok_or(ServiceError::NotFound)?;
-                let result = match original {
-                    Some(receipt) => CompletedSignIn::Original(receipt.bind_user(user).map_err(|_| ServiceError::NotFound)?),
-                    None => CompletedSignIn::Legacy(user),
-                };
-                self.throttle.reset(ThrottleScope::TwoFactor, &key);
-                let entry = match factor {
+        let throttle = Throttle(&self.throttle);
+        let step = self.two_factor.second_step(&throttle);
+        let store = &self.two_factor.store;
+        let claims_for = |original: Option<&crate::accounts::OriginalProofReceipt>| Claims::for_receipt(store, original);
+        match step.complete(pending, proof, original_only, claims_for, after_lookup).await {
+            Ok(done) => {
+                let method = done.method;
+                let entry = match done.factor {
                     SecondFactor::Authenticator => AuditEntry::new(AuditAction::SignIn).detail(format!("{method} and authenticator code")),
                     SecondFactor::Passkey => AuditEntry::new(AuditAction::SignIn).detail(format!("{method} and passkey")),
                     SecondFactor::RecoveryCode => {
                         AuditEntry::new(AuditAction::RecoveryCodeUsed).detail(format!("{method} and recovery code"))
                     }
                 };
-                self.audit.record(entry.by(result.user()).from_ip(client.ip)).await;
-                Ok(result)
+                self.audit.record(entry.by(done.sign_in.user()).from_ip(client.ip)).await;
+                Ok(done.sign_in)
             }
-            Err(ServiceError::InvalidCredentials) => {
-                self.throttle.record_failure(ThrottleScope::TwoFactor, &key);
-                self.two_factor.pending_failed(pending);
+            Err(SecondStepError::WrongFactor { user, refused }) => {
+                if let Some(error) = refused {
+                    tracing::info!(user = %user.name(), %error, "passkey sign-in refused");
+                }
                 self.audit
                     .record(AuditEntry::new(AuditAction::TwoFactorFailed).by(&user).from_ip(client.ip).detail("during sign-in"))
                     .await;
                 Err(ServiceError::InvalidCredentials)
             }
-            Err(ServiceError::NotFound) if original.is_some() => {
-                self.two_factor.end_pending(pending);
-                Err(ServiceError::NotFound)
-            }
-            Err(other) => Err(other),
-        }
-    }
-    fn claim_sign_in(&self, pending: &SessionToken, original: Option<&OriginalProofReceipt>) -> Option<String> {
-        match original {
-            Some(receipt) => self.two_factor.finish_original_pending(pending, receipt),
-            None => self.two_factor.finish_pending(pending),
+            Err(error) => Err(map_step(error)),
         }
     }
 }

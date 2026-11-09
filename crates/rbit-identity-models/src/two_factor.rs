@@ -6,6 +6,7 @@
 
 use std::future::Future;
 
+use crate::credential::CredentialProofWrite;
 use rbit_contracts::{AccountId, Timestamp};
 
 /// A user's authenticator row: pending until `confirmed_at` is set.
@@ -51,13 +52,41 @@ pub trait TwoFactorRepository: Sync {
         account: AccountId,
         digests: &[RecoveryDigest],
     ) -> impl Future<Output = Result<bool, Self::Error>> + Send;
+    /// Removes the authenticator (confirmed or pending), and the recovery codes too if no
+    /// factor remains. `true` if anything was removed.
+    fn disable(&self, account: AccountId) -> impl Future<Output = Result<bool, Self::Error>> + Send;
 }
 
 /// One-use proof claims. Implementations decide the write mode (for example a guarded
-/// claim at a credential epoch); each returns whether the proof may be honoured.
+/// claim at a credential epoch). `Claimed` means the proof may be honoured, `Rejected`
+/// that it was already used, and `Invalidated` that the credential changed underneath.
 pub trait SecondFactorClaims: Sync {
     type Error: Send;
-    fn spend_recovery_code(&self, account: AccountId, digest: &RecoveryDigest) -> impl Future<Output = Result<bool, Self::Error>> + Send;
+    fn spend_recovery_code(
+        &self,
+        account: AccountId,
+        digest: &RecoveryDigest,
+    ) -> impl Future<Output = Result<CredentialProofWrite, Self::Error>> + Send;
     /// Accepts `step` unless it, or a later one, was already accepted.
-    fn claim_step(&self, account: AccountId, secret: &[u8], step: u64) -> impl Future<Output = Result<bool, Self::Error>> + Send;
+    fn claim_step(
+        &self,
+        account: AccountId,
+        secret: &[u8],
+        step: u64,
+    ) -> impl Future<Output = Result<CredentialProofWrite, Self::Error>> + Send;
+}
+
+/// Authoritative account lookups for the second sign-in step and for confirmations.
+pub trait SecondStepAccounts: Sync {
+    type Error: std::error::Error + Send + Sync + 'static;
+    /// An active (not suspended) user.
+    fn find_active_user(&self, account: AccountId) -> impl Future<Output = Result<Option<crate::User>, Self::Error>> + Send;
+    /// The user only while it is active at exactly the `original` credential epoch.
+    fn find_user_at_epoch(
+        &self,
+        account: AccountId,
+        original: crate::credential::CredentialEpoch,
+    ) -> impl Future<Output = Result<Option<crate::User>, Self::Error>> + Send;
+    /// The stored password hash for a confirmation, or `None` without a login.
+    fn password_hash(&self, account: AccountId) -> impl Future<Output = Result<Option<String>, Self::Error>> + Send;
 }
