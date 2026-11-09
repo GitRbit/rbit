@@ -11,6 +11,7 @@ import { checkRepositoryTransferRetirement } from "./repository-transfer-retirem
 import { checkRepositoryForksRetirement } from "./repository-forks-retirement.mjs";
 import { checkRepositoryStarsRetirement } from "./repository-stars-retirement.mjs";
 import { checkRepositoryEditsRetirement } from "./repository-edits-retirement.mjs";
+import { checkRepositoryLifecycleRetirement } from "./repository-lifecycle-retirement.mjs";
 import { checkActionsDiscoveryRetirement } from "./actions-discovery-retirement.mjs";
 import { checkNotificationsRetirement } from "./notifications-retirement.mjs";
 import { checkActionsRunnerRetirement } from "./actions-runner-retirement.mjs";
@@ -210,6 +211,7 @@ export function check(root) {
     ...checkRepositoryForksRetirement(files),
     ...checkRepositoryStarsRetirement(files),
     ...checkRepositoryEditsRetirement(files),
+    ...checkRepositoryLifecycleRetirement(files),
     ...checkUnifiedModelBoundary(root, metadata), ...checkInventoryCompileIsolation(root),
     ...checkActionsDiscoveryRetirement(files),
     ...checkNotificationsRetirement(files),
