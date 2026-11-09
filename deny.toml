@@ -28,6 +28,12 @@ ignore = [
     # (WebAuthn RS256 passkeys, users' ssh-rsa keys); the SSH host key is always Ed25519
     # (rbit-ssh/src/host_key.rs refuses anything else), so no private RSA key exists.
     { id = "RUSTSEC-2023-0071", reason = "rbit performs no RSA private-key operations" },
+    # SQLite flaw reachable only by opening a database file (with its -wal) that a less
+    # trusted party wrote. rbit opens its own database; the one such path is an operator
+    # running `rbit restore` on a backup from an untrusted source. The fix is in
+    # libsqlite3-sys 0.39, which sqlx 0.9.0 does not accept yet: drop this entry when sqlx
+    # allows it.
+    { id = "RUSTSEC-2026-0459", reason = "only an untrusted backup restored by an operator reaches it; sqlx 0.9 pins the bundled SQLite below the fix" },
 ]
 
 [licenses]
