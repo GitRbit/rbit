@@ -1,7 +1,7 @@
 //! Personal Issues/Pull Requests dashboards: which involvement views a page offers and
 //! what an absent view or query means. Listing itself is [`super::IssueListing`]'s.
 
-use super::DashboardRelation;
+use super::filter::DashboardRelation;
 use crate::threads::IssueKind;
 
 /// The search of a dashboard opened without one (or with a blank one).
