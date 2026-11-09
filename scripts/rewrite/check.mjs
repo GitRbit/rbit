@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { checkIdentityFeatures, checkIdentityModelGraphs, checkIdentityTokenGraph, checkIdentitySessionGraph, checkInventoryGraph } from "./identity-features.mjs";
 import { checkIdentityRetirement } from "./identity-retirement.mjs";
 import { checkAccessRetirement } from "./access-retirement.mjs";
+import { checkRepositoryTransferRetirement } from "./repository-transfer-retirement.mjs";
 import { checkCollaborationFeatures, checkCollaborationGraphs } from "./collaboration-features.mjs";
 import { checkUnifiedModelBoundary } from "./identity-model-boundary.mjs";
 import { checkInventoryCompileIsolation } from "./inventory-isolation.mjs";
@@ -178,6 +179,7 @@ export function check(root) {
   return { files: files.length, violations: [...checkSizes(files, baseline), ...checkEdges(metadata, baseline),
     ...checkIdentityFeatures(metadata), ...checkIdentityRetirement(files), ...checkAccessRetirement(files), ...checkIdentityModelGraphs(root), ...checkIdentityTokenGraph(root), ...checkIdentitySessionGraph(root), ...checkInventoryGraph(root),
     ...checkCollaborationFeatures(metadata), ...checkCollaborationGraphs(root),
+    ...checkRepositoryTransferRetirement(files),
     ...checkUnifiedModelBoundary(root, metadata), ...checkInventoryCompileIsolation(root),
     ...checkPlatformBoundary(root, files), ...checkMigrations(root, baseline), ...checkLedger(root, ledger)] };
 }
