@@ -7,6 +7,10 @@ const GIT_HTTP_ADAPTER = "crates/rbit-web/src/routes/git_http/repositories.rs";
 const SSH = "crates/rbit-ssh/src/";
 // The SSH access module owns per-command authorization and its services adapter.
 const SSH_ACCESS = /^crates\/rbit-ssh\/src\/access(?:\.rs|\/)/u;
+const STORAGE = "crates/rbit-storage/src/";
+const KEYS_OWNER = "crates/rbit-repositories/src/ssh_keys";
+// The key service keeps registration and storage adapters only.
+const KEY_SERVICE = "crates/rbit-services/src/ssh_keys.rs";
 
 const RULES = [
   // Protocol framing shared by both transports.
@@ -31,6 +35,16 @@ const RULES = [
   { where: (path) => path.startsWith(SSH) && !SSH_ACCESS.test(path),
     pattern: /not found, or you do not have access to it|deploy key is read-only|you do not have permission to push to|no longer authorized; reconnect/u,
     message: "SSH authorization text belongs to rbit_ssh::access" },
+  // SSH key registry decisions: sign-in and deploy-key reach.
+  { where: (path) => !path.startsWith(STORAGE), pattern: /\bKeyHolder::(?:User|Deploy)\b/u,
+    message: "stored key holders are decided by rbit_repositories::ssh_keys::sign_in" },
+  { where: (path) => !path.startsWith(KEYS_OWNER), pattern: /\benum\s+(?:SshIdentity|KeySignIn)\b|\bstruct\s+(?:SshKeyId|DeployKeyId)\s*\(/u,
+    message: "SSH identities and key ids belong to rbit_repositories::ssh_keys" },
+  { where: (path) => path === KEY_SERVICE || path.startsWith(SSH),
+    pattern: /\bRepositoryAliases::resolve\b|\.\s*password_change_required\s*\(/u,
+    message: "SSH sign-in and deploy-key reach are decided by rbit_repositories::ssh_keys" },
+  { where: (path) => path.startsWith(SSH), pattern: /\bssh_keys\s*\.\s*(?:find_by_fingerprint|open_for_deploy_key)\s*\(/u,
+    message: "the SSH server uses rbit_repositories::ssh_keys directly, not the service compatibility wrappers" },
 ];
 
 /** Comments and the trailing inline test module (which asserts the bytes) are not checked. */

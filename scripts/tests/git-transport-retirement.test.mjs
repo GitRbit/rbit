@@ -40,7 +40,7 @@ test("smart HTTP credentials, challenges and access order are decided by the tra
 test("SSH per-command authorization stays in rbit_ssh::access", () => {
   for (const source of [
     "services.accounts.is_suspended(user.id()).await",
-    "services.ssh_keys.open_for_deploy_key(identity, o, r).await",
+    "port.open_for_deploy_key(identity, o, r).await",
     "services.mirrors.is_mirror(id).await",
     "fn same_key_holder(a: &SshIdentity, b: &SshIdentity) -> bool { true }",
     "format!(\"this deploy key is read-only; it cannot push to {name}\")",
@@ -64,12 +64,30 @@ test("the current tree has no retired Git transport path, and the baseline had t
   const { files } = authoredSources(fileURLToPath(root));
   assert.ok(files.length > 100);
   assert.deepEqual(check(files), []);
-  const baseline = (path) => [path, execFileSync("git", ["show", `ee9f958c:${path}`], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] })];
-  let legacy;
+  const at = (commit) => (path) => [path, execFileSync("git", ["show", `${commit}:${path}`], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] })];
+  let legacy, keys;
   try {
-    legacy = [HTTP, SSH, "crates/rbit-ssh/src/session/git_exchange.rs", "crates/rbit-ssh/src/session/channel_reply.rs"].map(baseline);
+    legacy = [HTTP, SSH, "crates/rbit-ssh/src/session/git_exchange.rs", "crates/rbit-ssh/src/session/channel_reply.rs"].map(at("ee9f958c"));
+    keys = ["crates/rbit-services/src/ssh_keys.rs", SSH, "crates/rbit-storage/src/sqlite/ssh_keys.rs"].map(at("8c0ba633"));
   } catch {
-    return; // Shallow checkouts may not contain the baseline commit.
+    return; // Shallow checkouts may not contain the baseline commits.
   }
   assert.ok(check(legacy).length >= 6, check(legacy).join("\n"));
+  assert.ok(check(keys).length >= 5, check(keys).join("\n"));
+});
+
+test("SSH sign-in and deploy-key reach are decided by rbit_repositories::ssh_keys", () => {
+  const KEYS = "crates/rbit-services/src/ssh_keys.rs";
+  const holder = "Some(KeyHolder::User { user, suspended: true, .. }) => None,\n";
+  assert.match(check([[KEYS, holder]])[0], /sign_in/u);
+  assert.deepEqual(check([["crates/rbit-storage/src/ssh_key_directory.rs", holder]]), []);
+  assert.match(check([[KEYS, "pub enum SshIdentity { User }\n"]])[0], /belong to rbit_repositories::ssh_keys/u);
+  assert.match(check([["crates/rbit-storage/src/sqlite/ssh_keys.rs", "pub struct SshKeyId(pub i64);\n"]])[0], /key ids/u);
+  assert.deepEqual(check([["crates/rbit-repositories/src/ssh_keys.rs", "pub enum SshIdentity { User }\npub struct SshKeyId(pub i64);\n"]]), []);
+  for (const source of ["RepositoryAliases::resolve(&store, owner, name).await?", "self.ctx.database.accounts().password_change_required(id).await?"]) {
+    assert.match(check([[KEYS, source]])[0], /decided by rbit_repositories::ssh_keys/u, source);
+    assert.match(check([["crates/rbit-ssh/src/access.rs", source]])[0], /decided by/u, source);
+  }
+  assert.match(check([["crates/rbit-ssh/src/access.rs", "services.ssh_keys.find_by_fingerprint(fp).await"]])[0], /compatibility wrappers/u);
+  assert.deepEqual(check([["crates/rbit-web/tests/admin_configuration.rs", "services.ssh_keys.find_by_fingerprint(fp).await"]]), []);
 });
