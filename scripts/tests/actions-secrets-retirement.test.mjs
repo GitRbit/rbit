@@ -16,6 +16,10 @@ test("a second secret or environment rule fails outside rbit-actions", () => {
     ["crates/rbit-web/src/x.rs", "format!(\"{kind} `{short}` is not allowed to deploy to {name}\")\n", /environment protection/u],
     ["crates/rbit-services/src/actions/environments.rs", "format!(\"{} does not let whoever started a run approve it\", n)\n", /environment protection/u],
     ["crates/rbit-services/src/actions/environments.rs", "format!(\"{bang}refs/heads/{pattern}\")\n", /pattern rewriting/u],
+    ["crates/rbit-services/src/actions/secrets.rs", "fn cipher(&self) -> Aes256Gcm { todo!() }\n", /sealing or key file/u],
+    ["crates/rbit-services/src/actions/secrets.rs", "const KEY_PREFIX: &str = \"rbit-actions-key-v1:\";\n", /sealing or key file/u],
+    ["crates/rbit-server/src/x.rs", "pub struct KeyUnavailable(pub String);\n", /sealing or key file/u],
+    ["crates/rbit-services/src/actions/environments.rs", "if !rbit_workflow::spec::valid_environment_name(name) {}\n", /name or pattern check/u],
   ];
   for (const [path, source, message] of cases) assert.match(check(path, source).join("\n"), message, source);
 });
@@ -30,6 +34,8 @@ test("the owner, the API request shape, other crates' words and comments are all
     ["crates/rbit-web/src/routes/api/pulls.rs", "ApiError::service(error, \"reviewers\")\n"],
     ["crates/rbit-services/tests/actions_secrets.rs", "assert!(m.contains(\"is not allowed to deploy to\"));\n"],
     ["crates/rbit-services/src/actions/secrets.rs", "// a {kind} needs a value: rbit_actions::secrets::check_value\n"],
+    ["crates/rbit-storage/src/sealing.rs", "pub struct SealingKey(Arc<Aes256Gcm>);\n"],
+    ["crates/rbit-services/src/actions/secrets.rs", "pub(crate) struct SecretsKey { key: rbit_actions::secrets::SecretsKey }\n"],
   ]), []);
 });
 

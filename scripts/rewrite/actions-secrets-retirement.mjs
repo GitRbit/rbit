@@ -17,6 +17,12 @@ const RULES = [
   [/is not allowed to deploy to |does not let whoever started a run approve it|"an environment has at most |"the wait timer is at most /u,
     "environment protection rule decided outside rbit_actions::environments"],
   [/refs\/heads\/\{(?:pattern|bang)/u, "selected pattern rewriting outside rbit_actions::environments::full_ref_patterns"],
+  // Sealing, the key file format and the glob-bound environment checks are rbit-actions'.
+  // The services `SecretsKey` only maps stored records onto the sealing key.
+  [/\bAes256Gcm\b|\bconst\s+(?:KEY_PREFIX|AAD_PREFIX)\s*:|\bstruct\s+KeyUnavailable\b|is missing while secrets are stored/u,
+    "secret sealing or key file rule outside rbit_actions::secrets", true],
+  [/\bvalid_environment_name\s*\(|\bfn\s+ref_patterns\b|"at least one branch or tag pattern/u,
+    "environment name or pattern check outside rbit_actions::environments", true],
 ];
 
 /** Comments are not code; strip line and block comments before matching. */
