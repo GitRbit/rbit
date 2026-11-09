@@ -1,7 +1,8 @@
 # Command-line retirement progress
 
-Status: first slice; the `operations.cli` ledger row stays `baseline-retained`. This
-records what moved, what still blocks the row and the cost, following the
+Status: `ported`. The first slice moved offline provisioning; the configuration
+branch then moved the shared configuration helpers, which unblocked the row. This
+records what moved and the cost, following the
 [identity retirement](identity-retirement.md) pattern.
 
 ## Where each command decides today
@@ -11,10 +12,10 @@ records what moved, what still blocks the row and the cost, following the
 | Argument parsing, defaults, client dispatch | `rbit-server` `cli.rs`, `main.rs` | already in the target |
 | `serve`, restart relaunch, shutdown order | `rbit-server` `serve.rs`, `main.rs` | already in the target |
 | `migrate` | `rbit_storage::Database::open_with_key_file` (migrations are storage-owned) | already with its owner |
-| `backup`, `restore` | `rbit-server` `backup/` | in another branch; not touched |
+| `backup`, `restore` | `rbit-server` `backup/` over `rbit-storage` snapshots | with `operations.backup` |
 | `user create` | `rbit-server` `provision.rs` over `rbit_identity::accounts::AccountRegistration` | **moved by this slice** |
 | Configuration layering (defaults, file, saved settings, environment) | `rbit-server` `config.rs`, `config/sources.rs` | already in the target |
-| Deployment configuration validity and saved-document decoding | `rbit_services::admin::configuration::{validate_configuration, open_stored, CONFIGURATION_KEY}` | **remaining**; see below |
+| Deployment configuration validity and saved-document decoding | `rbit_core::config::document::validate_configuration`, `rbit_storage::deployment_config::{open_stored, DEPLOYMENT_CONFIG_KEY}` | **moved**; see below |
 | Remote client (`auth`, `run`, `workflow`, `artifact`, `pr`, `api`) | `rbit-server` `client/` | already in the target |
 
 ## This slice: offline provisioning
@@ -54,23 +55,30 @@ over every authored Rust file below `crates/`, comments ignored:
   `rbit-server`.
 - `AccountRegistration` in `rbit-server/src` outside `provision.rs`.
 - A `create_user` function back in `serve.rs`.
+- `rbit_services::admin::configuration` (or a `configuration` item imported from
+  `rbit_services::admin`) anywhere in `rbit-server`.
 
 `scripts/tests/operations-cli-retirement.test.mjs` covers each rule, the allowed cases
 and the whole tree.
 
-## Remaining before the row can be `ported`
+## Shared configuration helpers moved
 
-Startup validation and saved-configuration decoding are decided in the legacy services
-crate (`admin/configuration.rs`) because the administrator configuration editor shares
-them; `rbit-server` sits above services, so it cannot own them while the editor uses
-them. The fitting owners sit below both: `validate_configuration` (and the site-name
-rule it calls from `instance.rs`) in `rbit-core::config`, which would need a URL parser
-dependency, and `open_stored` with `CONFIGURATION_KEY` next to the instance-settings
-store in `rbit-storage`. Existing paths would stay as re-exports
-(`crates/rbit-services/tests/admin.rs` uses `open_stored`). This overlaps the
-`operations.admin` configuration editor, which is waiting for a re-target, so it was
-left for that decision. Backup and restore entry points are reviewed with their own
-branch.
+The startup loader no longer reaches into services. The configuration branch
+(`operations.configuration`) moved the shared helpers below both the server and the
+administrator editor:
+
+- `validate_configuration` and the document rules (redaction, restoring secrets,
+  staging checks, the site-name rule) to `rbit_core::config::document`
+  (`crates/rbit-core/src/config/document.rs`);
+- `open_stored` and the settings key (`DEPLOYMENT_CONFIG_KEY`) to
+  `rbit_storage::deployment_config` (`crates/rbit-storage/src/deployment_config.rs`).
+
+`rbit_services::admin::configuration` keeps re-exports at the old paths for the editor
+and its tests (`crates/rbit-services/tests/admin.rs` uses `open_stored`).
+`crates/rbit-server/src/config/sources.rs` and its test now import from the new owners
+directly, so the row is `ported`. The startup behaviour is unchanged: the same key, the
+same decoding and unsealing, the same validation messages and the same recovery hint.
+Backup and restore entry points are recorded with `operations.backup`.
 
 ## Results
 
@@ -115,10 +123,6 @@ Tricky parts:
 - The new `rbit-server -> rbit-identity` edge must request exactly `password-work`, so it
   is pinned in `identity-features.mjs` as well as allowed in `ADDED_EDGES`.
 - Finding what the CLI still consumes from services: the startup configuration loader's
-  validation and saved-document decoding are shared with the administrator editor, which
-  is what keeps the row open.
-
-Estimate: the remaining configuration move is one focused session, about 10 files and
-200–300 changed lines (a URL-parser dependency for `rbit-core`, the site-name rule,
-re-exports for the existing paths and a guard), once the `operations.admin` re-target
-settles who owns the configuration editor.
+  validation and saved-document decoding were shared with the administrator editor; they
+  now live in `rbit-core` and `rbit-storage`, and the closing commit only repoints the
+  loader (two files), extends the guard by one rule and flips the row.

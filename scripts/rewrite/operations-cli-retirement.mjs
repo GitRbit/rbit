@@ -11,6 +11,11 @@ const RULES = [
   [/\bAccountRegistration\b/u, "server account registration belongs in rbit-server provision",
     (path) => path.startsWith("crates/rbit-server/src/") && path !== PROVISION],
   [/\bfn\s+create_user\b/u, "CLI provisioning moved out of serve", (path) => path === "crates/rbit-server/src/serve.rs"],
+  // Startup validation and saved-document decoding live in rbit_core::config::document and
+  // rbit_storage::deployment_config; the services paths stay only as re-exports for the editor.
+  [/\brbit_services::admin::(?:configuration\b|\{[^}]*\bconfiguration\b)/u,
+    "the server loads configuration through rbit_core::config::document and rbit_storage::deployment_config",
+    (path) => path.startsWith("crates/rbit-server/")],
 ];
 
 /** Comments are not code; strip line and block comments, keeping `scheme://` addresses. */

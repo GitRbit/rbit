@@ -15,6 +15,8 @@ test("a services CLI provisioning path fails wherever it returns", () => {
     ["crates/rbit-server/src/serve.rs", "accounts::create_user(&config, &store, input, Some(admin)).await?;\nuse rbit_services::accounts::create_user;\n", /not services/u],
     ["crates/rbit-server/src/main.rs", "let app = rbit_identity::accounts::AccountRegistration::new(&s, &p, 8, None);\n", /belongs in rbit-server provision/u],
     ["crates/rbit-server/src/serve.rs", "pub async fn create_user(config: Config) {}\n", /moved out of serve/u],
+    ["crates/rbit-server/src/config/sources.rs", "rbit_services::admin::configuration::open_stored(&document, &key)\n", /rbit_storage::deployment_config/u],
+    ["crates/rbit-server/src/config.rs", "use rbit_services::admin::{AdminService, configuration};\n", /rbit_core::config::document/u],
   ];
   for (const [path, source, message] of cases) assert.match(check(path, source)[0] ?? "", message, source);
 });
@@ -26,6 +28,8 @@ test("the server provisioning, the inactive original path and comments are allow
     ["crates/rbit-services/tests/password_admission/creation_proof.rs", "rbit_services::accounts::create_user_offline_original(&config, &store, input(\"alice\"), None)\n"],
     ["crates/rbit-services/src/admin/accounts.rs", "pub fn create_user<'a>(&'a self) {}\n"],
     ["crates/rbit-server/src/serve.rs", "// create_user_offline was retired; see provision.rs\n"],
+    ["crates/rbit-services/tests/admin.rs", "rbit_services::admin::configuration::open_stored(&stored, key).unwrap();\n"],
+    ["crates/rbit-server/src/config/sources.rs", "rbit_storage::deployment_config::open_stored(&document, &key)\n"],
   ]), []);
 });
 

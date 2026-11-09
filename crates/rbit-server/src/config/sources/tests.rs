@@ -43,7 +43,7 @@ async fn supplied_owned_database_hydrates_sealed_saved_settings_with_one_query_a
     saved.mail.smtp_password = "fixture saved secret".into();
     let mut document = serde_json::to_value(&saved).unwrap();
     database.sealing_key().seal_secret_fields(&mut document).unwrap();
-    database.instance_settings().save(&[(rbit_services::admin::configuration::CONFIGURATION_KEY, &document.to_string())]).await.unwrap();
+    database.instance_settings().save(&[(rbit_storage::deployment_config::DEPLOYMENT_CONFIG_KEY, &document.to_string())]).await.unwrap();
     let sources = ConfigSources::parse(Some(&file)).unwrap();
     let (stored, work) = count_work(sources.read_saved(&database)).await;
     assert_eq!(work, Work { acquisitions: 1, statements: 1, cache_writes: 0 });

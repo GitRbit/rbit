@@ -65,9 +65,9 @@ impl ConfigSources {
     pub(crate) fn finish(self, saved: Option<SavedConfig>) -> anyhow::Result<Config> {
         let mut figment = self.figment;
         if let Some(SavedConfig { entries, key }) = saved
-            && let Some((_, document)) = entries.into_iter().find(|(key, _)| key == rbit_services::admin::configuration::CONFIGURATION_KEY)
+            && let Some((_, document)) = entries.into_iter().find(|(key, _)| key == rbit_storage::deployment_config::DEPLOYMENT_CONFIG_KEY)
         {
-            let config = rbit_services::admin::configuration::open_stored(&document, &key)
+            let config = rbit_storage::deployment_config::open_stored(&document, &key)
                 .map_err(anyhow::Error::msg)
                 .context("invalid administrator configuration; set RBIT_IGNORE_ADMIN_CONFIG=1 to recover")?;
             let mut value = serde_json::to_value(config)?;
@@ -87,7 +87,7 @@ impl ConfigSources {
             .apply_provider_env(provider_env(std::env::vars()))
             .map_err(|problem| anyhow::anyhow!("invalid configuration: {problem}"))?;
         config.auth.validate().map_err(|problems| anyhow::anyhow!("invalid [auth] configuration: {problems}"))?;
-        rbit_services::admin::configuration::validate_configuration(&config).map_err(anyhow::Error::msg)?;
+        rbit_core::config::document::validate_configuration(&config).map_err(anyhow::Error::msg)?;
         Ok(config)
     }
 }
