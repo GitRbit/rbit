@@ -251,10 +251,10 @@ mod tests {
     }
 
     #[test]
-    fn row_text_falls_back_to_english_in_spanish() {
+    fn row_text_is_translated_in_spanish() {
         let row = TokenRow::new(&token(None, None), NOW, Locale::Spanish);
-        assert_eq!(row.expiry.as_str(), "No expiration");
-        assert!(row.expiry.fallback());
+        assert_eq!(row.expiry.as_str(), "Sin caducidad");
+        assert!(!row.expiry.fallback());
     }
 
     #[test]

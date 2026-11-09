@@ -397,7 +397,9 @@ mod tests {
         let all = matching(&"b*".parse().unwrap(), &names);
         assert_eq!(matches_text(&all, Locale::English).as_str(), "Matches b0, b1, b2, b3, b4 and 3 more");
         assert_eq!(matches_text(&all[..2], Locale::English).as_str(), "Matches b0, b1");
-        assert!(matches_text(&[], Locale::Spanish).fallback());
+        let spanish = matches_text(&[], Locale::Spanish);
+        assert_eq!(spanish.as_str(), "Aún no coincide con ninguna rama");
+        assert!(!spanish.fallback());
     }
 
     #[test]

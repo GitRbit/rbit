@@ -1,5 +1,5 @@
-//! The English-only administration families and the settings index cards: every key
-//! renders its English text and falls back to it, marked, in Spanish.
+//! The administration families and the settings index cards: every key renders its
+//! English text and is translated in Spanish.
 use std::{collections::BTreeSet, fmt::Debug};
 
 use rbit_localization::{
@@ -18,14 +18,14 @@ fn check<M: MessageFamily + Debug>(messages: &[M]) -> Vec<&'static str> {
         assert!(!english.as_str().is_empty(), "{message:?}");
         assert!(!english.fallback(), "{message:?} is English");
         let spanish = Catalog::new(Locale::Spanish).localized(message);
-        assert_eq!(spanish.as_str(), english.as_str(), "{message:?} falls back to English");
-        assert!(spanish.fallback(), "{message:?} is marked as a fallback in Spanish");
+        assert!(!spanish.as_str().is_empty(), "{message:?}");
+        assert!(!spanish.fallback(), "{message:?} is translated in Spanish");
     }
     messages.iter().map(|message| message.id()).collect()
 }
 
 #[test]
-fn administration_keys_render_in_english_and_fall_back_in_spanish() {
+fn administration_keys_render_in_english_and_translate_to_spanish() {
     let mut ids = Vec::new();
     ids.extend(check(AdminMessage::ALL));
     ids.extend(check(DashboardMessage::ALL));
@@ -56,7 +56,7 @@ fn administration_keys_render_in_english_and_fall_back_in_spanish() {
 }
 
 #[test]
-fn settings_cards_render_in_english_and_fall_back_in_spanish() {
+fn settings_cards_render_in_english_and_translate_to_spanish() {
     let ids = check(CardMessage::ALL);
     assert_eq!(ids.iter().collect::<BTreeSet<_>>().len(), ids.len());
 }
