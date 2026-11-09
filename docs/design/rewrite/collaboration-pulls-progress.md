@@ -2,7 +2,8 @@
 
 Progress for the `collaboration.pulls` ("Cross-fork pulls, reviews, base selection,
 merge/squash/rebase") and `collaboration.review-threads` ("Line comments, resolvable
-conversations and review requests") ledger rows, which both stay `baseline-retained`. This slice moves the
+conversations and review requests") ledger rows. `collaboration.pulls` stays `baseline-retained`; review threads were
+retired later. This slice moves the
 decisions of opening a pull request; merging, reviews, base changes and background
 work keep their current owners. It follows the [identity retirement](identity-retirement.md)
 pattern for what moves, what is removed and which boundary keeps it from returning.
@@ -102,10 +103,9 @@ normalizes roots or checks pending reviewers inline again, or if the request lim
 refusals are defined outside `rbit-collaboration/src`
 (`scripts/tests/review-threads-retirement.test.mjs`).
 
-Remaining for `collaboration.review-threads`: line anchoring (the diff hunk excerpt kept
-with each comment, `pulls/reviews.rs::hunk_excerpt`, over `rbit-git` diff types),
-routing comments into a pending review, and the requested reviewers' account and
-access lookups. Review submission and dismissal policy belong to `collaboration.pulls`.
+The rest of `collaboration.review-threads` (line anchoring, pending-review routing and
+review requests) moved later; the row is retired with its
+[acceptance evidence](collaboration-review-threads-acceptance.md).
 
 ## Cost
 
