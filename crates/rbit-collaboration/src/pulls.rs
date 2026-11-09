@@ -10,6 +10,7 @@ mod merging;
 mod messages;
 mod records;
 pub mod review_threads;
+mod reviews;
 
 pub use anchors::{AnchorLine, DIFF_HUNK_LINES, LineMark, ReviewSide, hunk_excerpt};
 pub use branches::branch_ref;
@@ -24,6 +25,10 @@ pub use records::{
     ReviewState,
 };
 pub use review_threads::MAX_REQUESTED_REVIEWERS;
+pub use reviews::{
+    NOT_DISMISSIBLE, ReviewRefusal, ReviewVerdict, dismissal_message, empty_review_refusal, may_dismiss_review, may_edit_review,
+    verdict_refusal,
+};
 
 #[cfg(feature = "applications")]
 mod creation;

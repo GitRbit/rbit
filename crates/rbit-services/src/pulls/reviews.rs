@@ -15,7 +15,10 @@
 
 use std::collections::HashMap;
 
-use rbit_collaboration::pulls::{AnchorLine, LineMark, ReviewRequestPlan, ReviewRequests, may_request_reviews, review_threads};
+use rbit_collaboration::pulls::{
+    AnchorLine, LineMark, NOT_DISMISSIBLE, ReviewRefusal, ReviewRequestPlan, ReviewRequests, dismissal_message, empty_review_refusal,
+    may_dismiss_review, may_edit_review, may_request_reviews, review_threads, verdict_refusal,
+};
 use rbit_core::{
     Account, AccountId, IssueText, ReviewId, TimelineEvent, Timestamp, User,
     issue::{IssueAction, ReviewAction, ReviewState, issue_permissions},
@@ -46,32 +49,7 @@ pub struct LineComment {
     pub start_review: bool,
 }
 
-/// How a review is submitted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReviewVerdict {
-    Comment,
-    Approve,
-    RequestChanges,
-}
-
-impl ReviewVerdict {
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "comment" | "COMMENT" => Some(Self::Comment),
-            "approve" | "APPROVE" => Some(Self::Approve),
-            "request_changes" | "REQUEST_CHANGES" => Some(Self::RequestChanges),
-            _ => None,
-        }
-    }
-
-    const fn state(self) -> ReviewState {
-        match self {
-            Self::Comment => ReviewState::Commented,
-            Self::Approve => ReviewState::Approved,
-            Self::RequestChanges => ReviewState::ChangesRequested,
-        }
-    }
-}
+pub use rbit_collaboration::pulls::ReviewVerdict;
 
 /// A review with the accounts and comments it shows.
 #[derive(Debug, Clone)]
@@ -242,11 +220,8 @@ impl PullService {
     /// Comments and change requests need a body when there are no line comments.
     pub async fn submit_review(&self, actor: &User, ctx: &PullContext, verdict: ReviewVerdict, body: &str) -> Result<Review, ServiceError> {
         Self::require_comment(actor, ctx)?;
-        if verdict != ReviewVerdict::Comment && ctx.issue().is_author(actor) {
-            return Err(ServiceError::Invalid("you cannot approve or request changes on your own pull request".to_owned()));
-        }
-        if !ctx.issue().is_open() && verdict != ReviewVerdict::Comment {
-            return Err(ServiceError::Invalid("the pull request is closed".to_owned()));
+        if let Some(refusal) = verdict_refusal(verdict, ctx.issue().is_author(actor), ctx.issue().is_open()) {
+            return Err(ServiceError::Invalid(refusal.to_owned()));
         }
         let body = IssueText::body(body)?;
         let store = self.ctx().database.reviews();
@@ -256,8 +231,8 @@ impl PullService {
             Some(review) => store.comments(ctx.issue().id).await?.iter().any(|comment| comment.review_id == review.id),
             None => false,
         };
-        if body.is_empty() && !has_comments && verdict != ReviewVerdict::Approve {
-            return Err(ServiceError::Invalid("write a comment or leave line comments first".to_owned()));
+        if let Some(refusal) = empty_review_refusal(verdict, body.is_empty(), has_comments) {
+            return Err(ServiceError::Invalid(refusal.to_owned()));
         }
         self.spend(actor)?;
         let now = Timestamp::now();
@@ -291,9 +266,7 @@ impl PullService {
     pub async fn edit_review(&self, actor: &User, ctx: &PullContext, id: ReviewId, body: &str) -> Result<Review, ServiceError> {
         let store = self.ctx().database.reviews();
         let review = store.find(ctx.issue().id, id).await?.ok_or(ServiceError::NotFound)?;
-        if review.state == ReviewState::Pending || review.reviewer != Some(actor.id()) {
-            return Err(if review.state == ReviewState::Pending { ServiceError::NotFound } else { ServiceError::Forbidden });
-        }
+        may_edit_review(review.state, Some(actor.id()) == review.reviewer).map_err(refusal)?;
         Self::require_comment(actor, ctx)?;
         let body = IssueText::body(body)?;
         if body.as_str() == review.body {
@@ -309,22 +282,14 @@ impl PullService {
     pub async fn dismiss_review(&self, actor: &User, ctx: &PullContext, id: ReviewId, message: &str) -> Result<Review, ServiceError> {
         let store = self.ctx().database.reviews();
         let review = store.find(ctx.issue().id, id).await?.ok_or(ServiceError::NotFound)?;
-        if review.state == ReviewState::Pending {
-            return Err(ServiceError::NotFound);
-        }
-        if !ctx.repo().access.can_write() {
-            return Err(ServiceError::Forbidden);
-        }
+        may_dismiss_review(review.state, ctx.repo().access.can_write()).map_err(refusal)?;
         ctx.repo().ensure_writable()?;
-        let message = message.trim();
-        if message.is_empty() {
-            return Err(ServiceError::Invalid("say why the review is dismissed".to_owned()));
-        }
+        let message = dismissal_message(message).map_err(|refusal| ServiceError::Invalid(refusal.to_owned()))?;
         let message = IssueText::comment(message)?;
         let dismissed = store
             .dismiss(ctx.issue().id, id, actor.id(), message.as_str(), Timestamp::now())
             .await?
-            .ok_or_else(|| ServiceError::Invalid("only approvals and change requests can be dismissed".to_owned()))?;
+            .ok_or_else(|| ServiceError::Invalid(NOT_DISMISSIBLE.to_owned()))?;
         let timeline = self.inner.timeline.writer();
         timeline.record(ctx.issue().id, Some(actor.id()), TimelineEvent::ReviewDismissed { review: id, reviewer: review.reviewer }).await?;
         self.publish_review(ctx, id, actor.id(), ReviewAction::Dismissed);
@@ -421,6 +386,14 @@ pub fn hunk_excerpt(hunks: &[Hunk], side: ReviewSide, line: u32) -> Option<Strin
         new_number: line.new_number,
         text: &line.text,
     })
+}
+
+/// The service error of a review the caller may not edit or dismiss.
+fn refusal(refusal: ReviewRefusal) -> ServiceError {
+    match refusal {
+        ReviewRefusal::NotFound => ServiceError::NotFound,
+        ReviewRefusal::Forbidden => ServiceError::Forbidden,
+    }
 }
 
 #[cfg(test)]
