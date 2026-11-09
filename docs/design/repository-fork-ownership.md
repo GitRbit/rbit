@@ -66,3 +66,9 @@ lookup failure, 3SQL source-pushed successful fork, 2SQL list/count, 1SQL public
 0SQL empty fork flags, 2SQL copy failure/metadata rollback and 3SQL unique race with an
 unpushed source. These are unexecuted test oracles, not latency or allocation measurements.
 The complete fork ledger remains pending native/HTTP acceptance and lifecycle work.
+
+## Retirement
+
+The ledger row is `ported`. Fork flags and the readable fork network used by Actions,
+hooks, webhooks, pull heads and LFS object sharing now go through `ForkQueries` as
+well; see the [acceptance record](rewrite/repositories-forks-acceptance.md).
