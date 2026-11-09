@@ -21,6 +21,7 @@
 
 use std::collections::BTreeMap;
 
+use rbit_actions::triggers::events::{self, RefSide};
 use rbit_actions::trust::RunTrust;
 use rbit_core::{
     User,
@@ -202,22 +203,16 @@ impl ActionsService {
 
 /// The full ref `given` names among the repository's own branches and tags.
 async fn own_ref(repo: &RepoContext, given: &str) -> Result<String, ServiceError> {
-    let refused = || ServiceError::Invalid("the ref must be a branch or tag of this repository".to_owned());
-    let given = given.trim();
-    let (kinds, name): (&[RefKind], &str) = if let Some(branch) = given.strip_prefix("refs/heads/") {
-        (&[RefKind::Branch], branch)
-    } else if let Some(tag) = given.strip_prefix("refs/tags/") {
-        (&[RefKind::Tag], tag)
-    } else if given.starts_with("refs/") || given.is_empty() {
-        return Err(refused());
-    } else {
-        (&[RefKind::Branch, RefKind::Tag], given)
-    };
+    let refused = || ServiceError::Invalid(events::REF_REFUSED.to_owned());
+    let Some((sides, name)) = events::dispatch_ref(given) else { return Err(refused()) };
     let refs = repo.reader.refs().await?;
-    for kind in kinds {
-        if refs.iter().any(|summary| summary.kind == *kind && summary.name == name) {
-            let prefix = if *kind == RefKind::Branch { "refs/heads/" } else { "refs/tags/" };
-            return Ok(format!("{prefix}{name}"));
+    for side in sides {
+        let kind = match side {
+            RefSide::Branch => RefKind::Branch,
+            RefSide::Tag => RefKind::Tag,
+        };
+        if refs.iter().any(|summary| summary.kind == kind && summary.name == name) {
+            return Ok(side.full_ref(name));
         }
     }
     Err(refused())

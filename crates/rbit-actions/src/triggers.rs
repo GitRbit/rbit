@@ -9,6 +9,8 @@
 
 use std::time::Duration;
 
+pub mod events;
+
 /// Updated refs of one push that are considered.
 pub const MAX_REF_UPDATES: usize = 16;
 /// Changed paths listed for `paths` filters; beyond it, `paths` filters pass (as on GitHub).

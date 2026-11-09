@@ -18,12 +18,12 @@
 //!
 //! Workstream T (triggers and runs) owns this file.
 
-use std::{collections::BTreeSet, time::Duration};
+use std::collections::BTreeSet;
 
 use rbit_actions::trust::RunTrust;
 use rbit_core::{
     RepoId, Timestamp,
-    actions::{Run, RunEvent, ScheduleEntry, Status},
+    actions::{Run, RunEvent, ScheduleEntry},
     repository::OwnedRepository,
 };
 use rbit_storage::sqlite::{actions_runs::RunFilter, actions_schedules::NewSchedule};
@@ -37,14 +37,9 @@ use super::{
 };
 use crate::ServiceError;
 
-/// How often the ticker looks for due entries.
-pub const TICK: Duration = Duration::from_secs(60);
-/// Consecutive workflow errors that pause an entry.
-pub const PAUSE_AFTER_FAILURES: i64 = 3;
-/// Entries started by one tick at most; the rest are due on the next.
-const DUE_PER_TICK: u32 = 100;
-/// When an entry whose expression can no longer be read is looked at again.
-const RETRY_UNREADABLE: i64 = 24 * 60 * 60;
+// Tick, pause and retry limits and the waiting rule are decided by `rbit_actions::triggers::events`.
+use rbit_actions::triggers::events::{self, DUE_PER_TICK, RETRY_UNREADABLE};
+pub use rbit_actions::triggers::events::{PAUSE_AFTER_FAILURES, TICK};
 
 /// What firing one entry did.
 #[derive(Debug)]
@@ -164,7 +159,7 @@ impl ActionsService {
         let filter =
             RunFilter { workflow_path: Some(&entry.workflow_path), event: Some(RunEvent::Schedule), limit: 1, ..RunFilter::default() };
         if let Some(previous) = database.actions_runs().list_runs(entry.repo_id, &filter).await?.first()
-            && matches!(previous.status, Status::Waiting | Status::Blocked)
+            && events::schedule_waits_for(super::trigger_inputs::run_stage(previous.status))
         {
             tracing::debug!(repo = %owned.full_name(), workflow = %entry.workflow_path, "the previous scheduled run still waits; skipped");
             return Ok(Fired::Skipped);

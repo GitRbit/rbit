@@ -39,14 +39,11 @@ use crate::{
     webhooks::payloads::{account, repository, with_organization},
 };
 
-/// How many `workflow_run` levels may follow one another.
-pub const MAX_WORKFLOW_RUN_CHAIN: usize = 3;
-/// The longest `event_type` of a `repository_dispatch`.
-pub const MAX_DISPATCH_EVENT_TYPE_CHARS: usize = 100;
-/// The most top-level properties of a `client_payload`.
-pub const MAX_CLIENT_PAYLOAD_PROPERTIES: usize = 10;
-/// The longest `client_payload`, as JSON.
-pub const MAX_CLIENT_PAYLOAD_CHARS: usize = 65_535;
+// Chain depth and `repository_dispatch` input are decided by `rbit_actions::triggers::events`.
+use rbit_actions::triggers::events;
+pub use rbit_actions::triggers::events::{
+    MAX_CLIENT_PAYLOAD_CHARS, MAX_CLIENT_PAYLOAD_PROPERTIES, MAX_DISPATCH_EVENT_TYPE_CHARS, MAX_WORKFLOW_RUN_CHAIN,
+};
 
 impl ActionsService {
     /// Starts the `workflow_run` runs that `action` of run `id` asks for and returns them.
@@ -57,7 +54,7 @@ impl ActionsService {
             return Ok(Vec::new());
         }
         let Some(run) = database.actions_runs().run(id).await? else { return Ok(Vec::new()) };
-        if self.chain_depth(&run).await? >= MAX_WORKFLOW_RUN_CHAIN {
+        if !events::chain_continues(self.chain_depth(&run).await?) {
             tracing::debug!(run = run.id.0, "a workflow_run chain is {MAX_WORKFLOW_RUN_CHAIN} levels deep; it starts no more runs");
             return Ok(Vec::new());
         }
@@ -129,7 +126,7 @@ impl ActionsService {
     async fn chain_depth(&self, run: &Run) -> Result<usize, ServiceError> {
         let store = self.ctx().database.actions_runs();
         let (mut depth, mut current) = (0, run.clone());
-        while current.event == RunEvent::WorkflowRun && depth < MAX_WORKFLOW_RUN_CHAIN {
+        while current.event == RunEvent::WorkflowRun && events::chain_continues(depth) {
             depth += 1;
             let Some((payload, _)) = store.event(current.id).await? else { break };
             let parent = serde_json::from_str::<Value>(&payload).ok().and_then(|payload| payload["workflow_run"]["id"].as_i64());
@@ -157,22 +154,15 @@ impl ActionsService {
             return Err(if repo.access.can_read() { ServiceError::Forbidden } else { ServiceError::NotFound });
         }
         repo.ensure_writable()?;
-        let event_type = event_type.trim();
-        if event_type.is_empty() || event_type.chars().count() > MAX_DISPATCH_EVENT_TYPE_CHARS {
-            return Err(ServiceError::Invalid(format!("event_type must be 1 to {MAX_DISPATCH_EVENT_TYPE_CHARS} characters")));
-        }
+        let event_type = events::dispatch_event_type(event_type).map_err(ServiceError::Invalid)?;
         let client_payload = match client_payload {
             None | Some(Value::Null) => Map::new(),
             Some(Value::Object(object)) => object,
-            Some(_) => return Err(ServiceError::Invalid("client_payload must be an object".to_owned())),
+            Some(_) => return Err(ServiceError::Invalid(events::CLIENT_PAYLOAD_NOT_OBJECT.to_owned())),
         };
-        if client_payload.len() > MAX_CLIENT_PAYLOAD_PROPERTIES {
-            return Err(ServiceError::Invalid(format!(
-                "client_payload may have at most {MAX_CLIENT_PAYLOAD_PROPERTIES} top-level properties"
-            )));
-        }
-        if Value::Object(client_payload.clone()).to_string().chars().count() > MAX_CLIENT_PAYLOAD_CHARS {
-            return Err(ServiceError::Invalid(format!("client_payload may be at most {MAX_CLIENT_PAYLOAD_CHARS} characters")));
+        let json_chars = || Value::Object(client_payload.clone()).to_string().chars().count();
+        if let Some(problem) = events::client_payload_problem(client_payload.len(), json_chars) {
+            return Err(ServiceError::Invalid(problem));
         }
         let owned = &repo.repo;
         if !self.ctx().database.actions_settings().is_enabled(owned.repo.id).await? {
