@@ -13,7 +13,7 @@
 //! * can **still read the repository** now (checked again at send time, with grants),
 //! * was **not mailed about this activity before** (a dedup key per recipient, thread and
 //!   activity, claimed in `notification_emails`),
-//! * is within their [`ThrottleScope::NotificationEmail`] budget.
+//! * is within their [`crate::ThrottleScope::NotificationEmail`] budget.
 //!
 //! Delivery goes through the shared [`MailService`] queue. Nothing is sent when the
 //! transport is `disabled`, with `[notifications] email = false`, or with the inbox off.
@@ -35,50 +35,28 @@
 //! turns notification emails off for that account.
 
 mod digests;
+mod outbox;
 
-use std::{
-    collections::{BTreeMap, HashMap},
-    fmt,
-    sync::Arc,
-};
+use std::{fmt, sync::Arc};
 
 pub use digests::{DigestRun, period_start};
-use hmac::{Hmac, KeyInit, Mac};
 use rbit_core::{
-    AccountId, CommentSource, Email, Issue, IssueId, IssueKind, RepoId, StateReason, Timestamp, User,
+    AccountId, CommentSource, Email, IssueId, RepoId, Timestamp, User,
     config::{EmailDelivery, EmailPreference},
     issue::{CommentAction, IssueAction, ReviewAction, ReviewState},
-    repository::OwnedRepository,
 };
-use rbit_mail::{
-    Mail,
-    messages::{MailHeaders, ThreadNotification},
+use rbit_notifications::NotificationReason;
+pub use rbit_notifications::mail::policy::{SETTINGS_PATH, UNSUBSCRIBE_PATH};
+use rbit_notifications::mail::{
+    activity::{MailEvent, MailThread, ReviewVerdict, describe},
+    delivery::{MailScope, deliver},
+    policy::valid_digest_hour,
+    unsubscribe::{LINK_KEY_NAME, sign_link, verify_link},
 };
-use rbit_storage::sqlite::{
-    email_digests::NewDigestItem,
-    notification_email::DeliverySettings,
-    notifications::{NOTIFICATION_BATCH_SIZE, NotificationReason},
-};
-use sha2::Sha256;
+use rbit_storage::sqlite::notification_email::DeliverySettings;
 use tokio::sync::OnceCell;
 
-use crate::{
-    DomainEvent, InstanceService, MailService, ServiceContext, ServiceError, ThrottleScope, ThrottleService,
-    notifications::can_read_with_grants,
-};
-
-/// The `server_secrets` row whose key signs unsubscribe links.
-const LINK_KEY_NAME: &str = "notification_unsubscribe";
-/// What the link MAC covers besides the account id, so the key can sign other things later.
-const LINK_PURPOSE: &str = "rbit/notification-unsubscribe/v1";
-/// Longest excerpt quoted in a message, in characters.
-const MAX_EXCERPT_CHARS: usize = 1000;
-/// Longest excerpt of one notification in a digest, in characters (on one line).
-const MAX_DIGEST_EXCERPT_CHARS: usize = 200;
-/// Where users manage their notification emails.
-pub const SETTINGS_PATH: &str = "/settings/notifications";
-/// The one-click unsubscribe endpoint; the token follows.
-pub const UNSUBSCRIBE_PATH: &str = "/email/unsubscribe/";
+use crate::{DomainEvent, InstanceService, MailService, ServiceContext, ServiceError, ThrottleService};
 
 /// A user's notification email settings, for the settings page.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -97,19 +75,6 @@ pub struct EmailSettings {
     pub verified: bool,
     /// Whether this server sends notification emails at all.
     pub available: bool,
-}
-
-/// What an event did, as one email describes it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct Activity {
-    /// The dedup key, unique per thread and activity; also ends the `Message-ID`.
-    key: String,
-    headline: String,
-    excerpt: String,
-    /// The fragment of the thread page to link to.
-    anchor: Option<String>,
-    /// Whether this message starts the thread (its `Message-ID` is the thread's).
-    opening: bool,
 }
 
 /// Where the service reads the time: the system clock, or a test's.
@@ -208,7 +173,7 @@ impl NotificationEmailService {
         delivery: EmailDelivery,
         digest_hour: Option<u8>,
     ) -> Result<(), ServiceError> {
-        if digest_hour.is_some_and(|hour| hour > rbit_core::config::MAX_DIGEST_HOUR) {
+        if !valid_digest_hour(digest_hour) {
             return Err(ServiceError::Invalid("the digest hour must be between 0 and 23".to_owned()));
         }
         let settings = DeliverySettings { delivery, digest_hour };
@@ -256,7 +221,7 @@ impl NotificationEmailService {
     // ------------------------------------------------------------------ delivery
 
     /// Mails `recipients` (each with the reason the inbox recorded) about `event` on thread
-    /// `issue` of `repo`, as described in the module documentation.
+    /// `issue` of `repo` through the feature delivery policy, as the module describes.
     pub(crate) async fn deliver(
         &self,
         event: &DomainEvent,
@@ -276,135 +241,35 @@ impl NotificationEmailService {
         };
         let now = self.now();
         let Some(activity) = self.activity(event, &thread, actor_name.as_deref(), now).await? else { return Ok(()) };
-        let store = database.notification_email();
-        let default = self.ctx.config.notifications.default_email;
-
-        let mut unique = BTreeMap::<AccountId, NotificationReason>::new();
-        for &(user, reason) in recipients.iter().filter(|(user, _)| Some(*user) != actor) {
-            unique.entry(user).and_modify(|current| *current = (*current).max(reason)).or_insert(reason);
-        }
-        let recipients: Vec<_> = unique.into_iter().collect();
-        for batch in recipients.chunks(NOTIFICATION_BATCH_SIZE) {
-            // Ownership or visibility can change while earlier batches are delivered.
-            let Some(owned) = database.admin().find_repository(repo).await? else { break };
-            let ids: Vec<_> = batch.iter().map(|(user, _)| *user).collect();
-            // This fresh read includes suspension, verification and preference. Inbox
-            // authorization is deliberately not reused for external delivery.
-            let users = store.recipients(&ids).await?;
-            let reasons: HashMap<_, _> = batch.iter().copied().collect();
-            let users: Vec<_> = users
-                .into_iter()
-                .filter_map(|recipient| {
-                    let reason = *reasons.get(&recipient.user.id())?;
-                    wants(recipient.preference.unwrap_or(default), reason).then_some((recipient.user, reason, recipient.delivery))
-                })
-                .collect();
-            let grant_ids: Vec<_> = users
-                .iter()
-                .map(|(user, _, _)| user)
-                .filter(|user| !user.is_admin && user.id() != owned.repo.owner_id)
-                .map(User::id)
-                .collect();
-            let grants = database.repositories().grants_for(repo, owned.repo.owner_id, &grant_ids).await?;
-            let users: Vec<_> =
-                users.into_iter().filter(|(user, _, _)| can_read_with_grants(user, &owned, grants.get(&user.id()))).collect();
-            // Rendering may fail (including initializing the unsubscribe signing key).
-            // Finish the bounded batch before claiming any of its delivery keys.
-            let mut rendered = Vec::with_capacity(users.len());
-            let mut digest = Vec::new();
-            for (user, reason, delivery) in users {
-                if delivery.is_digest() {
-                    digest.push((user.id(), reason));
-                } else {
-                    let mail = self.render(&owned, &thread, &activity, reason, user.email.clone(), user.id()).await?;
-                    rendered.push((user, mail));
-                }
-            }
-            let ids: Vec<_> = rendered.iter().map(|(user, _)| user.id()).chain(digest.iter().map(|(user, _)| *user)).collect();
-            // One claim for both: switching between immediate and digest delivery never
-            // sends an activity twice.
-            let claimed = store.claim_many(&ids, issue, &activity.key, now).await?;
-            let queued: Vec<_> = digest
-                .into_iter()
-                .filter(|(user, _)| claimed.contains(user))
-                .map(|(account, reason)| NewDigestItem {
-                    account,
-                    repo,
-                    issue,
-                    reason,
-                    headline: activity.headline.clone(),
-                    excerpt: one_line_excerpt(&activity.excerpt),
-                    anchor: activity.anchor.clone(),
-                    created_at: now,
-                })
-                .collect();
-            database.email_digests().queue(&queued).await?;
-            for (user, mail) in rendered.into_iter().filter(|(user, _)| claimed.contains(&user.id())) {
-                if let Err(error) = self.throttle.check(ThrottleScope::NotificationEmail, &user.email.as_str().to_lowercase()) {
-                    tracing::info!(%error, user = %user.name(), "notification email skipped: too many recently");
-                    continue;
-                }
-                self.mail.send(mail);
-            }
-        }
-        Ok(())
+        let default = outbox::preference(self.ctx.config.notifications.default_email);
+        let scope = MailScope { repo, issue, actor, now, default };
+        deliver(&outbox::ThreadOutbox::new(self, &thread), scope, &activity, recipients).await
     }
 
     /// Deletes outbox rows and digests created before `cutoff` (the inbox's retention).
     /// Notifications still waiting for a digest are kept for at least two weeks.
     pub(crate) async fn prune(&self, cutoff: Timestamp) -> Result<u64, ServiceError> {
-        let outbox = self.ctx.database.notification_email().prune(cutoff).await?;
-        let digests = self.ctx.database.email_digests().prune(digests::prune_cutoff(cutoff, self.now())).await?;
-        Ok(outbox + digests)
+        outbox::prune(&self.ctx.database, cutoff, self.now()).await
     }
 
-    /// What `event` did to `thread`, or `None` for events that send no email.
+    /// What `event` did to `thread`, or `None` for events that send no email. Comment
+    /// and review rows are read here; the wording and dedup key are feature policy.
     async fn activity(
         &self,
         event: &DomainEvent,
-        thread: &Issue,
+        thread: &rbit_core::Issue,
         actor: Option<&str>,
         now: Timestamp,
-    ) -> Result<Option<Activity>, ServiceError> {
-        let what = format!("{} #{}", kind_label(thread.kind), thread.number.get());
-        let who = actor.unwrap_or("Someone");
-        let stamped = |name: &str| format!("{name}-{}", now.seconds());
-        let activity = |key: String, headline: String, excerpt: &str, anchor: Option<String>, opening: bool| Activity {
-            key,
-            headline,
-            excerpt: excerpt_of(excerpt),
-            anchor,
-            opening,
-        };
+    ) -> Result<Option<rbit_notifications::mail::activity::MailActivity>, ServiceError> {
+        let thread = MailThread { kind: thread.kind, number: thread.number.get(), body: thread.body.as_str() };
         Ok(match event {
             DomainEvent::Issue { action, .. } => match action {
-                IssueAction::Opened => Some(activity("opened".into(), format!("{who} opened {what}."), thread.body.as_str(), None, true)),
-                // Only users newly mentioned in the description receive it.
-                IssueAction::Edited { previous_body: Some(_), .. } => {
-                    Some(activity("opened".into(), format!("{who} mentioned you in {what}."), thread.body.as_str(), None, true))
-                }
-                IssueAction::Assigned { assignee } => {
-                    Some(activity(stamped(&format!("assigned-{}", assignee.0)), format!("{who} assigned you to {what}."), "", None, false))
-                }
-                IssueAction::ReviewRequested { reviewer } => Some(activity(
-                    stamped(&format!("review-requested-{}", reviewer.0)),
-                    format!("{who} requested your review on {what}."),
-                    "",
-                    None,
-                    false,
-                )),
-                IssueAction::Closed { reason } => {
-                    let headline = match (actor, reason) {
-                        (None, StateReason::Merged) => capitalised(&format!("{what} was merged.")),
-                        (None, _) => capitalised(&format!("{what} was closed.")),
-                        (Some(actor), StateReason::Merged) => format!("{actor} merged {what}."),
-                        (Some(actor), StateReason::Completed) => format!("{actor} closed {what} as completed."),
-                        (Some(actor), StateReason::NotPlanned) => format!("{actor} closed {what} as not planned."),
-                    };
-                    let name = if *reason == StateReason::Merged { "merged" } else { "closed" };
-                    Some(activity(stamped(name), headline, "", None, false))
-                }
-                IssueAction::Reopened => Some(activity(stamped("reopened"), format!("{who} reopened {what}."), "", None, false)),
+                IssueAction::Opened => Some(describe(MailEvent::Opened, thread, actor, now)),
+                IssueAction::Edited { previous_body: Some(_), .. } => Some(describe(MailEvent::BodyEdited, thread, actor, now)),
+                IssueAction::Assigned { assignee } => Some(describe(MailEvent::Assigned(*assignee), thread, actor, now)),
+                IssueAction::ReviewRequested { reviewer } => Some(describe(MailEvent::ReviewRequested(*reviewer), thread, actor, now)),
+                IssueAction::Closed { reason } => Some(describe(MailEvent::Closed(*reason), thread, actor, now)),
+                IssueAction::Reopened => Some(describe(MailEvent::Reopened, thread, actor, now)),
                 _ => None,
             },
             DomainEvent::IssueComment { issue, comment, action, .. } => {
@@ -412,250 +277,24 @@ impl NotificationEmailService {
                     return Ok(None);
                 }
                 let Some(row) = self.ctx.database.issues().find_comment(*issue, *comment).await? else { return Ok(None) };
-                // Actions: task tokens. A workflow's comment has no author; rbit Actions wrote it.
-                let who = if row.source == CommentSource::Actions { "rbit Actions" } else { who };
-                let headline = match action {
-                    // Only users newly mentioned by the edit receive it.
-                    CommentAction::Edited { .. } => format!("{who} mentioned you in a comment on {what}."),
-                    _ => format!("{who} commented on {what}."),
+                let comment_event = MailEvent::Comment {
+                    id: *comment,
+                    edited: matches!(action, CommentAction::Edited { .. }),
+                    by_actions: row.source == CommentSource::Actions,
+                    body: row.body.as_str(),
                 };
-                Some(activity(
-                    format!("comment-{}", comment.0),
-                    headline,
-                    row.body.as_str(),
-                    Some(format!("issuecomment-{}", comment.0)),
-                    false,
-                ))
+                Some(describe(comment_event, thread, actor, now))
             }
             DomainEvent::PullRequestReview { pull, review, action: ReviewAction::Submitted, .. } => {
                 let Some(row) = self.ctx.database.reviews().find(*pull, *review).await? else { return Ok(None) };
-                let headline = match row.state {
-                    ReviewState::Approved => format!("{who} approved {what}."),
-                    ReviewState::ChangesRequested => format!("{who} requested changes on {what}."),
-                    _ => format!("{who} reviewed {what}."),
+                let verdict = match row.state {
+                    ReviewState::Approved => ReviewVerdict::Approved,
+                    ReviewState::ChangesRequested => ReviewVerdict::ChangesRequested,
+                    _ => ReviewVerdict::Commented,
                 };
-                Some(activity(format!("review-{}", review.0), headline, &row.body, Some(format!("pullrequestreview-{}", review.0)), false))
+                Some(describe(MailEvent::Review { id: review.0, verdict, body: &row.body }, thread, actor, now))
             }
             _ => None,
         })
-    }
-
-    async fn render(
-        &self,
-        repo: &OwnedRepository,
-        thread: &Issue,
-        activity: &Activity,
-        reason: NotificationReason,
-        to: Email,
-        recipient: AccountId,
-    ) -> Result<Mail, ServiceError> {
-        let base_url = self.ctx.config.server.base_url();
-        let full_name = repo.full_name();
-        let path = format!("{full_name}/{}/{}", thread_segment(thread.kind), thread.number.get());
-        let link = match &activity.anchor {
-            Some(anchor) => format!("{base_url}/{path}#{anchor}"),
-            None => format!("{base_url}/{path}"),
-        };
-        let unsubscribe_link = self.unsubscribe_link(recipient).await?;
-        let message = ThreadNotification {
-            site_name: self.instance.current().site_name,
-            base_url: base_url.to_owned(),
-            repository: full_name,
-            number: u64::from(thread.number.get()),
-            title: thread.title.to_string(),
-            headline: activity.headline.clone(),
-            excerpt: activity.excerpt.clone(),
-            link,
-            is_pull: thread.kind == IssueKind::Pull,
-            is_reply: !activity.opening,
-            reason: format!("You are receiving this because {}.", reason_clause(reason)),
-            settings_link: format!("{base_url}{SETTINGS_PATH}"),
-            unsubscribe_link: unsubscribe_link.clone(),
-        };
-        let host = message_id_host(base_url);
-        let root = format!("<{path}@{host}>");
-        let headers = if activity.opening {
-            MailHeaders { message_id: Some(root), in_reply_to: None, one_click_unsubscribe: Some(unsubscribe_link) }
-        } else {
-            MailHeaders {
-                message_id: Some(format!("<{path}/{}@{host}>", activity.key)),
-                in_reply_to: Some(root),
-                one_click_unsubscribe: Some(unsubscribe_link),
-            }
-        };
-        Ok(Mail::render(to, &message).map_err(ServiceError::internal)?.with_headers(headers))
-    }
-}
-
-/// Whether `preference` asks for email about a notification with `reason`.
-fn wants(preference: EmailPreference, reason: NotificationReason) -> bool {
-    match preference {
-        EmailPreference::Off => false,
-        EmailPreference::Participating => reason != NotificationReason::Manual,
-        EmailPreference::All => true,
-    }
-}
-
-/// The end of "You are receiving this because …".
-const fn reason_clause(reason: NotificationReason) -> &'static str {
-    match reason {
-        NotificationReason::Manual => "you are subscribed to this thread",
-        NotificationReason::Comment => "you commented on this thread",
-        NotificationReason::Reviewed => "you reviewed this pull request",
-        NotificationReason::Author => "you opened this thread",
-        NotificationReason::Mention => "you were mentioned",
-        NotificationReason::Assigned => "you are assigned",
-        NotificationReason::ReviewRequested => "your review was requested",
-    }
-}
-
-const fn kind_label(kind: IssueKind) -> &'static str {
-    match kind {
-        IssueKind::Issue => "issue",
-        IssueKind::Pull => "pull request",
-    }
-}
-
-/// The URL segment of a thread (`/owner/repo/{segment}/N`), also used in message ids.
-const fn thread_segment(kind: IssueKind) -> &'static str {
-    match kind {
-        IssueKind::Issue => "issues",
-        IssueKind::Pull => "pulls",
-    }
-}
-
-fn capitalised(text: &str) -> String {
-    let mut chars = text.chars();
-    chars.next().map(|first| first.to_uppercase().chain(chars).collect()).unwrap_or_default()
-}
-
-/// `text` trimmed and cut to [`MAX_EXCERPT_CHARS`] characters.
-fn excerpt_of(text: &str) -> String {
-    cut(text.trim(), MAX_EXCERPT_CHARS)
-}
-
-/// `text` on one line (runs of whitespace become one space), cut to
-/// [`MAX_DIGEST_EXCERPT_CHARS`] characters.
-fn one_line_excerpt(text: &str) -> String {
-    cut(&text.split_whitespace().collect::<Vec<_>>().join(" "), MAX_DIGEST_EXCERPT_CHARS)
-}
-
-fn cut(text: &str, max_chars: usize) -> String {
-    match text.char_indices().nth(max_chars) {
-        Some((end, _)) => format!("{}…", text[..end].trim_end()),
-        None => text.to_owned(),
-    }
-}
-
-/// The right-hand side of message ids: the public URL's host, without port or user info.
-fn message_id_host(base_url: &str) -> String {
-    let authority = base_url.split_once("://").map_or(base_url, |(_, rest)| rest);
-    let authority = authority.split(['/', '?', '#']).next().unwrap_or_default();
-    let authority = authority.rsplit_once('@').map_or(authority, |(_, host)| host);
-    let host = if authority.starts_with('[') {
-        // An IPv6 literal keeps its brackets: `[::1]` is a valid domain literal.
-        authority.split_inclusive(']').next().unwrap_or(authority)
-    } else {
-        authority.split(':').next().unwrap_or(authority)
-    };
-    if host.is_empty() { "localhost".to_owned() } else { host.to_ascii_lowercase() }
-}
-
-type LinkMac = Hmac<Sha256>;
-
-fn link_mac(key: &[u8], account: AccountId) -> LinkMac {
-    // HMAC accepts keys of any length; this cannot fail.
-    let mut mac = <LinkMac as KeyInit>::new_from_slice(key).unwrap_or_else(|_| unreachable!("HMAC takes any key length"));
-    mac.update(LINK_PURPOSE.as_bytes());
-    mac.update(b"\0");
-    mac.update(account.0.to_string().as_bytes());
-    mac
-}
-
-/// `{account id}.{lower-case hex MAC}`.
-fn sign_link(key: &[u8], account: AccountId) -> String {
-    const DIGITS: &[u8; 16] = b"0123456789abcdef";
-    let tag = link_mac(key, account).finalize().into_bytes();
-    let mut token = format!("{}.", account.0);
-    for byte in tag {
-        token.push(char::from(DIGITS[usize::from(byte >> 4)]));
-        token.push(char::from(DIGITS[usize::from(byte & 0x0f)]));
-    }
-    token
-}
-
-/// The account a token was signed for, if the MAC matches (compared in constant time).
-fn verify_link(key: &[u8], token: &str) -> Option<AccountId> {
-    let (id, hex) = token.split_once('.')?;
-    if id.is_empty() || id.len() > 19 || !id.bytes().all(|b| b.is_ascii_digit()) || id.starts_with('0') {
-        return None;
-    }
-    let account = AccountId(id.parse().ok()?);
-    if hex.len() != 64 {
-        return None;
-    }
-    let tag: Vec<u8> = (0..32).map(|i| u8::from_str_radix(hex.get(i * 2..i * 2 + 2)?, 16).ok()).collect::<Option<_>>()?;
-    link_mac(key, account).verify_slice(&tag).ok().map(|()| account)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    const KEY: &[u8] = b"0123456789abcdef0123456789abcdef";
-
-    #[test]
-    fn links_verify_only_unchanged() {
-        let token = sign_link(KEY, AccountId(42));
-        assert!(token.starts_with("42."));
-        assert_eq!(token.len(), 3 + 64);
-        assert_eq!(verify_link(KEY, &token), Some(AccountId(42)));
-
-        assert_eq!(verify_link(b"another key", &token), None, "another server's key");
-        let other_account = token.replacen("42.", "43.", 1);
-        assert_eq!(verify_link(KEY, &other_account), None, "the MAC binds the account");
-        let mut flipped = token.clone();
-        let last = flipped.pop().unwrap();
-        flipped.push(if last == '0' { '1' } else { '0' });
-        assert_eq!(verify_link(KEY, &flipped), None, "a changed MAC");
-        for malformed in ["", "42", "42.", ".abc", "042.00", "x.y", &token[..token.len() - 2], &format!("{token}00"), "-1.00"] {
-            assert_eq!(verify_link(KEY, malformed), None, "{malformed:?}");
-        }
-        let upper = token.to_uppercase();
-        assert_eq!(verify_link(KEY, &upper), Some(AccountId(42)), "hex case does not matter");
-    }
-
-    #[test]
-    fn preferences_decide_by_reason() {
-        for reason in NotificationReason::ALL {
-            assert!(!wants(EmailPreference::Off, reason));
-            assert!(wants(EmailPreference::All, reason));
-            assert_eq!(wants(EmailPreference::Participating, reason), reason != NotificationReason::Manual, "{reason:?}");
-        }
-    }
-
-    #[test]
-    fn message_ids_use_the_bare_host() {
-        assert_eq!(message_id_host("https://git.example.com"), "git.example.com");
-        assert_eq!(message_id_host("http://127.0.0.1:3000"), "127.0.0.1");
-        assert_eq!(message_id_host("https://Git.Example.com:8443/prefix"), "git.example.com");
-        assert_eq!(message_id_host("http://[::1]:3000"), "[::1]");
-        assert_eq!(message_id_host("https://user@host.example"), "host.example");
-        assert_eq!(message_id_host(""), "localhost");
-    }
-
-    #[test]
-    fn excerpts_are_short() {
-        assert_eq!(excerpt_of("  hello \n"), "hello");
-        let long = "é".repeat(MAX_EXCERPT_CHARS + 5);
-        let excerpt = excerpt_of(&long);
-        assert_eq!(excerpt.chars().count(), MAX_EXCERPT_CHARS + 1);
-        assert!(excerpt.ends_with('…'));
-        assert_eq!(one_line_excerpt("  Same\n\nhere,\tplease "), "Same here, please");
-        let excerpt = one_line_excerpt(&"word ".repeat(100));
-        assert_eq!(excerpt.chars().count(), MAX_DIGEST_EXCERPT_CHARS);
-        assert!(excerpt.ends_with("word…"), "cut at a word, trailing space dropped: {excerpt:?}");
-        assert_eq!(capitalised("issue #3 was closed."), "Issue #3 was closed.");
-        assert_eq!(capitalised(""), "");
     }
 }

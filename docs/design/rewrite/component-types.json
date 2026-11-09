@@ -30,6 +30,8 @@
         "lib::accounts::original_recovery::backend::RecoveryLease",
         "lib::notifications::inbox::InboxView",
         "lib::notifications::fanout::DatabaseView",
+        "lib::notification_email::outbox::ThreadOutbox",
+        "lib::notification_email::outbox::DigestView",
         "lib::forks::ForkService",
         "lib::forks::effects::ForkEffects",
         "lib::forks::reading::ParentAccess",
