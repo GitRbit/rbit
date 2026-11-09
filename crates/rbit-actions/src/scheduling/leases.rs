@@ -32,6 +32,8 @@ pub enum Refusal {
     NoJob,
     /// Conflict: its job was rerun, so a newer task holds the lease.
     Rerun,
+    /// Conflict: it has ended or its log was closed, so nothing more is appended.
+    LogClosed,
 }
 
 impl Refusal {
@@ -42,15 +44,34 @@ impl Refusal {
             Self::Ended => "the task has ended",
             Self::NoJob => "there is no such job",
             Self::Rerun => "the job has been rerun; this task no longer belongs to it",
+            Self::LogClosed => "the task has ended; its log is closed",
         }
     }
+}
+
+/// Whether `runner` was handed the task (`owner`).
+pub fn owned(owner: Option<i64>, runner: i64) -> Result<(), Refusal> {
+    if owner == Some(runner) { Ok(()) } else { Err(Refusal::OtherRunner) }
+}
+
+/// Whether lines may still be appended to a task's log: it runs and its log is live.
+pub const fn log_open(done: bool, log_live: bool) -> Result<(), Refusal> {
+    if done || !log_live { Err(Refusal::LogClosed) } else { Ok(()) }
+}
+
+/// The answer to a state report about a task that already ended: cancel when the report
+/// carries no result (its runner still runs a task the server stopped: the sweeper failed
+/// it or its runner was removed, so the lease is gone), or when the job or the task was
+/// cancelled. A resent final report is answered as before.
+pub const fn ended_task_cancels(has_result: bool, job_cancelled: bool, task_cancelled: bool) -> bool {
+    !has_result || job_cancelled || task_cancelled
 }
 
 /// Task `id` of `runner`, running: its own and not ended.
 pub async fn running<P: TaskLeases>(port: &P, runner: i64, id: i64) -> Result<Result<P::Task, Refusal>, P::Error> {
     let Some(task) = port.task(id).await? else { return Ok(Err(Refusal::NoTask)) };
-    if port.runner_of(&task) != Some(runner) {
-        return Ok(Err(Refusal::OtherRunner));
+    if let Err(refusal) = owned(port.runner_of(&task), runner) {
+        return Ok(Err(refusal));
     }
     if port.is_done(&task) {
         return Ok(Err(Refusal::Ended));

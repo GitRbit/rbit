@@ -17,9 +17,17 @@
 //! * Running a run again, or approving one, enters its group as a new run would; a rerun
 //!   whose author would wait today waits for approval first and enters nothing.
 //! * A runner holds a task's lease while the task is its own, still running, and its job's
-//!   current attempt ([`leases`]).
+//!   current attempt ([`leases`]); a stopped task's runner is told to cancel, and a closed
+//!   log takes no more lines.
+//! * After each settle the server decides the jobs left to it: their `if:`, a job planned
+//!   from its needs, and fail-fast ([`jobs`]).
+//! * People cancel, run again, approve and review within the rules of [`requests`].
 
+#[cfg(test)]
+mod decision_tests;
+pub mod jobs;
 pub mod leases;
+pub mod requests;
 #[cfg(test)]
 mod tests;
 

@@ -18,6 +18,8 @@ sha2.workspace = true
 zeroize.workspace = true
 # The runner contract: cache and artifact rules, scopes and archive layout.
 rbit-workflow.workspace = true
+# Job conditions read JSON contexts.
+serde_json.workspace = true
 # Artifact downloads: the stored tar.gz read, rewritten as zip or tar.gz.
 flate2.workspace = true
 tar.workspace = true
