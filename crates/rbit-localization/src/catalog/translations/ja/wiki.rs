@@ -120,5 +120,20 @@ entries! { Ja:
             text.literal("」に一致するページはありません。");
         }
         WikiMessage::MorePages => text.literal("その他のページ"),
+        WikiMessage::DeleteKeepsHistory => text.literal(
+            "このページは Wiki から削除されます。履歴は保持され、書き込み権限を持つユーザーは削除済みのページから復元できます。",
+        ),
+        WikiMessage::DeletedPages => text.literal("削除済みのページ"),
+        WikiMessage::NoDeletedPages => text.literal("削除されたページはありません。"),
+        WikiMessage::DeletedNotice => text.literal("このページは削除されました。履歴は保持されています。"),
+        WikiMessage::RestorePage => text.literal("ページを復元"),
+        WikiMessage::MoreDeletedPages => text.literal("以前の削除"),
+        WikiMessage::RestoreBlocked => text.literal(
+            "このパスは現在別のページで使用されています。先にそのページの名前を変更してから、このページを復元してください。",
+        ),
+        WikiMessage::RenamedFrom { path } => {
+            text.argument(path);
+            text.literal(" から名前変更");
+        }
     }
 }

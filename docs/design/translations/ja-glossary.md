@@ -154,6 +154,15 @@ conventions of mainstream Japanese developer tools (GitHub and GitLab).
 | bio / website / location | 自己紹介／Web サイト／所在地 | |
 | link / unlink (account) | リンク／リンク解除 | |
 | Blame / Raw | Blame／Raw | Kept, as on GitHub |
+| success / failure / cancelled / skipped | 成功／失敗／キャンセル済み／スキップ | Run and job status |
+| queued / in progress / waiting / awaiting approval | キュー待ち／実行中／待機中／承認待ち | Run and job status |
+| actor / triggered by | 実行者 | |
+| duration | 所要時間 | |
+| raw log | Raw ログ | |
+| manual / schedule / dispatch (event) | 手動／スケジュール／ディスパッチ | |
+| light / dark (mode) | ライト／ダーク | |
+| display language / preferred language | 表示言語／優先する言語 | |
+| deleted pages (wiki) / restore | 削除済みのページ／復元 | |
 
 Labels that introduce a value end with a full-width colon: 「作成：」「最終使用：」
 「有効期限：」. Confirmation prompts read 「確認のため X と入力してください」.
