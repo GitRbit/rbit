@@ -1,57 +1,33 @@
-//! Workflow artifacts (§12.7 of `docs/design/actions.md`): files a job uploads, one tar.gz
-//! each, for later jobs of the run and for people to download.
+//! Workflow artifacts (§12.7 of `docs/design/actions.md`): the composition of
+//! [`rbit_actions::artifacts`], which decides uploads, quotas, retention and removal.
 //!
 //! * Files live at `<data_dir>/actions/artifacts/<run id>/<artifact id>.tar.gz`, backed up
-//!   like logs. An upload streams to a temporary file beside them while its size
-//!   and SHA-256 are counted, is refused past `[actions] max_artifact_bytes` or the
-//!   repository's `max_artifact_storage_bytes`, must match the digest the runner sent, and
-//!   only then is recorded and moved into place.
-//! * Names are 1 to 128 of `[A-Za-z0-9._-]`, unique per run attempt; `overwrite` replaces.
-//! * An artifact is kept `artifact_retention_days`, or fewer when the workflow asks; the
-//!   sweeper deletes expired ones with their files.
+//!   like logs; [`super::artifact_ports`] implements the store's ports over them and
+//!   `actions_artifacts`.
 //! * Runners upload and list only through their own running task; people download from
 //!   a run they may read. Untrusted runs may upload too, within the same quota.
-//!
-//! Workstream A (artifacts) owns this file.
 
-use std::{
-    io,
-    path::{Path, PathBuf},
-};
+use std::path::PathBuf;
 
+pub use rbit_actions::artifacts::ArtifactUpload as Upload;
+use rbit_actions::artifacts::{ArtifactLimits, ArtifactStorage, latest_per_name};
 use rbit_core::{
     Timestamp, User,
     actions::{Artifact, ArtifactId, Job, RunId, Task},
 };
-use rbit_storage::sqlite::actions_artifacts::{NewArtifact, Recorded};
-use rbit_workflow::protocol::{sha256_from_hex, valid_artifact_name};
-use sha2::{Digest, Sha256};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncRead;
 
-use super::{ActionsService, runners::CachedRunner, runners::RunnerError};
+use super::{
+    ActionsService,
+    archive_files::answer,
+    artifact_ports::{ArtifactRows, ArtifactUploadPort},
+    runners::{CachedRunner, RunnerError},
+};
 use crate::{RepoContext, ServiceError};
 
-const SECONDS_PER_DAY: i64 = 86_400;
-/// Most expired artifacts the sweeper removes in one pass.
-const SWEEP_ARTIFACTS: u32 = 256;
-
-/// What a runner sends with an upload.
-#[derive(Debug, Clone)]
-pub struct Upload<'a> {
-    pub name: &'a str,
-    /// The tar.gz's SHA-256, as 64 hex digits.
-    pub sha256: &'a str,
-    /// `retention-days`; it can only lower the instance's.
-    pub retention_days: Option<u32>,
-    pub overwrite: bool,
-}
-
 /// The newest attempt's artifact of each name.
-fn latest_per_name(artifacts: Vec<Artifact>) -> Vec<Artifact> {
-    let mut seen = std::collections::BTreeSet::new();
-    let mut latest: Vec<Artifact> = artifacts.into_iter().filter(|artifact| seen.insert(artifact.name.clone())).collect();
-    latest.sort_by(|a, b| a.name.cmp(&b.name));
-    latest
+fn latest(artifacts: Vec<Artifact>) -> Vec<Artifact> {
+    latest_per_name(artifacts, |artifact| artifact.name.as_str())
 }
 
 impl ActionsService {
@@ -61,7 +37,7 @@ impl ActionsService {
     }
 
     /// Where artifact `artifact`'s file is.
-    fn artifact_path(&self, artifact: &Artifact) -> PathBuf {
+    pub(super) fn artifact_path(&self, artifact: &Artifact) -> PathBuf {
         self.artifacts_dir().join(artifact.run_id.0.to_string()).join(format!("{}.tar.gz", artifact.id.0))
     }
 
@@ -96,94 +72,17 @@ impl ActionsService {
         runner: &CachedRunner,
         task: rbit_core::actions::TaskId,
         upload: &Upload<'_>,
-        mut body: impl AsyncRead + Unpin,
+        body: impl AsyncRead + Unpin + Send,
     ) -> Result<Artifact, RunnerError> {
-        if !valid_artifact_name(upload.name) {
-            return Err(RunnerError::bad_request("artifact names are 1 to 128 letters, digits, '.', '_' or '-', and not '.' or '..'"));
-        }
-        let expected =
-            sha256_from_hex(upload.sha256).ok_or_else(|| RunnerError::bad_request("the content digest must be 64 hex digits"))?;
-        let (task, job) = self.leased_task(runner, task).await?;
-        let database = &self.ctx().database;
-        let run = database.actions_runs().run(job.run_id).await?.ok_or_else(|| RunnerError::not_found("there is no such run"))?;
         let config = self.config();
-        let stored = database.actions_artifacts().stored_bytes(run.repo_id).await?;
-        let room = config.max_artifact_storage_bytes.saturating_sub(stored).min(config.max_artifact_bytes);
-        if room == 0 {
-            return Err(RunnerError::too_large("the repository's artifact storage is full"));
-        }
-
-        let dir = self.artifacts_dir();
-        tokio::fs::create_dir_all(dir.join("tmp")).await.map_err(ServiceError::internal)?;
-        let temporary = dir.join("tmp").join(format!("{}-{}.part", task.id.0, super::tokens::random_name()?));
-        let received = receive(&mut body, &temporary, room).await;
-        let (size, digest) = match received {
-            Ok(Some(received)) => received,
-            Ok(None) => {
-                let _ = tokio::fs::remove_file(&temporary).await;
-                let message = if room < config.max_artifact_bytes {
-                    "the artifact does not fit in the repository's artifact storage"
-                } else {
-                    "the artifact is larger than this instance allows"
-                };
-                return Err(RunnerError::too_large(message));
-            }
-            Err(error) => {
-                let _ = tokio::fs::remove_file(&temporary).await;
-                return Err(ServiceError::internal(error).into());
-            }
+        let limits = ArtifactLimits {
+            max_artifact_bytes: config.max_artifact_bytes,
+            max_storage_bytes: config.max_artifact_storage_bytes,
+            retention_days: config.artifact_retention_days,
         };
-        if digest != expected {
-            let _ = tokio::fs::remove_file(&temporary).await;
-            return Err(RunnerError::bad_request("the artifact does not match its content digest"));
-        }
-        // The body may have taken an hour: the lease may have ended meanwhile.
-        if let Err(error) = self.leased_task(runner, task.id).await {
-            let _ = tokio::fs::remove_file(&temporary).await;
-            return Err(error);
-        }
-
-        let now = Timestamp::now();
-        let days = upload.retention_days.map_or(config.artifact_retention_days, |days| days.clamp(1, config.artifact_retention_days));
-        let new = NewArtifact {
-            run: run.id,
-            repo: run.repo_id,
-            attempt: run.attempt,
-            job: job.id,
-            name: upload.name,
-            size,
-            sha256: digest,
-            now,
-            expires_at: Timestamp(now.0 + i64::from(days) * SECONDS_PER_DAY),
-        };
-        let store = database.actions_artifacts();
-        let (artifact, replaced) = match store.record(&new, upload.overwrite).await? {
-            Recorded::Stored { artifact, replaced } => (*artifact, replaced),
-            Recorded::Exists => {
-                let _ = tokio::fs::remove_file(&temporary).await;
-                return Err(RunnerError::conflict(format!(
-                    "this run already has an artifact `{}`; set `overwrite: true` to replace it",
-                    upload.name
-                )));
-            }
-        };
-        // The replaced file goes first: SQLite may give the new row the old one's id, and so
-        // the same path.
-        if let Some(replaced) = &replaced {
-            remove_file(&self.artifact_path(replaced)).await;
-        }
-        let path = self.artifact_path(&artifact);
-        let placed = async {
-            tokio::fs::create_dir_all(path.parent().unwrap_or(&dir)).await?;
-            tokio::fs::rename(&temporary, &path).await
-        }
-        .await;
-        if let Err(error) = placed {
-            let _ = tokio::fs::remove_file(&temporary).await;
-            store.delete(artifact.id).await?;
-            return Err(ServiceError::internal(error).into());
-        }
-        tracing::info!(run = run.id.0, artifact = %artifact.name, size, "artifact uploaded");
+        let port = ArtifactUploadPort::new(self, runner, task);
+        let artifact = ArtifactStorage::upload(&port, &limits, upload, body).await.map_err(answer)?;
+        tracing::info!(run = artifact.run_id.0, artifact = %artifact.name, size = artifact.size, "artifact uploaded");
         Ok(artifact)
     }
 
@@ -207,7 +106,7 @@ impl ActionsService {
             }
         };
         let artifacts = self.ctx().database.actions_artifacts().of_run(run, Timestamp::now()).await?;
-        Ok(latest_per_name(artifacts.into_iter().filter(|artifact| artifact.repo_id == job.repo_id).collect()))
+        Ok(latest(artifacts.into_iter().filter(|artifact| artifact.repo_id == job.repo_id).collect()))
     }
 
     /// Artifact `name` of task `task`'s run, and its file.
@@ -234,7 +133,7 @@ impl ActionsService {
     pub async fn run_artifacts(&self, repo: &RepoContext, run: RunId) -> Result<Vec<Artifact>, ServiceError> {
         self.require_pages(repo).await?;
         let artifacts = self.ctx().database.actions_artifacts().of_run(run, Timestamp::now()).await?;
-        Ok(latest_per_name(artifacts.into_iter().filter(|artifact| artifact.repo_id == repo.repo.repo.id).collect()))
+        Ok(latest(artifacts.into_iter().filter(|artifact| artifact.repo_id == repo.repo.repo.id).collect()))
     }
 
     /// Artifact `id` of `repo` for a reader, and its file.
@@ -274,52 +173,13 @@ impl ActionsService {
             return Err(ServiceError::Forbidden);
         }
         repo.ensure_writable()?;
-        remove_file(&self.artifact_path(&artifact)).await;
-        self.ctx().database.actions_artifacts().delete(artifact.id).await?;
+        ArtifactStorage::remove(&ArtifactRows::new(self), &artifact).await?;
         tracing::info!(repo = %repo.repo.full_name(), artifact = artifact.id.0, name = %artifact.name, by = %actor.name(), "artifact deleted");
         Ok(())
     }
 
     /// Deletes artifacts that expired by `now`, with their files; how many.
     pub(super) async fn expire_artifacts(&self, now: Timestamp) -> Result<usize, ServiceError> {
-        let store = self.ctx().database.actions_artifacts();
-        let expired = store.expired(now, SWEEP_ARTIFACTS).await?;
-        for artifact in &expired {
-            remove_file(&self.artifact_path(artifact)).await;
-            store.delete(artifact.id).await?;
-        }
-        Ok(expired.len())
-    }
-}
-
-/// Copies `body` into a new file at `path`, counting its size and SHA-256; `None` once it
-/// passes `limit` bytes.
-pub(super) async fn receive(body: &mut (impl AsyncRead + Unpin), path: &Path, limit: u64) -> io::Result<Option<(u64, [u8; 32])>> {
-    let mut file = tokio::fs::OpenOptions::new().write(true).create_new(true).open(path).await?;
-    let mut hasher = Sha256::new();
-    let mut size = 0u64;
-    let mut buffer = vec![0u8; 64 * 1024];
-    loop {
-        let read = body.read(&mut buffer).await?;
-        if read == 0 {
-            break;
-        }
-        size += read as u64;
-        if size > limit {
-            return Ok(None);
-        }
-        hasher.update(&buffer[..read]);
-        file.write_all(&buffer[..read]).await?;
-    }
-    file.sync_all().await?;
-    Ok(Some((size, hasher.finalize().into())))
-}
-
-/// Removes `path`, logging anything but its absence.
-pub(super) async fn remove_file(path: &Path) {
-    if let Err(error) = tokio::fs::remove_file(path).await
-        && error.kind() != io::ErrorKind::NotFound
-    {
-        tracing::warn!(%error, path = %path.display(), "cannot remove an Actions file");
+        ArtifactStorage::expire(&ArtifactRows::new(self), now.0).await
     }
 }

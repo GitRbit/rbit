@@ -1,21 +1,5 @@
-//! Artifact downloads: the stored archive rewritten as it is sent.
-//!
-//! Artifacts are stored as the tar.gz the runner uploads, whose files sit under a `w/`
-//! directory (the workspace's area in the runner's archive format, shared with its cache).
-//! A download never shows that directory: [`to_zip`] writes the files as a zip, the format
-//! GitHub serves, and [`to_tar_gz`] as a tar.gz with the files at its top. Both work as the
-//! stored archive is read, so a download needs no temporary file and starts at once.
-//!
-//! * Only regular files are kept. Directories, links and other special entries are left
-//!   out, as `actions/upload-artifact` leaves them out; a name outside `w/`, absolute or
-//!   leaving the archive (`..`) is skipped.
-//! * Sizes and CRCs follow each entry's data in a data descriptor (general purpose bit 3),
-//!   because the compressed size is only known once it is written.
-//! * ZIP64 records are written where a size, an offset or the entry count needs them, so
-//!   archives past 4 GiB or 65,535 files open in every reader.
-//! * Names are UTF-8 (bit 11). Permissions keep the read, write and execute bits only:
-//!   set-user-ID, set-group-ID and sticky bits never travel from a job to whoever unpacks
-//!   the zip.
+//! The zip format of downloads: entries with data descriptors, ZIP64 where needed, and
+//! the central directory.
 
 use std::io::{self, Read, Write};
 
@@ -35,7 +19,7 @@ const METHOD_DEFLATE: u16 = 8;
 const S_IFREG: u32 = 0o100_000;
 
 /// What the central directory needs of a written entry.
-struct Written {
+pub(super) struct Written {
     name: Vec<u8>,
     crc: u32,
     compressed: u64,
@@ -47,9 +31,9 @@ struct Written {
 }
 
 /// Counts what is written through it: the offsets the zip records.
-struct Counter<W> {
-    inner: W,
-    count: u64,
+pub(super) struct Counter<W> {
+    pub(super) inner: W,
+    pub(super) count: u64,
 }
 
 impl<W: Write> Write for Counter<W> {
@@ -62,62 +46,6 @@ impl<W: Write> Write for Counter<W> {
     fn flush(&mut self) -> io::Result<()> {
         self.inner.flush()
     }
-}
-
-/// The stored archive's directory that holds an artifact's files.
-const STORED_ROOT: &str = rbit_workflow::protocol::ARCHIVE_WORKSPACE_DIR;
-
-/// A regular file of a stored artifact, as the downloads write it.
-struct File<'a, R: Read> {
-    /// Relative to the artifact's top, `/`-separated.
-    name: Vec<u8>,
-    size: u64,
-    /// Read, write and execute bits only.
-    mode: u32,
-    mtime: u64,
-    data: tar::Entry<'a, R>,
-}
-
-/// Calls `each` with every regular file of the stored tar.gz `source`, in order.
-fn stored_files<R: Read>(source: R, mut each: impl FnMut(File<'_, flate2::read::GzDecoder<R>>) -> io::Result<()>) -> io::Result<()> {
-    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(source));
-    for entry in archive.entries()? {
-        let entry = entry?;
-        let header = entry.header();
-        if !matches!(header.entry_type(), tar::EntryType::Regular | tar::EntryType::Continuous) {
-            continue;
-        }
-        let Some(name) = entry_name(&entry.path_bytes()) else { continue };
-        let size = header.size()?;
-        let mode = match header.mode()? & 0o777 {
-            0 => 0o644,
-            mode => mode,
-        };
-        let mtime = header.mtime().unwrap_or(0);
-        each(File { name, size, mode, mtime, data: entry })?;
-    }
-    // Reading on to the end checks the gzip trailer (its CRC and length), which the tar
-    // reader, stopping at its end-of-archive blocks, never reaches.
-    io::copy(&mut archive.into_inner(), &mut io::sink())?;
-    Ok(())
-}
-
-/// Reads the stored tar.gz `source` and writes its files as a zip to `out`.
-///
-/// # Errors
-///
-/// What reading `source` (a corrupt archive included) or writing `out` fails with.
-pub fn to_zip<R: Read, W: Write>(source: R, out: W) -> io::Result<W> {
-    let mut out = Counter { inner: out, count: 0 };
-    let mut written = Vec::new();
-    stored_files(source, |mut file| {
-        let dos = dos_time(file.mtime);
-        written.push(write_entry(&mut out, file.name, file.size, file.mode, dos, &mut file.data)?);
-        Ok(())
-    })?;
-    write_directory(&mut out, &written)?;
-    out.flush()?;
-    Ok(out.inner)
 }
 
 // Actions: run logs.
@@ -164,51 +92,7 @@ impl<W: Write> ZipWriter<W> {
     }
 }
 
-/// Reads the stored tar.gz `source` and writes its files as a tar.gz to `out`, at its top.
-///
-/// # Errors
-///
-/// What reading `source` (a corrupt archive included) or writing `out` fails with.
-pub fn to_tar_gz<R: Read, W: Write>(source: R, out: W) -> io::Result<W> {
-    let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(out, flate2::Compression::fast()));
-    stored_files(source, |file| {
-        let mut header = tar::Header::new_gnu();
-        header.set_entry_type(tar::EntryType::Regular);
-        header.set_size(file.size);
-        header.set_mode(file.mode);
-        header.set_mtime(file.mtime);
-        let name = String::from_utf8_lossy(&file.name).into_owned();
-        builder.append_data(&mut header, name, file.data)
-    })?;
-    let mut out = builder.into_inner()?.finish()?;
-    out.flush()?;
-    Ok(out)
-}
-
-/// The name of a stored entry relative to the artifact's top: `/`-separated, without `.`
-/// parts, or `None` when it is outside [`STORED_ROOT`], absolute, leaves the archive or
-/// names the root itself.
-fn entry_name(path: &[u8]) -> Option<Vec<u8>> {
-    let text = String::from_utf8_lossy(path).replace('\\', "/");
-    if text.starts_with('/') {
-        return None;
-    }
-    let mut parts = Vec::new();
-    for part in text.split('/') {
-        match part {
-            "" | "." => {}
-            ".." => return None,
-            part if part.contains(':') && parts.is_empty() => return None,
-            part => parts.push(part),
-        }
-    }
-    if parts.first() != Some(&STORED_ROOT) || parts.len() < 2 {
-        return None;
-    }
-    Some(parts[1..].join("/").into_bytes())
-}
-
-fn write_entry<W: Write>(
+pub(super) fn write_entry<W: Write>(
     out: &mut Counter<W>,
     name: Vec<u8>,
     size: u64,
@@ -274,7 +158,7 @@ fn write_entry<W: Write>(
     Ok(Written { name, crc: crc.sum(), compressed, size, offset, dos, mode, zip64 })
 }
 
-fn write_directory<W: Write>(out: &mut Counter<W>, entries: &[Written]) -> io::Result<()> {
+pub(super) fn write_directory<W: Write>(out: &mut Counter<W>, entries: &[Written]) -> io::Result<()> {
     let start = out.count;
     for entry in entries {
         // ZIP64 extra fields hold, in this order, only the values that do not fit.
@@ -358,7 +242,7 @@ fn short(length: usize) -> u16 {
 
 /// MS-DOS time and date of a Unix time, in UTC; times before 1980 become its first second
 /// and years past 2107 its last year.
-fn dos_time(unix: u64) -> (u16, u16) {
+pub(super) fn dos_time(unix: u64) -> (u16, u16) {
     const EARLIEST: u64 = 315_532_800; // 1980-01-01T00:00:00Z
     let unix = unix.max(EARLIEST);
     let (days, seconds) = (unix / 86_400, unix % 86_400);
@@ -380,128 +264,4 @@ fn dos_time(unix: u64) -> (u16, u16) {
 
 fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message.to_owned())
-}
-
-#[cfg(test)]
-mod tests {
-    use std::io::Cursor;
-
-    use super::*;
-
-    fn tar_gz(files: &[(&str, &[u8], u32, tar::EntryType)]) -> Vec<u8> {
-        let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast()));
-        for (name, data, mode, kind) in files {
-            let mut header = tar::Header::new_gnu();
-            header.set_entry_type(*kind);
-            header.set_size(data.len() as u64);
-            header.set_mode(*mode);
-            header.set_mtime(1_700_000_000);
-            if *kind == tar::EntryType::Symlink {
-                header.set_link_name("target").unwrap();
-            }
-            // `append_data` would refuse the names the converter must skip itself.
-            let bytes = name.as_bytes();
-            header.as_old_mut().name[..bytes.len()].copy_from_slice(bytes);
-            header.set_cksum();
-            builder.append(&header, *data).unwrap();
-        }
-        builder.into_inner().unwrap().finish().unwrap()
-    }
-
-    fn convert(tar: &[u8]) -> zip::ZipArchive<Cursor<Vec<u8>>> {
-        let bytes = to_zip(Cursor::new(tar), Vec::new()).unwrap();
-        zip::ZipArchive::new(Cursor::new(bytes)).unwrap()
-    }
-
-    #[test]
-    fn files_keep_their_paths_contents_and_safe_modes() {
-        use tar::EntryType::{Directory, Regular, Symlink};
-        let tar = tar_gz(&[
-            ("./w/a.txt", b"ay", 0o644, Regular),
-            ("w/nested/", b"", 0o755, Directory),
-            ("w/nested/deep/run.sh", b"#!/bin/sh\necho hi\n", 0o4755, Regular),
-            ("w/link", b"", 0o777, Symlink),
-            ("w/../escape", b"no", 0o644, Regular),
-            ("/w/abs", b"no", 0o644, Regular),
-            ("h/home", b"no", 0o644, Regular),
-            ("w", b"no", 0o644, Regular),
-            ("w/empty", b"", 0, Regular),
-        ]);
-        let mut zip = convert(&tar);
-        let names: Vec<String> = zip.file_names().map(|name| name.unwrap().into_owned()).collect();
-        assert_eq!(names, ["a.txt", "nested/deep/run.sh", "empty"]);
-        let mut text = String::new();
-        zip.by_name("nested/deep/run.sh").unwrap().read_to_string(&mut text).unwrap();
-        assert_eq!(text, "#!/bin/sh\necho hi\n");
-        assert_eq!(zip.by_name("nested/deep/run.sh").unwrap().unix_mode(), Some(0o100_755), "set-user-ID is dropped");
-        assert_eq!(zip.by_name("empty").unwrap().unix_mode(), Some(0o100_644));
-        assert_eq!(zip.by_name("a.txt").unwrap().size(), 2);
-    }
-
-    #[test]
-    fn many_entries_use_zip64_end_records() {
-        let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast()));
-        for index in 0..70_000 {
-            let mut header = tar::Header::new_gnu();
-            header.set_size(1);
-            header.set_mode(0o644);
-            header.set_cksum();
-            builder.append_data(&mut header, format!("w/f/{index}"), &b"x"[..]).unwrap();
-        }
-        let tar = builder.into_inner().unwrap().finish().unwrap();
-        let mut zip = convert(&tar);
-        assert_eq!(zip.len(), 70_000);
-        let mut text = String::new();
-        zip.by_name("f/69999").unwrap().read_to_string(&mut text).unwrap();
-        assert_eq!(text, "x");
-    }
-
-    #[test]
-    fn an_empty_or_broken_archive() {
-        assert_eq!(convert(&tar_gz(&[])).len(), 0);
-        let mut broken = tar_gz(&[("w/a", b"0123456789", 0o644, tar::EntryType::Regular)]);
-        broken.truncate(broken.len() - 8);
-        assert!(to_zip(Cursor::new(&broken), Vec::new()).is_err());
-        assert!(to_tar_gz(Cursor::new(&broken), Vec::new()).is_err());
-    }
-
-    #[test]
-    fn tar_gz_downloads_have_the_files_at_their_top() {
-        use tar::EntryType::{Regular, Symlink};
-        let stored = tar_gz(&[("w/dist/a.zip", b"zip", 0o6755, Regular), ("w/link", b"", 0o777, Symlink), ("h/x", b"no", 0o644, Regular)]);
-        let bytes = to_tar_gz(Cursor::new(stored), Vec::new()).unwrap();
-        let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(Cursor::new(bytes)));
-        let entries: Vec<_> = archive
-            .entries()
-            .unwrap()
-            .map(|entry| {
-                let mut entry = entry.unwrap();
-                let mut text = String::new();
-                entry.read_to_string(&mut text).unwrap();
-                (entry.path().unwrap().display().to_string(), entry.header().mode().unwrap(), text)
-            })
-            .collect();
-        assert_eq!(entries, [("dist/a.zip".to_owned(), 0o755, "zip".to_owned())]);
-    }
-
-    // Actions: run logs.
-    #[test]
-    fn files_become_a_zip() {
-        let mut zip = ZipWriter::new(Vec::new(), 1_700_000_000);
-        zip.add("0_build.txt", 10, &mut &b"compiling\n"[..]).unwrap();
-        zip.add("1_test.txt", 0, &mut io::empty()).unwrap();
-        let bytes = zip.finish().unwrap();
-        let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
-        assert_eq!(archive.len(), 2);
-        let mut text = String::new();
-        archive.by_name("0_build.txt").unwrap().read_to_string(&mut text).unwrap();
-        assert_eq!(text, "compiling\n");
-    }
-
-    #[test]
-    fn dos_times() {
-        assert_eq!(dos_time(0), (0, 1 << 5 | 1), "before 1980 is 1980-01-01");
-        // 2023-11-14T22:13:20Z
-        assert_eq!(dos_time(1_700_000_000), ((22 << 11) + (13 << 5) + 10, (43 << 9) + (11 << 5) + 14));
-    }
 }

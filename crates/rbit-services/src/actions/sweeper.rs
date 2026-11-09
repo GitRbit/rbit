@@ -27,6 +27,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+use rbit_actions::archives::{ArtifactDirectory, ORPHAN_AGE, STALE_UPLOAD_AGE, UPLOADS_DIRECTORY};
 use rbit_core::{
     Timestamp,
     actions::{RunId, Status, TaskId},
@@ -37,11 +38,6 @@ use crate::ServiceError;
 
 /// How often the sweep runs.
 pub const SWEEP_INTERVAL: Duration = Duration::from_mins(1);
-/// A file without its row is removed once it is this old: a younger one may belong to a
-/// row on its way in.
-const ORPHAN_AGE: Duration = Duration::from_hours(1);
-/// An unfinished artifact upload is removed once it is this old.
-const STALE_UPLOAD_AGE: Duration = Duration::from_hours(24);
 /// Finished runs whose logs one sweep looks at, per pass.
 const RUNS_PER_PASS: u32 = 100;
 /// Stale registration tokens are kept this long after they expired or were revoked, so
@@ -228,11 +224,12 @@ impl ActionsService {
         }
         for dir in entries(&self.artifacts_dir(), true).await {
             let name = dir.file_name().and_then(|name| name.to_str()).unwrap_or_default();
-            if name == "tmp" {
+            let kind = ArtifactDirectory::named(name);
+            if kind == ArtifactDirectory::Uploads {
                 for file in old_files(&dir, STALE_UPLOAD_AGE).await {
                     removed += usize::from(remove(&file).await);
                 }
-            } else if let Ok(run) = name.parse()
+            } else if let ArtifactDirectory::Run(run) = kind
                 && store.run(RunId(run)).await?.is_none()
             {
                 for file in old_files(&dir, ORPHAN_AGE).await {
@@ -245,7 +242,7 @@ impl ActionsService {
         // Actions: shared cache. Saves cut short, and files of entries that went with their
         // repository.
         for dir in entries(&self.caches_dir(), true).await {
-            let stale = dir.file_name().is_some_and(|name| name == "tmp");
+            let stale = dir.file_name().is_some_and(|name| name == UPLOADS_DIRECTORY);
             for file in old_files(&dir, if stale { STALE_UPLOAD_AGE } else { ORPHAN_AGE }).await {
                 if stale || self.orphaned_cache_file(&file).await? {
                     removed += usize::from(remove(&file).await);

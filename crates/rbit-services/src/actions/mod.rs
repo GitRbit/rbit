@@ -28,8 +28,8 @@
 //! | [`secrets`] | Secrets and variables |
 //! | [`settings`] | A repository's switch, token permission and trusted authors |
 //! | [`conditions`] | Job `if:` once its needs are done, fail-fast |
-//! | [`artifacts`] | Artifacts: uploads, downloads, quota and retention |
-//! | [`downloads`] | Artifact downloads, as zip or tar.gz, rewritten as they are sent |
+//! | [`artifacts`] | Artifacts over `rbit_actions::artifacts`: uploads, quota and retention |
+//! | [`downloads`] | `rbit_actions::downloads`: artifacts as zip or tar.gz, rewritten as they are sent |
 //! | [`browse`] | What the pages read: runs, a run and its jobs |
 //! | [`sweeper`] | Zombie and endless tasks, abandoned jobs, log and run retention, the log budget, stale tokens |
 //! | [`hooks`] | `workflow_run` and `workflow_job` webhooks |
@@ -38,9 +38,12 @@
 //! fields and start-up lines in marked blocks.
 
 // Actions: artifacts (A).
+mod archive_files;
+mod artifact_ports;
 pub mod artifacts;
 // Actions: shared cache.
 pub mod browse;
+mod cache_ports;
 pub mod caches;
 // Actions: reusable workflows.
 pub mod calls;
@@ -50,8 +53,8 @@ pub mod chains;
 pub mod conditions;
 pub mod context;
 pub mod dispatch;
-// Actions: artifact downloads as zip and tar.gz.
-pub mod downloads;
+// Actions: artifact downloads as zip and tar.gz, owned by rbit-actions.
+pub use rbit_actions::downloads;
 pub mod environments;
 pub mod hooks;
 pub mod logs;

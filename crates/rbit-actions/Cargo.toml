@@ -8,6 +8,15 @@ license.workspace = true
 
 [dependencies]
 rbit-access.workspace = true
+# The runner contract: cache and artifact rules, scopes and archive layout.
+rbit-workflow.workspace = true
+# Artifact downloads: the stored tar.gz read, rewritten as zip or tar.gz.
+flate2.workspace = true
+tar.workspace = true
+
+[dev-dependencies]
+# Reads the zips the downloads write.
+zip.workspace = true
 
 [lints]
 workspace = true

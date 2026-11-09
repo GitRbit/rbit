@@ -5,5 +5,9 @@
 //! No tasks, queues, dynamic service registry or second record representation live here.
 //! [`trust`] owns pull request trust and what a stored run is granted (fork policy).
 
+pub mod archives;
+pub mod artifacts;
+pub mod caches;
 pub mod claims;
+pub mod downloads;
 pub mod trust;

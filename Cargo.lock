@@ -4215,7 +4215,11 @@ dependencies = [
 name = "rbit-actions"
 version = "0.2.0"
 dependencies = [
+ "flate2",
  "rbit-access",
+ "rbit-workflow",
+ "tar",
+ "zip",
 ]
 
 [[package]]
@@ -4561,14 +4565,12 @@ dependencies = [
  "sqlx",
  "ssh-key",
  "subtle",
- "tar",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tokio-util",
  "tracing",
  "zeroize",
- "zip",
 ]
 
 [[package]]
