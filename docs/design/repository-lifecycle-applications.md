@@ -141,3 +141,9 @@ connection saw the table and returned the intended trigger failure for the ident
 DELETE. The underlying difference is not established as a production SQLite fix.
 No production query, pool setting or migration is changed by the fixture correction.
 The revised fixtures still require actual shared-lane execution before acceptance.
+
+## Retirement
+
+The lifecycle and listing ledger rows are `ported`, with administrator deletion and
+repository listings added as applications; see the
+[acceptance record](rewrite/repositories-lifecycle-acceptance.md).
