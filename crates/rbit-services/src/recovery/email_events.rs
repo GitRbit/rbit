@@ -1,8 +1,9 @@
 //! Narrow event-handler capabilities, deliberately excluding the subscriber supervisor.
 
-use super::{RecoveryService, VERIFY_LIFETIME_SECONDS, issue_token};
+use super::{RecoveryService, map};
 use crate::{DomainEvent, InstanceService, MailService, ServiceError};
 use rbit_core::{Config, Email};
+use rbit_identity::recovery::{RecoveryLinks, RecoveryThrottle};
 use rbit_mail::{
     Mail,
     messages::{EmailChanged, VerifyEmail, VerifyReason, mask_address},
@@ -23,24 +24,38 @@ impl RecoveryService {
     }
 }
 
+/// Event-driven mail is not a user request, so it spends no request budget.
+struct Unthrottled;
+
+impl RecoveryThrottle for Unthrottled {
+    type Error = ServiceError;
+    fn check_client(&self, _: &str) -> Result<(), ServiceError> {
+        Ok(())
+    }
+    fn check_recipient(&self, _: &str) -> Result<(), ServiceError> {
+        Ok(())
+    }
+}
+
 impl EmailEvents {
+    fn links<'a>(&self, store: &'a RecoveryStore) -> RecoveryLinks<'a, RecoveryStore, Unthrottled> {
+        RecoveryLinks::new(store, &Unthrottled, self.mail.is_enabled())
+    }
+
     /// Reacts to one domain event. Public so tests can drive it without timing games.
     pub(super) async fn handle(&self, event: &DomainEvent) -> Result<(), ServiceError> {
         match event {
             DomainEvent::UserSignedUp { user } => {
-                let Some(account) = self.store().find_account(*user).await? else { return Ok(()) };
-                // Milestone 3 (O): accounts registered through a provider that verified
-                // the address start verified; there is nothing to confirm.
-                if account.email_verified_at.is_some() {
-                    return Ok(());
-                }
+                let store = self.store();
+                // Accounts registered through a provider that verified the address start
+                // verified; there is nothing to confirm.
+                let Some(account) = self.links(&store).sign_up_verification(*user).await.map_err(map)? else { return Ok(()) };
                 self.send_verification(&account, VerifyReason::SignUp).await
             }
             DomainEvent::EmailChanged { user, previous } => {
-                let Some(account) = self.store().find_account(*user).await? else { return Ok(()) };
-                if account.email.as_str().eq_ignore_ascii_case(previous) {
-                    return Ok(());
-                }
+                let store = self.store();
+                let changed = self.links(&store).changed_email_verification(*user, previous).await.map_err(map)?;
+                let Some(account) = changed else { return Ok(()) };
                 self.send_verification(&account, VerifyReason::Changed).await?;
                 self.notify_previous_address(&account, previous)
             }
@@ -63,7 +78,8 @@ impl EmailEvents {
         }
     }
     pub(super) async fn send_verification(&self, account: &RecoveryAccount, reason: VerifyReason) -> Result<(), ServiceError> {
-        let token = issue_token(&self.store(), account, TokenPurpose::Verify, VERIFY_LIFETIME_SECONDS).await?;
+        let store = self.store();
+        let token = self.links(&store).issue(account, TokenPurpose::Verify).await.map_err(map)?;
         let message = VerifyEmail {
             site_name: self.site_name(),
             base_url: self.base_url().to_owned(),
