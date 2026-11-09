@@ -16,6 +16,21 @@ test("star store types and handles stay behind the application", () => {
   assert.deepEqual(check([["crates/rbit-services/tests/access.rs", open]]), [], "fixtures seed stars directly");
 });
 
+test("contribution selection and tallying stay in the application", () => {
+  const listing = "store.contribution_repositories(viewer, admin).await?\n";
+  assert.match(check([["crates/rbit-services/src/contributions.rs", listing]])[0], /contribution listing outside storage/u);
+  assert.deepEqual(check([["crates/rbit-storage/src/repository_contributions.rs", listing]]), []);
+  for (const source of [
+    "if author.eq_ignore_ascii_case(email) {}\n",
+    "let day = seconds.div_euclid(86400);\n",
+    "let mut seen = HashSet::new();\n",
+    "if account.is_organization() {}\n",
+  ]) {
+    assert.match(check([["crates/rbit-services/src/contributions.rs", source]])[0], /returned to the service/u, source);
+  }
+  assert.deepEqual(check([["crates/rbit-repositories/src/contributions.rs", "seconds.div_euclid(86_400)\n"]]), []);
+});
+
 test("comments and non-Rust files are allowed", () => {
   assert.deepEqual(check([["crates/rbit-web/src/a.rs", "// StarStore and .stars() were retired\n"], ["docs/x.md", "StarStore"]]), []);
 });
