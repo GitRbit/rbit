@@ -1,5 +1,6 @@
 /** Retired identity paths must not return; see docs/design/rewrite/identity-retirement.md. */
 import { checkMfaRetirement } from "./mfa-retirement.mjs";
+import { checkPasskeyRetirement } from "./passkey-retirement.mjs";
 import { checkProfileRetirement } from "./profile-retirement.mjs";
 import { checkRecoveryRetirement } from "./recovery-retirement.mjs";
 import { checkTokenRetirement } from "./token-retirement.mjs";
@@ -35,5 +36,5 @@ export function checkIdentityRetirement(sources) {
       violations.push(`${path}: direct session purge bypasses the identity session application`);
     }
   }
-  return [...violations, ...checkTokenRetirement(sources), ...checkProfileRetirement(sources), ...checkRecoveryRetirement(sources), ...checkMfaRetirement(sources)];
+  return [...violations, ...checkTokenRetirement(sources), ...checkProfileRetirement(sources), ...checkRecoveryRetirement(sources), ...checkMfaRetirement(sources), ...checkPasskeyRetirement(sources)];
 }
