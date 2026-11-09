@@ -27,46 +27,35 @@
 //! The server side of the runner protocol (stream S) owns this file.
 
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     sync::{
         Arc, Mutex, PoisonError, RwLock,
         atomic::{AtomicBool, AtomicI64, Ordering},
     },
-    time::Duration,
 };
 
+pub use rbit_actions::runners::{DEFAULT_REGISTRATION_LIFETIME, MAX_REGISTRATION_LIFETIME};
+use rbit_actions::runners::{
+    ManagedTarget, Management, RecentKeys, RunnerRefusal, RunnerRegistry, intervals, listed_for_repository, management, seen_is_due,
+    shown_online,
+};
 use rbit_auth::{RegistrationSecret, RunnerCredential, TokenDigest};
 use rbit_core::{
     Account, AccountKind, Timestamp, User,
-    actions::{
-        RUNNER_ONLINE_SECONDS, RegistrationToken, RegistrationTokenId, Runner, RunnerBackend, RunnerCapabilities, RunnerId, RunnerLabel,
-        RunnerScope, Status, TaskId,
-    },
+    actions::{RUNNER_ONLINE_SECONDS, RegistrationToken, RegistrationTokenId, Runner, RunnerId, RunnerLabel, RunnerScope, Status, TaskId},
     org::OrgRole,
 };
-use rbit_storage::{
-    StorageError,
-    sqlite::actions_runners::{Declaration, NewRegistrationToken, NewRunner, RegistrationRefusal},
-};
-use rbit_workflow::protocol::{
-    Backend, Capabilities, DeclareRequest, DeclareResponse, DeclaredLabel, ErrorBody, ErrorCode, Intervals, MAX_HEARTBEAT_INTERVAL,
-    MAX_LONG_POLL, PROTOCOL_VERSION, RegisterRequest, RegisterResponse,
-};
+use rbit_storage::{StorageError, sqlite::actions_runners::NewRegistrationToken};
+use rbit_workflow::protocol::{DeclareRequest, DeclareResponse, ErrorBody, ErrorCode, Intervals, RegisterRequest, RegisterResponse};
 
-use super::ActionsService;
+use super::{
+    ActionsService,
+    runner_ports::{Declaring, Registering},
+};
 use crate::{
     RepoContext, ServiceError,
     audit::{AuditAction, AuditEntry, AuditService},
 };
-
-/// How long a registration token lasts unless its creator chose otherwise.
-pub const DEFAULT_REGISTRATION_LIFETIME: Duration = Duration::from_hours(1);
-/// The longest a registration token may last.
-pub const MAX_REGISTRATION_LIFETIME: Duration = Duration::from_hours(30 * 24);
-/// `last_online` is written at most this often per runner.
-const SEEN_GRANULARITY_SECONDS: i64 = 60;
-/// Idempotency keys of claims remembered per runner, newest last.
-const REMEMBERED_KEYS: usize = 32;
 
 /// A runner as protocol calls see it: what authentication, scheduling and the poll need,
 /// without a database round trip.
@@ -86,13 +75,13 @@ pub struct CachedRunner {
     /// When a call of it last arrived (Unix seconds).
     last_seen: AtomicI64,
     /// The `last_seen` value last written to `last_online`.
-    seen_written: AtomicI64,
+    pub(super) seen_written: AtomicI64,
     /// The `tasks_version` of this runner's last poll that found nothing: while the version
     /// has not moved since, nothing new can be there for it, so a poll waits without a query.
     pub(super) idle_version: AtomicI64,
     /// The idempotency keys of this runner's recent claims and their tasks, so a retried
     /// poll is recognised without a query (see [`super::scheduler`]).
-    recent_keys: Mutex<VecDeque<(String, TaskId)>>,
+    recent_keys: Mutex<RecentKeys<TaskId>>,
     /// Whether this process has looked a key of this runner up in SQLite yet: a retry
     /// across a restart is found there once; claims since are in `recent_keys`.
     pub(super) keys_loaded: AtomicBool,
@@ -114,7 +103,7 @@ impl CachedRunner {
             last_seen: AtomicI64::new(online),
             seen_written: AtomicI64::new(online),
             idle_version: AtomicI64::new(0),
-            recent_keys: Mutex::new(VecDeque::new()),
+            recent_keys: Mutex::new(RecentKeys::default()),
             keys_loaded: AtomicBool::new(false),
         }
     }
@@ -141,17 +130,12 @@ impl CachedRunner {
 
     /// The task this runner claimed with idempotency key `key`, if this process remembers.
     pub(super) fn remembered(&self, key: &str) -> Option<TaskId> {
-        let keys = self.recent_keys.lock().unwrap_or_else(PoisonError::into_inner);
-        keys.iter().rev().find(|(known, _)| known == key).map(|(_, task)| *task)
+        self.recent_keys.lock().unwrap_or_else(PoisonError::into_inner).remembered(key)
     }
 
     /// Remembers that the claim with `key` gave this runner `task`.
     pub(super) fn remember(&self, key: &str, task: TaskId) {
-        let mut keys = self.recent_keys.lock().unwrap_or_else(PoisonError::into_inner);
-        if keys.len() == REMEMBERED_KEYS {
-            keys.pop_front();
-        }
-        keys.push_back((key.to_owned(), task));
+        self.recent_keys.lock().unwrap_or_else(PoisonError::into_inner).remember(key, task);
     }
 }
 
@@ -219,12 +203,7 @@ impl RunnerCache {
             .map(|runner| (runner.id, runner.last_seen.load(Ordering::SeqCst)))
             .collect();
         for runner in &mut runners {
-            if let Some(&seen) = seen.get(&runner.id)
-                && runner.last_online.is_none_or(|stored| stored.0 < seen)
-                && seen > 0
-            {
-                runner.last_online = Some(Timestamp(seen));
-            }
+            runner.last_online = shown_online(runner.last_online.map(|at| at.0), seen.get(&runner.id).copied()).map(Timestamp);
         }
         runners
     }
@@ -364,23 +343,8 @@ impl ManagedScope<'_> {
     }
 }
 
-/// How a new registration token may be used.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RegistrationOptions {
-    /// At most [`MAX_REGISTRATION_LIFETIME`].
-    pub lifetime: Duration,
-    /// `None`: unlimited.
-    pub uses: Option<u32>,
-    /// Runners registered with it may declare only these labels.
-    pub labels: Option<Vec<RunnerLabel>>,
-}
-
-impl Default for RegistrationOptions {
-    /// Single-use, for an hour, any labels (§11.9).
-    fn default() -> Self {
-        Self { lifetime: DEFAULT_REGISTRATION_LIFETIME, uses: Some(1), labels: None }
-    }
-}
+/// How a new registration token may be used ([`rbit_actions::runners::RegistrationOptions`]).
+pub type RegistrationOptions = rbit_actions::runners::RegistrationOptions<RunnerLabel>;
 
 /// A registration token just created: the stored record and the value, shown once.
 #[derive(Debug)]
@@ -418,108 +382,21 @@ impl ActionsService {
     /// The intervals runners are told to keep: `[actions] long_poll_seconds` and the
     /// protocol's heartbeat.
     pub fn intervals(&self) -> Intervals {
-        let long_poll = self.config().long_poll_seconds.clamp(1, MAX_LONG_POLL.as_secs());
-        Intervals {
-            long_poll_seconds: u32::try_from(long_poll).unwrap_or(1),
-            heartbeat_seconds: u32::try_from(MAX_HEARTBEAT_INTERVAL.as_secs()).unwrap_or(10),
-        }
+        intervals(self.config().long_poll_seconds)
     }
 
     // ------------------------------------------------------------------ the protocol
 
-    /// `POST register`: one use of a registration token for a new runner in its scope. A
-    /// token that does not exist, was revoked, expired or is used up is `unauthenticated`
-    /// (the caller throttles those); labels outside the token's pin are `forbidden`.
+    /// `POST register`: one use of a registration token for a new runner in its scope
+    /// ([`RunnerRegistry::register`]).
     pub async fn register_runner(&self, request: &RegisterRequest) -> Result<RegisterResponse, RunnerError> {
-        request.validate().map_err(RunnerError::from_validation)?;
-        let Some(registration) = RegistrationSecret::parse(request.token.expose()) else {
-            return Err(invalid_registration());
-        };
-        let declared = Declared::new(&request.labels, &request.capabilities)?;
-        let credential = RunnerCredential::generate();
-        let digest = credential.digest();
-        let uuid = random_uuid();
-        let new = NewRunner {
-            registration_digest: &registration.digest(),
-            uuid: &uuid,
-            token_digest: &digest,
-            name: &request.name,
-            version: &request.capabilities.version,
-            labels: &declared.labels,
-            ephemeral: request.capabilities.ephemeral,
-            capabilities: &declared.capabilities,
-            protocol: PROTOCOL_VERSION,
-            now: Timestamp::now(),
-        };
-        let runner = match self.ctx().database.actions_runners().register(&new).await? {
-            Ok(runner) => runner,
-            Err(RegistrationRefusal::InvalidToken) => return Err(invalid_registration()),
-            Err(RegistrationRefusal::LabelsNotAllowed) => {
-                return Err(RunnerError::forbidden("the registration token allows other labels than these"));
-            }
-        };
-        self.runner_cache().await?.insert(&runner, digest);
-        if runner.capabilities.runs_on_host() {
-            tracing::warn!(runner = runner.id.0, name = %runner.name, "runner registered with host labels: their jobs run without isolation");
-        }
-        tracing::info!(runner = runner.id.0, name = %runner.name, scope = runner.scope.kind(), "runner registered");
-        let target = self.scope_target(runner.scope).await?;
-        let entry = AuditEntry::new(AuditAction::ActionsRunnerRegistered).on(target).detail(format!("{} (#{})", runner.name, runner.id));
-        self.audit_log().record(entry).await;
-        if !runner.labels.is_empty() {
-            self.bump_tasks_version();
-        }
-        Ok(RegisterResponse {
-            runner_id: rbit_workflow::protocol::RunnerId(runner.id.0),
-            credential: credential.encode().into(),
-            intervals: self.intervals(),
-        })
+        RunnerRegistry::register(&Registering::new(self), request).await.map_err(RunnerError::refused)
     }
 
-    /// `POST declare`: the runner's name, labels and capabilities at its start. Labels
-    /// outside its registration token's pin are `forbidden`; a change of labels moves the
-    /// scheduler's version, so jobs it can now take are offered to it.
+    /// `POST declare`: the runner's name, labels and capabilities at its start
+    /// ([`RunnerRegistry::declare`]).
     pub async fn declare_runner(&self, runner: &CachedRunner, request: &DeclareRequest) -> Result<DeclareResponse, RunnerError> {
-        request.validate().map_err(RunnerError::from_validation)?;
-        let declared = Declared::new(&request.labels, &request.capabilities)?;
-        if let Some(pinned) = &runner.pinned_labels
-            && let Some(label) = declared.labels.iter().find(|label| !pinned.contains(label))
-        {
-            return Err(RunnerError::forbidden(format!("this runner's registration token does not allow label `{label}`")));
-        }
-        let declaration = Declaration {
-            name: &request.name,
-            labels: &declared.labels,
-            version: &request.capabilities.version,
-            ephemeral: request.capabilities.ephemeral,
-            capabilities: &declared.capabilities,
-            protocol: PROTOCOL_VERSION,
-            now: Timestamp::now(),
-        };
-        let Some(stored) = self.ctx().database.actions_runners().declare(runner.id, &declaration).await? else {
-            self.runner_cache().await?.remove(runner.id);
-            return Err(RunnerError::unauthenticated());
-        };
-        let mut labels = (declared.labels.clone(), declared.capabilities.host_labels.clone());
-        let mut before = (runner.labels.clone(), runner.host_labels.clone());
-        for list in [&mut labels.0, &mut labels.1, &mut before.0, &mut before.1] {
-            list.sort();
-        }
-        if labels != before {
-            self.bump_tasks_version();
-        }
-        if let Some(fresh) = self.runner_cache().await?.refresh(&stored) {
-            fresh.seen_written.store(declaration.now.0, Ordering::SeqCst);
-        }
-        if stored.capabilities.runs_on_host() {
-            tracing::warn!(runner = stored.id.0, name = %stored.name, "runner declares host labels: their jobs run without isolation");
-        }
-        Ok(DeclareResponse {
-            runner_id: rbit_workflow::protocol::RunnerId(stored.id.0),
-            intervals: self.intervals(),
-            // Actions: shared cache.
-            shared_cache: true,
-        })
+        RunnerRegistry::declare(&Declaring::new(self, runner), request).await.map_err(RunnerError::refused)
     }
 
     /// `POST unregister`: the runner removes itself (an ephemeral runner after its task, or
@@ -556,7 +433,7 @@ impl ActionsService {
         for runner in self.runner_cache().await?.all() {
             let seen = runner.last_seen.load(Ordering::SeqCst);
             let written = runner.seen_written.load(Ordering::SeqCst);
-            if seen > written && seen - written >= SEEN_GRANULARITY_SECONDS {
+            if seen_is_due(seen, written) {
                 runner.seen_written.store(seen, Ordering::SeqCst);
                 by_time.entry(seen).or_default().push(runner.id);
             }
@@ -577,18 +454,9 @@ impl ActionsService {
         options: RegistrationOptions,
     ) -> Result<IssuedRegistrationToken, ServiceError> {
         self.require_manager(actor, scope).await?;
-        if options.lifetime.is_zero() || options.lifetime > MAX_REGISTRATION_LIFETIME {
-            return Err(ServiceError::Invalid("a registration token lasts from a minute up to 30 days".to_owned()));
-        }
-        if options.uses == Some(0) {
-            return Err(ServiceError::Invalid("a registration token must allow at least one registration".to_owned()));
-        }
-        if options.labels.as_ref().is_some_and(|labels| labels.is_empty() || labels.len() > rbit_core::actions::MAX_RUNNER_LABELS) {
-            return Err(ServiceError::Invalid(format!("pin 1 to {} labels, or none to allow any", rbit_core::actions::MAX_RUNNER_LABELS)));
-        }
-        let secret = RegistrationSecret::generate();
         let now = Timestamp::now();
-        let seconds = i64::try_from(options.lifetime.as_secs()).unwrap_or(i64::MAX).max(60);
+        let expires_at = options.expires_at(now.0, rbit_core::actions::MAX_RUNNER_LABELS).map_err(ServiceError::Invalid)?;
+        let secret = RegistrationSecret::generate();
         let token = self
             .ctx()
             .database
@@ -600,11 +468,10 @@ impl ActionsService {
                 uses: options.uses,
                 created_by: Some(actor.id()),
                 created_at: now,
-                expires_at: Timestamp(now.0.saturating_add(seconds)),
+                expires_at: Timestamp(expires_at),
             })
             .await?;
-        let uses = options.uses.map_or_else(|| "unlimited uses".to_owned(), |uses| format!("{uses} use(s)"));
-        let detail = format!("#{} until {}, {uses}", token.id, token.expires_at.0);
+        let detail = options.audit_detail(token.id, token.expires_at.0);
         self.audit_log()
             .record(AuditEntry::new(AuditAction::ActionsRegistrationTokenCreated).by(actor).on(scope.target()).detail(detail))
             .await;
@@ -657,7 +524,7 @@ impl ActionsService {
         let mut runners = self.ctx().database.actions_runners().list_for_repository(repo.repo.repo.id, owner).await?;
         let instance_allowed =
             self.config().instance_runners_for_all || self.ctx().database.actions_settings().instance_runners_allowed(owner).await?;
-        runners.retain(|runner| runner.scope != RunnerScope::Instance || instance_allowed);
+        runners.retain(|runner| listed_for_repository(runner.scope == RunnerScope::Instance, instance_allowed));
         Ok(self.runner_cache().await?.with_seen(runners))
     }
 
@@ -706,23 +573,26 @@ impl ActionsService {
     /// administrators the repository's. Others learn nothing (`NotFound`), except readers
     /// of a repository (`Forbidden`).
     async fn require_manager(&self, actor: &User, scope: ManagedScope<'_>) -> Result<(), ServiceError> {
-        let allowed = match scope {
-            ManagedScope::Instance => actor.is_admin,
+        let target = match scope {
+            ManagedScope::Instance => ManagedTarget::Instance,
             ManagedScope::Owner(account) => {
-                actor.is_admin
-                    || account.id == actor.id()
-                    || (account.kind == AccountKind::Organization
-                        && self.ctx().database.orgs().role_of(account.id, actor.id()).await? == Some(OrgRole::Owner))
+                ManagedTarget::Owner { own_account: account.id == actor.id(), organization: account.kind == AccountKind::Organization }
             }
-            ManagedScope::Repository(repo) if repo.access.can_admin() => true,
-            ManagedScope::Repository(repo) if repo.access.can_read() => return Err(ServiceError::Forbidden),
-            ManagedScope::Repository(_) => false,
+            ManagedScope::Repository(repo) => ManagedTarget::Repository { admin: repo.access.can_admin(), read: repo.access.can_read() },
         };
-        if allowed { Ok(()) } else { Err(ServiceError::NotFound) }
+        let organization_owner = || async {
+            let ManagedScope::Owner(account) = scope else { return Ok(false) };
+            Ok::<_, ServiceError>(self.ctx().database.orgs().role_of(account.id, actor.id()).await? == Some(OrgRole::Owner))
+        };
+        match management(actor.is_admin, target, organization_owner).await? {
+            Management::Allowed => Ok(()),
+            Management::Forbidden => Err(ServiceError::Forbidden),
+            Management::Hidden => Err(ServiceError::NotFound),
+        }
     }
 
     /// The audit target of a stored scope.
-    async fn scope_target(&self, scope: RunnerScope) -> Result<String, ServiceError> {
+    pub(super) async fn scope_target(&self, scope: RunnerScope) -> Result<String, ServiceError> {
         let database = &self.ctx().database;
         Ok(match scope {
             RunnerScope::Instance => "instance".to_owned(),
@@ -735,71 +605,26 @@ impl ActionsService {
         })
     }
 
-    fn audit_log(&self) -> AuditService {
+    pub(super) fn audit_log(&self) -> AuditService {
         AuditService::from_store(self.ctx().database.audit())
     }
 }
 
 impl RunnerError {
-    fn from_validation(error: rbit_workflow::protocol::ValidationError) -> Self {
-        Self::bad_request(error.message)
+    /// A refused `register` or `declare`, as the protocol answers it.
+    fn refused(refusal: RunnerRefusal<Self>) -> Self {
+        match refusal {
+            RunnerRefusal::BadRequest(message) => Self::bad_request(message),
+            RunnerRefusal::Unauthenticated(message) => Self::new(ErrorCode::Unauthenticated, message),
+            RunnerRefusal::Forbidden(message) => Self::forbidden(message),
+            RunnerRefusal::Port(error) => error,
+        }
     }
-}
-
-fn invalid_registration() -> RunnerError {
-    RunnerError::new(ErrorCode::Unauthenticated, "the registration token is unknown, revoked, expired or used up")
-}
-
-/// Labels and capabilities as stored, from what a runner sent.
-struct Declared {
-    labels: Vec<RunnerLabel>,
-    capabilities: RunnerCapabilities,
-}
-
-impl Declared {
-    fn new(labels: &[DeclaredLabel], capabilities: &Capabilities) -> Result<Self, RunnerError> {
-        let parsed = labels
-            .iter()
-            .map(|label| label.name.parse::<RunnerLabel>().map_err(|error| RunnerError::bad_request(error.to_string())))
-            .collect::<Result<Vec<_>, _>>()?;
-        let host_labels =
-            labels.iter().zip(&parsed).filter(|(label, _)| !label.backend.isolates_jobs()).map(|(_, parsed)| parsed.clone()).collect();
-        let backends = capabilities
-            .backends
-            .iter()
-            .map(|backend| match backend {
-                Backend::Container => RunnerBackend::Container,
-                Backend::Host => RunnerBackend::Host,
-            })
-            .collect();
-        let capabilities = RunnerCapabilities {
-            backends,
-            os: capabilities.os.clone(),
-            arch: capabilities.arch.clone(),
-            capacity: capabilities.capacity,
-            host_labels,
-        };
-        Ok(Self { labels: parsed, capabilities })
-    }
-}
-
-/// A random (version 4) UUID, as the runner row stores it.
-fn random_uuid() -> String {
-    let mut bytes = [0u8; 16];
-    getrandom::fill(&mut bytes).expect("operating system random number generator is unavailable");
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    let hex = bytes.iter().fold(String::with_capacity(32), |mut hex, byte| {
-        use std::fmt::Write as _;
-        let _ = write!(hex, "{byte:02x}");
-        hex
-    });
-    format!("{}-{}-{}-{}-{}", &hex[..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..])
 }
 
 #[cfg(test)]
 mod tests {
-    use rbit_core::RepoId;
+    use rbit_core::{RepoId, actions::RunnerCapabilities};
 
     use super::*;
 
@@ -863,35 +688,6 @@ mod tests {
         cache.remove(RunnerId(1));
         assert!(cache.get(&first.digest()).is_none());
         assert_eq!(cache.len(), 1);
-    }
-
-    #[test]
-    fn declarations_are_stored_with_their_host_labels() {
-        let labels = [
-            DeclaredLabel { name: "ubuntu-latest".into(), backend: Backend::Container },
-            DeclaredLabel { name: "self-hosted".into(), backend: Backend::Host },
-        ];
-        let capabilities = Capabilities {
-            backends: vec![Backend::Container, Backend::Host],
-            os: "linux".into(),
-            arch: "x86_64".into(),
-            capacity: 2,
-            version: "0.2.0".into(),
-            ephemeral: false,
-        };
-        let declared = Declared::new(&labels, &capabilities).unwrap();
-        assert_eq!(declared.labels.iter().map(RunnerLabel::as_str).collect::<Vec<_>>(), ["ubuntu-latest", "self-hosted"]);
-        assert_eq!(declared.capabilities.host_labels, vec!["self-hosted".parse::<RunnerLabel>().unwrap()]);
-        assert_eq!(declared.capabilities.backends, [RunnerBackend::Container, RunnerBackend::Host]);
-        assert!(declared.capabilities.runs_on_host());
-    }
-
-    #[test]
-    fn uuids_are_version_four() {
-        let uuid = random_uuid();
-        assert_eq!(uuid.len(), 36);
-        assert_eq!(&uuid[14..15], "4");
-        assert_ne!(uuid, random_uuid());
     }
 
     #[test]

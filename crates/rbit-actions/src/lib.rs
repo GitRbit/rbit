@@ -7,11 +7,13 @@
 
 pub mod archives;
 pub mod artifacts;
+pub mod availability;
 pub mod caches;
 pub mod claims;
 pub mod downloads;
 pub mod environments;
 pub mod logs;
+pub mod runners;
 pub mod secrets;
 pub mod triggers;
 pub mod trust;
