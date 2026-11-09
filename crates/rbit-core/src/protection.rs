@@ -7,7 +7,7 @@ use rbit_access::protection as rules;
 use crate::{
     Account, AccountId, RefUpdate, RepoAccess, RepoId, Timestamp, User,
     membership::{Team, TeamId},
-    status::{StatusContext, StatusError},
+    status::StatusContext,
 };
 
 pub use rules::{
@@ -33,15 +33,6 @@ impl rules::RefChange for RefUpdate {
 
     fn is_deleted(&self) -> bool {
         RefUpdate::is_deleted(self)
-    }
-}
-
-/// Required contexts are parsed by the rule management through this.
-impl std::str::FromStr for StatusContext {
-    type Err = StatusError;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        Self::parse(value)
     }
 }
 

@@ -111,6 +111,15 @@ impl StatusContext {
     }
 }
 
+/// Required contexts are parsed by the protection rule management through this.
+impl std::str::FromStr for StatusContext {
+    type Err = StatusError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Self::parse(value)
+    }
+}
+
 impl fmt::Display for StatusContext {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
