@@ -11,7 +11,13 @@ const RULES = [
   // The release rule: held or awaiting approval, and nothing else, means no run is active.
   [/\blet\s+mut\s+busy\b|matches!\([^,()]+,\s*Status::Blocked\s*\|\s*Status::AwaitingApproval\s*\)/u,
     "concurrency group decided outside rbit_actions::scheduling::{enter_group, next_to_release}"],
-  [/the job has been rerun; this task no longer belongs to it/u, "task lease decided outside rbit_actions::scheduling::leases"],
+  [/the job has been rerun; this task no longer belongs to it|this task belongs to another runner|its log is closed/u,
+    "task lease decided outside rbit_actions::scheduling::leases"],
+  // Post-settle job decisions: conditions, call conditions, needs results and fail-fast.
+  [/\bCondition::parse\b|\bfn\s+result_name\b|\.fail_fast\s*&&/u, "job decision made outside rbit_actions::scheduling::jobs"],
+  // What people may ask of runs and deployments.
+  [/has no jobs to run again|only a finished run can be run again|does not wait for approval|the run has already finished|no job of the run matches|no job of this run waits for \{|choose an environment to review|no longer wait for review|the comment is too long/u,
+    "run or review request rule outside rbit_actions::scheduling::requests"],
 ];
 const LEASE_FUNCTIONS = /\bfn\s+(?:running_task|leased_task)\b/u;
 

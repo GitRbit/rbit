@@ -3,6 +3,8 @@
 // Workflow discovery and run planning are decided in rbit-workflow (`discovery`, `plan::plan_run`).
 // These adapters only list trees, read blobs and map errors.
 const ADAPTERS = ["crates/rbit-services/src/", "crates/rbit-web/src/", "crates/rbit-server/src/", "crates/rbit-actions/src/"];
+// Unit-test modules build fixtures by parsing and planning workflows directly.
+const TEST_MODULE = /\/(?:[a-z_]+_)?tests\.rs$/u;
 const ACTIONS = "crates/rbit-services/src/actions/";
 // [pattern, message, root the rule applies below]
 const RULES = [
@@ -28,7 +30,7 @@ function code(source) {
 export function checkActionsDiscoveryRetirement(sources) {
   const violations = [];
   for (const [path, source] of sources) {
-    if (!path.endsWith(".rs") || !ADAPTERS.some((root) => path.startsWith(root))) continue;
+    if (!path.endsWith(".rs") || !ADAPTERS.some((root) => path.startsWith(root)) || TEST_MODULE.test(path)) continue;
     const text = code(source);
     for (const [pattern, message, root] of RULES) {
       if (path.startsWith(root) && pattern.test(text)) violations.push(`${path}: ${message}`);
