@@ -37,6 +37,7 @@ import { checkOperationsCliRetirement } from "./operations-cli-retirement.mjs";
 import { checkAdministrationRetirement } from "./administration-retirement.mjs";
 import { checkConfigurationRetirement } from "./configuration-retirement.mjs";
 import { checkActionsSecretsRetirement } from "./actions-secrets-retirement.mjs";
+import { checkActionsLogsRetirement } from "./actions-logs-retirement.mjs";
 import { checkCollaborationFeatures, checkCollaborationGraphs } from "./collaboration-features.mjs";
 import { checkUnifiedModelBoundary } from "./identity-model-boundary.mjs";
 import { checkInventoryCompileIsolation } from "./inventory-isolation.mjs";
@@ -240,6 +241,7 @@ export function check(root) {
     ...checkMirrorsRetirement(files),
     ...checkOperationsCliRetirement(files),
     ...checkActionsSecretsRetirement(files),
+    ...checkActionsLogsRetirement(files),
     ...checkPlatformBoundary(root, files), ...checkMigrations(root, baseline), ...checkLedger(root, ledger)] };
 }
 
