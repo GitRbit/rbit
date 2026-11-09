@@ -9,6 +9,7 @@
 //!
 //! Stores speak in `rbit-core` domain types; SQL rows never leak out of this crate.
 
+mod access_administration;
 mod access_collaborators;
 mod access_grants;
 mod access_organizations;

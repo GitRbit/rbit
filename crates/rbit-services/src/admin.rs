@@ -1,9 +1,12 @@
-//! Site administration: instance statistics and user, organisation and repository management.
+//! Site administration adapter: instance statistics, the dashboard and the
+//! restart-required configuration editor, plus user, organisation and repository
+//! management driven by [`rbit_access::administration`].
 //!
-//! Every operation takes the acting user and fails with [`ServiceError::Forbidden`] unless
-//! they are a site administrator. Guard rails keep the instance manageable: administrators
-//! cannot demote, suspend or delete themselves, and the last active administrator can
-//! never be demoted, suspended or deleted (enforced atomically by the store).
+//! The rules (site administrators only, no demoting, suspending or deleting oneself, the
+//! last active administrator, deletion confirmations, listing normalisation, settings
+//! change descriptions) live in `rbit-access`; the store keeps the last-administrator rule
+//! atomic. This adapter removes deleted repositories from disk, publishes events and
+//! records the audit log.
 
 mod accounts;
 pub mod configuration;
@@ -15,85 +18,23 @@ use std::{
     time::{Duration, Instant},
 };
 
+pub use rbit_access::administration::{ListQuery, PAGE_SIZE, Paged};
+use rbit_access::{
+    administration::{Administration, describe_changes as describe_fields, require_site_admin},
+    organizations::{AccessError, Actor},
+};
 use rbit_core::{AccountId, InstanceSettings, OwnedRepository, RepoId, User};
 use rbit_identity::PasswordWork;
-use rbit_storage::sqlite::admin::{AdminStore, ListFilter, Listing, Moderation};
 pub use rbit_storage::sqlite::admin::{InstanceCounts, OrgRecord, UserRecord};
+use rbit_storage::{StorageError, sqlite::admin::AdminStore};
 
 use crate::{
     DomainEvent, InstanceService, ServiceContext, ServiceError,
     audit::{AuditAction, AuditEntry, AuditService},
 };
 
-/// Rows per page in administration listings.
-pub const PAGE_SIZE: u32 = 30;
-/// Longest accepted search text; longer input is truncated.
-const MAX_SEARCH_LEN: usize = 100;
-
 /// When this process started serving (approximately: when the services were built).
 static STARTED_AT: OnceLock<Instant> = OnceLock::new();
-
-/// Which page of a listing to show and what to filter by, as requested.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ListQuery {
-    pub search: String,
-    /// 1-based; `0` is treated as `1`.
-    pub page: u32,
-}
-
-impl ListQuery {
-    /// The trimmed, length-capped search text.
-    pub fn search(&self) -> &str {
-        let search = self.search.trim();
-        match search.char_indices().nth(MAX_SEARCH_LEN) {
-            Some((end, _)) => &search[..end],
-            None => search,
-        }
-    }
-
-    pub fn page(&self) -> u32 {
-        self.page.max(1)
-    }
-
-    pub(crate) fn filter(&self) -> ListFilter<'_> {
-        ListFilter { search: self.search(), limit: i64::from(PAGE_SIZE), offset: i64::from(self.page() - 1) * i64::from(PAGE_SIZE) }
-    }
-}
-
-/// One page of an administration listing.
-#[derive(Debug, Clone)]
-pub struct Paged<T> {
-    pub items: Vec<T>,
-    /// Matching rows across all pages.
-    pub total: u64,
-    /// 1-based.
-    pub page: u32,
-    pub per_page: u32,
-}
-
-impl<T> Paged<T> {
-    pub(crate) fn new(listing: Listing<T>, query: &ListQuery) -> Self {
-        Self { items: listing.items, total: listing.total.try_into().unwrap_or(0), page: query.page(), per_page: PAGE_SIZE }
-    }
-
-    pub fn has_previous(&self) -> bool {
-        self.page > 1
-    }
-
-    pub fn has_next(&self) -> bool {
-        u64::from(self.page) * u64::from(self.per_page) < self.total
-    }
-
-    /// 1-based index of the first item on this page (0 when the page is empty).
-    pub fn first_index(&self) -> u64 {
-        if self.items.is_empty() { 0 } else { u64::from(self.page - 1) * u64::from(self.per_page) + 1 }
-    }
-
-    /// 1-based index of the last item on this page (0 when the page is empty).
-    pub fn last_index(&self) -> u64 {
-        if self.items.is_empty() { 0 } else { self.first_index() + self.items.len() as u64 - 1 }
-    }
-}
 
 /// The host the instance runs on, for the dashboard.
 #[derive(Debug, Clone)]
@@ -178,23 +119,21 @@ impl AdminService {
 
     // ------------------------------------------------------------------ users
 
+    fn rules(&self) -> Administration<'_, AdminStore> {
+        Administration::new(&self.store)
+    }
+
     pub async fn users(&self, actor: &User, query: &ListQuery) -> Result<Paged<UserRecord>, ServiceError> {
-        require_admin(actor)?;
-        Ok(Paged::new(self.store.list_users(query.filter()).await?, query))
+        self.rules().users(&self::actor(actor), query).await.map_err(service_error)
     }
 
     pub async fn user(&self, actor: &User, id: AccountId) -> Result<UserRecord, ServiceError> {
-        require_admin(actor)?;
-        self.store.find_user(id).await?.ok_or(ServiceError::NotFound)
+        self.rules().user(&self::actor(actor), id).await.map_err(service_error)
     }
 
     /// Grants or revokes site administrator rights.
     pub async fn set_admin(&self, actor: &User, id: AccountId, is_admin: bool) -> Result<UserRecord, ServiceError> {
-        let target = self.user(actor, id).await?;
-        if !is_admin {
-            refuse_self(actor, &target, "remove your own administrator rights")?;
-        }
-        check_moderation(self.store.set_admin(id, is_admin).await?, &target, "demoted")?;
+        let target = self.rules().set_admin(&self::actor(actor), id, is_admin).await.map_err(service_error)?;
         tracing::info!(admin = %actor.name(), user = %target.user.name(), is_admin, "administrator rights changed");
         let action = if is_admin { AuditAction::AdminGranted } else { AuditAction::AdminRevoked };
         self.audit.record(AuditEntry::new(action).by(actor).on(target.user.name().as_str())).await;
@@ -203,11 +142,7 @@ impl AdminService {
 
     /// Suspends a user (they can no longer sign in, use sessions, tokens or Git) or lifts it.
     pub async fn set_suspended(&self, actor: &User, id: AccountId, suspended: bool) -> Result<UserRecord, ServiceError> {
-        let target = self.user(actor, id).await?;
-        if suspended {
-            refuse_self(actor, &target, "suspend yourself")?;
-        }
-        check_moderation(self.store.set_suspended(id, suspended).await?, &target, "suspended")?;
+        let target = self.rules().set_suspended(&self::actor(actor), id, suspended).await.map_err(service_error)?;
         tracing::info!(admin = %actor.name(), user = %target.user.name(), suspended, "user suspension changed");
         let action = if suspended { AuditAction::UserSuspended } else { AuditAction::UserUnsuspended };
         self.audit.record(AuditEntry::new(action).by(actor).on(target.user.name().as_str())).await;
@@ -217,23 +152,9 @@ impl AdminService {
     /// Deletes a user, everything they own in the database and their repositories on disk.
     /// `confirmation` must repeat the username exactly.
     pub async fn delete_user(&self, actor: &User, id: AccountId, confirmation: &str) -> Result<UserRecord, ServiceError> {
-        let target = self.user(actor, id).await?;
-        if confirmation.trim() != target.user.name().as_str() {
-            return Err(ServiceError::Invalid("type the username exactly to confirm".to_owned()));
-        }
-        refuse_self(actor, &target, "delete your own account here")?;
-        let orphaned = self.store.organizations_solely_owned_by(id).await?;
-        if !orphaned.is_empty() {
-            return Err(ServiceError::Invalid(format!(
-                "{} is the only owner of {}; add another owner or delete them first",
-                target.user.name(),
-                orphaned.join(", ")
-            )));
-        }
-
-        let repositories = self.store.repositories_owned_by(id).await?;
-        check_moderation(self.store.delete_user(id).await?, &target, "deleted")?;
-        for (repo, name) in repositories {
+        let deleted = self.rules().delete_user(&self::actor(actor), id, confirmation).await.map_err(service_error)?;
+        let target = deleted.user;
+        for (repo, name) in deleted.repositories {
             self.remove_from_disk(id, repo).await;
             let full_name = format!("{}/{name}", target.user.name());
             self.ctx.events.publish(DomainEvent::RepositoryDeleted { repo, owner: id, full_name, actor: actor.id() });
@@ -246,20 +167,17 @@ impl AdminService {
     // ------------------------------------------------------------------ organisations
 
     pub async fn organizations(&self, actor: &User, query: &ListQuery) -> Result<Paged<OrgRecord>, ServiceError> {
-        require_admin(actor)?;
-        Ok(Paged::new(self.store.list_organizations(query.filter()).await?, query))
+        self.rules().organizations(&self::actor(actor), query).await.map_err(service_error)
     }
 
     // ------------------------------------------------------------------ repositories
 
     pub async fn repositories(&self, actor: &User, query: &ListQuery) -> Result<Paged<OwnedRepository>, ServiceError> {
-        require_admin(actor)?;
-        Ok(Paged::new(self.store.list_repositories(query.filter()).await?, query))
+        self.rules().repositories(&self::actor(actor), query).await.map_err(service_error)
     }
 
     pub async fn repository(&self, actor: &User, id: RepoId) -> Result<OwnedRepository, ServiceError> {
-        require_admin(actor)?;
-        self.store.find_repository(id).await?.ok_or(ServiceError::NotFound)
+        self.rules().repository(&self::actor(actor), id).await.map_err(service_error)
     }
 
     /// The database row is already gone, so a failure here leaves only an unreachable
@@ -271,9 +189,8 @@ impl AdminService {
     }
 }
 
-/// e.g. `registration: open → closed; site name: rbit → Forge`.
+/// The settings an administrator can change, as the audit description compares them.
 fn describe_changes(before: &InstanceSettings, after: &InstanceSettings) -> String {
-    let mut description = if before.branding == after.branding { String::new() } else { "branding changed; ".to_owned() };
     let (hour_before, hour_after) = (format!("{:02}:00 UTC", before.digest_hour), format!("{:02}:00 UTC", after.digest_hour));
     let fields = [
         ("site name", before.site_name.as_str(), after.site_name.as_str()),
@@ -282,34 +199,20 @@ fn describe_changes(before: &InstanceSettings, after: &InstanceSettings) -> Stri
         ("default visibility", before.default_visibility.as_str(), after.default_visibility.as_str()),
         ("email digest hour", hour_before.as_str(), hour_after.as_str()),
     ];
-    description.push_str(
-        &fields
-            .iter()
-            .filter(|(_, old, new)| old != new)
-            .map(|(name, old, new)| format!("{name}: {old} → {new}"))
-            .collect::<Vec<_>>()
-            .join("; "),
-    );
-    description
+    describe_fields(before.branding != after.branding, &fields)
+}
+
+/// The identity layer's facts about the acting user, for the administration rules.
+fn actor(user: &User) -> Actor<AccountId> {
+    Actor { id: user.id(), site_admin: user.is_admin }
 }
 
 pub(crate) fn require_admin(actor: &User) -> Result<(), ServiceError> {
-    if actor.is_admin { Ok(()) } else { Err(ServiceError::Forbidden) }
+    require_site_admin::<StorageError, _>(&self::actor(actor)).map_err(service_error)
 }
 
-fn refuse_self(actor: &User, target: &UserRecord, action: &str) -> Result<(), ServiceError> {
-    if actor.id() == target.user.id() { Err(ServiceError::Invalid(format!("you can't {action}"))) } else { Ok(()) }
-}
-
-fn check_moderation(outcome: Moderation, target: &UserRecord, verb: &str) -> Result<(), ServiceError> {
-    match outcome {
-        Moderation::Applied => Ok(()),
-        Moderation::NotFound => Err(ServiceError::NotFound),
-        Moderation::LastAdmin => Err(ServiceError::Invalid(format!(
-            "{} is the last active administrator and can't be {verb}; promote someone else first",
-            target.user.name()
-        ))),
-    }
+fn service_error(error: AccessError<StorageError>) -> ServiceError {
+    crate::orgs::service_error(error)
 }
 
 /// `git --version` of the configured binary, e.g. `2.51.0`. Blocking.
@@ -349,31 +252,6 @@ fn directory_size(root: &Path) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn list_query_normalises_input() {
-        let query = ListQuery { search: format!("  {}  ", "é".repeat(150)), page: 0 };
-        assert_eq!(query.search().chars().count(), MAX_SEARCH_LEN);
-        assert_eq!(query.page(), 1);
-        assert_eq!(query.filter().offset, 0);
-        assert_eq!(ListQuery { search: String::new(), page: 3 }.filter().offset, 60);
-    }
-
-    #[test]
-    fn paging_bounds() {
-        let query = ListQuery { search: String::new(), page: 2 };
-        let paged = Paged::new(Listing { items: vec![1; 5], total: 35 }, &query);
-        assert!(paged.has_previous());
-        assert!(!paged.has_next());
-        assert_eq!((paged.first_index(), paged.last_index()), (31, 35));
-
-        let first = Paged::new(Listing { items: vec![1; 30], total: 35 }, &ListQuery::default());
-        assert!(!first.has_previous());
-        assert!(first.has_next());
-
-        let empty = Paged::<u8>::new(Listing { items: Vec::new(), total: 0 }, &ListQuery::default());
-        assert_eq!((empty.first_index(), empty.last_index()), (0, 0));
-    }
 
     #[test]
     fn measures_directories() {

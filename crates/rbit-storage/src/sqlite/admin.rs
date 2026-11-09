@@ -70,45 +70,22 @@ pub struct OrgRecord {
     pub repository_count: i64,
 }
 
-/// One page of a listing plus the total number of matching rows.
-#[derive(Debug, Clone)]
-pub struct Listing<T> {
-    pub items: Vec<T>,
-    pub total: i64,
-}
+/// Listings, page filters and moderation outcomes are owned by `rbit-access`.
+pub use rbit_access::administration::{ListFilter, Listing, Moderation};
 
-/// Which page of a listing to fetch, and an optional case-insensitive substring filter.
-#[derive(Debug, Clone, Copy)]
-pub struct ListFilter<'a> {
-    pub search: &'a str,
-    pub limit: i64,
-    pub offset: i64,
-}
-
-impl ListFilter<'_> {
-    /// The `LIKE` pattern for the search text, with wildcards in the input escaped.
-    fn pattern(&self) -> String {
-        let mut pattern = String::with_capacity(self.search.len() + 2);
-        pattern.push('%');
-        for c in self.search.chars() {
-            if matches!(c, '%' | '_' | '\\') {
-                pattern.push('\\');
-            }
-            pattern.push(c);
+/// The `LIKE` pattern for `filter`'s search text, with wildcards in the input escaped.
+fn like_pattern(filter: &ListFilter<'_>) -> String {
+    let search = filter.search;
+    let mut pattern = String::with_capacity(search.len() + 2);
+    pattern.push('%');
+    for c in search.chars() {
+        if matches!(c, '%' | '_' | '\\') {
+            pattern.push('\\');
         }
-        pattern.push('%');
-        pattern
+        pattern.push(c);
     }
-}
-
-/// Outcome of a guarded moderation statement.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Moderation {
-    Applied,
-    /// No such user.
-    NotFound,
-    /// Refused: the target is the last active administrator.
-    LastAdmin,
+    pattern.push('%');
+    pattern
 }
 
 #[derive(Debug, sqlx::FromRow)]
@@ -205,7 +182,7 @@ impl AdminStore {
 
     /// Users matching the filter (name, display name or email), oldest account first.
     pub async fn list_users(&self, filter: ListFilter<'_>) -> Result<Listing<UserRecord>, StorageError> {
-        let pattern = filter.pattern();
+        let pattern = like_pattern(&filter);
         let rows: Vec<UserRecordRow> = sqlx::query_as(select_user_record!(concat!(
             "WHERE ",
             search_filter!("a.name", "a.display_name", "l.email"),
@@ -313,7 +290,7 @@ impl AdminStore {
 
     /// Organisations matching the filter (name or display name), alphabetically.
     pub async fn list_organizations(&self, filter: ListFilter<'_>) -> Result<Listing<OrgRecord>, StorageError> {
-        let pattern = filter.pattern();
+        let pattern = like_pattern(&filter);
         let rows: Vec<OrgRecordRow> = sqlx::query_as(concat!(
             "SELECT a.id, a.kind, a.name, a.display_name, a.bio, a.created_at, \
              (SELECT COUNT(*) FROM org_members m WHERE m.org_id = a.id) AS member_count, \
@@ -344,7 +321,7 @@ impl AdminStore {
     /// Repositories (public and private) matching the filter (`owner/name` or description),
     /// most recently updated first.
     pub async fn list_repositories(&self, filter: ListFilter<'_>) -> Result<Listing<OwnedRepository>, StorageError> {
-        let pattern = filter.pattern();
+        let pattern = like_pattern(&filter);
         let rows: Vec<OwnedRepositoryRow> = sqlx::query_as(concat!(
             "SELECT r.id, r.owner_id, r.name, r.description, r.visibility, r.default_branch, r.created_at, r.updated_at, \
              r.pushed_at, (SELECT a.archived_at FROM repo_archives a WHERE a.repo_id = r.id) AS archived_at, \
@@ -399,7 +376,7 @@ mod tests {
     #[test]
     fn search_pattern_escapes_wildcards() {
         let filter = ListFilter { search: "a_b%c\\", limit: 10, offset: 0 };
-        assert_eq!(filter.pattern(), "%a\\_b\\%c\\\\%");
+        assert_eq!(like_pattern(&filter), "%a\\_b\\%c\\\\%");
     }
 
     #[test]

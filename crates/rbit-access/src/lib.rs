@@ -6,6 +6,7 @@
 //! collaborator and branch protection rules reach records only through their ports;
 //! storage keeps race authority.
 
+pub mod administration;
 pub mod collaborators;
 pub mod grants;
 pub mod organizations;
