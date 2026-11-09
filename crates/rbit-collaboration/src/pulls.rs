@@ -9,6 +9,7 @@ mod head;
 mod merge;
 mod merging;
 mod messages;
+mod pushes;
 mod records;
 pub mod review_threads;
 mod reviews;
@@ -22,6 +23,7 @@ pub use merging::{MergeDefaults, current_mergeability, merge_gate, merge_message
 pub use messages::{
     CommitIdentity, HeadSpec, commit_message, default_merge_title, default_squash_body, default_squash_title, noreply_domain, noreply_email,
 };
+pub use pushes::{PathRequest, list_badges, list_offset, outdated_comments, outdated_requests, trial_merge_is_current};
 pub use records::{
     ChecksStatus, MAX_CONFLICT_PATHS, MergeStrategy, Mergeability, PullRequest, Review, ReviewComment, ReviewCommentId, ReviewId,
     ReviewState,

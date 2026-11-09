@@ -39,7 +39,8 @@ use std::{
 };
 
 use rbit_collaboration::pulls::{
-    BaseChange, BaseChangeFacts, CLOSED, PullCreation, PullCreationAccess, PullInput, may_edit_pull, plan_base_change, select_head,
+    BaseChange, BaseChangeFacts, CLOSED, PullCreation, PullCreationAccess, PullInput, list_badges, list_offset, may_edit_pull,
+    plan_base_change, select_head,
 };
 use rbit_core::access::repo_access;
 use rbit_core::{
@@ -423,7 +424,7 @@ impl PullService {
 
     /// One page (1-based) of `repo`'s pull requests matching `filter`.
     pub async fn list(&self, repo: &RepoContext, filter: &PullFilter, page: u32) -> Result<PullList, ServiceError> {
-        self.list_page(repo, filter, PAGE_SIZE, page.max(1).saturating_sub(1).saturating_mul(PAGE_SIZE)).await
+        self.list_page(repo, filter, PAGE_SIZE, list_offset(page, PAGE_SIZE)).await
     }
 
     /// `limit` pull requests from `offset`, for the API's own pagination.
@@ -445,14 +446,12 @@ impl PullService {
         let accounts: HashMap<AccountId, Account> = accounts.into_iter().map(|account| (account.id, account)).collect();
         let mut items = Vec::with_capacity(rows.len());
         for (issue, pull) in rows {
-            let tally =
-                rbit_core::pull::tally(reviews.get(&issue.id).map_or(&[][..], Vec::as_slice), issue.author, &pull.head_sha, false, |_| {
-                    true
-                });
+            let (approvals, changes_requested) =
+                list_badges(reviews.get(&issue.id).map_or(&[][..], Vec::as_slice), issue.author, &pull.head_sha);
             items.push(PullListItem {
                 author: issue.author.and_then(|id| accounts.get(&id).cloned()),
-                approvals: tally.approvals.len(),
-                changes_requested: tally.changes_requested.len(),
+                approvals,
+                changes_requested,
                 issue,
                 pull,
             });
@@ -474,14 +473,12 @@ impl PullService {
         let mut items = Vec::with_capacity(ids.len());
         for issue in &results.issues {
             let Some(pull) = pulls.get(&issue.id) else { continue };
-            let tally =
-                rbit_core::pull::tally(reviews.get(&issue.id).map_or(&[][..], Vec::as_slice), issue.author, &pull.head_sha, false, |_| {
-                    true
-                });
+            let (approvals, changes_requested) =
+                list_badges(reviews.get(&issue.id).map_or(&[][..], Vec::as_slice), issue.author, &pull.head_sha);
             items.push(PullListItem {
                 author: issue.author.and_then(|id| results.authors.get(&id).cloned()),
-                approvals: tally.approvals.len(),
-                changes_requested: tally.changes_requested.len(),
+                approvals,
+                changes_requested,
                 issue: issue.clone(),
                 pull: pull.clone(),
             });

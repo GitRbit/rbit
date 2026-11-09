@@ -7,8 +7,9 @@
 //! Every handler reads current state (events carry ids only) and is idempotent, so a
 //! push reported twice (two racing pushes see each other's updates) does no harm.
 
-use std::{collections::HashMap, sync::Arc, sync::atomic::Ordering, time::Duration};
+use std::{sync::Arc, sync::atomic::Ordering, time::Duration};
 
+use rbit_collaboration::pulls::{outdated_comments, outdated_requests, trial_merge_is_current};
 use rbit_core::{
     AccountId, Issue, PushSource, RefUpdate, RepoId, StateReason, TimelineEvent, Timestamp,
     issue::IssueAction,
@@ -122,10 +123,8 @@ impl PullService {
             }
             let Some(base) = RepoContext::load_for_system(self.ctx(), pull.repo_id).await? else { continue };
             let base_tip = base.reader.commit_id(format!("refs/heads/{}", pull.base_branch)).await.ok();
-            let current = pull.mergeable != Mergeability::Unknown
-                && pull.mergeable_base_sha == base_tip
-                && pull.mergeable_head_sha.as_deref() == Some(pull.head_sha.as_str());
-            if !current {
+            let computed_on = (pull.mergeable_base_sha.as_deref(), pull.mergeable_head_sha.as_deref());
+            if !trial_merge_is_current(pull.mergeable, computed_on, base_tip.as_deref(), &pull.head_sha) {
                 if pull.mergeable != Mergeability::Unknown {
                     store.mark_unknown(issue.id).await?;
                 }
@@ -196,17 +195,7 @@ impl PullService {
         let mut answers = base.reader.path_ids_at(requests).await?.into_iter();
         let now = answers.next().flatten().ok_or(ServiceError::NotFound)?;
         let then: Vec<_> = answers.collect();
-        let outdated: Vec<_> = comments
-            .iter()
-            .zip(then_at)
-            .enumerate()
-            .filter(|(index, (_, (request, position)))| {
-                // A commit that cannot be read any more knows no file: outdated unless gone now too.
-                let was = then[*request].as_ref().and_then(|ids| ids[*position].as_ref());
-                was != now[*index].as_ref()
-            })
-            .map(|(_, (comment, _))| comment.id)
-            .collect();
+        let outdated: Vec<_> = outdated_comments(&now, &then, &then_at).into_iter().map(|index| comments[index].id).collect();
         store.mark_outdated(&outdated).await?;
         Ok(())
     }
@@ -324,32 +313,6 @@ impl PullService {
             timeout: Duration::from_secs(config.pulls.merge_timeout_seconds.max(1)),
         }
     }
-}
-
-/// A revision and the paths to look up in it.
-type PathRequest = (String, Vec<String>);
-
-/// The path lookups [`PullService::mark_outdated`] needs for comments given as
-/// `(commit, path)`: first every comment's path at `head`, then one request per distinct
-/// commented commit with the paths commented there. Also returns, per comment, where its
-/// own lookup is: `(request after the head's, position in its paths)`.
-fn outdated_requests(comments: &[(&str, &str)], head: &str) -> (Vec<PathRequest>, Vec<(usize, usize)>) {
-    let mut requests = vec![(head.to_owned(), comments.iter().map(|(_, path)| (*path).to_owned()).collect())];
-    let mut by_commit: HashMap<&str, usize> = HashMap::new();
-    let mut then_at = Vec::with_capacity(comments.len());
-    for &(commit, path) in comments {
-        let request = *by_commit.entry(commit).or_insert_with(|| {
-            requests.push((commit.to_owned(), Vec::new()));
-            requests.len() - 2
-        });
-        let paths = &mut requests[request + 1].1;
-        let position = paths.iter().position(|known| known == path).unwrap_or_else(|| {
-            paths.push(path.to_owned());
-            paths.len() - 1
-        });
-        then_at.push((request, position));
-    }
-    (requests, then_at)
 }
 
 #[cfg(test)]
