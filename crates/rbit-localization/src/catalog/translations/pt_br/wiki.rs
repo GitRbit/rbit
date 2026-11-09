@@ -131,5 +131,20 @@ entries! { PtBr:
             text.literal("”.");
         }
         WikiMessage::MorePages => text.literal("Mais páginas"),
+        WikiMessage::DeleteKeepsHistory => text.literal(
+            "A página é removida da wiki. O histórico dela é mantido, e quem tem acesso de escrita pode              restaurá-la a partir das páginas excluídas.",
+        ),
+        WikiMessage::DeletedPages => text.literal("Páginas excluídas"),
+        WikiMessage::NoDeletedPages => text.literal("Nenhuma página foi excluída."),
+        WikiMessage::DeletedNotice => text.literal("Esta página foi excluída. O histórico dela é mantido."),
+        WikiMessage::RestorePage => text.literal("Restaurar página"),
+        WikiMessage::MoreDeletedPages => text.literal("Exclusões anteriores"),
+        WikiMessage::RestoreBlocked => text.literal(
+            "Outra página agora usa este caminho. Renomeie essa página primeiro e depois restaure esta.",
+        ),
+        WikiMessage::RenamedFrom { path } => {
+            text.literal("Renomeada de ");
+            text.argument(path);
+        }
     }
 }

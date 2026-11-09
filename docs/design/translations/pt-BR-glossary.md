@@ -133,3 +133,11 @@ locale", for the file layout and typography rules.
 | self-hosted | auto-hospedado | |
 | upstream | upstream | |
 | cache | cache (m.) | |
+| actor (run filter) | usuário | |
+| triggered by | acionado por | |
+| schedule (event) | agendamento | |
+| dispatch (event) | disparo | |
+| raw log | log bruto | |
+| preview | prévia | |
+| restore | restaurar | “Restaurar página”, “páginas excluídas” |
+| rename | renomear | “Renomeada de …” in wiki history |

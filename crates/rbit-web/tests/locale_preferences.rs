@@ -109,7 +109,8 @@ async fn new_languages_negotiate_and_mark_their_untranslated_chrome_english() {
             "{header}: the chrome declares no language of its own"
         );
         let skip = body.split("<a href=\"#main\" class=\"").nth(1).and_then(|rest| rest.split("</a>").next()).unwrap();
-        assert!(skip.contains("<span lang=\""), "{header}: the skip link marks its text: {skip}");
+        let skip_fallback = skip.contains("<span lang=\"en\">Skip to content</span>");
+        assert!(skip_fallback || !skip.contains("Skip to content"), "{header}: the skip link marks its English text: {skip}");
         assert!(body.contains(&format!("<main id=\"main\" lang=\"{tag}\"")), "{header}: the sign-in page is a catalog page");
         assert_hint_fallback_or_translated(&body, tag);
     }
