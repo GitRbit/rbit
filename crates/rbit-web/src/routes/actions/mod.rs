@@ -52,7 +52,7 @@ pub(crate) fn artifact_download(
     format: ArtifactFormat,
 ) -> axum::response::Response {
     use axum::{
-        body::{Body, Bytes},
+        body::Bytes,
         http::{HeaderValue, header},
         response::IntoResponse as _,
     };
@@ -77,8 +77,7 @@ pub(crate) fn artifact_download(
         })
         .await;
     });
-    let stream = futures_util::stream::unfold(receiver, |mut receiver| async move { receiver.recv().await.map(|item| (item, receiver)) });
-    let mut response = Body::from_stream(stream).into_response();
+    let mut response = channel_body(receiver).into_response();
     let headers = response.headers_mut();
     headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(kind));
     headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
@@ -88,6 +87,17 @@ pub(crate) fn artifact_download(
         headers.insert(header::CONTENT_DISPOSITION, value);
     }
     response
+}
+
+/// A response body of the chunks sent on `receiver`, ending when every sender is gone.
+///
+/// The stream is fused: the server may poll a body again after it ended, and an unfused
+/// `unfold` panics then, which aborts the whole process in a release build (`panic =
+/// "abort"`). Every artifact and log archive download went through that path.
+pub(crate) fn channel_body(receiver: tokio::sync::mpsc::Receiver<std::io::Result<axum::body::Bytes>>) -> axum::body::Body {
+    use futures_util::StreamExt as _;
+    let stream = futures_util::stream::unfold(receiver, |mut receiver| async move { receiver.recv().await.map(|item| (item, receiver)) });
+    axum::body::Body::from_stream(stream.fuse())
 }
 
 /// Sends what the zip writer writes as chunks of the response body; a closed response
@@ -237,4 +247,21 @@ pub fn routes() -> Router<AppState> {
         .route("/{owner}/{repo}/settings/actions/trusted", post(settings::untrust))
         .route("/{owner}/settings/actions", get(settings::organization).post(settings::save_organization))
         .route("/settings/actions", get(settings::personal).post(settings::save_personal))
+}
+
+#[cfg(test)]
+mod tests {
+    use futures_util::StreamExt as _;
+
+    #[tokio::test]
+    async fn a_finished_download_body_can_be_polled_again() {
+        let (sender, receiver) = tokio::sync::mpsc::channel(1);
+        sender.send(Ok(axum::body::Bytes::from_static(b"chunk"))).await.unwrap();
+        drop(sender);
+        let mut data = super::channel_body(receiver).into_data_stream();
+        assert_eq!(&data.next().await.unwrap().unwrap()[..], b"chunk");
+        assert!(data.next().await.is_none());
+        // An unfused stream panics here, which aborts a release build.
+        assert!(data.next().await.is_none(), "polling a finished body again ends it again");
+    }
 }

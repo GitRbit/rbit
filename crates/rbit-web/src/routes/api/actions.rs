@@ -412,9 +412,9 @@ pub async fn run_logs(State(state): State<AppState>, caller: Caller, Path(path):
             fail_archive(&sender, error.to_string()).await;
         }
     });
-    let stream = futures_util::stream::unfold(receiver, |mut receiver| async move { receiver.recv().await.map(|item| (item, receiver)) });
     let name = format!("attachment; filename=\"logs_{}.zip\"", run.id.0);
-    let mut response = axum::body::Body::from_stream(stream).into_response();
+    // Fused: polled after its end, a bare `unfold` panics (and aborts a release build).
+    let mut response = crate::routes::actions::channel_body(receiver).into_response();
     let headers = response.headers_mut();
     headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/zip"));
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("private, no-cache"));

@@ -146,7 +146,8 @@ where
             None => None,
         }
     });
-    Body::from_stream(stream)
+    // Fused: polled after its end, a bare `unfold` panics (and aborts a release build).
+    Body::from_stream(futures_util::StreamExt::fuse(stream))
 }
 
 /// A request body whose bytes count as activity, and whose reads fail once the exchange
