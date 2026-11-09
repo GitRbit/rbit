@@ -19,7 +19,7 @@ in `rbit-identity` and selected by production today:
 | `identity.mfa` | none: `rbit-services/src/two_factor.rs` | Out of scope |
 | `identity.passkeys` | none: `rbit-auth/src/webauthn.rs`, `rbit-services` | Out of scope |
 | `identity.external` | none: `rbit-services/src/external_auth.rs` | Out of scope |
-| `identity.tokens` | none: `rbit-services/src/tokens.rs` | Out of scope |
+| `identity.tokens` | `rbit_identity::access_tokens::AccessTokenApplication` | Retired later; see [token acceptance](identity-tokens-acceptance.md) |
 
 The six remaining rows have no replacement application in `rbit-identity` yet. Each
 needs a ported application, ports and storage adapters before it can be retired; this
