@@ -145,6 +145,15 @@ jobs:
           tool: cargo-nextest
       - run: cargo nextest run --workspace --locked --profile ci
       - run: cargo test --workspace --doc --locked
+      # Upgrade rehearsal (fast mode): the candidate upgrades a store at the previous
+      # release's schema, serves, backs up and restores it, refuses a newer database and
+      # survives migrations killed part-way. See docs/upgrade-rehearsal.md.
+      - if: runner.os == 'Linux'
+        run: cargo build --locked --package rbit-server
+      - if: runner.os == 'Linux'
+        run: node --test scripts/tests/release-rehearsal.test.mjs
+        env:
+          RBIT_REHEARSAL_CANDIDATE: target/debug/rbit
 
   assets:
     name: Front-end build
@@ -197,6 +206,11 @@ jobs:
       - run: cargo build --release --locked --package rbit-server --package rbit-runner
       - run: ./target/release/rbit --version
       - run: ./target/release/rbit-runner --version
+      # The release artifact itself runs the upgrade rehearsal (fast mode).
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: node scripts/release-rehearsal.mjs --candidate target/release/rbit
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: rbit-linux-x86_64
