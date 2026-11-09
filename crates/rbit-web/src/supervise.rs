@@ -146,7 +146,8 @@ where
             None => None,
         }
     });
-    Body::from_stream(stream)
+    // Fused: polled after its end, a bare `unfold` panics (and aborts a release build).
+    Body::from_stream(futures_util::StreamExt::fuse(stream))
 }
 
 /// A request body whose bytes count as activity, and whose reads fail once the exchange
@@ -209,6 +210,28 @@ mod tests {
         let bytes = axum::body::to_bytes(body, 1024).await.unwrap();
         assert_eq!(&bytes[..], b"hello");
         released.await.unwrap_err();
+    }
+
+    #[tokio::test]
+    async fn a_finished_body_can_be_polled_again() {
+        use futures_util::StreamExt as _;
+        let body = supervised_body(&b"hello"[..], (), Activity::start(limits(SHORT, Duration::from_secs(10))));
+        let mut data = body.into_data_stream();
+        assert_eq!(&data.next().await.unwrap().unwrap()[..], b"hello");
+        assert!(data.next().await.is_none());
+        // An unfused stream panics here, which aborts a release build.
+        assert!(data.next().await.is_none(), "polling a finished body again ends it again");
+    }
+
+    #[tokio::test]
+    async fn a_stalled_source_still_fails_after_being_fused() {
+        let (_writer, reader) = tokio::io::duplex(64);
+        let body = supervised_body(reader, (), Activity::start(limits(SHORT, Duration::from_secs(10))));
+        let mut data = body.into_data_stream();
+        let first = tokio::time::timeout(Duration::from_secs(5), futures_util::StreamExt::next(&mut data)).await.expect("stalled forever");
+        assert!(matches!(first, Some(Err(_))), "the stop is reported before the body ends");
+        assert!(futures_util::StreamExt::next(&mut data).await.is_none());
+        assert!(futures_util::StreamExt::next(&mut data).await.is_none());
     }
 
     #[tokio::test]
