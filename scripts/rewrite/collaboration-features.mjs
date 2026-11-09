@@ -19,10 +19,13 @@ export function checkCollaborationFeatures(metadata) {
   return violations;
 }
 
-export function collaborationGraphViolations(tree) {
+// The pure model graph stays engine-free; only `applications` reads Markdown.
+const modelOnly = ["pulldown-cmark"];
+
+export function collaborationGraphViolations(tree, extra = []) {
   const packages = new Set(tree.trim().split(/\r?\n/).map(line => line.trim().split(/\s+/)[0]));
   if (!packages.has("rbit-collaboration") || !packages.has("rbit-contracts")) return ["collaboration: missing model graph evidence"];
-  return forbidden.filter(name => packages.has(name)).map(name => `collaboration: runtime/adapter dependency ${name} in pure graph`);
+  return [...forbidden, ...extra].filter(name => packages.has(name)).map(name => `collaboration: runtime/adapter dependency ${name} in pure graph`);
 }
 
 export function checkCollaborationGraphs(root) {
@@ -31,6 +34,6 @@ export function checkCollaborationGraphs(root) {
       "--edges", "normal", "--prefix", "none", "--locked"], {
       cwd: root, encoding: "utf8", windowsHide: true, stdio: ["pipe", "pipe", "pipe"], maxBuffer: 8 * 1024 * 1024,
     });
-    return collaborationGraphViolations(tree);
+    return collaborationGraphViolations(tree, features.length ? [] : modelOnly);
   });
 }

@@ -27,6 +27,12 @@ test("model and application graphs reject transitive runtime, crypto and legacy 
   }
 });
 
+test("only the application graph may carry the Markdown engine", () => {
+  const graph = "rbit-collaboration v0.1.5\nrbit-contracts v0.1.5\npulldown-cmark v0.13.6\n";
+  assert.deepEqual(collaborationGraphViolations(graph), [], "applications");
+  assert.match(collaborationGraphViolations(graph, ["pulldown-cmark"])[0], /pulldown-cmark in pure graph/);
+});
+
 test("notifications borrow collaboration models without activating application features", () => {
   const edge = { name: "rbit-collaboration", kind: null, rename: null, target: null, uses_default_features: false, features: [] };
   const pkg = { id: "notifications", name: "rbit-notifications", dependencies: [edge] };
