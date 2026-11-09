@@ -42,7 +42,6 @@ use std::{
     time::Duration,
 };
 
-use rbit_actions::trust::RunTrust;
 use rbit_core::{
     AccountId, IssueId, IssueKind, PushSource, RepoId, Timestamp,
     actions::{Run, RunEvent, Status},
@@ -213,7 +212,7 @@ impl ActionsService {
                 trigger_actor: source.pusher(),
                 pull_number: None,
                 is_fork: false,
-                trust: RunTrust::Trusted,
+                trust: rbit_actions::trust::RunTrust::Trusted,
                 payload: &payload,
                 inputs: None,
             };
