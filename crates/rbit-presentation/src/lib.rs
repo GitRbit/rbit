@@ -34,3 +34,4 @@
 
 pub mod documents;
 pub mod markdown;
+pub mod navigation;
