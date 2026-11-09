@@ -31,6 +31,7 @@ mod identity_profiles;
 mod identity_recovery;
 pub use identity_recovery::RecoveryCredentials;
 mod identity_sessions;
+mod identity_two_factor;
 pub mod identity_upgrade;
 pub mod kv;
 mod notification_inbox;

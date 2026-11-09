@@ -17,9 +17,9 @@ test("renamed and target-specific identity edges cannot silently enable crypto d
   dependency.features = [];
   assert.deepEqual(checkIdentityFeatures(metadata), []);
   pkg.name = "rbit-auth";
-  dependency.features = ["credentials", "session-tokens"];
-  assert.match(checkIdentityFeatures(metadata)[0], /exactly \[session-tokens\]/, "the retired password facade cannot return");
-  dependency.features = ["session-tokens"];
+  dependency.features = ["credentials", "session-tokens", "two-factor"];
+  assert.match(checkIdentityFeatures(metadata)[0], /exactly \[session-tokens, two-factor\]/, "the retired password facade cannot return");
+  dependency.features = ["session-tokens", "two-factor"];
   assert.deepEqual(checkIdentityFeatures(metadata), []);
   pkg.name = "rbit-repositories";
   assert.match(checkIdentityFeatures(metadata)[0], /exactly \[\]/);
@@ -35,7 +35,7 @@ test("renamed and target-specific identity edges cannot silently enable crypto d
   dependency.uses_default_features = false;
   pkg.name = "rbit-auth";
   dependency.features = ["password-work"];
-  assert.match(checkIdentityFeatures(metadata)[0], /exactly \[session-tokens\]/);
+  assert.match(checkIdentityFeatures(metadata)[0], /exactly \[session-tokens, two-factor\]/);
   pkg.name = "rbit-web"; dependency.kind = "dev";
   assert.deepEqual(checkIdentityFeatures(metadata), []);
 });
@@ -62,13 +62,13 @@ test("token-only graphs require their crypto edges and exclude password or runti
 });
 
 test("session and token application capabilities are explicit and cannot widen model consumers", () => {
-  const dependency = { name: "rbit-identity", kind: null, uses_default_features: false, features: ["access-tokens", "password-work", "sessions"] };
+  const dependency = { name: "rbit-identity", kind: null, uses_default_features: false, features: ["access-tokens", "password-work", "sessions", "two-factor"] };
   const pkg = { id: "services", name: "rbit-services", dependencies: [dependency] };
   const metadata = { packages: [pkg], workspace_members: [pkg.id] };
   assert.deepEqual(checkIdentityFeatures(metadata), []);
   dependency.features = ["password-work", "sessions"];
-  assert.match(checkIdentityFeatures(metadata)[0], /exactly \[access-tokens, password-work, sessions\]/);
-  dependency.features = ["access-tokens", "password-work", "sessions"];
+  assert.match(checkIdentityFeatures(metadata)[0], /exactly \[access-tokens, password-work, sessions, two-factor\]/);
+  dependency.features = ["access-tokens", "password-work", "sessions", "two-factor"];
   pkg.name = "rbit-storage";
   assert.match(checkIdentityFeatures(metadata)[0], /exactly \[\]/);
 });

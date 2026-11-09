@@ -7,8 +7,8 @@ const consumers = {
   "rbit-repositories": { normal: [] },
   "rbit-core": { normal: [] },
   "rbit-storage": { normal: [] },
-  "rbit-auth": { normal: ["session-tokens"] },
-  "rbit-services": { normal: ["access-tokens", "password-work", "sessions"] },
+  "rbit-auth": { normal: ["session-tokens", "two-factor"] },
+  "rbit-services": { normal: ["access-tokens", "password-work", "sessions", "two-factor"] },
   "rbit-web": { dev: ["password-work"] },
 };
 const runtime = new Set(["argon2", "tokio", "tokio-util", "rbit-kernel", "zeroize", "base64", "sha2", "getrandom", "subtle"]);

@@ -6,7 +6,8 @@
 //! provides the password error and credential inventory; `password-work` adds the only
 //! password hashing path, explicitly injected bounded work. `access-tokens` adds the
 //! personal access token application over static ports; `password-work` also carries the
-//! self-service profile application, and with `session-tokens` the recovery application. No feature creates a
+//! self-service profile application, and with `session-tokens` the recovery application. `two-factor` adds TOTP, recovery codes and the
+//! authenticator application. No feature creates a
 //! global budget, performs startup or imports a concrete store/protocol implementation.
 
 #[cfg(feature = "access-tokens")]
@@ -20,6 +21,8 @@ pub mod profiles;
 pub mod recovery;
 pub mod sessions;
 pub mod token;
+#[cfg(feature = "two-factor")]
+pub mod two_factor;
 pub use token::TokenDigest;
 #[cfg(feature = "session-tokens")]
 pub use token::{AccessTokenSecret, SessionToken};

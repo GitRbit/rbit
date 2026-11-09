@@ -1,9 +1,10 @@
 //! One cryptographic verifier with static legacy/original proof-write adapters.
 use super::{
-    AccountId, Challenge, MAX_RESPONSE_LEN, RecoveryCode, RelyingParty, SecondFactor, SecondFactorProof, ServiceError, Timestamp,
-    TotpSecret, TwoFactorRecord, TwoFactorService, TwoFactorStore, User,
+    AccountId, Challenge, MAX_RESPONSE_LEN, RelyingParty, SecondFactor, SecondFactorProof, ServiceError, TwoFactorService, TwoFactorStore,
+    User, convert,
 };
 use crate::accounts::OriginalProofReceipt;
+use rbit_identity::two_factor::{CodeFactor, RecoveryDigest, SecondFactorClaims};
 use rbit_storage::sqlite::two_factor::CredentialProofWrite;
 use std::future::Future;
 
@@ -45,20 +46,10 @@ impl TwoFactorService {
                 return self.verify_passkey_with(user, &challenge, response, mode).await.map(|()| SecondFactor::Passkey);
             }
         };
-        if let Some(recovery) = RecoveryCode::parse(code) {
-            return if mode.recovery(&self.store, user.id(), &recovery.digest(user.id().0)).await? {
-                Ok(SecondFactor::RecoveryCode)
-            } else {
-                Err(ServiceError::InvalidCredentials)
-            };
-        }
-        let Some(record) = self.store.find(user.id()).await?.filter(TwoFactorRecord::is_enabled) else {
-            return Err(ServiceError::InvalidCredentials);
-        };
-        let secret = TotpSecret::from_bytes(&record.secret).ok_or(ServiceError::InvalidCredentials)?;
-        match secret.verify(code, Timestamp::now().seconds()) {
-            Some(step) if mode.totp(&self.store, user.id(), &record.secret, step).await? => Ok(SecondFactor::Authenticator),
-            _ => Err(ServiceError::InvalidCredentials),
+        let claims = Claims { store: &self.store, mode };
+        match self.authenticator().verify_code(user, code, &claims).await.map_err(|error| convert(error, |error| error))? {
+            CodeFactor::RecoveryCode => Ok(SecondFactor::RecoveryCode),
+            CodeFactor::Authenticator => Ok(SecondFactor::Authenticator),
         }
     }
 
@@ -90,7 +81,23 @@ impl TwoFactorService {
     }
 }
 
-trait ClaimMode: Copy + Send {
+/// The identity claim port over a write mode: legacy claims or original-epoch claims.
+struct Claims<'a, M> {
+    store: &'a TwoFactorStore,
+    mode: M,
+}
+
+impl<M: ClaimMode + Sync> SecondFactorClaims for Claims<'_, M> {
+    type Error = ServiceError;
+    fn spend_recovery_code(&self, account: AccountId, digest: &RecoveryDigest) -> impl Future<Output = Result<bool, ServiceError>> + Send {
+        self.mode.recovery(self.store, account, digest)
+    }
+    fn claim_step(&self, account: AccountId, secret: &[u8], step: u64) -> impl Future<Output = Result<bool, ServiceError>> + Send {
+        self.mode.totp(self.store, account, secret, step)
+    }
+}
+
+trait ClaimMode: Copy + Send + Sync {
     fn recovery(
         self,
         store: &TwoFactorStore,

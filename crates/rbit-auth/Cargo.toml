@@ -7,7 +7,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
-rbit-identity = { workspace = true, features = ["session-tokens"] }
+rbit-identity = { workspace = true, features = ["session-tokens", "two-factor"] }
 rbit-core.workspace = true
 argon2.workspace = true
 sha2.workspace = true

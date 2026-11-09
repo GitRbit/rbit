@@ -13,6 +13,7 @@ pub mod profiles;
 pub mod recovery;
 pub mod sessions;
 pub mod token;
+pub mod two_factor;
 
 pub use account::{Account, AccountId, AccountKind, User};
 pub use locale::AccountLocale;

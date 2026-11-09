@@ -29,13 +29,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-use rbit_auth::{Challenge, RecoveryCode, RelyingParty, SessionToken, TokenDigest, TotpSecret};
+use rbit_auth::{Challenge, RelyingParty, SessionToken, TokenDigest};
 use rbit_core::{AccountId, Timestamp, User};
 use rbit_identity::PasswordWork;
+use rbit_identity::two_factor::{TwoFactorApplication, TwoFactorError, formatted, new_recovery_codes, recovery_digests as digests};
 use rbit_identity_models::sessions::ClientInfo;
 use rbit_storage::{
-    AccountStore,
-    sqlite::two_factor::{NewPasskey, PasskeyAdded, PasskeyRecord, TwoFactorRecord, TwoFactorStore},
+    AccountStore, StorageError,
+    sqlite::two_factor::{NewPasskey, PasskeyAdded, PasskeyRecord, TwoFactorStore},
 };
 
 use crate::{
@@ -52,8 +53,8 @@ pub use password_sign_in::OriginalSignInOutcome;
 mod sign_in;
 mod verification;
 
-/// Recovery codes issued per enrolment (and per regeneration).
-pub const RECOVERY_CODE_COUNT: usize = 10;
+/// Enrolment and the recovery-code count are identity-owned; these paths stay compatible.
+pub use rbit_identity::two_factor::{Enrolment, RECOVERY_CODE_COUNT};
 /// How long the second sign-in step may take.
 pub const PENDING_SIGN_IN_TTL: Duration = Duration::from_mins(5);
 /// Wrong codes allowed in one pending sign-in before the password must be entered again.
@@ -106,15 +107,6 @@ impl From<PasskeyRecord> for Passkey {
     fn from(record: PasskeyRecord) -> Self {
         Self { id: record.id, name: record.name, created_at: record.created_at, last_used_at: record.last_used_at }
     }
-}
-
-/// A pending enrolment: what the user puts into their authenticator app.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Enrolment {
-    /// Base32, for manual entry.
-    pub secret: String,
-    /// `otpauth://` URI, for the QR code.
-    pub provisioning_uri: String,
 }
 
 /// What the user presented as their second factor.
@@ -229,47 +221,27 @@ impl TwoFactorService {
         Ok(self.store.find(account).await?.is_some_and(|record| record.is_enabled()))
     }
 
+    pub(super) fn authenticator(&self) -> TwoFactorApplication<'_, TwoFactorStore> {
+        TwoFactorApplication::new(&self.store)
+    }
+
     /// Starts (or resumes, so reloading the page keeps an already scanned secret) an
     /// enrolment. `issuer` names the site in the authenticator app.
     pub async fn begin_enrolment(&self, user: &User, issuer: &str) -> Result<Enrolment, ServiceError> {
-        let already = || ServiceError::Invalid("an authenticator app is already set up".to_owned());
-        let secret = match self.store.find(user.id()).await? {
-            Some(record) if record.is_enabled() => return Err(already()),
-            Some(record) => TotpSecret::from_bytes(&record.secret),
-            None => None,
-        };
-        let secret = if let Some(secret) = secret {
-            secret
-        } else {
-            let secret = TotpSecret::generate();
-            if !self.store.begin_enrolment(user.id(), secret.as_bytes()).await? {
-                return Err(already());
-            }
-            secret
-        };
-        Ok(Enrolment { secret: secret.to_base32(), provisioning_uri: secret.provisioning_uri(issuer, user.name().as_str()) })
+        self.authenticator().begin_enrolment(user, issuer).await.map_err(map)
     }
 
     /// Discards a pending (unconfirmed) enrolment.
     pub async fn cancel_enrolment(&self, user: &User) -> Result<(), ServiceError> {
-        self.store.cancel_enrolment(user.id()).await?;
-        Ok(())
+        self.authenticator().cancel_enrolment(user).await.map_err(map)
     }
 
     /// Enables a pending enrolment if `code` matches; returns new recovery codes if this
     /// is the account's first factor.
-    async fn confirm(&self, user: &User, code: &str, client: &ClientInfo) -> Result<Option<Vec<RecoveryCode>>, ServiceError> {
-        let Some(record) = self.store.find(user.id()).await?.filter(|record| !record.is_enabled()) else {
-            return Err(ServiceError::Invalid("there is no authenticator setup in progress; start again".to_owned()));
-        };
-        let secret = TotpSecret::from_bytes(&record.secret).ok_or_else(|| ServiceError::Invalid("start the setup again".to_owned()))?;
-        let step = secret.verify(code, Timestamp::now().seconds()).ok_or(ServiceError::InvalidCredentials)?;
-        let codes = new_recovery_codes();
-        let Some(first_factor) = self.store.confirm(user.id(), &record.secret, step, &digests(user, &codes)).await? else {
-            return Err(ServiceError::Invalid("the authenticator setup changed; start again".to_owned()));
-        };
+    async fn confirm(&self, user: &User, code: &str, client: &ClientInfo) -> Result<Option<Vec<String>>, ServiceError> {
+        let codes = self.authenticator().confirm(user, code).await.map_err(map)?;
         self.audit.record(AuditEntry::new(AuditAction::TwoFactorEnabled).by(user).from_ip(client.ip).detail("authenticator app")).await;
-        Ok(first_factor.then_some(codes))
+        Ok(codes.as_deref().map(formatted))
     }
 
     // ------------------------------------------------------------------ passkeys
@@ -366,16 +338,18 @@ impl TwoFactorService {
     }
 }
 
-fn new_recovery_codes() -> Vec<RecoveryCode> {
-    (0..RECOVERY_CODE_COUNT).map(|_| RecoveryCode::generate()).collect()
+/// Maps identity outcomes; the claim error is the adapter's own [`ServiceError`].
+fn map(error: TwoFactorError<StorageError>) -> ServiceError {
+    convert(error, |never| match never {})
 }
 
-fn digests(user: &User, codes: &[RecoveryCode]) -> Vec<[u8; 32]> {
-    codes.iter().map(|code| code.digest(user.id().0)).collect()
-}
-
-fn formatted(codes: &[RecoveryCode]) -> Vec<String> {
-    codes.iter().map(RecoveryCode::formatted).collect()
+fn convert<C>(error: TwoFactorError<StorageError, C>, claim: impl FnOnce(C) -> ServiceError) -> ServiceError {
+    match error {
+        TwoFactorError::Store(error) => error.into(),
+        TwoFactorError::Claim(error) => claim(error),
+        TwoFactorError::Rejected(rejection) => ServiceError::Invalid(rejection.to_string()),
+        TwoFactorError::InvalidCredentials => ServiceError::InvalidCredentials,
+    }
 }
 
 /// The throttle key for a client address.
@@ -418,7 +392,7 @@ impl Services {
         match self.two_factor.confirm(user, code, client).await {
             Ok(codes) => {
                 self.throttle.reset(ThrottleScope::TwoFactor, &key);
-                Ok(codes.as_deref().map(formatted))
+                Ok(codes)
             }
             Err(error) => {
                 if matches!(error, ServiceError::InvalidCredentials) {

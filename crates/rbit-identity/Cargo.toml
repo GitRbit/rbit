@@ -10,6 +10,7 @@ license.workspace = true
 sessions = ["session-tokens", "dep:tokio", "dep:tokio-util"]
 session-tokens = ["dep:base64", "dep:sha2", "dep:getrandom"]
 access-tokens = ["session-tokens"]
+two-factor = ["session-tokens", "dep:hmac", "dep:sha1", "dep:subtle"]
 default = ["password-work"]
 credentials = ["dep:argon2", "dep:thiserror", "dep:tokio", "dep:zeroize"]
 password-work = ["credentials", "dep:rbit-kernel", "dep:subtle", "dep:getrandom"]
@@ -27,6 +28,8 @@ tokio = { workspace = true, optional = true }
 tokio-util = { workspace = true, features = ["rt"], optional = true }
 zeroize = { workspace = true, optional = true }
 subtle = { workspace = true, optional = true }
+hmac = { workspace = true, optional = true }
+sha1 = { workspace = true, optional = true }
 getrandom = { workspace = true, optional = true }
 
 [dev-dependencies]
@@ -55,6 +58,11 @@ required-features = ["password-work"]
 [[test]]
 name = "password_work"
 required-features = ["password-work"]
+
+[[test]]
+name = "two_factor_application"
+# Sessions supply the async test runtime; the application itself needs no runtime.
+required-features = ["two-factor", "sessions"]
 
 [[test]]
 name = "recovery_application"

@@ -19,20 +19,8 @@ pub use rbit_identity_models::credential::CredentialProofWrite;
 
 use crate::{StorageError, sealing::SealingKey};
 
-/// A user's two-factor row: pending until `confirmed_at` is set.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TwoFactorRecord {
-    pub secret: Vec<u8>,
-    pub created_at: Timestamp,
-    pub confirmed_at: Option<Timestamp>,
-    pub last_used_step: Option<u64>,
-}
-
-impl TwoFactorRecord {
-    pub fn is_enabled(&self) -> bool {
-        self.confirmed_at.is_some()
-    }
-}
+/// The authenticator record is identity-owned; this path stays compatible.
+pub use rbit_identity_models::two_factor::TwoFactorRecord;
 
 #[derive(Debug, sqlx::FromRow)]
 struct TwoFactorRow {

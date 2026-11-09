@@ -1,6 +1,6 @@
 //! Owned plaintext is protected before constructing password-operation futures.
 
-use super::{AuditAction, AuditEntry, ClientInfo, SecondFactorProof, ServiceError, Services, User, digests, formatted, new_recovery_codes};
+use super::{AuditAction, AuditEntry, ClientInfo, SecondFactorProof, ServiceError, Services, User, formatted, map};
 
 impl Services {
     /// Removes passkey `id`; needs the password and a proof.
@@ -55,10 +55,7 @@ impl Services {
         let mut password = zeroize::Zeroizing::new(password);
         async move {
             self.check_password_and_proof(user, std::mem::take(&mut *password), proof.into(), client).await?;
-            let codes = new_recovery_codes();
-            if !self.two_factor.store.replace_recovery_codes(user.id(), &digests(user, &codes)).await? {
-                return Err(ServiceError::Invalid("two-factor authentication is not enabled".to_owned()));
-            }
+            let codes = self.two_factor.authenticator().regenerate_recovery_codes(user).await.map_err(map)?;
             self.audit.record(AuditEntry::new(AuditAction::RecoveryCodesRegenerated).by(user).from_ip(client.ip)).await;
             Ok(formatted(&codes))
         }
