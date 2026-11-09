@@ -2,8 +2,8 @@
 
 Progress for the `collaboration.pulls` ("Cross-fork pulls, reviews, base selection,
 merge/squash/rebase") and `collaboration.review-threads` ("Line comments, resolvable
-conversations and review requests") ledger rows. `collaboration.pulls` stays `baseline-retained`; review threads were
-retired later. This slice moves the
+conversations and review requests") ledger rows. `collaboration.pulls` stays `baseline-retained` until its background work
+moves; review threads were retired later. This slice moves the
 decisions of opening a pull request; merging, reviews, base changes and background
 work keep their current owners. It follows the [identity retirement](identity-retirement.md)
 pattern for what moves, what is removed and which boundary keeps it from returning.
@@ -73,17 +73,35 @@ duplicates, cross-fork heads, review threads, resolution, requests) and the `rbi
 pull request routes and views. Not run here: the full workspace suite and `rbit-e2e`,
 which the quick mode leaves to the full check.
 
+## Second slice: models, merge gating, reviews and base changes
+
+Once protection's models moved to `rbit-access`, the rest of the pull request decisions
+moved too:
+
+| Behaviour | Owner after this slice |
+| --- | --- |
+| Pull request, review and comment records; mergeability, checks and merge strategy values; review states and ids | `rbit_collaboration::pulls` (`records.rs`, moved from `rbit_core::pull` and `rbit_core::issue`, which re-export them) |
+| Approval tallies (latest decisive review per writer, stale approvals, never the author) and the merge box requirements over `rbit_access::protection::MergeRules` | `rbit_collaboration::pulls::{tally, evaluate}` (`merge.rs`, moved) |
+| Default merge and squash messages, noreply identities, head specifications | `rbit_collaboration::pulls` (`messages.rs`, moved) |
+| Whether a stored trial merge still holds, when to recompute it, who gets protection rules and the merge button, unchanged expectations, whether a merge may go ahead or bypass protection, and the commit message | `rbit_collaboration::pulls::{current_mergeability, needs_trial_merge, merges_as_writer, still_expected, merge_gate, merge_message}` (new) |
+| Review submission (authors only comment, closed pull requests take only comments, nothing to submit), editing (own submitted reviews), dismissal (writers, a message, only decisive reviews) | `rbit_collaboration::pulls::{ReviewVerdict, verdict_refusal, empty_review_refusal, may_edit_review, may_dismiss_review, dismissal_message}` (new) |
+| Draft and base changes: author or writers, closed refusal, branch validation and existence, the head-branch rule, unchanged bases, the dismissal message | `rbit_collaboration::pulls::{may_edit_pull, plan_base_change}` (new) |
+
+The merge service keeps the concurrent reads, the per-repository lock and slot, the
+trial merge, Git work, audit and events; the review and pull services keep storage,
+throttle, timeline and events, in the same order. `scripts/rewrite/pulls-retirement.mjs`
+now also fails if the records or merge requirements are defined outside
+`rbit-collaboration/src`, if the merge service decides staleness, bypass, the blocked
+text or the message itself, or if review or base-change refusal text appears outside
+collaboration.
+
 ## Remaining for `collaboration.pulls`
 
-- Merging (`pulls/merging.rs`): merge box facts, gating through `rbit_core::pull::evaluate`
-  and the protection rules (`MergeRules`, owned by `collaboration.protection`), strategy
-  and message defaults, locks and ref compare-and-swap.
-- Reviews and requests (`pulls/reviews.rs`): approvals, dismissal on new commits, review
-  requests and line comments.
-- Base changes, drafts, head/base push handling and the mergeability worker
-  (`pulls.rs`, `pulls/background.rs`), the comparison cache and listing.
-- The pure pull models (`rbit_core::pull`) depend on `MergeRules`; they move once
-  protection's models have a home `rbit-collaboration` can depend on.
+- Head and base push handling (`pulls/background.rs`): outdated line comments after a
+  head push, pull requests merged outside rbit, re-queueing after statuses, and the
+  mergeability worker and its start-up sweep. These are event-driven Git orchestration
+  with few decisions of their own.
+- Listing and the comparison-count cache (`pulls.rs`).
 
 ## Review threads
 
