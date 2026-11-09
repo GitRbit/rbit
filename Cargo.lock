@@ -4254,6 +4254,7 @@ dependencies = [
 name = "rbit-collaboration"
 version = "0.2.0"
 dependencies = [
+ "pulldown-cmark",
  "rbit-access",
  "rbit-contracts",
  "rbit-identity-models",
@@ -4280,7 +4281,6 @@ name = "rbit-core"
 version = "0.2.0"
 dependencies = [
  "proptest",
- "pulldown-cmark",
  "rbit-access",
  "rbit-collaboration",
  "rbit-contracts",

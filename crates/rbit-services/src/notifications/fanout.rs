@@ -2,11 +2,10 @@
 //! and concrete stores answer its content and access ports. No recipient policy here.
 use super::can_read_with_grants;
 use crate::{DomainEvent, ServiceError};
-use rbit_collaboration::{comments::CommentId, threads::IssueText};
+use rbit_collaboration::{comments::CommentId, references::scan_markdown, threads::IssueText};
 use rbit_core::{
     AccountId, IssueId, RepoId, Timestamp, User,
     issue::{CommentAction, IssueAction, ReviewAction},
-    references::scan_markdown,
 };
 use rbit_notifications::{
     Activity, ActivityEvent, MentionedAccount, ThreadText,

@@ -45,7 +45,7 @@ pub use rbit_collaboration::issues::{DEFAULT_DASHBOARD_QUERY, dashboard_query};
 use rbit_collaboration::issues::{DashboardMentions, IssueParticipants, ThreadActivity};
 use rbit_core::{
     Account, AccountId, Issue, IssueId, IssueKind, IssueNumber, LabelId, RepoId, StateReason, Timestamp, User, issue::IssueAction,
-    references, repository::OwnedRepository,
+    repository::OwnedRepository,
 };
 #[cfg(test)]
 use rbit_storage::sqlite::issue_meta::LabelFields;
@@ -220,7 +220,7 @@ impl IssueService {
 
     /// Dashboard mention recording ([`DashboardMentions`]) over the database.
     fn mentions(&self) -> DashboardMentions<'_, rbit_storage::Database, fn(&str) -> Vec<String>> {
-        let scan: fn(&str) -> Vec<String> = |text| references::scan_markdown(text).mentions;
+        let scan: fn(&str) -> Vec<String> = |text| rbit_collaboration::references::scan_markdown(text).mentions;
         DashboardMentions::new(&self.ctx.database, scan)
     }
 
@@ -314,7 +314,9 @@ impl IssueService {
     /// other branches close nothing, as on GitHub.
     async fn close_by_merge(&self, pull: IssueId, number: IssueNumber, actor: Option<AccountId>) -> Result<(), ServiceError> {
         let effects = self.references.effects();
-        rbit_collaboration::references::MergeIssueClosures::new(&effects).close(pull, number, actor, references::scan_markdown).await
+        rbit_collaboration::references::MergeIssueClosures::new(&effects)
+            .close(pull, number, actor, rbit_collaboration::references::scan_markdown)
+            .await
     }
 }
 

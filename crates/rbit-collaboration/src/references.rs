@@ -8,6 +8,10 @@ pub use plain::{find, scan_plain};
 pub use pushes::push_exclusions;
 pub use resolved::{ReferenceSet, ReferencedIssue};
 #[cfg(feature = "applications")]
+mod markdown;
+#[cfg(feature = "applications")]
+pub use markdown::{markdown_options, scan_markdown};
+#[cfg(feature = "applications")]
 mod cross_references;
 #[cfg(feature = "applications")]
 mod ports;

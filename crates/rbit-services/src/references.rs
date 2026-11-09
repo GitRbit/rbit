@@ -13,7 +13,8 @@
 //! are recorded only on targets the author of the mention can read, and T0 shows them
 //! only to viewers who can read the source.
 
-use rbit_core::{AccountId, Issue, Timestamp, references::scan_markdown};
+use rbit_collaboration::references::scan_markdown;
+use rbit_core::{AccountId, Issue, Timestamp};
 
 use crate::{RepoContext, ServiceError, ThreadServices};
 use rbit_storage::Database;
