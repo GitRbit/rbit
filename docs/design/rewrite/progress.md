@@ -225,12 +225,12 @@ the local UI. Mirroring refreshes every ten minutes; its Git content is read-onl
 No workstation-private refs or upstream token are imported. This newly initialized
 live data must be retained in the next stopped pre-upgrade snapshot.
 
-The local optimized executable remains `b923`, not the latest source. Earlier
-[matched footer observations](measurements/footer-b923-small-pages.md) show home
-medians 233 to 234 microseconds and Explore 238 to 248.5 microseconds; Explore remains
-unexplained. Cached dependencies in those release builds were not qualified by the
-new guard. Fresh guarded main/candidate builds and matched workloads are required.
-Dogfooding the full repository is a separate workload, not benchmark equivalence.
+Guarded release builds of pinned main and `555e66e0` were [compared for 0.2.0](measurements/release-020-nonregression.md)
+on 34 paired page, Markdown, highlighting, diff-budget, signed-in, German and sign-in
+scenarios. Server time stays within noise or 5% except Explore, about 50 µs (+4–7%)
+slower from localized chrome and an 8.6 KB larger inline stylesheet, with no contained
+fix found. The executable is 16.5% larger and starts about 7 MiB bigger. Dogfooding
+the full repository is a separate workload, not benchmark equivalence.
 
 The [repository wiki plan](../repository-wikis-plan.md) adds `rbit-wikis` and phased
 UI, localization, ACL, storage, recovery, performance and rollout gates. It is a
