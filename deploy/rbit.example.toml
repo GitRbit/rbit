@@ -35,6 +35,9 @@ max_password_jobs = 2
 # Requests from these proxies may set X-Forwarded-For / X-Forwarded-Proto. List exactly
 # the reverse proxy's address; anything broader lets clients spoof their IP address.
 # trusted_proxies = ["127.0.0.1/32", "::1/128"]
+# A header the trusted proxy sets to the client's address on its own, read ahead of
+# X-Forwarded-For. Behind Cloudflare or Cloudflare Tunnel:
+# client_ip_header = "CF-Connecting-IP"
 # Throttle sign-in, sign-up, 2FA, Git credentials, email requests and form posts.
 rate_limit = true
 # Signing up the first account needs a setup token, generated and logged at start-up

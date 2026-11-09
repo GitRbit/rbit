@@ -258,7 +258,24 @@ rbit uses the client address for rate limiting and the audit log. It only believ
 `[security] trusted_proxies`. List exactly your proxy (for a proxy on the same host,
 `["127.0.0.1/32", "::1/128"]`), never a broad range: any client inside a trusted range can
 claim to be anyone. With no trusted proxies every request appears to come from the proxy,
-which makes per-IP rate limits apply to everyone at once.
+which makes per-IP rate limits apply to everyone at once, and the audit and security
+logs show the proxy's address (often `127.0.0.1`). rbit logs a warning the first time a
+loopback or private peer that is not listed sends forwarding headers.
+
+#### Cloudflare and Cloudflare Tunnel
+
+Cloudflare reports the visitor in `CF-Connecting-IP`. With `cloudflared` running on the
+same host as rbit, trust the loopback address it connects from and read that header:
+
+```toml
+[security]
+trusted_proxies = ["127.0.0.1/32", "::1/128"]
+client_ip_header = "CF-Connecting-IP"
+```
+
+When Cloudflare proxies straight to rbit (no tunnel), list
+[Cloudflare's published ranges](https://www.cloudflare.com/ips/) instead of loopback, and
+make sure rbit is not reachable around Cloudflare, or anyone could send the header.
 
 ### Caddy
 

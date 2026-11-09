@@ -34,6 +34,8 @@ config_fields! {
             "Simultaneous hashing or verification jobs in the shared password-work budget (1–64; default 2). Restart required.";
         "trusted_proxies" => "Trusted proxy networks",
             "Reverse proxies (CIDR networks, e.g. 127.0.0.1/32, 10.0.0.0/8, ::1/128) whose X-Forwarded-For, Forwarded and X-Forwarded-Proto headers are believed. Empty (the default) means the TCP peer is always the client.";
+        "client_ip_header" => "Client address header",
+            "A header in which a trusted proxy reports the client's address, such as CF-Connecting-IP behind Cloudflare or Cloudflare Tunnel. Believed only from the trusted proxy networks above, ahead of X-Forwarded-For. Empty uses X-Forwarded-For alone.";
         "rate_limit" => "Enable rate limiting",
             "Throttle sign-in, sign-up, two-factor codes, Git credentials and form posts per client. Only worth turning off for load tests.";
         "hsts" => "Send HSTS",

@@ -22,6 +22,11 @@ pub struct SecurityConfig {
     /// `X-Forwarded-For`, `Forwarded` and `X-Forwarded-Proto` headers are believed.
     /// Empty (the default) means the TCP peer is always the client.
     pub trusted_proxies: Vec<ProxyNetwork>,
+    /// A header in which a trusted proxy reports the client's address on its own, such
+    /// as `CF-Connecting-IP` behind Cloudflare (including Cloudflare Tunnel) or
+    /// `True-Client-IP`. Read only from `trusted_proxies`; when present it wins over
+    /// `X-Forwarded-For`. Unset (the default), only the forwarding chain is used.
+    pub client_ip_header: Option<String>,
     /// Throttle sign-in, sign-up, two-factor codes, Git credentials and form posts per
     /// client. Only worth turning off for load tests.
     pub rate_limit: bool,
@@ -51,6 +56,7 @@ impl Default for SecurityConfig {
             min_password_length: 10,
             max_password_jobs: 2,
             trusted_proxies: Vec::new(),
+            client_ip_header: None,
             rate_limit: true,
             hsts: true,
             hsts_include_subdomains: false,

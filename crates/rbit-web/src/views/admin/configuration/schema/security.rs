@@ -8,6 +8,7 @@ pub(super) const SECURITY: &[Spec] = &[
     Spec { key: "min_password_length", kind: Kind::Number, optional: false, max: "18446744073709551615" },
     Spec { key: "max_password_jobs", kind: Kind::Number, optional: false, max: "64" },
     Spec { key: "trusted_proxies", kind: Kind::Lines, optional: false, max: "" },
+    Spec { key: "client_ip_header", kind: Kind::Text, optional: true, max: "" },
     Spec { key: "rate_limit", kind: Kind::Toggle, optional: false, max: "" },
     Spec { key: "hsts", kind: Kind::Toggle, optional: false, max: "" },
     Spec { key: "hsts_include_subdomains", kind: Kind::Toggle, optional: false, max: "" },

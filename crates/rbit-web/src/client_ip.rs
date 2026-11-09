@@ -7,10 +7,17 @@
 //! `X-Forwarded-For` (or RFC 7239 `Forwarded`) is walked from the nearest hop outwards,
 //! skipping trusted proxies; the first address that is not a trusted proxy is the client.
 //! An unparsable hop stops the walk, so a client can never inject an address past a proxy.
+//! A proxy that reports the client in a header of its own (`CF-Connecting-IP` from
+//! Cloudflare) is read through `[security] client_ip_header`, again only from a trusted peer.
+//!
+//! A loopback or private peer that sends forwarding headers without being trusted is
+//! almost always a reverse proxy or tunnel on the same host or network that nobody listed;
+//! every client then appears as that proxy, so the first such request is logged once.
 
 use std::{
     convert::Infallible,
     net::{IpAddr, SocketAddr},
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 use axum::{
@@ -32,7 +39,11 @@ pub struct ClientIp(pub IpAddr);
 impl ClientIp {
     /// Resolves the client from the connection and, behind a trusted proxy, its headers.
     pub fn resolve(extensions: &Extensions, headers: &HeaderMap, security: &SecurityConfig) -> Self {
-        Self(resolve_client(peer(extensions), headers, security))
+        let peer = peer(extensions);
+        if untrusted_local_proxy(peer, headers, security) {
+            warn_untrusted_proxy(peer);
+        }
+        Self(resolve_client(peer, headers, security))
     }
 }
 
@@ -91,6 +102,14 @@ pub fn resolve_client(peer: IpAddr, headers: &HeaderMap, security: &SecurityConf
     if !security.is_trusted_proxy(peer) {
         return peer;
     }
+    if let Some(address) = security
+        .client_ip_header
+        .as_deref()
+        .and_then(|name| header_values(headers, name).into_iter().next())
+        .and_then(|value| parse_hop(&value))
+    {
+        return address;
+    }
     let hops = forwarded_for_hops(headers);
     let mut client = peer;
     // Nearest hop first: each trusted address vouches for the one before it.
@@ -104,6 +123,29 @@ pub fn resolve_client(peer: IpAddr, headers: &HeaderMap, security: &SecurityConf
         }
     }
     client
+}
+
+/// Headers that only a proxy or tunnel adds to a request.
+const PROXY_HEADERS: &[&str] = &["x-forwarded-for", "forwarded", "x-real-ip", "cf-connecting-ip", "true-client-ip"];
+
+/// Whether `peer` looks like an unlisted reverse proxy: a loopback or private address
+/// that is not trusted but sends forwarding headers.
+fn untrusted_local_proxy(peer: IpAddr, headers: &HeaderMap, security: &SecurityConfig) -> bool {
+    let local = match peer {
+        IpAddr::V4(v4) => v4.is_loopback() || v4.is_private(),
+        IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(v6.is_loopback() || v6.is_unique_local(), |v4| v4.is_loopback() || v4.is_private()),
+    };
+    local && !security.is_trusted_proxy(peer) && PROXY_HEADERS.iter().any(|name| headers.contains_key(*name))
+}
+
+fn warn_untrusted_proxy(peer: IpAddr) {
+    static WARNED: AtomicBool = AtomicBool::new(false);
+    if !WARNED.swap(true, Ordering::Relaxed) {
+        tracing::warn!(
+            %peer,
+            "a request from {peer} carries forwarding headers, but {peer} is not in [security] trusted_proxies, so every client              is recorded as {peer}. List the reverse proxy or tunnel there (and set [security] client_ip_header = \"CF-Connecting-IP\"              behind Cloudflare)."
+        );
+    }
 }
 
 /// `true` when a trusted proxy reports that the original request used HTTPS.
@@ -226,6 +268,32 @@ mod tests {
         assert_eq!(resolve_client(ip("127.0.0.1"), &hidden, &config), ip("127.0.0.1"));
         // IPv4-mapped peers from dual-stack listeners are recognised as trusted.
         assert_eq!(resolve_client(ip("::ffff:127.0.0.1"), &with_port, &config), ip("192.0.2.60"));
+    }
+
+    #[test]
+    fn client_ip_header_from_trusted_proxies_only() {
+        let mut config = security(&["127.0.0.1"]);
+        config.client_ip_header = Some("CF-Connecting-IP".into());
+        // Cloudflare Tunnel: cloudflared connects from loopback and names the visitor.
+        let tunnel = headers(&[("cf-connecting-ip", "2001:db8::42"), ("x-forwarded-for", "6.6.6.6, 198.51.100.4")]);
+        assert_eq!(resolve_client(ip("127.0.0.1"), &tunnel, &config), ip("2001:db8::42"));
+        // Anyone else sending it is ignored.
+        assert_eq!(resolve_client(ip("203.0.113.9"), &tunnel, &config), ip("203.0.113.9"));
+        // Missing or garbage: fall back to the forwarding chain.
+        let chain = headers(&[("cf-connecting-ip", "nope"), ("x-forwarded-for", "198.51.100.4")]);
+        assert_eq!(resolve_client(ip("127.0.0.1"), &chain, &config), ip("198.51.100.4"));
+        // Without the setting the header means nothing.
+        assert_eq!(resolve_client(ip("127.0.0.1"), &tunnel, &security(&["127.0.0.1"])), ip("198.51.100.4"));
+    }
+
+    #[test]
+    fn notices_unlisted_local_proxies() {
+        let forwarded = headers(&[("cf-connecting-ip", "198.51.100.4")]);
+        assert!(untrusted_local_proxy(ip("127.0.0.1"), &forwarded, &security(&[])));
+        assert!(untrusted_local_proxy(ip("::ffff:10.0.0.3"), &forwarded, &security(&[])));
+        assert!(!untrusted_local_proxy(ip("127.0.0.1"), &forwarded, &security(&["127.0.0.1"])));
+        assert!(!untrusted_local_proxy(ip("203.0.113.9"), &forwarded, &security(&[])));
+        assert!(!untrusted_local_proxy(ip("127.0.0.1"), &HeaderMap::new(), &security(&[])));
     }
 
     #[test]
