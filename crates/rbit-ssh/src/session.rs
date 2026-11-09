@@ -103,7 +103,7 @@ impl Connection {
     /// Who holds `key`, if anyone (suspended users count as no one).
     async fn identify(&self, key: &PublicKey) -> Option<SshIdentity> {
         let fingerprint = rbit_services::ssh_keys::fingerprint(key);
-        match self.shared.services.ssh_keys.find_by_fingerprint(&fingerprint).await {
+        match access::key_holder(&self.shared.services, &fingerprint).await {
             Ok(identity) => identity,
             Err(error) => {
                 tracing::error!(%error, peer = %self.peer, "SSH key lookup failed");
@@ -118,7 +118,7 @@ impl Connection {
     async fn current_identity(&self, previous: &SshIdentity) -> Result<SshIdentity, String> {
         let refused = || KEY_NO_LONGER_AUTHORIZED.to_owned();
         let fingerprint = self.fingerprint.as_deref().ok_or_else(refused)?;
-        let current = self.shared.services.ssh_keys.find_by_fingerprint(fingerprint).await.map_err(|error| internal(&error))?;
+        let current = access::key_holder(&self.shared.services, fingerprint).await.map_err(|error| internal(&error))?;
         current.filter(|current| same_key_holder(previous, current)).ok_or_else(refused)
     }
 

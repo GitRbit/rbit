@@ -8,10 +8,15 @@
 //! refused. The [`SshRepositories`] port does the lookups; this module decides the order
 //! and the text the client sees. The repository on disk always comes from the opened
 //! repository, never from the command line.
+//!
+//! Which identity a key signs in and which repository a deploy key reaches are decided
+//! by `rbit_repositories::ssh_keys` ([`key_holder`], the deploy-key adapter below) over
+//! the key service's storage adapters.
 
 use std::future::Future;
 
-use rbit_core::{AccountId, User};
+use rbit_core::{AccountId, PushSource, User};
+use rbit_repositories::ssh_keys;
 use rbit_services::{RepoContext, ServiceError, Services, ssh_keys::SshIdentity};
 
 use crate::command::GitCommand;
@@ -61,7 +66,9 @@ impl SshRepositories for Services {
     }
 
     async fn open_for_deploy_key(&self, identity: &SshIdentity, owner: &str, name: &str) -> Result<RepoContext, ServiceError> {
-        self.ssh_keys.open_for_deploy_key(identity, owner, name).await
+        let keys = &self.ssh_keys;
+        let reach = ssh_keys::deploy_key_reach(&keys.addresses(), identity, owner, name).await.map_err(ServiceError::from)?;
+        Ok(keys.deploy_key_context(reach.ok_or(ServiceError::NotFound)?))
     }
 
     fn can_write(&self, ctx: &RepoContext) -> bool {
@@ -70,6 +77,22 @@ impl SshRepositories for Services {
 
     async fn is_mirror(&self, ctx: &RepoContext) -> Result<bool, ServiceError> {
         self.mirrors.is_mirror(ctx.repo.repo.id).await
+    }
+}
+
+/// Who holds the key with `fingerprint` now ([`ssh_keys::sign_in`]): `None` for unknown
+/// keys, suspended users and users who must change their password.
+pub(crate) async fn key_holder(services: &Services, fingerprint: &str) -> Result<Option<SshIdentity>, ServiceError> {
+    let signed_in = ssh_keys::sign_in(&services.ssh_keys.directory(), fingerprint).await.map_err(ServiceError::from)?;
+    rbit_services::ssh_keys::log_refusal(&signed_in);
+    Ok(signed_in.into_identity())
+}
+
+/// Where a push with this key comes from: the user, or the repository's deploy key.
+pub(crate) fn push_source(identity: &SshIdentity) -> PushSource {
+    match identity {
+        SshIdentity::User { user, .. } => PushSource::User(user.id()),
+        SshIdentity::Deploy { .. } => PushSource::DeployKey,
     }
 }
 

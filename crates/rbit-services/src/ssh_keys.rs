@@ -2,22 +2,26 @@
 //!
 //! Keys are pasted in OpenSSH format (`ssh-ed25519 AAAA… comment`). They are parsed and
 //! validated here once, then stored normalised (algorithm + key data, no comment) with
-//! their SHA256 fingerprint. At SSH sign-in the server proves the client holds a private
-//! key and looks the fingerprint up with [`SshKeyService::find_by_fingerprint`], which
-//! resolves to a user (refused while suspended) or a deploy key (one repository,
-//! read-only unless allowed to write).
+//! their SHA256 fingerprint. Sign-in and deploy-key reach are decided by
+//! `rbit_repositories::ssh_keys`; this service only provides its storage adapters
+//! ([`SshKeyService::directory`], [`SshKeyService::addresses`]) and turns a reached
+//! repository into a [`RepoContext`] ([`SshKeyService::deploy_key_context`]). The SSH
+//! server uses those directly; [`SshKeyService::find_by_fingerprint`] and
+//! [`SshKeyService::open_for_deploy_key`] compose the same steps for other callers.
 //!
 //! Accepted: Ed25519, ECDSA (P-256/384/521), RSA of at least 2048 bits, and FIDO security
 //! keys (`sk-ssh-ed25519@openssh.com`, `sk-ecdsa-sha2-nistp256@openssh.com`). DSA,
 //! certificates and unknown algorithms are refused.
 
-use rbit_core::{PushSource, RepoAccess, RepoId, Timestamp, User, repository::OwnedRepository};
-use rbit_repositories::aliases::RepositoryAliases;
+use rbit_core::{RepoAccess, RepoId, Timestamp, User};
+/// Who an SSH key authenticates, decided by the repository feature.
+pub use rbit_repositories::ssh_keys::SshIdentity;
+use rbit_repositories::ssh_keys::{self, DeployKeyReach, KeySignIn};
 /// The stored keys, re-exported so callers need not depend on the storage layer.
 pub use rbit_storage::sqlite::ssh_keys::{DeployKey, DeployKeyId, SshKey, SshKeyId};
 use rbit_storage::{
-    StorageError,
-    sqlite::ssh_keys::{KeyHolder, NewPublicKey, SshKeyStore},
+    RepositoryStore, SshKeyDirectoryStore, StorageError,
+    sqlite::ssh_keys::{NewPublicKey, SshKeyStore},
 };
 use ssh_key::{HashAlg, PublicKey, public::KeyData};
 
@@ -110,25 +114,6 @@ pub fn fingerprint(key: &PublicKey) -> String {
     key.fingerprint(HashAlg::Sha256).to_string()
 }
 
-/// Who an SSH key authenticates.
-#[derive(Debug, Clone)]
-pub enum SshIdentity {
-    /// A user's personal key: the user's own permissions apply.
-    User { key: SshKeyId, user: User },
-    /// A deploy key: one repository, read-only unless `read_only` is false.
-    Deploy { key: DeployKeyId, repo: OwnedRepository, read_only: bool },
-}
-
-impl SshIdentity {
-    /// Where a push with this key comes from: the user, or the repository's deploy key.
-    pub fn push_source(&self) -> PushSource {
-        match self {
-            Self::User { user, .. } => PushSource::User(user.id()),
-            Self::Deploy { .. } => PushSource::DeployKey,
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct SshKeyService {
     ctx: ServiceContext,
@@ -204,24 +189,35 @@ impl SshKeyService {
 
     // -------------------------------------------------------------- SSH sign-in
 
-    /// Resolves a verified key's `SHA256:…` fingerprint. `Ok(None)` for unknown keys and for
-    /// keys of suspended users.
+    /// The sign-in lookups for `rbit_repositories::ssh_keys::sign_in`, over this
+    /// service's open key store.
+    pub fn directory(&self) -> SshKeyDirectoryStore<'_> {
+        SshKeyDirectoryStore::new(&self.ctx.database, &self.store)
+    }
+
+    /// Current and former repository addresses for
+    /// `rbit_repositories::ssh_keys::deploy_key_reach`.
+    pub fn addresses(&self) -> RepositoryStore {
+        self.ctx.database.repositories()
+    }
+
+    /// The repository a deploy key reached, opened at the key's access: read, or write
+    /// when it was added with write permission.
+    pub fn deploy_key_context(&self, reach: DeployKeyReach) -> RepoContext {
+        let DeployKeyReach { repo, writable } = reach;
+        let access = if writable { RepoAccess::Write } else { RepoAccess::Read };
+        let disk_path = self.ctx.repositories.path_for(repo.repo.owner_id, repo.repo.id);
+        let reader = self.ctx.repositories.reader(repo.repo.owner_id, repo.repo.id);
+        RepoContext { repo, access, viewer: None, collaborator: None, reader, disk_path }
+    }
+
+    /// Resolves a verified key's `SHA256:…` fingerprint ([`ssh_keys::sign_in`]). `Ok(None)`
+    /// for unknown keys, keys of suspended users and of users who must change their
+    /// password.
     pub async fn find_by_fingerprint(&self, fingerprint: &str) -> Result<Option<SshIdentity>, ServiceError> {
-        Ok(match self.store.find_by_fingerprint(fingerprint).await? {
-            None => None,
-            Some(KeyHolder::User { user, suspended: true, .. }) => {
-                tracing::info!(user = %user.name(), "suspended user's SSH key refused");
-                None
-            }
-            Some(KeyHolder::User { key, user, suspended: false }) => {
-                if self.ctx.database.accounts().password_change_required(user.id()).await? {
-                    None
-                } else {
-                    Some(SshIdentity::User { key: key.id, user })
-                }
-            }
-            Some(KeyHolder::Deploy { key, repo }) => Some(SshIdentity::Deploy { key: key.id, repo, read_only: key.read_only }),
-        })
+        let signed_in = ssh_keys::sign_in(&self.directory(), fingerprint).await?;
+        log_refusal(&signed_in);
+        Ok(signed_in.into_identity())
     }
 
     /// Records that `identity`'s key was just used. Bookkeeping only: failures are logged,
@@ -237,24 +233,11 @@ impl SshKeyService {
         }
     }
 
-    /// Opens `owner/name` for a deploy key. The key reaches only its own repository
-    /// (anything else is [`ServiceError::NotFound`]) with read access, or write access
-    /// when it was added with write permission. Like the user path
-    /// ([`crate::RepositoryService::open_following_renames`], exactly as HTTP), an old
-    /// name of the repository from before a rename or transfer still reaches it.
+    /// Opens `owner/name` for a deploy key ([`ssh_keys::deploy_key_reach`]): only its own
+    /// repository, also under an old name; anything else is [`ServiceError::NotFound`].
     pub async fn open_for_deploy_key(&self, identity: &SshIdentity, owner: &str, name: &str) -> Result<RepoContext, ServiceError> {
-        let SshIdentity::Deploy { repo: key_repo, read_only, .. } = identity else {
-            return Err(ServiceError::NotFound);
-        };
-        let store = self.ctx.database.repositories();
-        let repo = RepositoryAliases::resolve(&store, owner, name).await?.ok_or(ServiceError::NotFound)?;
-        if repo.repo.id != key_repo.repo.id {
-            return Err(ServiceError::NotFound);
-        }
-        let access = if *read_only { RepoAccess::Read } else { RepoAccess::Write };
-        let disk_path = self.ctx.repositories.path_for(repo.repo.owner_id, repo.repo.id);
-        let reader = self.ctx.repositories.reader(repo.repo.owner_id, repo.repo.id);
-        Ok(RepoContext { repo, access, viewer: None, collaborator: None, reader, disk_path })
+        let reach = ssh_keys::deploy_key_reach(&self.addresses(), identity, owner, name).await?.ok_or(ServiceError::NotFound)?;
+        Ok(self.deploy_key_context(reach))
     }
 
     /// The repository a deploy key belongs to.
@@ -263,6 +246,13 @@ impl SshKeyService {
             SshIdentity::Deploy { repo, .. } => Some(repo.repo.id),
             SshIdentity::User { .. } => None,
         }
+    }
+}
+
+/// Logs a suspended user's refused key, as every sign-in path does.
+pub fn log_refusal(signed_in: &KeySignIn) {
+    if let KeySignIn::Suspended(user) = signed_in {
+        tracing::info!(user = %user.name(), "suspended user's SSH key refused");
     }
 }
 

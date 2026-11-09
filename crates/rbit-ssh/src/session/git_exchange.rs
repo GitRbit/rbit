@@ -2,7 +2,7 @@
 
 use super::{FAILURE, GitCommand, PendingChannel, STDERR};
 use crate::{
-    access::{internal, read_only_deploy_key},
+    access::{internal, push_source, read_only_deploy_key},
     server::Shared,
 };
 use rbit_services::{ConcurrencySlot, PendingPush, RepoContext, protection::PushActor, ssh_keys::SshIdentity};
@@ -215,7 +215,7 @@ where
 
     // Taken after the verdict, before git changes anything.
     control.check()?;
-    let pending = shared.services.pushes.begin(ctx, identity.push_source()).await;
+    let pending = shared.services.pushes.begin(ctx, push_source(identity)).await;
     let status =
         shared.transport.receive_pack_controlled(&ctx.disk_path, protocol, options, ProcessIo::new(input, stdout, stderr), control).await?;
     Ok(Exchanged { status: exit_code(status), push: Some(pending) })
