@@ -20,12 +20,15 @@
 //! read the repository. Changes are audited, and jobs left waiting for an environment that
 //! no longer has reviewers run without review.
 
+use rbit_actions::{
+    environments::{self as rules, DeploymentGate, ProtectedBranches, RefPolicy, ReviewRefusal, Reviewer},
+    secrets::open_environment_secrets,
+};
 use rbit_core::{
-    RepoAccess, Timestamp, User,
+    RepoAccess, RepoId, Timestamp, User,
     actions::{BranchPolicy, Environment, Job, ReviewDecision, Run, SecretScope},
 };
-use rbit_storage::sqlite::actions_environments::{EnvironmentChanges, MAX_REVIEWERS};
-use rbit_workflow::pattern::Patterns;
+use rbit_storage::sqlite::actions_environments::EnvironmentChanges;
 
 use super::ActionsService;
 use crate::{
@@ -45,7 +48,7 @@ pub struct EnvironmentInput {
 }
 
 /// The longest wait timer, as on GitHub: 30 days.
-pub const MAX_WAIT_TIMER_MINUTES: u32 = 43_200;
+pub use rbit_actions::environments::MAX_WAIT_TIMER_MINUTES;
 
 /// The jobs of a run that wait for one environment's reviewers.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,23 +113,8 @@ impl ActionsService {
         require_admin(repo)?;
         repo.ensure_writable()?;
         let name = name.trim();
-        if !rbit_workflow::spec::valid_environment_name(name) {
-            return Err(ServiceError::Invalid(
-                "an environment name is 1 to 255 characters, without `/`, `\\` or control characters".to_owned(),
-            ));
-        }
-        if let BranchPolicy::Selected(patterns) = &input.branch_policy {
-            if patterns.is_empty() || patterns.len() > 50 {
-                return Err(ServiceError::Invalid("choose 1 to 50 branch or tag patterns".to_owned()));
-            }
-            let compiled = ref_patterns(patterns).map_err(|error| ServiceError::Invalid(format!("branch pattern: {error}")))?;
-            if compiled.iter().all(rbit_workflow::pattern::Pattern::is_negative) {
-                return Err(ServiceError::Invalid("at least one branch or tag pattern must not start with `!`".to_owned()));
-            }
-        }
-        if input.reviewers.len() > MAX_REVIEWERS {
-            return Err(ServiceError::Invalid(format!("an environment has at most {MAX_REVIEWERS} reviewers")));
-        }
+        rules::check_name_and_policy(name, ref_policy(&input.branch_policy)).map_err(ServiceError::Invalid)?;
+        rules::check_reviewer_count(input.reviewers.len()).map_err(ServiceError::Invalid)?;
         let mut reviewers = Vec::new();
         for username in &input.reviewers {
             let (account, access) = self.access_of(repo, username).await?;
@@ -140,9 +128,7 @@ impl ActionsService {
                 reviewers.push(account.id);
             }
         }
-        if input.wait_timer > MAX_WAIT_TIMER_MINUTES {
-            return Err(ServiceError::Invalid(format!("the wait timer is at most {MAX_WAIT_TIMER_MINUTES} minutes")));
-        }
+        rules::check_wait_timer(input.wait_timer).map_err(ServiceError::Invalid)?;
         let changes = EnvironmentChanges {
             reviewers: &reviewers,
             prevent_self_review: input.prevent_self_review,
@@ -264,23 +250,11 @@ impl ActionsService {
         let Some(environment) = database.actions_environments().find(run.repo_id, name).await? else {
             return Ok(Ok(EnvironmentValues::default()));
         };
-        let (kind, short) = match run.reference.strip_prefix("refs/heads/") {
-            Some(branch) => ("branch", branch),
-            None => ("tag", run.reference.strip_prefix("refs/tags/").unwrap_or(&run.reference)),
-        };
-        let allowed = match &environment.branch_policy {
-            BranchPolicy::All => true,
-            BranchPolicy::Protected => {
-                kind == "branch"
-                    && database.branch_protection().list(run.repo_id).await?.iter().any(|protection| protection.rule.matches(short))
-            }
-            BranchPolicy::Selected(patterns) => selected(patterns, &run.reference),
-        };
-        if !allowed {
-            return Ok(Err(format!(
-                "{kind} `{short}` is not allowed to deploy to {} due to environment protection rules",
-                environment.name
-            )));
+        let refs = StoredProtection { service: self, repo: run.repo_id };
+        if let Err(reason) =
+            DeploymentGate::allows(&refs, &environment.name, ref_policy(&environment.branch_policy), &run.reference).await?
+        {
+            return Ok(Err(reason));
         }
         if !rbit_actions::trust::Grants::of_stored(run.trusted).secrets_and_variables {
             return Ok(Ok(EnvironmentValues::default()));
@@ -297,12 +271,16 @@ impl ActionsService {
         let mut secrets = Vec::new();
         if !stored.is_empty() {
             let key = self.secrets_key().await.map_err(|problem| ServiceError::Invalid(format!("secrets are unavailable: {problem}")))?;
-            for secret in stored {
-                let name = secret.info.name.to_string();
-                let Some(value) = key.open(secret.info.scope, secret.info.id, &secret.sealed) else {
+            let names: Vec<String> = stored.iter().map(|secret| secret.info.name.to_string()).collect();
+            let given = names.iter().map(String::as_str).zip(&stored);
+            let open = |secret: &rbit_storage::sqlite::actions_secrets::TaskSecret| {
+                key.open(secret.info.scope, secret.info.id, &secret.sealed).map(|value| value.as_str().to_owned())
+            };
+            match open_environment_secrets(given, open) {
+                Ok(opened) => secrets = opened,
+                Err(name) => {
                     return Ok(Err(format!("secret {name} of environment {} cannot be opened with the current key", environment.name)));
-                };
-                secrets.push((name, value.as_str().to_owned()));
+                }
             }
         }
         Ok(Ok(EnvironmentValues { secrets, variables }))
@@ -317,40 +295,47 @@ impl ActionsService {
         };
         let user = database.accounts().find_user(account.id).await?.ok_or(ServiceError::NotFound)?;
         let grants = crate::repositories::viewer_grants(&database.repositories(), Some(&user), &repo.repo).await?;
-        Ok((account, rbit_core::access::repo_access(Some(&user), &repo.repo, &grants)))
+        Ok((account, rbit_auth::repo_access(Some(&user), &repo.repo, &grants)))
     }
 }
 
 /// Whether `actor` may review `environment`'s jobs of `run`: a reviewer, who did not start
 /// the run when the environment prevents self-review.
 fn may_review(actor: &User, repo: &RepoContext, run: &Run, environment: &Environment) -> Result<(), ServiceError> {
-    if !repo.access.can_read() || !environment.reviewers.contains(&actor.id()) {
-        return Err(ServiceError::Forbidden);
-    }
-    if environment.prevent_self_review && [run.trigger_actor, run.actor].contains(&Some(actor.id())) {
-        return Err(ServiceError::Invalid(format!("{} does not let whoever started a run approve it", environment.name)));
-    }
-    Ok(())
+    let reviewer = Reviewer { reads: repo.access.can_read(), listed: environment.reviewers.contains(&actor.id()) };
+    let started_run = [run.trigger_actor, run.actor].contains(&Some(actor.id()));
+    rules::may_review(&environment.name, reviewer, environment.prevent_self_review, started_run).map_err(|refusal| match refusal {
+        ReviewRefusal::NotReviewer => ServiceError::Forbidden,
+        ReviewRefusal::SelfReview(message) => ServiceError::Invalid(message),
+    })
 }
 
-/// An environment's selected patterns as patterns over full refs: `release/*` is a branch
-/// pattern (`refs/heads/release/*`), `refs/tags/v*` a tag pattern, so a tag never passes for a
-/// branch of the same name or the other way round. A `!` pattern excludes what it matches,
-/// and the last pattern that matches a ref decides, as in workflow `branches:` filters.
-fn ref_patterns(patterns: &[String]) -> Result<Patterns, rbit_workflow::pattern::PatternError> {
-    Patterns::compile(patterns.iter().map(|raw| {
-        let (bang, pattern) = raw.strip_prefix('!').map_or(("", raw.as_str()), |rest| ("!", rest));
-        if pattern.starts_with("refs/heads/") || pattern.starts_with("refs/tags/") {
-            format!("{bang}{pattern}")
-        } else {
-            format!("{bang}refs/heads/{pattern}")
-        }
-    }))
+/// `repo`'s branch protection, for [`DeploymentGate`].
+struct StoredProtection<'a> {
+    service: &'a ActionsService,
+    repo: RepoId,
 }
 
-/// Whether `reference` (a full ref) may deploy under these selected patterns.
-fn selected(patterns: &[String], reference: &str) -> bool {
-    ref_patterns(patterns).is_ok_and(|patterns| !patterns.skip([reference]))
+impl ProtectedBranches for StoredProtection<'_> {
+    type Error = ServiceError;
+
+    async fn is_protected(&self, branch: &str) -> Result<bool, ServiceError> {
+        let protections = self.service.ctx().database.branch_protection().list(self.repo).await?;
+        Ok(protections.iter().any(|protection| protection.rule.matches(branch)))
+    }
+}
+
+// Whether a full ref may deploy under selected patterns (`rbit_actions::environments`).
+#[cfg(test)]
+use rbit_actions::environments::selected;
+
+/// The stored branch policy as the protection rules read it.
+fn ref_policy(policy: &BranchPolicy) -> RefPolicy<'_> {
+    match policy {
+        BranchPolicy::All => RefPolicy::All,
+        BranchPolicy::Protected => RefPolicy::Protected,
+        BranchPolicy::Selected(patterns) => RefPolicy::Selected(patterns),
+    }
 }
 
 fn require_admin(repo: &RepoContext) -> Result<(), ServiceError> {

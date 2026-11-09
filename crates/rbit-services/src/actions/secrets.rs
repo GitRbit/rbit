@@ -46,14 +46,9 @@ const KEY_PREFIX: &str = "rbit-actions-key-v1:";
 const AAD_PREFIX: &[u8] = b"rbit-actions-secret-v1";
 /// Largest secret or variable value, in bytes (`rbit_workflow::spec::MAX_SECRET_BYTES`).
 pub const MAX_VALUE_BYTES: usize = rbit_workflow::spec::MAX_SECRET_BYTES;
-/// Largest variable value, in bytes: what `actions_variables.value` holds.
-pub const MAX_VARIABLE_BYTES: usize = 48 * 1024;
-/// Most secrets, and separately most variables, in one scope. A repository and its owner
-/// together stay below the 1,024 a task may receive.
-pub const MAX_PER_SCOPE: u64 = 500;
-
-/// The message pages and failed tasks show for a value sealed with another key.
-pub const UNREADABLE: &str = "cannot be decrypted with the current key — set it again";
+// The limits, scoping and opening rules are `rbit_actions::secrets`; this file is the
+// key file, AES-256-GCM sealing and storage adapter.
+pub use rbit_actions::secrets::{MAX_PER_SCOPE, MAX_VARIABLE_BYTES, UNREADABLE};
 
 /// The secrets key, held in memory for the life of the process and zeroed on drop.
 pub(crate) struct SecretsKey {
@@ -337,9 +332,8 @@ impl ActionsService {
         let name: SecretName = name.parse().map_err(|error| ServiceError::Invalid(format!("{error}")))?;
         check_value("secret", value, MAX_VALUE_BYTES)?;
         let scope = target.scope();
-        if matches!(scope, SecretScope::Repository(_) | SecretScope::Environment(_)) && visibility != SecretVisibility::All {
-            return Err(ServiceError::Invalid("a repository secret is visible to its repository only".to_owned()));
-        }
+        rbit_actions::secrets::check_visibility(matches!(scope, SecretScope::Owner(_)), visibility == SecretVisibility::All)
+            .map_err(ServiceError::Invalid)?;
         let key = self.secrets_key().await.map_err(|problem| ServiceError::Invalid(format!("secrets cannot be stored: {problem}")))?;
         let store = self.ctx().database.actions_secrets();
         let exists = store.secrets(scope).await?.iter().any(|info| info.name == name);
@@ -452,17 +446,13 @@ impl ActionsService {
             return Ok(BTreeMap::new());
         }
         let key = self.secrets_key().await.map_err(|problem| ServiceError::Invalid(format!("secrets are unavailable: {problem}")))?;
-        let mut secrets = BTreeMap::new();
-        for secret in stored {
-            let name = secret.info.name.to_string();
-            if secrets.contains_key(&name) {
-                continue;
-            }
-            let value = key
-                .open(secret.info.scope, secret.info.id, &secret.sealed)
-                .ok_or_else(|| ServiceError::Invalid(format!("secret {name} {UNREADABLE}")))?;
-            secrets.insert(name, value.as_str().to_owned());
-        }
+        let names: Vec<String> = stored.iter().map(|secret| secret.info.name.to_string()).collect();
+        let given = names.iter().map(String::as_str).zip(&stored);
+        let open = |secret: &rbit_storage::sqlite::actions_secrets::TaskSecret| {
+            key.open(secret.info.scope, secret.info.id, &secret.sealed).map(|value| value.as_str().to_owned())
+        };
+        let secrets = rbit_actions::secrets::open_task_secrets(given, open)
+            .map_err(|name| ServiceError::Invalid(format!("secret {name} {UNREADABLE}")))?;
         Ok(secrets)
     }
 
@@ -488,18 +478,9 @@ impl ActionsService {
     }
 }
 
-/// Values are 1 to `max` bytes without NUL.
+/// Values are 1 to `max` bytes without NUL (`rbit_actions::secrets::check_value`).
 fn check_value(kind: &str, value: &str, max: usize) -> Result<(), ServiceError> {
-    if value.is_empty() {
-        return Err(ServiceError::Invalid(format!("a {kind} needs a value")));
-    }
-    if value.len() > max {
-        return Err(ServiceError::Invalid(format!("a {kind} is at most {} KiB", max / 1024)));
-    }
-    if value.contains('\0') {
-        return Err(ServiceError::Invalid(format!("a {kind} must not contain NUL characters")));
-    }
-    Ok(())
+    rbit_actions::secrets::check_value(kind, value, max).map_err(ServiceError::Invalid)
 }
 
 #[cfg(test)]

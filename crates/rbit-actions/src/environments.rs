@@ -1,15 +1,18 @@
 //! Deployment environment protection rules (§12.2.2 of the Actions design): which refs may
 //! deploy, who may review, and the bounds an administrator may set. Storage, the review
-//! gate and wait timer in SQL, audit, and the glob engine stay in their adapters.
+//! gate and wait timer in SQL and audit stay in their adapters.
 //!
 //! * A job runs only from the refs the branch policy allows: any; branches with a
 //!   protection rule; or branches and tags its selected patterns admit, where `main` names
 //!   a branch and `refs/tags/v*` a tag ([`full_ref_patterns`], [`DeploymentGate`]).
 //!   It is checked when a runner takes the job, so a changed policy applies at once, and
-//!   protection rules are read only for a protected policy and a branch.
+//!   protection rules are read only for a protected policy and a branch. The last
+//!   matching selected pattern decides, and `!` excludes ([`selected`]).
 //! * A reviewer must be listed and able to read the repository; with
 //!   `prevent_self_review`, whoever started the run may not approve it ([`may_review`]).
-//! * At most [`MAX_REVIEWERS`] reviewers and a [`MAX_WAIT_TIMER_MINUTES`] wait timer.
+//! * Settings are checked in a fixed order with fixed messages: the name and selected
+//!   patterns ([`check_name_and_policy`]), then at most [`MAX_REVIEWERS`] reviewers and a
+//!   [`MAX_WAIT_TIMER_MINUTES`] wait timer.
 //!
 //! Secrets of an environment are given only to trusted runs (`crate::trust::Grants`).
 
@@ -17,34 +20,25 @@ mod gate;
 #[cfg(test)]
 mod tests;
 
-pub use gate::{DeploymentGate, RefRules};
+pub use gate::{DeploymentGate, ProtectedBranches};
+use rbit_workflow::pattern::{Pattern, PatternError, Patterns};
 
-/// Most reviewers an environment may have.
-pub const MAX_REVIEWERS: usize = 6;
 /// The longest wait timer, as on GitHub: 30 days.
 pub const MAX_WAIT_TIMER_MINUTES: u32 = 43_200;
 
-/// Which refs may deploy to an environment.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub enum BranchPolicy {
+/// Most reviewers an environment may have.
+pub const MAX_REVIEWERS: usize = 6;
+
+/// Which refs may deploy to an environment, as its stored policy says (a view of the
+/// record's `branch_policy`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RefPolicy<'a> {
     /// Any branch or tag.
-    #[default]
     All,
     /// Branches with a branch protection rule.
     Protected,
     /// Branches and tags matching these GitHub filter patterns (`main`, `release/*`).
-    Selected(Vec<String>),
-}
-
-impl BranchPolicy {
-    /// The stored `branch_policy`.
-    pub const fn as_str(&self) -> &'static str {
-        match self {
-            Self::All => "all",
-            Self::Protected => "protected",
-            Self::Selected(_) => "selected",
-        }
-    }
+    Selected(&'a [String]),
 }
 
 /// Why someone may not review an environment's jobs.
@@ -77,6 +71,24 @@ pub fn may_review(environment: &str, reviewer: Reviewer, prevent_self_review: bo
     Ok(())
 }
 
+/// The first checks of an environment's settings: its name, then a selected policy's
+/// patterns (1 to 50, valid, not all negative).
+pub fn check_name_and_policy(name: &str, policy: RefPolicy<'_>) -> Result<(), String> {
+    if !rbit_workflow::spec::valid_environment_name(name) {
+        return Err("an environment name is 1 to 255 characters, without `/`, `\\` or control characters".to_owned());
+    }
+    if let RefPolicy::Selected(patterns) = policy {
+        if patterns.is_empty() || patterns.len() > 50 {
+            return Err("choose 1 to 50 branch or tag patterns".to_owned());
+        }
+        let compiled = ref_patterns(patterns).map_err(|error| format!("branch pattern: {error}"))?;
+        if compiled.iter().all(Pattern::is_negative) {
+            return Err("at least one branch or tag pattern must not start with `!`".to_owned());
+        }
+    }
+    Ok(())
+}
+
 /// At most [`MAX_REVIEWERS`] reviewers.
 pub fn check_reviewer_count(count: usize) -> Result<(), String> {
     if count > MAX_REVIEWERS { Err(format!("an environment has at most {MAX_REVIEWERS} reviewers")) } else { Ok(()) }
@@ -103,4 +115,15 @@ pub fn full_ref_patterns(patterns: &[String]) -> Vec<String> {
             }
         })
         .collect()
+}
+
+/// The selected patterns compiled over full refs ([`full_ref_patterns`]).
+fn ref_patterns(patterns: &[String]) -> Result<Patterns, PatternError> {
+    Patterns::compile(full_ref_patterns(patterns))
+}
+
+/// Whether `reference` (a full ref) may deploy under these selected patterns: the last
+/// pattern that matches decides; invalid patterns admit nothing.
+pub fn selected(patterns: &[String], reference: &str) -> bool {
+    ref_patterns(patterns).is_ok_and(|patterns| !patterns.skip([reference]))
 }
