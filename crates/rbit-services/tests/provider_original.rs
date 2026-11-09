@@ -5,9 +5,9 @@ use rbit_core::{
     config::{ProviderConfig, ProviderKind},
 };
 use rbit_identity::accounts::{ProviderAuthentication, ProviderProofError};
+use rbit_identity_models::sessions::ClientInfo;
 use rbit_services::{
     ServiceError, Services, SignUp,
-    accounts::ClientInfo,
     audit::AuditAction,
     external_auth::{Callback, ExternalSignIn, OriginalExternalSignIn, VerifiedIdentity},
 };

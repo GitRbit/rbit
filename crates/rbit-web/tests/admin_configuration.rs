@@ -389,7 +389,7 @@ async fn initially_blocked_credentials(fixture: &Fixture, user: &User, initial: 
     assert!(matches!(
         fixture
             .services
-            .authenticate_git_password(user.name().as_str(), initial.into(), &rbit_services::accounts::ClientInfo::default())
+            .authenticate_git_password(user.name().as_str(), initial.into(), &rbit_identity_models::sessions::ClientInfo::default())
             .await,
         Err(rbit_services::ServiceError::Forbidden)
     ));

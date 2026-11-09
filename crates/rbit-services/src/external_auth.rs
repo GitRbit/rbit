@@ -56,6 +56,7 @@ use rbit_core::{
     AccountId, AccountName, Email, Timestamp, User,
     config::{ProviderConfig, ProviderKind, ProviderRegistration},
 };
+use rbit_identity_models::sessions::ClientInfo;
 use rbit_storage::{
     Database, NewUser, StorageError,
     sqlite::external_identities::{ExternalIdentity, LinkConflict, NewExternalIdentity, Unlinked},
@@ -66,7 +67,6 @@ use tokio::sync::OnceCell;
 use self::client::{Discovery, ProviderClient, ProviderError, TokenAuth, discovery_url, oauth_error, parse_github_user};
 use crate::{
     DomainEvent, ServiceContext, ServiceError, Services, ThrottleScope, ThrottleService,
-    accounts::ClientInfo,
     audit::{AuditAction, AuditEntry, AuditService},
 };
 

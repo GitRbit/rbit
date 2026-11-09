@@ -4,8 +4,9 @@ use std::{num::NonZeroUsize, sync::Arc, time::Duration};
 
 use rbit_core::{Config, TokenScope, User};
 use rbit_identity::PasswordWork;
+use rbit_identity_models::sessions::ClientInfo;
 use rbit_kernel::BlockingBudget;
-use rbit_services::{CreateAccessToken, ServiceError, Services, SignUp, accounts::ClientInfo};
+use rbit_services::{CreateAccessToken, ServiceError, Services, SignUp};
 use rbit_storage::sqlite::admin::ListFilter;
 use rbit_storage::{Database, KvStore};
 

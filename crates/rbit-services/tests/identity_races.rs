@@ -5,7 +5,8 @@ use std::sync::Arc;
 
 use rbit_auth::SessionToken;
 use rbit_core::{Config, User};
-use rbit_services::{Services, SignUp, accounts::ClientInfo};
+use rbit_identity_models::sessions::ClientInfo;
+use rbit_services::{Services, SignUp};
 use rbit_storage::{Database, KvStore};
 
 mod gate;

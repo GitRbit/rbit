@@ -1,5 +1,5 @@
 //! Explicit inactive session API; no production route or startup selects it yet.
-use super::{AccountService, ClientInfo, OriginalProofReceipt, epoch_repository::OwnedEpochSessions, sessions::describe_session};
+use super::{AccountService, OriginalProofReceipt, epoch_repository::OwnedEpochSessions, sessions::describe_session};
 use crate::{
     ServiceError,
     audit::{AuditAction, AuditEntry},
@@ -8,6 +8,7 @@ use rbit_identity::{
     SessionToken,
     sessions::{ActiveSession, EpochSessionApplication, EpochSessionError, IssuedEpochSession, ResolvedEpochSession},
 };
+use rbit_identity_models::sessions::ClientInfo;
 use rbit_storage::{EpochSnapshot, StorageError};
 
 pub type OriginalIssuedSession = IssuedEpochSession<EpochSnapshot>;

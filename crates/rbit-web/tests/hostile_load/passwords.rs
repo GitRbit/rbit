@@ -14,7 +14,7 @@ use std::{
 use axum::http::{StatusCode, header};
 use rbit_auth::{TotpSecret, totp::time_step};
 use rbit_core::Timestamp;
-use rbit_services::accounts::ClientInfo;
+use rbit_identity_models::sessions::ClientInfo;
 
 use super::fixture::{
     Fixture, ORDINARY_PATH, PASSWORD, PASSWORD_JOBS, assert_refused, assert_served_alongside, form, get, send, under_load,

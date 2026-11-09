@@ -15,9 +15,9 @@ use std::fmt::Write as _;
 use askama::Template;
 use askama_web::WebTemplate;
 use qrcode::{Color, QrCode};
+use rbit_identity_models::sessions::ActiveSession;
 use rbit_localization::settings::security::{SecurityMessage, SecurityText};
 use rbit_services::{
-    accounts::ActiveSession,
     audit::AuditEvent,
     two_factor::{Enrolment, Passkey, TwoFactorStatus},
 };

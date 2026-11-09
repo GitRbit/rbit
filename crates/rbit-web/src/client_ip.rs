@@ -18,7 +18,7 @@ use axum::{
     http::{Extensions, HeaderMap, header, request::Parts},
 };
 use rbit_core::config::SecurityConfig;
-use rbit_services::accounts::ClientInfo;
+use rbit_identity_models::sessions::ClientInfo;
 
 use crate::AppState;
 

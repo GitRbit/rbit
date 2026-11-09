@@ -11,9 +11,9 @@ use rbit_core::{
     AccountId, Config, Timestamp, User,
     config::{ProviderConfig, ProviderKind, ProviderRegistration},
 };
+use rbit_identity_models::sessions::ClientInfo;
 use rbit_services::{
     ServiceError, Services, SignUp,
-    accounts::ClientInfo,
     admin::ListQuery,
     audit::{AuditAction, AuditCategory},
     external_auth::{Callback, CallbackParams, ExternalSignIn, VerifiedIdentity},

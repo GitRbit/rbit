@@ -1,7 +1,8 @@
 use super::*;
+use crate::SignUp;
 use crate::{ServiceError, Services};
-use crate::{SignUp, accounts::ClientInfo};
 use rbit_core::Config;
+use rbit_identity_models::sessions::ClientInfo;
 use rbit_storage::{Database, KvStore};
 use std::{sync::Arc, time::Duration};
 

@@ -32,6 +32,7 @@ use std::{
 use rbit_auth::{Challenge, RecoveryCode, RelyingParty, SessionToken, TokenDigest, TotpSecret};
 use rbit_core::{AccountId, Timestamp, User};
 use rbit_identity::PasswordWork;
+use rbit_identity_models::sessions::ClientInfo;
 use rbit_storage::{
     AccountStore,
     sqlite::two_factor::{NewPasskey, PasskeyAdded, PasskeyRecord, TwoFactorRecord, TwoFactorStore},
@@ -39,7 +40,6 @@ use rbit_storage::{
 
 use crate::{
     InstanceService, ServiceContext, ServiceError, Services, ThrottleScope,
-    accounts::ClientInfo,
     audit::{AuditAction, AuditEntry, AuditService},
 };
 

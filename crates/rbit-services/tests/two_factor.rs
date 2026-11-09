@@ -5,9 +5,9 @@ use std::sync::Arc;
 
 use rbit_auth::{TotpSecret, totp::time_step};
 use rbit_core::{Config, Timestamp, User};
+use rbit_identity_models::sessions::ClientInfo;
 use rbit_services::{
     ServiceError, Services, SignUp,
-    accounts::ClientInfo,
     admin::ListQuery,
     audit::{AuditAction, AuditCategory},
     two_factor::{GitPasswordOutcome, RECOVERY_CODE_COUNT, SignInOutcome},

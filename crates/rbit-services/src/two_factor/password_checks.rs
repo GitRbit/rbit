@@ -1,11 +1,11 @@
 //! Admission precedes one-use proof consumption; capacity failures are not bad credentials.
 
 use super::{Ceremony, GitPasswordOutcome, SecondFactorProof, TwoFactorService, ip_key};
-use crate::accounts::ClientInfo;
 use crate::audit::{AuditAction, AuditEntry};
 use crate::{ServiceError, Services, ThrottleScope};
 use rbit_core::User;
 use rbit_identity::PasswordAttempt;
+use rbit_identity_models::sessions::ClientInfo;
 
 impl TwoFactorService {
     /// Re-checks the account password for sensitive changes.

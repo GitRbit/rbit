@@ -10,8 +10,9 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use rbit_auth::{SessionToken, TotpSecret, totp::time_step};
 use rbit_core::{Config, Timestamp, TokenScope, User, Visibility};
 use rbit_identity::PasswordWork;
+use rbit_identity_models::sessions::ClientInfo;
 use rbit_kernel::BlockingBudget;
-use rbit_services::{CreateAccessToken, CreateRepository, Services, SignUp, accounts::ClientInfo};
+use rbit_services::{CreateAccessToken, CreateRepository, Services, SignUp};
 use rbit_storage::{
     Database, KvStore,
     sqlite::recovery::{NewEmailToken, TokenPurpose},

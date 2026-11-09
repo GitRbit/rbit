@@ -3,9 +3,10 @@
 use rbit_auth::SessionToken;
 use rbit_core::User;
 use rbit_identity::sessions::{SessionApplication, SessionError, SessionPolicy};
-use rbit_storage::{AccountStore, SessionRecord, SessionStore, StorageError};
+use rbit_identity_models::sessions::{ActiveSession, ClientInfo, SessionRecord, SessionUser};
+use rbit_storage::{AccountStore, SessionStore, StorageError};
 
-use super::{AccountService, ActiveSession, ClientInfo, SessionUser};
+use super::AccountService;
 use crate::{
     ServiceError,
     audit::{AuditAction, AuditEntry},

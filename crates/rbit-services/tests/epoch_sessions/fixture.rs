@@ -1,8 +1,9 @@
 use rbit_core::{Config, User};
 use rbit_identity_models::credential::CredentialEpoch;
+use rbit_identity_models::sessions::ClientInfo;
 use rbit_services::{
     Services, SignUp,
-    accounts::{ClientInfo, OriginalIssuedSession, OriginalProofReceipt},
+    accounts::{OriginalIssuedSession, OriginalProofReceipt},
 };
 use rbit_storage::{
     Database, KvStore,

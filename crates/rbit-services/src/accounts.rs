@@ -19,7 +19,6 @@ use std::sync::Arc;
 
 use rbit_core::{Account, AccountId, Config, RegistrationMode, User};
 use rbit_identity::{PasswordWork, sessions::effects::PasswordSessionEnforcement};
-pub use rbit_storage::SessionUser;
 use rbit_storage::{AccountStore, SessionStore};
 
 use crate::{DomainEvent, EventBus, InstanceService, ServiceError, audit::AuditService};
@@ -41,8 +40,6 @@ pub use original_sessions::{OriginalIssuedSession, OriginalResolvedSession};
 pub use registration::{create_user_offline, create_user_offline_original};
 
 pub use rbit_identity::accounts::SignUp;
-
-pub use rbit_identity::sessions::{ActiveSession, ClientInfo};
 
 #[derive(Debug, Clone)]
 pub struct AccountService {

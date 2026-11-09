@@ -5,9 +5,9 @@ use std::{sync::Arc, time::Duration};
 
 use rbit_auth::SessionToken;
 use rbit_core::{Config, Timestamp, User};
+use rbit_identity_models::sessions::ClientInfo;
 use rbit_services::{
     ServiceError, Services, SignUp,
-    accounts::ClientInfo,
     admin::ListQuery,
     audit::{AuditAction, AuditCategory},
 };

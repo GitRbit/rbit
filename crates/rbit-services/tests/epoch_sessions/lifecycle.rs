@@ -1,7 +1,8 @@
 use super::fixture::*;
 use rbit_core::Timestamp;
+use rbit_identity_models::sessions::ClientInfo;
 use rbit_identity_models::{AccountLocale, credential::CredentialEpoch};
-use rbit_services::{ServiceError, accounts::ClientInfo};
+use rbit_services::ServiceError;
 use rbit_storage::{SessionRecord, Work, count_work};
 
 #[tokio::test]
