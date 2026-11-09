@@ -71,3 +71,13 @@ async fn pinned_fragments_are_language_neutral() {
         }
     }
 }
+
+/// The pinned counts are English in every page they are swapped into, so they say so.
+#[tokio::test]
+async fn the_pinned_counts_phrase_is_marked_english() {
+    let fixture = Fixture::new().await;
+    let (base, head) = &fixture.tips;
+    let page = fixture.get(&format!("{REPO}/pull/2/counts/{base}...{head}"), &[("Accept-Language", "de")]).await;
+    let phrase = r#"<span id="pull-commits-phrase" hx-swap-oob="true" lang="en">1 commit</span>"#;
+    assert!(page.body.contains(phrase), "{}", page.body);
+}
