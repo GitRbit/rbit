@@ -2,9 +2,10 @@
 //! event, their access now, forks, vouched and suspended authors — closing, activity types
 //! and skip markers, against real stores and repositories.
 
+use rbit_actions::trust::RunTrust;
 use rbit_core::{
     IssueId, PushSource, StateReason, Timestamp, User,
-    actions::{RunEvent, RunTrust, Status},
+    actions::{RunEvent, Status},
     issue::IssueAction,
     pull::HeadSpec,
 };

@@ -26,27 +26,25 @@ reads accounts, suspension, repository grants, the trusted list, the effective a
 policy and merged pull requests, exactly the queries it made before, in the same order.
 Every caller keeps calling `ActionsService::classify_pull_request`.
 
-`token_permissions` itself stays in `rbit_core::actions` with its signature: it resolves
-the job/workflow/default declaration over `TokenPermissions`, which storage, web and the
-settings API share. Its trust clamp takes the moved `RunTrust`.
+`token_permissions` itself stays in `rbit_core::actions`: it resolves the
+job/workflow/default declaration over `TokenPermissions`, which storage, web and the
+settings API share. Its trust clamp takes `trusted: bool`; the only production caller
+passes `RunTrust::from_stored(..).is_trusted()`.
 
-## The rbit-core → rbit-actions edge
+## No rbit-core → rbit-actions edge
 
-`ADDED_EDGES` gains `rbit-core → rbit-actions`. It is needed because
-`crates/rbit-services/tests/actions_pulls.rs` (this row's acceptance test) and the
-`token_permissions` table in `rbit-core` name `rbit_core::actions::RunTrust`. The brief
-was to keep them unchanged, and only a re-export at the old path can do that. The edge is
-narrow: `rbit-actions` depends only on `rbit-access`, which `rbit-core` already depends
-on, so it adds no other crate to anything's graph and cannot form a cycle (`rbit-actions`
-may never depend on `rbit-core`). Within `rbit-core`, `token_permissions` takes the
-moved `RunTrust`; production code in `rbit-services` imports from `rbit_actions::trust`
-directly, and the re-export otherwise serves tests. Removing the edge later means moving
-`token_permissions`'s clamp argument off `RunTrust` and updating those test imports.
+This row first added `rbit-core → rbit-actions` so that `rbit_core::actions::RunTrust`
+stayed a re-export and `token_permissions` kept a `RunTrust` argument. Once the artifact
+store moved into `rbit-actions` (which then depends on `rbit-workflow`, and through it on
+`sha2` and `zeroize`), that edge pulled those crates into the model graph of `rbit-core`.
+The edge and the re-export were removed: the clamp argument is a `bool`, and
+`crates/rbit-services/tests/actions_pulls.rs` imports `RunTrust` from
+`rbit_actions::trust`. Behaviour is unchanged.
 
 ## Legacy code removed
 
 - `rbit_core::actions::{TriggeringActor, AuthorStanding, RunTrust, classify_pull_request}`
-  definitions (re-exported from `rbit_actions::trust`), and the table test, which moved
+  definitions (now only at `rbit_actions::trust`), and the table test, which moved
   unchanged to `rbit-actions` (`trust::tests::pull_request_trust_table`).
 - `ActionsService::{triggering_actor, author_standing}` and the fork override in services.
 - The direct `run.trusted` grant checks, the hand-built stored `RunTrust` in `tokens.rs`,

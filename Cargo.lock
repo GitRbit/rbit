@@ -4276,7 +4276,6 @@ dependencies = [
  "proptest",
  "pulldown-cmark",
  "rbit-access",
- "rbit-actions",
  "rbit-collaboration",
  "rbit-contracts",
  "rbit-identity-models",

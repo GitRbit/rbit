@@ -107,7 +107,7 @@ impl ActionsService {
         let trust = rbit_actions::trust::RunTrust::from_stored(run.trusted);
         // The repository's default, capped by its owner's ceiling.
         let default = self.effective_policies(job.repo_id).await?.token_permission;
-        let mut permissions = token_permissions(default, None, declared, trust);
+        let mut permissions = token_permissions(default, None, declared, trust.is_trusted());
         // Actions: reusable workflows. A called job (`caller/job`) whose callers declared no
         // permissions stays within the default, as their own token does.
         if job.key.contains('/')

@@ -5,9 +5,8 @@
 //!   the database and on the wire agree; [`aggregate`] derives a run's status from its jobs.
 //! * [`RunnerScope`] and [`runner_sees`] decide which runners may take which jobs;
 //!   [`runs_on`] matches a job's `runs-on` labels against a runner's labels.
-//! * [`classify_pull_request`] (owned by `rbit_actions::trust`, re-exported here) decides
-//!   whether a pull request run is trusted (§11.1), and [`token_permissions`] what its task
-//!   token may do (§11.4).
+//! * Whether a pull request run is trusted (§11.1) is decided in `rbit_actions::trust`;
+//!   [`token_permissions`] decides what its task token may do (§11.4).
 //! * [`RunnerLabel`], [`SecretName`] and [`VariableName`] are validated at construction.
 //! * [`records`] holds the stored records (runs, jobs, tasks, runners, secrets, …).
 //!
@@ -429,10 +428,6 @@ impl SecretScope {
     }
 }
 
-// Pull request trust and the fork policy are decided in `rbit_actions::trust`; the old
-// paths stay for the records, services and tests that name them.
-pub use rbit_actions::trust::{AuthorStanding, RunTrust, TriggeringActor, classify_pull_request};
-
 /// One coarse permission of a task token.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -519,10 +514,10 @@ pub fn token_permissions(
     default: DefaultTokenPermission,
     workflow: Option<TokenPermissions>,
     job: Option<TokenPermissions>,
-    trust: RunTrust,
+    trusted: bool,
 ) -> TokenPermissions {
     let mut granted = job.or(workflow).unwrap_or_else(|| default.permissions());
-    if !trust.is_trusted() {
+    if !trusted {
         granted = granted.at_most(TokenPermissions::uniform(PermissionLevel::Read));
     }
     granted
@@ -732,13 +727,13 @@ mod tests {
                 }
             }
         }
-        let trusts = [RunTrust::Trusted, RunTrust::Untrusted { awaits_approval: true }, RunTrust::Untrusted { awaits_approval: false }];
+        let trusts = [true, false];
         for default in [DefaultTokenPermission::Read, DefaultTokenPermission::Write] {
             for &workflow in &declared {
                 for &job in &declared {
                     for trust in trusts {
                         let granted = token_permissions(default, workflow, job, trust);
-                        let ceiling = if trust.is_trusted() { TokenPermissions::uniform(W) } else { TokenPermissions::uniform(R) };
+                        let ceiling = if trust { TokenPermissions::uniform(W) } else { TokenPermissions::uniform(R) };
                         assert_eq!(granted.at_most(ceiling), granted, "read at most for untrusted runs");
                         let effective = job.or(workflow).unwrap_or_else(|| default.permissions());
                         assert_eq!(granted, effective.at_most(ceiling), "{default:?} {workflow:?} {job:?} {trust:?}");
@@ -747,7 +742,7 @@ mod tests {
             }
         }
         // Spot checks of the common shapes.
-        let trusted = RunTrust::Trusted;
+        let trusted = true;
         assert_eq!(token_permissions(DefaultTokenPermission::Read, None, None, trusted), TokenPermissions::uniform(R));
         assert_eq!(token_permissions(DefaultTokenPermission::Write, None, None, trusted), TokenPermissions::uniform(W));
         assert_eq!(
@@ -757,12 +752,7 @@ mod tests {
         );
         assert_eq!(token_permissions(DefaultTokenPermission::Read, None, Some(p(W, N, N)), trusted), p(W, N, N));
         assert_eq!(
-            token_permissions(
-                DefaultTokenPermission::Read,
-                Some(TokenPermissions::uniform(W)),
-                None,
-                RunTrust::Untrusted { awaits_approval: false }
-            ),
+            token_permissions(DefaultTokenPermission::Read, Some(TokenPermissions::uniform(W)), None, false),
             TokenPermissions::uniform(R),
             "but never for an untrusted run"
         );
@@ -772,9 +762,6 @@ mod tests {
             "the job's declaration replaces the workflow's"
         );
         assert_eq!(token_permissions(DefaultTokenPermission::Write, Some(p(W, N, R)), None, trusted), p(W, N, R));
-        assert_eq!(
-            token_permissions(DefaultTokenPermission::Write, None, None, RunTrust::Untrusted { awaits_approval: false }),
-            TokenPermissions::uniform(R)
-        );
+        assert_eq!(token_permissions(DefaultTokenPermission::Write, None, None, false), TokenPermissions::uniform(R));
     }
 }
