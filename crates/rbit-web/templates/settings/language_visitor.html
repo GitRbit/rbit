@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{#- The language page for visitors who are not signed in: the account page's form without the
+    settings navigation. The choice is kept in the `rbit-locale` cookie. -#}
+{% block content %}
+{% let text = self.labels() %}
+<section id="language" class="mx-auto max-w-xl" lang="{{ page.content_locale.tag() }}" dir="{{ page.content_locale.direction().as_str() }}" aria-labelledby="language-title">
+  {% include "settings/language_form.html" %}
+</section>
+{% endblock %}

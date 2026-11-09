@@ -279,7 +279,9 @@ its native name (`Locale::native_name`), each option marked with its own `lang`.
 account choice is stored in `user_logins.interface_locale` (migration 0072), which takes
 every offered tag; `user_logins.locale` (0062, English and Spanish only) keeps mirroring
 those two, so an older build still reads a valid choice. Diagnostics require an explicit
-trusted resolver extension and remain selected-feature opt-ins.
+trusted resolver extension and remain selected-feature opt-ins. Visitors who are not
+signed in save the same form into the `rbit-locale` cookie; see
+[account activation](account-locale-activation.md).
 
 The shared Page extractor assigns the document locale, while legacy content stays
 explicitly English. Localized feature constructors select their own content locale.

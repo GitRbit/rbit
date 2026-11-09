@@ -18,6 +18,9 @@ use rbit_localization::{Locale, LocalePreferences, LocaleResolver, ResolvedLocal
 mod pipeline;
 pub use pipeline::page_locale;
 pub(crate) const CATALOG_HEADER: &str = "rbit-catalog-key";
+/// The anonymous language preference: a supported tag, set by `/settings/language` for a
+/// visitor who is not signed in and honoured before Accept-Language.
+pub(crate) const PREFERENCE_COOKIE: &str = "rbit-locale";
 #[cfg(test)]
 #[path = "localization/pipeline_tests.rs"]
 mod pipeline_tests;
@@ -125,7 +128,7 @@ fn preference_cookie(headers: &HeaderMap) -> Option<&str> {
         if index >= 32 {
             return None;
         }
-        if let Some(("rbit-locale", value)) = pair.trim().split_once('=') {
+        if let Some((PREFERENCE_COOKIE, value)) = pair.trim().split_once('=') {
             if choice.is_some() {
                 return None;
             }

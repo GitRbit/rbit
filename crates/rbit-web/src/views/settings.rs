@@ -21,7 +21,7 @@ mod navigation;
 pub use navigation::{SettingsLink, SettingsSection, title as navigation_title};
 mod language;
 pub mod tokens;
-pub use language::LanguagePage;
+pub use language::{LanguagePage, VisitorLanguagePage};
 
 // ------------------------------------------------------------------ profile
 

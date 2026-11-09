@@ -3,22 +3,6 @@
 {% block settings_content %}
 {% let text = self.labels() %}
 <section id="language" lang="{{ page.content_locale.tag() }}" dir="{{ page.content_locale.direction().as_str() }}" aria-labelledby="language-title">
-  <h2 id="language-title" class="text-xl font-semibold tracking-tight">{% call ui::localized(text.title) %}{% endcall %}</h2>
-  <p class="mt-2 text-[13px] leading-relaxed text-ink-muted">{% call ui::localized(text.coverage) %}{% endcall %}</p>
-  {% if saved %}<p class="mt-4 text-[13px] text-success" role="status">{% call ui::localized(text.saved) %}{% endcall %}</p>{% endif %}
-  {% if invalid %}<p class="mt-4 text-[13px] text-danger" role="alert">{% call ui::localized(text.invalid) %}{% endcall %}</p>{% endif %}
-  {#- A full native navigation changes the entire document and resets in-memory navigation state. -#}
-  <form class="box mt-5 p-4" method="post" action="/settings/language" hx-boost="false">
-    <label class="label" for="preferred-language">{% call ui::localized(text.label) %}{% endcall %}</label>
-    <select class="input mt-2 w-full max-w-sm" id="preferred-language" name="locale" aria-describedby="language-help">
-      <option value=""{% if let Some(lang) = text.browser.marked_lang() %} lang="{{ lang }}"{% endif %} {% if selected.is_empty() %}selected{% endif %}>{{ text.browser }}</option>
-      {#- Each language is named in its own language, whatever the page's language. -#}
-      {%- for language in rbit_localization::Locale::LANGUAGES %}
-      <option value="{{ language.tag() }}" lang="{{ language.tag() }}" {% if selected == language.tag() %}selected{% endif %}>{{ language.native_name() }}</option>
-      {%- endfor %}
-    </select>
-    <p id="language-help" class="mt-2 max-w-prose text-xs leading-relaxed text-ink-muted">{% call ui::localized(text.help) %}{% endcall %}</p>
-    <button class="btn btn-primary mt-4 h-10 sm:h-9" type="submit">{% call ui::localized(text.save) %}{% endcall %}</button>
-  </form>
+  {% include "settings/language_form.html" %}
 </section>
 {% endblock %}

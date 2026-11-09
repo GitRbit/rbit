@@ -24,6 +24,18 @@ reset clears the old anonymous preference cookie as well as the account selectio
 The form performs a fixed full navigation; it accepts no redirect destination.
 Ordinary CSRF, form-size, authentication and password-change restrictions still apply.
 
+## Visitors
+
+Visitors who are not signed in use the same form. `GET /settings/language` renders it
+for them without the settings navigation, and `POST /settings/language`, with the same
+Origin check, stores their choice in the `rbit-locale` cookie instead of an account:
+the canonical tag only (`ja`, `pt-BR`), `Path=/`, `HttpOnly`, `SameSite=Lax`, `Secure`
+over HTTPS, for one year. It identifies nobody, is never readable by scripts and is
+never sent to other sites. Negotiation reads it after the account choice and before
+Accept-Language; an unsupported, repeated or oversized value falls through. Choosing
+the browser default removes it, and a signed-in save removes it too, so the account
+choice alone decides.
+
 Upgrade/constraint/roundtrip tests use actual SQLite. Session tests count one real
 acquisition and one statement; EXPLAIN tests additionally require the existing login
 primary-key lookup with no new preference join. These are source-level regression
