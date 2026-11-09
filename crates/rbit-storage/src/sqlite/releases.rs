@@ -108,45 +108,8 @@ impl TryFrom<AssetRow> for ReleaseAsset {
     }
 }
 
-/// A release to insert.
-#[derive(Debug, Clone)]
-pub struct NewRelease<'a> {
-    pub repo_id: RepoId,
-    pub tag_name: &'a str,
-    pub name: &'a str,
-    pub notes: &'a str,
-    pub is_draft: bool,
-    pub is_prerelease: bool,
-    /// `None` for a release a workflow task made.
-    pub author_id: Option<AccountId>,
-    pub source: ReleaseSource,
-}
-
-/// The editable fields of a release. `published_at` is only ever set once: pass the
-/// publication time when a draft is published, `None` to keep the stored value.
-#[derive(Debug, Clone)]
-pub struct ReleaseChanges<'a> {
-    pub tag_name: &'a str,
-    pub name: &'a str,
-    pub notes: &'a str,
-    pub is_draft: bool,
-    pub is_prerelease: bool,
-    pub published_at: Option<Timestamp>,
-}
-
-/// Metadata of an uploaded file, inserted once its bytes are safely on disk.
-#[derive(Debug, Clone)]
-pub struct NewAsset<'a> {
-    pub release_id: ReleaseId,
-    pub repo_id: RepoId,
-    pub name: &'a str,
-    pub size: u64,
-    pub content_type: &'a str,
-    pub sha256: [u8; 32],
-    /// `None` for a file a workflow task uploaded.
-    pub uploader_id: Option<AccountId>,
-    pub source: ReleaseSource,
-}
+// The insert and change records belong to the release application.
+pub use rbit_repositories::releases::{NewAsset, NewRelease, ReleaseChanges};
 
 #[derive(Debug, Clone)]
 pub struct ReleaseStore {

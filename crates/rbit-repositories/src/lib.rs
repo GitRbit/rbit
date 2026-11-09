@@ -6,12 +6,14 @@
 //! capability. Account projections use identity's model-only dependency surface.
 
 pub mod aliases;
+pub mod archives;
 pub mod contributions;
 pub mod discovery;
 pub mod edits;
 pub mod forks;
 pub mod mirrors;
 pub mod push_mirrors;
+pub mod releases;
 pub mod stars;
 pub mod transfer;
 

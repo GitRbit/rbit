@@ -44,6 +44,7 @@ pub use repository_forks::{ForkCreationStore, ForkReadStore};
 mod repository_aliases;
 mod repository_contributions;
 mod repository_discovery;
+mod repository_releases;
 mod repository_stars;
 mod repository_transfer;
 pub use repository_transfer::TransferStore;
