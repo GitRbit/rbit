@@ -8,7 +8,8 @@ use rbit_identity_models::{
     access_tokens::{AccessTokenOwnerRepository, AccessTokenRepository},
 };
 
-use crate::{AccessTokenStore, AccountStore, NewAccessToken, StorageError};
+use crate::sqlite::AccessTokenStore;
+use crate::{AccountStore, NewAccessToken, StorageError};
 
 impl AccessTokenRepository for AccessTokenStore {
     type Error = StorageError;
