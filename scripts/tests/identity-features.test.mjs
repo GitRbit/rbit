@@ -61,14 +61,14 @@ test("token-only graphs require their crypto edges and exclude password or runti
   }
 });
 
-test("session application capability is explicit and cannot widen model consumers", () => {
-  const dependency = { name: "rbit-identity", kind: null, uses_default_features: false, features: ["password-work", "sessions"] };
+test("session and token application capabilities are explicit and cannot widen model consumers", () => {
+  const dependency = { name: "rbit-identity", kind: null, uses_default_features: false, features: ["access-tokens", "password-work", "sessions"] };
   const pkg = { id: "services", name: "rbit-services", dependencies: [dependency] };
   const metadata = { packages: [pkg], workspace_members: [pkg.id] };
   assert.deepEqual(checkIdentityFeatures(metadata), []);
-  dependency.features = ["password-work"];
-  assert.match(checkIdentityFeatures(metadata)[0], /exactly \[password-work, sessions\]/);
   dependency.features = ["password-work", "sessions"];
+  assert.match(checkIdentityFeatures(metadata)[0], /exactly \[access-tokens, password-work, sessions\]/);
+  dependency.features = ["access-tokens", "password-work", "sessions"];
   pkg.name = "rbit-storage";
   assert.match(checkIdentityFeatures(metadata)[0], /exactly \[\]/);
 });

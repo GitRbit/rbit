@@ -9,6 +9,7 @@ license.workspace = true
 [features]
 sessions = ["session-tokens", "dep:tokio", "dep:tokio-util"]
 session-tokens = ["dep:base64", "dep:sha2", "dep:getrandom"]
+access-tokens = ["session-tokens"]
 default = ["password-work"]
 credentials = ["dep:argon2", "dep:thiserror", "dep:tokio", "dep:zeroize"]
 password-work = ["credentials", "dep:rbit-kernel", "dep:subtle", "dep:getrandom"]
@@ -62,6 +63,11 @@ required-features = ["password-work"]
 [[test]]
 name = "session_tokens"
 required-features = ["session-tokens"]
+
+[[test]]
+name = "access_tokens"
+# Sessions supply the async test runtime; the application itself needs no runtime.
+required-features = ["access-tokens", "sessions"]
 
 [[test]]
 name = "session_effects"

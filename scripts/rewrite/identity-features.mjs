@@ -8,7 +8,7 @@ const consumers = {
   "rbit-core": { normal: [] },
   "rbit-storage": { normal: [] },
   "rbit-auth": { normal: ["session-tokens"] },
-  "rbit-services": { normal: ["password-work", "sessions"] },
+  "rbit-services": { normal: ["access-tokens", "password-work", "sessions"] },
   "rbit-web": { dev: ["password-work"] },
 };
 const runtime = new Set(["argon2", "tokio", "tokio-util", "rbit-kernel", "zeroize", "base64", "sha2", "getrandom", "subtle"]);
@@ -44,21 +44,24 @@ export function checkIdentityModelGraphs(root) {
   });
 }
 
-export function tokenGraphViolations(tree) {
+export function tokenGraphViolations(tree, feature = "session-tokens") {
   const packages = new Set(tree.trim().split(/\r?\n/).filter(Boolean).map(line => line.trim().split(/\s+/)[0]));
   const required = ["rbit-identity", "base64", "sha2", "getrandom"];
-  if (required.some(name => !packages.has(name))) return ["identity session-tokens: incomplete normal dependency graph"];
+  if (required.some(name => !packages.has(name))) return [`identity ${feature}: incomplete normal dependency graph`];
   const forbidden = ["argon2", "tokio", "tokio-util", "rbit-kernel", "zeroize", "subtle"];
-  return forbidden.filter(name => packages.has(name)).map(name => `identity session-tokens: crypto-only graph unexpectedly includes ${name}`);
+  return forbidden.filter(name => packages.has(name)).map(name => `identity ${feature}: crypto-only graph unexpectedly includes ${name}`);
 }
 
-/** Token operations must remain independent of password algorithms and async work. */
+/** Token operations, including the access token application, stay independent of
+ * password algorithms and async runtimes. */
 export function checkIdentityTokenGraph(root) {
-  const tree = execFileSync("cargo", ["tree", "--package", "rbit-identity", "--no-default-features", "--features", "session-tokens",
-    "--edges", "normal", "--prefix", "none", "--locked"], {
-    cwd: root, encoding: "utf8", windowsHide: true, stdio: ["pipe", "pipe", "pipe"], maxBuffer: 8 * 1024 * 1024,
+  return ["session-tokens", "access-tokens"].flatMap(feature => {
+    const tree = execFileSync("cargo", ["tree", "--package", "rbit-identity", "--no-default-features", "--features", feature,
+      "--edges", "normal", "--prefix", "none", "--locked"], {
+      cwd: root, encoding: "utf8", windowsHide: true, stdio: ["pipe", "pipe", "pipe"], maxBuffer: 8 * 1024 * 1024,
+    });
+    return tokenGraphViolations(tree, feature);
   });
-  return tokenGraphViolations(tree);
 }
 
 export function sessionGraphViolations(tree) {

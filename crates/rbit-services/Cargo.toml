@@ -18,7 +18,7 @@ rbit-repositories.workspace = true
 rbit-core.workspace = true
 rbit-storage.workspace = true
 rbit-auth.workspace = true
-rbit-identity = { workspace = true, features = ["password-work", "sessions"] }
+rbit-identity = { workspace = true, features = ["access-tokens", "password-work", "sessions"] }
 rbit-kernel.workspace = true
 rbit-git.workspace = true
 rbit-mail.workspace = true
