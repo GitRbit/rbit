@@ -7,6 +7,7 @@
 
 mod accounts;
 pub mod configuration;
+mod repository_deletion;
 
 use std::{
     path::{Path, PathBuf},
@@ -259,28 +260,6 @@ impl AdminService {
     pub async fn repository(&self, actor: &User, id: RepoId) -> Result<OwnedRepository, ServiceError> {
         require_admin(actor)?;
         self.store.find_repository(id).await?.ok_or(ServiceError::NotFound)
-    }
-
-    /// Deletes a repository's metadata and its bare repository on disk.
-    /// `confirmation` must repeat `owner/name` exactly.
-    pub async fn delete_repository(&self, actor: &User, id: RepoId, confirmation: &str) -> Result<OwnedRepository, ServiceError> {
-        let repo = self.repository(actor, id).await?;
-        if confirmation.trim() != repo.full_name() {
-            return Err(ServiceError::Invalid("type the repository's full name exactly to confirm".to_owned()));
-        }
-        if !self.store.delete_repository(id).await? {
-            return Err(ServiceError::NotFound);
-        }
-        self.remove_from_disk(repo.owner.id, id).await;
-        tracing::info!(admin = %actor.name(), repository = %repo.full_name(), "repository deleted");
-        self.ctx.events.publish(DomainEvent::RepositoryDeleted {
-            repo: id,
-            owner: repo.owner.id,
-            full_name: repo.full_name(),
-            actor: actor.id(),
-        });
-        self.audit.record(AuditEntry::new(AuditAction::RepositoryDeleted).by(actor).on(repo.full_name())).await;
-        Ok(repo)
     }
 
     /// The database row is already gone, so a failure here leaves only an unreachable
