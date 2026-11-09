@@ -43,7 +43,6 @@ use std::{
 
 pub use rbit_collaboration::issues::{DEFAULT_DASHBOARD_QUERY, dashboard_query};
 use rbit_collaboration::issues::{DashboardMentions, IssueParticipants, ThreadActivity};
-use rbit_core::access::repo_access;
 use rbit_core::{
     Account, AccountId, Issue, IssueId, IssueKind, IssueNumber, LabelId, RepoId, StateReason, Timestamp, User, issue::IssueAction,
     references, repository::OwnedRepository,
