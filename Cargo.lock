@@ -4213,6 +4213,9 @@ dependencies = [
 [[package]]
 name = "rbit-actions"
 version = "0.2.0"
+dependencies = [
+ "rbit-access",
+]
 
 [[package]]
 name = "rbit-auth"
