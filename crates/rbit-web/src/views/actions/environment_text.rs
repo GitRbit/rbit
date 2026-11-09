@@ -83,6 +83,9 @@ mod tests {
         assert_eq!(summary(&selected), "2 reviewers · branches main, release/*");
         let protected = EnvironmentProtection { reviewers: 1, protected_branches: true, patterns: None };
         assert_eq!(summary(&protected), "1 reviewer · protected branches");
-        assert!(UiText::new(Locale::Spanish).protection(&protected).fallback);
+        let spanish = UiText::new(Locale::Spanish).protection(&protected);
+        assert!(!spanish.fallback);
+        assert_eq!(spanish.pieces.iter().map(|piece| piece.text.as_str()).collect::<String>(), "1 revisor · ramas protegidas");
+        assert!(UiText::new(Locale::German).protection(&protected).fallback);
     }
 }

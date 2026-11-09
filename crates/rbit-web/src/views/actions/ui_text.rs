@@ -166,11 +166,11 @@ mod tests {
     }
 
     #[test]
-    fn spanish_marks_the_fallback_and_keeps_times() {
+    fn spanish_translates_and_keeps_times() {
         let rich = UiText::new(Locale::Spanish)
             .rich(ActionsSecretsMessage::Updated { when: SLOTS[0] }, &[Mark::time("2 days ago", "2026-11-06T00:00:00Z")]);
-        assert!(rich.fallback);
-        assert_eq!(rich.pieces[0], Piece::plain("Updated "));
+        assert!(!rich.fallback);
+        assert_eq!(rich.pieces[0], Piece::plain("Actualizado "));
         assert_eq!(rich.pieces[1].text, "2 days ago");
         assert_eq!(rich.pieces[1].datetime.as_deref(), Some("2026-11-06T00:00:00Z"));
     }

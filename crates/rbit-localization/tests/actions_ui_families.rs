@@ -1,5 +1,5 @@
-//! Every key of the Actions settings families exists, renders in every catalog and falls
-//! back to English in Spanish, which has not translated them yet.
+//! Every key of the Actions settings families exists, renders in every catalog and is
+//! translated in Spanish.
 use std::{collections::BTreeSet, fmt::Debug};
 
 use rbit_localization::{
@@ -8,8 +8,8 @@ use rbit_localization::{
 
 const DERIVED: [Locale; 3] = [Locale::English, Locale::PseudoExpanded, Locale::PseudoRtl];
 
-/// Ids are distinct; English and the diagnostics render without fallback; Spanish falls
-/// back to exactly the English text.
+/// Ids are distinct; English and the diagnostics render without fallback; Spanish has its
+/// own entry for every message.
 fn check_family<M: MessageFamily + Debug>(messages: &[M], distinct_ids: usize) {
     let ids: BTreeSet<_> = messages.iter().map(|message| message.id()).collect();
     assert_eq!(ids.len(), distinct_ids, "ids are unique and every variant is listed");
@@ -19,15 +19,14 @@ fn check_family<M: MessageFamily + Debug>(messages: &[M], distinct_ids: usize) {
             assert!(!text.as_str().is_empty(), "{message:?} in {locale:?}");
             assert!(!text.fallback(), "{message:?} derives from English in {locale:?}");
         }
-        let english = Catalog::new(Locale::English).localized(message);
         let spanish = Catalog::new(Locale::Spanish).localized(message);
-        assert!(spanish.fallback(), "{message:?} is not translated yet");
-        assert_eq!(spanish.as_str(), english.as_str(), "{message:?}");
+        assert!(!spanish.fallback(), "{message:?} is translated");
+        assert!(!spanish.as_str().is_empty(), "{message:?}");
     }
 }
 
 #[test]
-fn settings_keys_render_and_fall_back() {
+fn settings_keys_render_and_translate() {
     use ActionsSettingsMessage as M;
     check_family(
         &[
@@ -74,7 +73,7 @@ fn settings_keys_render_and_fall_back() {
 }
 
 #[test]
-fn secrets_keys_render_and_fall_back() {
+fn secrets_keys_render_and_translate() {
     use ActionsSecretsMessage as M;
     check_family(
         &[
@@ -120,7 +119,7 @@ fn secrets_keys_render_and_fall_back() {
 }
 
 #[test]
-fn environment_keys_render_and_fall_back() {
+fn environment_keys_render_and_translate() {
     use ActionsEnvironmentMessage as M;
     check_family(
         &[
@@ -163,7 +162,7 @@ fn environment_keys_render_and_fall_back() {
 }
 
 #[test]
-fn runner_keys_render_and_fall_back() {
+fn runner_keys_render_and_translate() {
     use ActionsRunnersMessage as M;
     check_family(
         &[
@@ -241,7 +240,7 @@ fn counts_choose_their_noun_and_arguments_stay_plain_text() {
     assert_eq!(english(ActionsEnvironmentMessage::Reviewers { count: 2 }), "2 reviewers");
     let attack = "<img src=x onerror=alert(1)>";
     let spanish = Catalog::new(Locale::Spanish).localized(ActionsSettingsMessage::StopTrusting { name: attack });
-    assert_eq!(spanish.as_str(), format!("Stop trusting {attack}"));
+    assert_eq!(spanish.as_str(), format!("Dejar de confiar en {attack}"));
     let rtl = Catalog::new(Locale::PseudoRtl).localized(ActionsSecretsMessage::DeleteSecret { name: attack });
     assert!(rtl.as_str().contains(&format!("\u{2068}{attack}\u{2069}")), "{rtl}");
 }

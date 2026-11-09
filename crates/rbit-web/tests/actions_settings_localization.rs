@@ -1,6 +1,5 @@
-//! The Actions settings pages render their text through the catalog: in a Spanish page
-//! the untranslated messages fall back to English marked `lang="en"`, the shell's
-//! translated breadcrumb is not, and an English page wraps nothing.
+//! The Actions settings pages render their text through the catalog: a Spanish page shows
+//! the translated messages without English marking, and an English page wraps nothing.
 
 use std::sync::Arc;
 
@@ -74,29 +73,40 @@ impl Fixture {
 }
 
 #[tokio::test]
-async fn settings_text_falls_back_to_marked_english_in_spanish() {
+async fn settings_text_is_translated_in_spanish() {
     let fixture = Fixture::new().await;
     fixture.enable().await;
     let pages = [
-        ("/alice/rocket/settings/actions", ["Run workflows in this repository", "Trusted pull request authors"]),
-        ("/alice/rocket/settings/actions/runners", ["Registration tokens", "No runners yet"]),
-        ("/alice/rocket/settings/actions/environments", ["New environment", "No environments"]),
-        ("/settings/actions", ["Add secret", "No variables"]),
+        (
+            "/alice/rocket/settings/actions",
+            [
+                ("Run workflows in this repository", "Ejecutar flujos de trabajo en este repositorio"),
+                ("Trusted pull request authors", "Autores de confianza de solicitudes de cambios"),
+            ],
+        ),
+        (
+            "/alice/rocket/settings/actions/runners",
+            [("Registration tokens", "Tokens de registro"), ("No runners yet", "Aún no hay agentes")],
+        ),
+        ("/alice/rocket/settings/actions/environments", [("New environment", "Nuevo entorno"), ("No environments", "No hay entornos")]),
+        ("/settings/actions", [("Add secret", "Añadir secreto"), ("No variables", "No hay variables")]),
     ];
-    for (path, fallbacks) in pages {
+    for (path, messages) in pages {
         let spanish = fixture.main(path, "es").await;
         assert!(spanish.contains("lang=\"es\""), "{path} content follows the page language");
-        for fallback in fallbacks {
-            assert!(spanish.contains(&format!("<span lang=\"en\">{fallback}</span>")), "{path}: {fallback} falls back: {spanish}");
+        for (english, translated) in messages {
+            assert!(spanish.contains(translated), "{path}: {translated} is translated: {spanish}");
+            assert!(!spanish.contains(english), "{path}: {english} no longer falls back");
         }
+        assert!(!spanish.contains("<span lang=\"en\">"), "{path}: nothing falls back to English");
         let english = fixture.main(path, "en").await;
-        assert!(fallbacks.iter().all(|text| english.contains(text)), "{path} in English");
+        assert!(messages.iter().all(|(text, _)| english.contains(text)), "{path} in English");
         assert!(!english.contains("<span lang=\"en\">"), "{path}: English pages never wrap their own text");
     }
     let spanish = fixture.main("/alice/rocket/settings/actions", "es").await;
     assert!(spanish.contains(">Configuración</a>"), "the shell's translated breadcrumb is not wrapped");
     assert!(
-        spanish.contains("<span lang=\"en\">Workflows under <span class=\"font-mono text-ink\" dir=\"ltr\">"),
-        "a styled argument stays inside its fallback sentence"
+        spanish.contains("Los flujos de trabajo de <span class=\"font-mono text-ink\" dir=\"ltr\">"),
+        "a styled argument stays inside its translated sentence"
     );
 }
