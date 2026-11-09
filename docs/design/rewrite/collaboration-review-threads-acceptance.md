@@ -64,9 +64,11 @@ tests of the affected crates, rewrite contracts, licenses, front-end build): all
 | Rewrite contracts: Node policy tests | 331 passed, 15 skipped, 0 failed |
 | Licenses and advisories, front-end build | pass |
 
-The existing suites ran unchanged, including `rbit-services` `pulls` (line comments,
-replies, pending reviews, resolution, review requests and withdrawals) and the
-`rbit-web` pull request routes and views. New: `rbit-collaboration/tests/review_requests.rs`
+Run 203's tests covered the changed crates, unchanged: `rbit-collaboration` 122,
+`rbit-core` 146 and `rbit-services` 782 (including `pulls`: line comments, replies,
+pending reviews, resolution, review requests and withdrawals). The `rbit-web` route and
+view changes of the first review-thread slice were tested by quick run 187 (684
+`rbit-web` tests). New: `rbit-collaboration/tests/review_requests.rs`
 (one answer for unknown names, organisations and unreadable repositories, no access
 lookup for organisations, author refusal, existing requests, the limit, withdrawal
 order, the pending lookup skipped when starting a review) and unit tests for
