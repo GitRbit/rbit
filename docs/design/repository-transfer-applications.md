@@ -1,19 +1,29 @@
 # Repository transfer and old-address applications
 
 `rbit-repositories::transfer::RepositoryTransfer` owns the transfer command's
-administration/confirmation/destination/suspension decisions and its compensating
-operation ordering. `TransferService` preserves its public API and delegates through
-one borrowed `TransferBridge`; no request store or context is cloned for delegation.
-The suggested-owner picker retains its existing single membership vector and lazy
-iterator projection in the service adapter. Shared creation-owner authority remains
-the existing `authorised_owner` bridge, including its personal-owner short circuit.
+administration/confirmation/destination/suspension decisions, the owner suggestions
+and its compensating operation ordering. Non-administrators resolve the destination
+through the shared `creation::RepositoryOwnership` grant directly. Persistence is the
+`TransferRepository` port, implemented by `rbit_storage::TransferStore`, which borrows
+the database and opens the same store handle per call as before (repositories for
+owner lookup and the owner-change transaction, accounts for suspension, organizations
+for suggestions) and maps a uniqueness conflict to `TransferWriteError::Conflict`.
+`TransferService` preserves its public API; its borrowed `TransferBridge` supplies
+only request effects (reader close, disk relocation, event and audit). The
+suggested-owner picker keeps its single membership vector and lazy projection.
 
 `RepositoryAliases` owns current-address precedence, Git `.git` stripping, old-address
-fallback and permission-filtered redirect publication. `AliasView` borrows the exact
-existing repository service/store and viewer. Current-address denial never falls
-back to another old address. Browser lookup does not strip `.git` or add a current
-lookup: redirect triggers already remove reclaimed aliases. Missing aliases skip
-permission and reader work entirely.
+fallback and permission-filtered redirect publication. Address lookup is the
+`RepositoryAddresses` port, implemented by `RepositoryStore`; `AliasView` borrows the
+exact existing repository service/store and viewer for open and read permission.
+`RepositoryAliases::resolve` is the single current-then-old lookup used by the LFS,
+deploy-key and Actions task-token openers, which previously each repeated it.
+Current-address denial never falls back to another old address. Browser lookup does
+not strip `.git` or add a current lookup: redirect triggers already remove reclaimed
+aliases. Missing aliases skip permission and reader work entirely.
+
+The ledger row is `ported`; see the
+[acceptance record](rewrite/repositories-transfer-acceptance.md).
 
 ## Preserved boundaries
 
@@ -45,7 +55,7 @@ caller's lease and prevent the subsequent SQL step; cancellation after SQL can o
 later event/audit work. This application port neither adds durable reconciliation nor
 claims to solve these existing lifecycle gaps. Migration 0016 remains the only alias
 transaction authority. Admin direct deletion and other lifecycle owners are outside
-this atom; the feature group remains baseline-retained until its acceptance gates.
+this row.
 
 ## Acceptance gates
 
@@ -56,12 +66,6 @@ failed compensation. The real service fixture adds archived transfer, private ol
 address filtering, Git alias opening and reclaimed-address precedence to the existing
 team-grant/collaborator/star/event/audit/duplicate rollback cases.
 
-Rust tests and AST type checks are prepared, not executed in this source-only atom.
-Run the shared helper's package tests for rbit-repositories; the services integration
-binary with filter `transfers::`; existing redirect/access/rename integration cases;
-and strict all-target Clippy for both packages. Run the structural AST component gate
-for the added legacy adapter mappings. No runtime speed improvement is claimed.
-
-Source validation: formatting and diff checks passed; authored-source/legacy-size
-checks found 1,549 files and zero violations. The full Node suite passed 541 tests
-with seven skips. These checks do not substitute for the pending Rust/AST gates.
+Executed results, the retired legacy paths and the boundary checks that keep them out
+are recorded in the [acceptance record](rewrite/repositories-transfer-acceptance.md).
+No runtime speed improvement is claimed.
