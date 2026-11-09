@@ -2,10 +2,11 @@
 //!
 //! Callers resolve current, repository-scoped grants and authenticated actor facts.
 //! This crate combines those facts; it never authenticates credentials, loads grants,
-//! or decides whether a previously cached grant is still valid. Organisation, team and
-//! branch protection rules reach records only through their ports; storage keeps race
-//! authority.
+//! or decides whether a previously cached grant is still valid. Organisation, team,
+//! collaborator and branch protection rules reach records only through their ports;
+//! storage keeps race authority.
 
+pub mod collaborators;
 pub mod organizations;
 mod policy;
 pub mod protection;

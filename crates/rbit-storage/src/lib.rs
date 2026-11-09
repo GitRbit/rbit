@@ -9,6 +9,7 @@
 //!
 //! Stores speak in `rbit-core` domain types; SQL rows never leak out of this crate.
 
+mod access_collaborators;
 mod access_organizations;
 mod access_protection;
 mod access_teams;
@@ -42,6 +43,7 @@ pub mod sealing;
 pub mod sqlite;
 mod work;
 
+pub use access_collaborators::CollaboratorAccessStore;
 pub use access_organizations::OrganizationAccessStore;
 pub use access_teams::TeamAccessStore;
 pub use error::StorageError;
