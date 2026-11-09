@@ -41,13 +41,22 @@ fn original_families_render_their_english_text_in_the_new_locales() {
 
 #[test]
 fn family_messages_fall_back_marked_english_in_every_new_locale() {
+    let english = Catalog::new(Locale::English);
     for locale in NEW {
-        let text = Catalog::new(locale).localized(IssueMessage::NewIssue);
-        assert_eq!(text.as_str(), Catalog::new(Locale::English).localized(IssueMessage::NewIssue).as_str());
-        assert!(text.fallback(), "{locale:?}");
-        assert_eq!(text.marked_lang(), Some("en"), "{locale:?}");
-        let nav = Catalog::new(locale).localized(SettingsNavMessage::Profile);
-        assert!(nav.fallback(), "{locale:?} has no settings navigation entries yet");
+        let catalog = Catalog::new(locale);
+        let messages = [
+            (catalog.localized(IssueMessage::NewIssue), english.localized(IssueMessage::NewIssue)),
+            (catalog.localized(SettingsNavMessage::Profile), english.localized(SettingsNavMessage::Profile)),
+        ];
+        // A locale may have translated these; whichever it is, the mark must follow.
+        for (text, source) in messages {
+            if text.fallback() {
+                assert_eq!(text.as_str(), source.as_str(), "{locale:?}");
+                assert_eq!(text.marked_lang(), Some("en"), "{locale:?}");
+            } else {
+                assert_eq!(text.marked_lang(), Some(locale.tag()), "{locale:?}");
+            }
+        }
         let timestamp = Localized::english_only("2 hours ago".to_owned(), locale);
         assert_eq!(timestamp.marked_lang(), Some("en"), "{locale:?}");
     }

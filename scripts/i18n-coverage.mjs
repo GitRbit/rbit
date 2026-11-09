@@ -97,11 +97,17 @@ export function coverage(root) {
   const locales = readdirSync(translations, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
   return new Map(locales.map((locale) => {
     const directory = join(translations, locale);
-    const rows = rustFiles(directory).sort().flatMap((path) =>
-      [...tableEntries(read(path))].map(([family, translated]) => ({
-        family, file: relative(directory, path).replace(/\\/g, "/"), total: total(family), translated: Math.min(translated, total(family)),
-      })));
-    return [locale, rows];
+    // A large family may spread its arms over sibling modules: one row per family, named
+    // after the first file that has it, with the arms of every file counted.
+    const rows = new Map();
+    for (const path of rustFiles(directory).sort()) {
+      for (const [family, translated] of tableEntries(read(path))) {
+        const row = rows.get(family) ?? { family, file: relative(directory, path).replace(/\\/g, "/"), total: total(family), translated: 0 };
+        row.translated = Math.min(row.translated + translated, row.total);
+        rows.set(family, row);
+      }
+    }
+    return [locale, [...rows.values()]];
   }));
 }
 
