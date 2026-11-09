@@ -27,6 +27,7 @@ import { checkNotificationsMailRetirement } from "./notifications-mail-retiremen
 import { checkAccessPolicyRetirement } from "./access-policy-retirement.mjs";
 import { checkGitTransportRetirement } from "./git-transport-retirement.mjs";
 import { checkActionsArtifactsCachesRetirement } from "./actions-artifacts-caches-retirement.mjs";
+import { checkPresentationRetirement } from "./presentation-retirement.mjs";
 import { checkCollaborationFeatures, checkCollaborationGraphs } from "./collaboration-features.mjs";
 import { checkUnifiedModelBoundary } from "./identity-model-boundary.mjs";
 import { checkInventoryCompileIsolation } from "./inventory-isolation.mjs";
@@ -219,6 +220,7 @@ export function check(root) {
     ...checkNotificationsMailRetirement(files),
     ...checkGitTransportRetirement(files),
     ...checkActionsArtifactsCachesRetirement(files),
+    ...checkPresentationRetirement(files),
     ...checkPlatformBoundary(root, files), ...checkMigrations(root, baseline), ...checkLedger(root, ledger)] };
 }
 
