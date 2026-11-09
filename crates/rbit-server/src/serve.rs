@@ -49,6 +49,7 @@ pub async fn run(config: Config) -> anyhow::Result<bool> {
 
     let purger = spawn_session_purger(services.accounts.clone());
     services.spawn_background();
+    let release_checks = crate::updates::start(&config.updates, services.updates.clone());
     let background = services.clone();
     let state = AppState::new(Arc::clone(&config), services);
     let mut restart = state.restart.subscribe();
@@ -81,7 +82,7 @@ pub async fn run(config: Config) -> anyhow::Result<bool> {
         tracing::warn!(%error, "SSH host task failed during shutdown");
     }
     // Stop background work before closing the stores it writes to.
-    background.shutdown().await;
+    tokio::join!(crate::updates::shutdown(&release_checks), background.shutdown());
     storage.database.close().await;
     served?;
     Ok(shutdown_rx.await.unwrap_or(false))

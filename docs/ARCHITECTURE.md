@@ -1589,7 +1589,8 @@ history, so an old cached page cannot erase or resurrect a newer notice. A newer
 removes it; a newer available snapshot from a preload can reveal it. This adds no upstream
 request to page rendering.
 
-`UpdateService` owns a single cancellable background task. It reads only the fixed
+The server composes a single cancellable background checker (`rbit-server` `updates`)
+that publishes to the shared `UpdateNotices` snapshot in `rbit-services`. It reads only the fixed
 `https://api.github.com/repos/GitRbit/rbit/releases/latest` endpoint, with a constant
 versionless User-Agent, no credentials, cookies, instance identity or running-version
 parameter. The client honors deployment proxy settings, requires HTTPS, refuses redirects,
@@ -1605,8 +1606,8 @@ successful notice survives transient failures; restarting forgets the cache and 
 one new check. Page rendering only reads a mutex-protected snapshot and never contacts
 upstream. The footer shows a generic release-notes link; administrators also see check
 status. No release is installed or downloaded automatically. Tests inject local HTTP
-fixtures into the private worker constructor and disable live checks in application
-test harnesses.
+fixtures or scripted results into the checker's private `ReleaseSource` port; application
+test harnesses compose services without the checker and disable live checks.
 
 `[updates] check_for_updates = false` disables the task and its HTTP client independently
 of `report_version`. Both options default to true and are deployment configuration:

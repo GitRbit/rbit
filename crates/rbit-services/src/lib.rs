@@ -135,7 +135,7 @@ pub struct ServiceContext {
 #[derive(Debug, Clone)]
 pub struct Services {
     passwords: PasswordWork,
-    pub updates: updates::UpdateService,
+    pub updates: updates::UpdateNotices,
     pub contributions: contributions::ContributionService,
     pub accounts: AccountService,
     pub admin: AdminService,
@@ -272,7 +272,7 @@ impl Services {
 
         Ok(Self {
             passwords: passwords.clone(),
-            updates: updates::UpdateService::new(&config.updates),
+            updates: updates::UpdateNotices::new(&config.updates),
             accounts: accounts.clone(),
             contributions: contributions::ContributionService::new(ctx.clone()),
             audit: AuditService::new(ctx.clone()),

@@ -25,6 +25,7 @@ mod config;
 mod serve;
 mod ssh;
 mod telemetry;
+mod updates;
 
 use clap::Parser;
 

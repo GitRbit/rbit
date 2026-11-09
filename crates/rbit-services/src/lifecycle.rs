@@ -5,7 +5,6 @@ use crate::{ActionsService, Services};
 impl Services {
     /// Starts background subscribers and periodic work. Call once, after start-up.
     pub fn spawn_background(&self) {
-        self.updates.spawn_background();
         self.jobs.spawn_background();
         self.recovery.spawn_background();
         self.webhooks.spawn_background();
@@ -43,7 +42,6 @@ impl Services {
         );
         tokio::join!(
             self.accounts.shutdown_session_effects(),
-            self.updates.shutdown(),
             self.recovery.shutdown(),
             self.jobs.shutdown(),
             self.webhooks.shutdown(),

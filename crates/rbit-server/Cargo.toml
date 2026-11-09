@@ -36,6 +36,8 @@ time.workspace = true
 # The command-line client: the REST API over HTTPS (ring-backed rustls, as the server's other
 # clients), its logins in TOML, and artifacts unpacked from their tar.gz.
 reqwest = { workspace = true, features = ["json", "rustls-no-provider"] }
+# Release checks: SemVer precedence of the upstream release tag.
+semver.workspace = true
 toml.workspace = true
 tar.workspace = true
 flate2.workspace = true
