@@ -55,7 +55,22 @@ Merge gating, required checks, protection and review dismissal are not touched.
 
 ## Results
 
-RESULTS_PLACEHOLDER
+A quick node check (format, clippy with `-D warnings`, affected-crate tests, rewrite
+contracts, licenses, front-end build) of the branch tip passed against base `f1913082`:
+
+| Gate | Result |
+| --- | --- |
+| `cargo fmt --all --check`, clippy `-D warnings` | pass |
+| Tests of the affected crates | 2181 run, 2181 passed, 1 skipped |
+| Rewrite contracts: `scripts/rewrite/check.mjs` | 0 violations (2798 authored files) |
+| Rewrite contracts: AST type check, components, password boundary | pass |
+| Rewrite contracts: Node policy tests | 331 passed, 15 skipped, 0 failed |
+| Licenses and advisories, front-end build | pass |
+
+The existing suites ran unchanged, including `rbit-services` `pulls` (creation,
+duplicates, cross-fork heads, review threads, resolution, requests) and the `rbit-web`
+pull request routes and views. Not run here: the full workspace suite and `rbit-e2e`,
+which the quick mode leaves to the full check.
 
 ## Remaining for `collaboration.pulls`
 
@@ -94,4 +109,28 @@ access lookups. Review submission and dismissal policy belong to `collaboration.
 
 ## Cost
 
-COST_PLACEHOLDER
+| Measure | Value |
+| --- | --- |
+| Code commits | 4 (opening, its boundary, review threads, their boundary) plus this record and three fixes to the base stack |
+| Files changed (whole branch) | 23 |
+| Lines added / removed | 894 / 130 |
+| Production Rust (`src`) | 15 files, +514 / −128 (new: `pulls/creation.rs` application 141, adapter 85; `review_threads.rs` 165) |
+| Tests | `rbit-collaboration/tests/pull_creation.rs` (124 lines) and unit tests in `branches.rs` and `review_threads.rs` |
+| Checker and policy scripts | two Node guards (44 and 42 lines), their tests, four checker lines |
+
+Tricky parts:
+
+- Choosing slices that do not touch merge gating: the pure pull models depend on
+  protection's `MergeRules`, so they stay in `rbit-core` until protection's models move.
+- Keeping the opening order exact, including the network lookup only across
+  repositories and the throttle just before the insert.
+- Sharing one resolve rule between the service's enforcement and the page's button.
+- The base stack needed two fixes found by the checks: rustfmt import order in
+  `rbit-storage/src/sqlite/mod.rs`, and an explicit `super::filter` path for the AST type
+  check in `rbit-collaboration/src/issues/dashboard.rs`; an unused helper in
+  `rbit-services/src/issues.rs` was removed as well.
+
+Estimate: the rest of `collaboration.pulls` (merging and gating once protection's models
+have a home, reviews and dismissal, base changes, background work) is three to four
+sessions of this size; the rest of `collaboration.review-threads` (line anchoring and
+pending-review routing) is about one.
