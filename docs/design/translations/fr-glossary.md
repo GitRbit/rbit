@@ -27,7 +27,8 @@ The terminology follows the French interfaces of mainstream developer tools.
 |---|---|---|
 | repository | dépôt (m.) | |
 | branch | branche (f.) | default branch: branche par défaut |
-| commit (noun) | commit (m.) | to commit: valider / créer un commit |
+| commit (noun) | commit (m.) | to commit: valider (« Valider les modifications »); commit message: message de commit |
+| head branch / base branch | branche source / branche de base | head repository: dépôt source |
 | tag (Git) | tag (m.) | never « étiquette », which is a label |
 | label | étiquette (f.) | |
 | pull request | pull request (f.) | « la pull request », plural « pull requests » |
@@ -103,6 +104,11 @@ The terminology follows the French interfaces of mainstream developer tools.
 | email | e-mail (m.) / adresse e-mail (f.) | |
 | uptime | disponibilité (f.) | |
 | rate limiting | limitation de débit (f.) | |
+| upstream / remote | amont (m.) / dépôt distant (m.) | |
+| fetch (mirror) | récupération (f.) / récupérer | |
+| branding and policies | image de marque et règles | |
+| timeout | délai (d’expiration) (m.) | |
+| KiB, bytes | Kio, octets | |
 
 ## Terms to revisit
 
