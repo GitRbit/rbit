@@ -181,6 +181,10 @@ This section remains unreleased until the complete rewrite and release gates pas
 - Text-based reference suggestions avoid constructing an unused issue-store handle;
   numeric suggestions retain the existing indexed lookup and SQL work.
 
+- Pages inline about 8 KB less CSS: the branch graph, admin monitoring and header
+  language dialog styles move to a linked, content-versioned `deferred.css` that
+  browsers cache for good. `npm run build:css` now builds both stylesheets.
+
 ### Fixed
 
 - Fetch locked dependencies before guarded CI compilation so fresh runners can
