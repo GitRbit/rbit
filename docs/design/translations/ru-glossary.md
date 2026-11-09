@@ -106,6 +106,14 @@ this list; change a term here and in every table at once.
 | transfer ownership | передача владения |
 | identity provider | провайдер удостоверений |
 | timeout | тайм-аут |
+| log (job output) / raw log | журнал / полный журнал |
+| re-run | перезапустить |
+| actor (run filter) / triggered by | пользователь / инициатор |
+| dispatch / schedule (workflow event) | по вызову / по расписанию |
+| queued / in progress / skipped (run status) | в очереди / выполняется / пропущено |
+| footer | подвал |
+| colorblind (themes) / theme family | для дальтоников / семейство тем |
+| display language / preferred language | язык интерфейса / предпочитаемый язык |
 
 ## Terms worth revisiting
 

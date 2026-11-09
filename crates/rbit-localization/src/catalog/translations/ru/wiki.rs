@@ -118,5 +118,16 @@ entries! { Ru:
             text.literal("».");
         }
         WikiMessage::MorePages => text.literal("Другие страницы"),
+        WikiMessage::DeleteKeepsHistory => text.literal("Страница будет убрана из вики. Её история сохранится, и пользователи с правом записи смогут восстановить её из удалённых страниц."),
+        WikiMessage::DeletedPages => text.literal("Удалённые страницы"),
+        WikiMessage::NoDeletedPages => text.literal("Удалённых страниц нет."),
+        WikiMessage::DeletedNotice => text.literal("Эта страница удалена. Её история сохранена."),
+        WikiMessage::RestorePage => text.literal("Восстановить страницу"),
+        WikiMessage::MoreDeletedPages => text.literal("Более ранние удаления"),
+        WikiMessage::RestoreBlocked => text.literal("Этот путь теперь занят другой страницей. Сначала переименуйте ту страницу, затем восстановите эту."),
+        WikiMessage::RenamedFrom { path } => {
+            text.literal("Прежний путь: ");
+            text.argument(path);
+        }
     }
 }
