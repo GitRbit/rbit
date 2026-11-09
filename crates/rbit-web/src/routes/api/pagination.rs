@@ -10,6 +10,7 @@ use axum::{
 };
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::Serialize;
+use serde_json::{Map, Value};
 
 use super::error::{ApiError, ApiResult};
 use crate::AppState;
@@ -129,6 +130,24 @@ impl<T: Serialize> IntoResponse for Paged<T> {
         if let Some(total) = self.total {
             headers.insert(TOTAL_COUNT, HeaderValue::from(total));
         }
+        if let Some(link) = self.link.and_then(|link| HeaderValue::from_str(&link).ok()) {
+            headers.insert(header::LINK, link);
+        }
+        response
+    }
+}
+
+impl Paged<Value> {
+    /// GitHub's wrapped list: `{"total_count": n, key: […]}` with the page's `Link` and
+    /// `X-Total-Count`, which is always sent (0 when the total is unknown).
+    pub fn wrapped(self, key: &str) -> Response {
+        let total = self.total.unwrap_or_default();
+        let mut body = Map::new();
+        body.insert("total_count".to_owned(), total.into());
+        body.insert(key.to_owned(), Value::Array(self.items));
+        let mut response = Json(Value::Object(body)).into_response();
+        let headers = response.headers_mut();
+        headers.insert(TOTAL_COUNT, HeaderValue::from(total));
         if let Some(link) = self.link.and_then(|link| HeaderValue::from_str(&link).ok()) {
             headers.insert(header::LINK, link);
         }

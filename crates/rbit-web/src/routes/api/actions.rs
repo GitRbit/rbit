@@ -39,7 +39,7 @@ use std::collections::BTreeMap;
 use axum::{
     Json,
     extract::{Path, Query, State},
-    http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
 };
 use rbit_core::{
@@ -63,7 +63,7 @@ use rbit_services::{
     webhooks::payloads::timestamp,
 };
 use serde::Deserialize;
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 
 use super::{
     ApiMethod::{Delete, Get, Patch, Post, Put},
@@ -71,7 +71,7 @@ use super::{
     auth::Caller,
     error::{ApiError, ApiResult},
     json::ApiJson,
-    pagination::{Paged, Pager},
+    pagination::Pager,
     route,
 };
 use crate::AppState;
@@ -209,22 +209,6 @@ fn base_url(state: &AppState) -> &str {
     state.config.server.base_url()
 }
 
-/// GitHub's wrapped list: `{"total_count": n, key: […]}` with the page's `Link` and
-/// `X-Total-Count`.
-fn wrapped(key: &str, page: Paged<Value>) -> Response {
-    let total = page.total.unwrap_or_default();
-    let mut body = Map::new();
-    body.insert("total_count".to_owned(), total.into());
-    body.insert(key.to_owned(), Value::Array(page.items));
-    let mut response = Json(Value::Object(body)).into_response();
-    let headers = response.headers_mut();
-    headers.insert(HeaderName::from_static("x-total-count"), HeaderValue::from(total));
-    if let Some(link) = page.link.and_then(|link| HeaderValue::from_str(&link).ok()) {
-        headers.insert(header::LINK, link);
-    }
-    response
-}
-
 /// `{}` with `status`, as GitHub answers the actions on runs.
 fn accepted(status: StatusCode) -> Response {
     (status, Json(json!({}))).into_response()
@@ -321,7 +305,7 @@ async fn runs_page(
     let total = if matches_nothing { 0 } else { page.total };
     let base = base_url(state);
     let items = page.runs.iter().map(|run| hooks::workflow_run(run, &ctx.repo, &page.people, base)).collect();
-    Ok(wrapped("workflow_runs", pager.paged(items, Some(total), false)))
+    Ok(pager.paged(items, Some(total), false).wrapped("workflow_runs"))
 }
 
 /// `GET /repos/{owner}/{repo}/actions/runs/{run_id}`
@@ -343,7 +327,7 @@ pub async fn run_jobs(State(state): State<AppState>, caller: Caller, pager: Page
     let runner = |job: &rbit_core::actions::Job| job.runner_id.and_then(|id| runners.get(&id)).map(String::as_str);
     let items = shown.iter().map(|job| hooks::workflow_job(job, &detail.run, &ctx.repo, &steps, runner(job), base)).collect();
     let total = u64::try_from(detail.jobs.len()).unwrap_or(u64::MAX);
-    Ok(wrapped("jobs", pager.paged(items, Some(total), false)))
+    Ok(pager.paged(items, Some(total), false).wrapped("jobs"))
 }
 
 /// `GET /repos/{owner}/{repo}/actions/jobs/{job_id}`
@@ -489,7 +473,7 @@ pub async fn workflows(State(state): State<AppState>, caller: Caller, pager: Pag
     let known = actions(&state)?.workflow_states(&ctx).await?;
     let base = base_url(&state);
     let items = known.iter().map(|workflow| workflow_json(workflow, &ctx, base)).collect();
-    Ok(wrapped("workflows", pager.page_of(items)))
+    Ok(pager.page_of(items).wrapped("workflows"))
 }
 
 // Actions: disabled workflows.
@@ -671,7 +655,7 @@ pub async fn run_artifacts(
     let run = actions.run_by_id(&ctx, path.run()?).await?.run;
     let base = base_url(&state);
     let items = actions.run_artifacts(&ctx, run.id).await?.iter().map(|artifact| artifact_json(artifact, &ctx, base)).collect();
-    Ok(wrapped("artifacts", pager.page_of(items)))
+    Ok(pager.page_of(items).wrapped("artifacts"))
 }
 
 /// The filter of `GET …/actions/artifacts`.
@@ -696,7 +680,7 @@ pub async fn list_artifacts(
     let (artifacts, total) = actions(&state)?.repo_artifacts(&ctx, name.as_deref(), offset, limit).await?;
     let base = base_url(&state);
     let items = artifacts.iter().map(|artifact| artifact_json(artifact, &ctx, base)).collect();
-    Ok(wrapped("artifacts", pager.paged(items, Some(total), false)))
+    Ok(pager.paged(items, Some(total), false).wrapped("artifacts"))
 }
 
 /// `GET /repos/{owner}/{repo}/actions/artifacts/{artifact_id}`
@@ -791,7 +775,7 @@ pub async fn list_caches(
     let offset = u32::try_from(pager.offset()).unwrap_or(u32::MAX);
     let (key, reference) = (non_empty(&query.key), non_empty(&query.reference));
     let (entries, total) = actions(&state)?.repo_caches(&ctx, key.as_deref(), reference.as_deref(), order, offset, limit).await?;
-    Ok(wrapped("actions_caches", pager.paged(entries.iter().map(cache_json).collect(), Some(total), false)))
+    Ok(pager.paged(entries.iter().map(cache_json).collect(), Some(total), false).wrapped("actions_caches"))
 }
 
 /// `DELETE /repos/{owner}/{repo}/actions/caches?key=…[&ref=…]`: the entries deleted.
@@ -879,7 +863,7 @@ pub async fn list_runners(
     let total = u64::try_from(runners.len()).unwrap_or(u64::MAX);
     let shown: Vec<_> = runners.into_iter().skip(pager.offset()).take(pager.limit()).collect();
     let items = runners_json(actions, &shown).await?;
-    Ok(wrapped("runners", pager.paged(items, Some(total), false)))
+    Ok(pager.paged(items, Some(total), false).wrapped("runners"))
 }
 
 /// Runner `id` of exactly this repository, organisation or user.
@@ -1029,7 +1013,7 @@ pub async fn list_secrets(
     let owner = Owner::load(&state, &caller, &path).await?;
     let secrets = actions(&state)?.list_secrets(owner.target()).await?;
     let items = secrets.iter().map(|secret| secret_json(secret, owner.is_account())).collect();
-    Ok(wrapped("secrets", pager.page_of(items)))
+    Ok(pager.page_of(items).wrapped("secrets"))
 }
 
 /// Secret `name` of `owner`, if it exists.
@@ -1119,7 +1103,7 @@ pub async fn list_variables(
     let owner = Owner::load(&state, &caller, &path).await?;
     let variables = actions(&state)?.list_variables(owner.target()).await?;
     let items = variables.iter().map(|variable| variable_json(variable, owner.is_account())).collect();
-    Ok(wrapped("variables", pager.page_of(items)))
+    Ok(pager.page_of(items).wrapped("variables"))
 }
 
 /// The body of `POST …/actions/variables` and `PATCH …/actions/variables/{name}`.
