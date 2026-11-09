@@ -8,6 +8,7 @@ import { checkIdentityFeatures, checkIdentityModelGraphs, checkIdentityTokenGrap
 import { checkIdentityRetirement } from "./identity-retirement.mjs";
 import { checkAccessRetirement } from "./access-retirement.mjs";
 import { checkRepositoryTransferRetirement } from "./repository-transfer-retirement.mjs";
+import { checkRepositoryForksRetirement } from "./repository-forks-retirement.mjs";
 import { checkActionsDiscoveryRetirement } from "./actions-discovery-retirement.mjs";
 import { checkNotificationsRetirement } from "./notifications-retirement.mjs";
 import { checkActionsRunnerRetirement } from "./actions-runner-retirement.mjs";
@@ -195,6 +196,7 @@ export function check(root) {
     ...checkCollaboratorsRetirement(files),
     ...checkCollaborationFeatures(metadata), ...checkCollaborationGraphs(root),
     ...checkRepositoryTransferRetirement(files),
+    ...checkRepositoryForksRetirement(files),
     ...checkUnifiedModelBoundary(root, metadata), ...checkInventoryCompileIsolation(root),
     ...checkActionsDiscoveryRetirement(files),
     ...checkNotificationsRetirement(files),
