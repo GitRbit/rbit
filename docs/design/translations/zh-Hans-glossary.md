@@ -107,6 +107,8 @@ add it here in the same change. See "Translating a locale" in
 | digest | 摘要 |
 | check / status check | 检查 / 状态检查 |
 | timeline | 时间线 |
+| thread (an issue or pull request one is notified about) | 讨论 |
+| ref | 引用 |
 | author | 作者 |
 | participant | 参与者 |
 
@@ -155,7 +157,12 @@ add it here in the same change. See "Translating a locale" in
 | scope (token) | 权限范围 |
 | session | 会话 |
 | webhook | Webhook |
+| webhook secret, client secret | 密钥 |
 | delivery (webhook) | 投递 |
+| sign-in / identity provider | 登录提供方 / 身份提供方 |
+| linked account / unlink | 已关联的账户 / 取消关联 |
+| registration token (runner) | 注册令牌 |
+| revoke | 吊销 |
 | payload | 负载 |
 | organization | 组织 |
 | team | 团队 |
@@ -175,6 +182,9 @@ add it here in the same change. See "Translating a locale" in
 | audit log | 审计日志 |
 | suspend | 停用 |
 | configuration | 配置 |
+| deployment default / override | 部署默认值 / 覆盖项 |
+| insights cache | 洞察缓存 |
+| danger zone | 危险区域 |
 | explore | 探索 |
 | wiki | Wiki |
 | page (wiki) | 页面 |
