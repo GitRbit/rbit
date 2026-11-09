@@ -123,3 +123,38 @@ German has `Plural::One` (exactly 1) and `_` (everything else, including 0).
 | Learn more | Mehr erfahren | |
 | Save / Cancel / Delete / Edit | Speichern / Abbrechen / Löschen / Bearbeiten | |
 | Create / Close / Remove / Add | Erstellen / Schließen / Entfernen / Hinzufügen | |
+| danger zone | Gefahrenbereich | |
+| subscribe / unsubscribe | Abonnieren / Abbestellen | |
+| due date / past due | Fälligkeitsdatum / Überfällig | |
+| merge method / merge commit | Merge-Methode / Merge-Commit | |
+| force push | Force-Push | |
+| dismiss (a review) / resolve (a conversation) | verwerfen / als gelöst markieren | |
+| upstream | Quelle | „Quell-Repository“, „Quell-URL“ |
+| fetch | abrufen | „Abrufintervall“ |
+| pre-release | Vorabversion | |
+| release notes | Notizen | |
+| parent (commit) | Eltern-Commit | |
+| unarchive | Archivierung aufheben | |
+| pull mirror / push mirror | Pull-Spiegel / Push-Spiegel | |
+| site administration | Website-Administration | |
+| transfer ownership | Inhaberschaft übertragen | |
+| suspend / unsuspend | sperren / Sperre aufheben | |
+| namespace | Namensraum | |
+| digest (email) | Zusammenfassung | |
+| display name / bio / location | Anzeigename / Über mich / Standort | |
+| security key / authenticator app | Sicherheitsschlüssel / Authenticator-App | |
+| link / unlink (an account) | verknüpfen / trennen | |
+| revoke / expiration / generate | widerrufen / Ablauf / generieren | |
+| events (of a webhook) / redeliver | Ereignisse / Erneut zustellen | |
+| request / response / attempt | Anfrage / Antwort / Versuch | |
+| bypass | umgehen | |
+| pattern | Muster | |
+| registration token | Registrierungstoken | |
+| ephemeral (runner) | kurzlebig | |
+| deploy (v.) | bereitstellen | |
+| sign-in provider | Anmeldeanbieter | |
+| credentials | Zugangsdaten | |
+| retention / timeout / concurrency | Aufbewahrung / Timeout / Parallelität | |
+| rate limit | Ratenlimit | „Ratenbegrenzung“ for the feature |
+| history / preview | Verlauf / Vorschau | |
+| pagination | Seitennavigation | |
