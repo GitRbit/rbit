@@ -32,6 +32,8 @@
         "lib::notifications::fanout::DatabaseView",
         "lib::notification_email::outbox::ThreadOutbox",
         "lib::notification_email::outbox::DigestView",
+        "lib::webhooks::ports::StoreQueue",
+        "lib::webhooks::ports::Worker",
         "lib::forks::ForkService",
         "lib::forks::effects::ForkEffects",
         "lib::edits::EditView",

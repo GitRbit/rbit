@@ -41,6 +41,76 @@ pub fn check_secret(secret: &str) -> Result<Option<String>, SecretError> {
     Ok(Some(secret.to_owned()))
 }
 
+/// Why another hook cannot be created on an owner that already has `count` hooks.
+pub fn hook_limit_error(count: i64, repository: bool) -> Option<String> {
+    let kind = if repository { "repository" } else { "organization" };
+    (count >= MAX_HOOKS_PER_OWNER).then(|| format!("a {kind} can have at most {MAX_HOOKS_PER_OWNER} webhooks; delete one first"))
+}
+
+/// The page size and row offset of 1-based delivery log page `page`.
+pub fn delivery_page(page: u32, per_page: u32) -> (u32, u32) {
+    let per_page = per_page.max(1);
+    (per_page, page.max(1).saturating_sub(1).saturating_mul(per_page))
+}
+
+/// Why a hook's event list is refused; the message is shown to the administrator.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EventsError {
+    Unknown(String),
+    NeedsActions(String),
+    Empty,
+}
+
+impl std::fmt::Display for EventsError {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unknown(name) => write!(out, "unknown event \"{name}\"; choose from push, repository, release and fork"),
+            Self::NeedsActions(name) => write!(out, "\"{name}\" needs Actions, which this instance does not have"),
+            Self::Empty => out.write_str("choose at least one event"),
+        }
+    }
+}
+
+/// How a hook's event names are read: `parse` knows the wire names, `ping` is always
+/// sent (and so never stored), and `needs_actions` events exist only with Actions on.
+#[derive(Debug, Clone, Copy)]
+pub struct EventCatalog<P, G, A> {
+    pub parse: P,
+    pub ping: G,
+    pub needs_actions: A,
+}
+
+/// The events a hook subscribes to: trimmed names, `ping` dropped, sorted and
+/// de-duplicated, at least one, and Actions events only while Actions is enabled.
+pub fn subscribed_events<E, P, G, A>(
+    names: &[String],
+    catalog: &EventCatalog<P, G, A>,
+    actions_enabled: bool,
+) -> Result<Vec<E>, EventsError>
+where
+    E: Copy + Ord,
+    P: Fn(&str) -> Option<E>,
+    G: Fn(E) -> bool,
+    A: Fn(E) -> bool,
+{
+    let mut events = Vec::new();
+    for name in names {
+        let name = name.trim();
+        match (catalog.parse)(name) {
+            Some(event) if (catalog.ping)(event) => {}
+            Some(event) if !actions_enabled && (catalog.needs_actions)(event) => return Err(EventsError::NeedsActions(name.to_owned())),
+            Some(event) => events.push(event),
+            None => return Err(EventsError::Unknown(name.to_owned())),
+        }
+    }
+    events.sort_unstable();
+    events.dedup();
+    if events.is_empty() {
+        return Err(EventsError::Empty);
+    }
+    Ok(events)
+}
+
 /// How long to wait before retrying after `failed_attempts` failures. `random` in `[0, 1)`
 /// spreads retries by plus or minus 20 % so a receiver that comes back is not hit by a
 /// thundering herd.

@@ -32,6 +32,7 @@
 
 pub mod delivery;
 pub mod payloads;
+mod ports;
 
 use std::{
     sync::{
@@ -47,7 +48,7 @@ use rbit_core::{
     webhook::{Delivery, DeliveryId, Webhook, WebhookEvent, WebhookId, WebhookOwner, WebhookUrl},
 };
 pub use rbit_storage::sqlite::webhooks::SecretUpdate;
-use rbit_storage::sqlite::webhooks::{AttemptOutcome, ClaimedDelivery, NewDelivery, NewWebhook, WebhookStore, WebhookUpdate};
+use rbit_storage::sqlite::webhooks::{ClaimedDelivery, NewWebhook, WebhookStore, WebhookUpdate};
 use serde_json::Value;
 use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore, broadcast::error::RecvError};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -59,8 +60,13 @@ use crate::{
     events::Published,
 };
 
+use ports::{StoreQueue, Worker};
 pub use rbit_notifications::webhooks::policy::MAX_HOOKS_PER_OWNER;
-use rbit_notifications::webhooks::policy::{NextStep, check_secret, next_step, retention_cutoff};
+use rbit_notifications::webhooks::{
+    policy::{EventCatalog, check_secret, delivery_page, hook_limit_error, retention_cutoff, subscribed_events},
+    queue::{self as hook_queue, HookScope},
+    worker::{self, AttemptReport, DeliveryQueue},
+};
 /// Most commits read from Git for one ref update (`total_commits` counts up to this).
 const MAX_COUNTED_COMMITS: usize = 2_048;
 /// How long [`WebhookService::shutdown`] waits for deliveries in flight.
@@ -227,9 +233,8 @@ impl WebhookService {
             SecretUpdate::Set(secret) => validate_secret(&secret)?,
             SecretUpdate::Keep | SecretUpdate::Clear => None,
         };
-        if self.inner.store.count_for(owner).await? >= MAX_HOOKS_PER_OWNER {
-            let kind = if matches!(owner, WebhookOwner::Repository(_)) { "repository" } else { "organization" };
-            return Err(ServiceError::Invalid(format!("a {kind} can have at most {MAX_HOOKS_PER_OWNER} webhooks; delete one first")));
+        if let Some(error) = hook_limit_error(self.inner.store.count_for(owner).await?, matches!(owner, WebhookOwner::Repository(_))) {
+            return Err(ServiceError::Invalid(error));
         }
 
         // Reserved last, so events published from here on reach the new hook.
@@ -282,8 +287,7 @@ impl WebhookService {
     /// One page (1-based) of hook `id`'s deliveries, newest first.
     pub async fn deliveries(&self, target: HookTarget<'_>, id: WebhookId, page: u32, per_page: u32) -> Result<DeliveryPage, ServiceError> {
         let hook = self.get(target, id).await?;
-        let per_page = per_page.max(1);
-        let offset = page.max(1).saturating_sub(1).saturating_mul(per_page);
+        let (per_page, offset) = delivery_page(page, per_page);
         let deliveries = self.inner.store.list_deliveries(hook.id, per_page, offset).await?;
         let total = u64::try_from(self.inner.store.count_deliveries(hook.id).await?).unwrap_or_default();
         Ok(DeliveryPage { deliveries, total })
@@ -304,15 +308,8 @@ impl WebhookService {
         delivery: DeliveryId,
     ) -> Result<Delivery, ServiceError> {
         let original = self.delivery(target, id, delivery).await?;
-        let new = NewDelivery {
-            hook_id: original.hook_id,
-            guid: delivery::new_guid(),
-            event: original.event,
-            action: original.action,
-            payload: original.payload,
-        };
-        let ids = self.inner.store.enqueue(vec![new]).await?;
-        self.inner.wake.notify_one();
+        let queue = StoreQueue(&self.inner);
+        let ids = hook_queue::redeliver(&queue, original.hook_id, original.event, original.action, original.payload).await?;
         tracing::info!(target = %target.name(), hook = id.0, delivery = delivery.0, by = %actor.name(), "webhook delivery redelivered");
         let created = ids.first().copied().ok_or(ServiceError::NotFound)?;
         self.inner.store.find_delivery(original.hook_id, created).await?.ok_or(ServiceError::NotFound)
@@ -344,18 +341,7 @@ impl WebhookService {
 
     /// Queues `payload` for each of `hooks` and wakes the worker.
     async fn queue(&self, hooks: Vec<WebhookId>, event: WebhookEvent, payload: &Value) -> Result<Vec<DeliveryId>, ServiceError> {
-        if hooks.is_empty() {
-            return Ok(Vec::new());
-        }
-        let body = payload.to_string();
-        let action = payloads::action_of(event, payload);
-        let deliveries = hooks
-            .into_iter()
-            .map(|hook_id| NewDelivery { hook_id, guid: delivery::new_guid(), event, action: action.clone(), payload: body.clone() })
-            .collect();
-        let ids = self.inner.store.enqueue(deliveries).await?;
-        self.inner.wake.notify_one();
-        Ok(ids)
+        hook_queue::queue(&StoreQueue(&self.inner), hooks, event, payload).await
     }
 
     // ------------------------------------------------------------------ events
@@ -381,7 +367,7 @@ impl WebhookService {
             }
             DomainEvent::RepositoryCreated { repo, actor } => {
                 let Some(owned) = self.repository(*repo).await? else { return Ok(0) };
-                let hooks = self.subscribed(newest, Some(*repo), &org_of(&owned.owner), WebhookEvent::Repository).await?;
+                let hooks = self.subscribed(newest, &HookScope::repository(*repo, org_of(&owned.owner)), WebhookEvent::Repository).await?;
                 let sender = self.account(*actor).await?;
                 let repository = payloads::repository(&owned, &base, false);
                 let payload =
@@ -391,7 +377,7 @@ impl WebhookService {
             DomainEvent::RepositoryDeleted { repo, owner, full_name, actor } => {
                 // The repository's own hooks went with it; only its organisation's remain.
                 let Some(org) = self.inner.ctx.database.orgs().find(*owner).await? else { return Ok(0) };
-                let hooks = self.subscribed(newest, None, &[*owner], WebhookEvent::Repository).await?;
+                let hooks = self.subscribed(newest, &HookScope::deleted(*owner), WebhookEvent::Repository).await?;
                 let sender = self.account(*actor).await?;
                 let repository = payloads::deleted_repository(repo.0, full_name, Some(&org.account), &base);
                 let mut payload = payloads::repository_event("deleted", &repository, sender.as_ref(), &base);
@@ -401,16 +387,15 @@ impl WebhookService {
             DomainEvent::RepositoryTransferred { repo, from, to: _, actor } => {
                 let Some(owned) = self.repository(*repo).await? else { return Ok(0) };
                 let Some(previous) = self.account(*from).await? else { return Ok(0) };
-                let mut orgs = org_of(&owned.owner);
-                orgs.extend(org_of(&previous));
-                let hooks = self.subscribed(newest, Some(*repo), &orgs, WebhookEvent::Repository).await?;
+                let scope = HookScope::transferred(*repo, org_of(&owned.owner), org_of(&previous));
+                let hooks = self.subscribed(newest, &scope, WebhookEvent::Repository).await?;
                 let sender = self.account(*actor).await?;
                 let payload = payloads::transferred(&owned, self.is_fork(*repo).await?, &previous, sender.as_ref(), &base);
                 self.queue(hooks, WebhookEvent::Repository, &payload).await?.len()
             }
             DomainEvent::RepositoryArchived { repo, archived, actor } => {
                 let Some(owned) = self.repository(*repo).await? else { return Ok(0) };
-                let hooks = self.subscribed(newest, Some(*repo), &org_of(&owned.owner), WebhookEvent::Repository).await?;
+                let hooks = self.subscribed(newest, &HookScope::repository(*repo, org_of(&owned.owner)), WebhookEvent::Repository).await?;
                 let sender = self.account(*actor).await?;
                 let repository = payloads::repository(&owned, &base, self.is_fork(*repo).await?);
                 let action = if *archived { "archived" } else { "unarchived" };
@@ -420,14 +405,14 @@ impl WebhookService {
             }
             DomainEvent::RepositoryForked { repo, parent, actor } => {
                 let (Some(forkee), Some(origin)) = (self.repository(*repo).await?, self.repository(*parent).await?) else { return Ok(0) };
-                let hooks = self.subscribed(newest, Some(*parent), &org_of(&origin.owner), WebhookEvent::Fork).await?;
+                let hooks = self.subscribed(newest, &HookScope::repository(*parent, org_of(&origin.owner)), WebhookEvent::Fork).await?;
                 let sender = self.account(*actor).await?;
                 let payload = payloads::fork(&forkee, &origin, self.is_fork(*parent).await?, sender.as_ref(), &base);
                 self.queue(hooks, WebhookEvent::Fork, &payload).await?.len()
             }
             DomainEvent::ReleasePublished { repo, release, actor } => {
                 let Some(owned) = self.repository(*repo).await? else { return Ok(0) };
-                let hooks = self.subscribed(newest, Some(*repo), &org_of(&owned.owner), WebhookEvent::Release).await?;
+                let hooks = self.subscribed(newest, &HookScope::repository(*repo, org_of(&owned.owner)), WebhookEvent::Release).await?;
                 let Some(release) = self.release_json(&owned, *release, &base).await? else { return Ok(0) };
                 let sender = match actor {
                     Some(actor) => self.account(*actor).await?,
@@ -469,7 +454,7 @@ impl WebhookService {
         base: &str,
     ) -> Result<usize, ServiceError> {
         let Some(owned) = self.repository(repo).await? else { return Ok(0) };
-        let hooks = self.subscribed(newest, Some(repo), &org_of(&owned.owner), WebhookEvent::Push).await?;
+        let hooks = self.subscribed(newest, &HookScope::repository(repo, org_of(&owned.owner)), WebhookEvent::Push).await?;
         if hooks.is_empty() || updates.is_empty() {
             return Ok(0);
         }
@@ -552,22 +537,14 @@ impl WebhookService {
     /// subscribe to its event; the delivery's `action` is the body's `action` field.
     async fn queue_payload(&self, payload: Option<HookPayload>, newest: WebhookId) -> Result<usize, ServiceError> {
         let Some(HookPayload { repo, event, body }) = payload else { return Ok(0) };
-        let hooks = self.subscribed(newest, Some(repo.repo.id), &org_of(&repo.owner), event).await?;
+        let hooks = self.subscribed(newest, &HookScope::repository(repo.repo.id, org_of(&repo.owner)), event).await?;
         Ok(self.queue(hooks, event, &body).await?.len())
     }
 
-    /// The active hooks of `repo` and `orgs` subscribed to `event` that existed when an
-    /// event stamped `newest` was published.
-    async fn subscribed(
-        &self,
-        newest: WebhookId,
-        repo: Option<RepoId>,
-        orgs: &[AccountId],
-        event: WebhookEvent,
-    ) -> Result<Vec<WebhookId>, ServiceError> {
-        let mut hooks = self.inner.store.subscribed(repo, orgs, event).await?;
-        hooks.retain(|hook| *hook <= newest);
-        Ok(hooks)
+    /// The active hooks in `scope` subscribed to `event` that existed when an event
+    /// stamped `newest` was published.
+    async fn subscribed(&self, newest: WebhookId, scope: &HookScope, event: WebhookEvent) -> Result<Vec<WebhookId>, ServiceError> {
+        hook_queue::select(&StoreQueue(&self.inner), newest, scope, event).await
     }
 
     async fn repository(&self, id: RepoId) -> Result<Option<OwnedRepository>, ServiceError> {
@@ -669,7 +646,7 @@ impl WebhookService {
         }
         loop {
             let Some(permit) = self.acquire().await else { break };
-            match self.inner.store.claim_due(Timestamp::now(), 1).await {
+            match Worker(&self).claim_due(Timestamp::now(), 1).await {
                 Ok(claimed) => {
                     if let Some(delivery) = claimed.into_iter().next() {
                         let service = self.clone();
@@ -701,20 +678,7 @@ impl WebhookService {
     /// continuously; this entry point lets tests and tools drive the queue directly.
     pub async fn deliver_due(&self, now: Timestamp) -> Result<usize, ServiceError> {
         let batch_size = u32::try_from(self.inner.ctx.config.webhooks.concurrency.max(1)).unwrap_or(u32::MAX);
-        let mut attempts = 0;
-        loop {
-            let claimed = self.inner.store.claim_due(now, batch_size).await?;
-            if claimed.is_empty() {
-                return Ok(attempts);
-            }
-            attempts += claimed.len();
-            let mut running = tokio::task::JoinSet::new();
-            for delivery in claimed {
-                let service = self.clone();
-                running.spawn(async move { service.run(delivery, None).await });
-            }
-            while running.join_next().await.is_some() {}
-        }
+        worker::deliver_due(&Worker(self), now, batch_size).await
     }
 
     /// One attempt of a claimed delivery, and its bookkeeping.
@@ -731,25 +695,8 @@ impl WebhookService {
         };
 
         let max_attempts = self.inner.ctx.config.webhooks.max_attempts;
-        let step = next_step(attempt.succeeded, attempt.permanent, delivery.attempts, max_attempts, Timestamp::now, delivery::random_unit);
-        let label = step.label();
-        let outcome = match step {
-            NextStep::Succeeded => AttemptOutcome::Succeeded,
-            NextStep::Retry(at) => AttemptOutcome::Retry(at),
-            NextStep::Failed => AttemptOutcome::Failed,
-        };
-        metrics::counter!("rbit_webhook_attempts_total", "outcome" => label).increment(1);
-        tracing::debug!(
-            hook = delivery.hook_id.0,
-            delivery = delivery.id.0,
-            event = delivery.event.as_str(),
-            status = attempt.record.response_status,
-            outcome = label,
-            "webhook delivery attempted"
-        );
-        if let Err(error) = self.inner.store.record_attempt(delivery.id, attempt.record, outcome).await {
-            tracing::warn!(%error, delivery = delivery.id.0, "cannot record a webhook delivery attempt");
-        }
+        let report = AttemptReport { succeeded: attempt.succeeded, permanent: attempt.permanent, record: attempt.record };
+        worker::settle(&Worker(self), &delivery, delivery.attempts, max_attempts, report, Timestamp::now, delivery::random_unit).await;
     }
 
     async fn prune_periodically(self) {
@@ -778,8 +725,8 @@ fn require_manager(target: HookTarget<'_>) -> Result<(), ServiceError> {
 }
 
 /// The organisation among `owner`, if it is one (its hooks fire for its repositories).
-fn org_of(owner: &Account) -> Vec<AccountId> {
-    if owner.is_organization() { vec![owner.id] } else { Vec::new() }
+fn org_of(owner: &Account) -> Option<AccountId> {
+    owner.is_organization().then_some(owner.id)
 }
 
 /// Every ref tip except one occurrence of `own` (the new branch itself): if another ref
@@ -800,25 +747,12 @@ fn other_tips<'a>(tips: impl Iterator<Item = &'a str>, own: &str) -> Vec<String>
 /// Subscribable events, sorted and de-duplicated. `ping` is implicit and dropped. The
 /// Actions events are refused while Actions is off (`actions_enabled`).
 fn parse_events(names: &[String], actions_enabled: bool) -> Result<Vec<WebhookEvent>, ServiceError> {
-    let mut events = Vec::new();
-    for name in names {
-        let name = name.trim();
-        match WebhookEvent::parse(name) {
-            Some(WebhookEvent::Ping) => {}
-            // Actions: integration (I).
-            Some(event) if !actions_enabled && WebhookEvent::ACTIONS.contains(&event) => {
-                return Err(ServiceError::Invalid(format!("\"{name}\" needs Actions, which this instance does not have")));
-            }
-            Some(event) => events.push(event),
-            None => return Err(ServiceError::Invalid(format!("unknown event \"{name}\"; choose from push, repository, release and fork"))),
-        }
-    }
-    events.sort_unstable();
-    events.dedup();
-    if events.is_empty() {
-        return Err(ServiceError::Invalid("choose at least one event".to_owned()));
-    }
-    Ok(events)
+    let catalog = EventCatalog {
+        parse: WebhookEvent::parse,
+        ping: |event| event == WebhookEvent::Ping,
+        needs_actions: |event| WebhookEvent::ACTIONS.contains(&event),
+    };
+    subscribed_events(names, &catalog, actions_enabled).map_err(|error| ServiceError::Invalid(error.to_string()))
 }
 
 /// `None` for an empty secret.
