@@ -40,6 +40,8 @@ use std::{
 };
 
 use rbit_auth::repo_access;
+use rbit_collaboration::issues::DashboardMentions;
+pub use rbit_collaboration::issues::{DEFAULT_DASHBOARD_QUERY, dashboard_query};
 use rbit_core::{
     Account, AccountId, Issue, IssueId, IssueKind, IssueNumber, LabelId, RepoAccess, RepoId, StateReason, Timestamp, User,
     issue::IssueAction, references, repository::OwnedRepository,
@@ -239,37 +241,19 @@ impl IssueService {
         }
     }
 
+    /// Dashboard mention recording ([`DashboardMentions`]) over the database.
+    fn mentions(&self) -> DashboardMentions<'_, rbit_storage::Database, fn(&str) -> Vec<String>> {
+        let scan: fn(&str) -> Vec<String> = |text| references::scan_markdown(text).mentions;
+        DashboardMentions::new(&self.ctx.database, scan)
+    }
+
     async fn record_mentions(&self, issue: IssueId, text: &str) -> Result<(), ServiceError> {
-        let names = references::scan_markdown(text).mentions;
-        if !names.is_empty() {
-            let accounts = self.ctx.database.issue_meta().accounts_named(&names).await?;
-            let ids: Vec<_> = accounts.iter().filter(|account| !account.is_organization()).map(|account| account.id).collect();
-            self.ctx.database.issue_search().record_mentions(issue, &ids).await?;
-        }
-        Ok(())
+        Ok(self.mentions().record(issue, text).await?)
     }
 
     /// One-time Markdown-aware upgrade of existing issue, comment and submitted review bodies.
     pub(crate) async fn index_existing_mentions(&self) -> Result<(), ServiceError> {
-        let store = self.ctx.database.issue_search();
-        if store.mentions_indexed().await? {
-            return Ok(());
-        }
-        for source in 0..4 {
-            let mut after = 0;
-            loop {
-                let rows = store.mention_sources(source, after).await?;
-                if rows.is_empty() {
-                    break;
-                }
-                for (id, issue, body) in rows {
-                    self.record_mentions(IssueId(issue), &body).await?;
-                    after = id;
-                }
-            }
-        }
-        store.finish_mentions_index().await?;
-        Ok(())
+        Ok(self.mentions().index_existing().await?)
     }
 
     /// Reacts to one event: what the background subscriber does, callable directly (tests).

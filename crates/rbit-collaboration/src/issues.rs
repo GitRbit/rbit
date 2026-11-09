@@ -17,10 +17,12 @@ pub use creation::{IssueCreation, IssueCreationAccess, IssueCreationError};
 #[cfg(feature = "applications")]
 pub use creation_port::{IssueCreationPort, MetadataCreated};
 
+mod dashboard;
 mod filter;
 mod metadata_rows;
 pub mod query;
 mod results;
+pub use dashboard::{DEFAULT_DASHBOARD_QUERY, dashboard_query};
 pub use filter::{DashboardRelation, DashboardScope, SearchFilter};
 pub use metadata_rows::{MetadataRows, OneIssueMetadata};
 pub use results::{ISSUES_PER_PAGE, IssueHydration, IssueMetadata, IssueSearchResults, MetadataNeeds};
@@ -43,3 +45,8 @@ pub use read_port::{IssueMetadataPort, IssueReadAccess, IssueReadError, IssueRea
 mod deletion;
 #[cfg(feature = "applications")]
 pub use deletion::{IssueDeletion, IssueDeletionError, IssueDeletionPort};
+
+#[cfg(feature = "applications")]
+mod mentions;
+#[cfg(feature = "applications")]
+pub use mentions::{DashboardMentionPort, DashboardMentions, MENTION_SOURCES};

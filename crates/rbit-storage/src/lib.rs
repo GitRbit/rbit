@@ -15,6 +15,7 @@ mod access_protection;
 mod access_teams;
 mod collaboration_comments;
 mod collaboration_labels;
+mod collaboration_mentions;
 mod collaboration_milestones;
 mod collaboration_statuses;
 mod collaboration_thread_lifecycle;

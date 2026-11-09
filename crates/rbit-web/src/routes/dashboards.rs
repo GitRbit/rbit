@@ -1,4 +1,7 @@
 //! Personal issue and pull request dashboards across readable repositories.
+//!
+//! Which views a page offers, what an absent view or search means and the listing are
+//! decided in `rbit_collaboration::issues`; this route parses, localizes and renders.
 
 use crate::{
     AppState,
@@ -18,7 +21,7 @@ use axum::{
 };
 use rbit_core::{IssueKind, issue_query::IssueQuery};
 use rbit_localization::shell::home::{HomeMessage, Involvement};
-use rbit_services::issues::DashboardRelation;
+use rbit_services::issues::{DashboardRelation, dashboard_query};
 use serde::Deserialize;
 
 pub fn routes() -> Router<AppState> {
@@ -55,14 +58,10 @@ async fn show(state: &AppState, user: &rbit_core::User, page: Page, params: Para
     } else {
         ("/issues", page.text(HomeMessage::Issues))
     };
-    let relation = match params.view.as_deref().unwrap_or("created") {
-        "created" => DashboardRelation::Created,
-        "assigned" => DashboardRelation::Assigned,
-        "mentioned" => DashboardRelation::Mentioned,
-        "review-requested" if kind == IssueKind::Pull => DashboardRelation::ReviewRequested,
-        _ => return Err(crate::error::WebError::BadRequest("unknown dashboard view".to_owned())),
+    let Some(relation) = DashboardRelation::from_view(params.view.as_deref(), kind) else {
+        return Err(crate::error::WebError::BadRequest("unknown dashboard view".to_owned()));
     };
-    let typed = params.q.as_deref().map(str::trim).filter(|q| !q.is_empty()).unwrap_or("is:open").to_owned();
+    let typed = dashboard_query(params.q.as_deref());
     let query = IssueQuery::parse(&typed);
     let results = state.services.issues.dashboard(user, kind, relation, &query, params.page.unwrap_or(1)).await?;
     let url = |view: DashboardRelation, query: &str, n: u32| {
@@ -73,16 +72,9 @@ async fn show(state: &AppState, user: &rbit_core::User, page: Page, params: Para
         )
     };
     let mut tabs = Vec::new();
-    for (view, label) in [
-        (DashboardRelation::Created, Involvement::Created),
-        (DashboardRelation::Assigned, Involvement::Assigned),
-        (DashboardRelation::Mentioned, Involvement::Mentioned),
-        (DashboardRelation::ReviewRequested, Involvement::ReviewRequested),
-    ] {
-        if kind == IssueKind::Pull || view != DashboardRelation::ReviewRequested {
-            let label = page.text(HomeMessage::InvolvementTab(label));
-            tabs.push(DashboardTab { label, url: url(view, &typed, 1), active: view == relation });
-        }
+    for view in DashboardRelation::views(kind) {
+        let label = page.text(HomeMessage::InvolvementTab(involvement(view)));
+        tabs.push(DashboardTab { label, url: url(view, &typed, 1), active: view == relation });
     }
     let mut rows = Vec::new();
     // At most one page (25 threads), never a cross-repository metadata scan.
@@ -124,4 +116,14 @@ async fn show(state: &AppState, user: &rbit_core::User, page: Page, params: Para
         closed_url: url(relation, &closed_query, 1),
         pagination,
     })
+}
+
+/// The tab label of `view`.
+const fn involvement(view: DashboardRelation) -> Involvement {
+    match view {
+        DashboardRelation::Created => Involvement::Created,
+        DashboardRelation::Assigned => Involvement::Assigned,
+        DashboardRelation::Mentioned => Involvement::Mentioned,
+        DashboardRelation::ReviewRequested => Involvement::ReviewRequested,
+    }
 }
