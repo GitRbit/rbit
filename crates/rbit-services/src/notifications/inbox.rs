@@ -6,7 +6,7 @@ use rbit_core::{AccountId, IssueId, RepoId, Timestamp, User, repository::OwnedRe
 use rbit_notifications::{
     application::{InboxApplication, InboxError},
     port::InboxAccess,
-    signals,
+    signals, subscriptions,
 };
 use rbit_storage::{Database, NotificationInboxStore, StorageError};
 use std::collections::HashMap;
@@ -51,13 +51,14 @@ impl NotificationService {
             })
     }
     pub async fn subscription(&self, user: AccountId, issue: IssueId) -> Result<Option<Subscription>, ServiceError> {
-        Ok(self.ctx.database.notifications().subscription(issue, user).await?)
+        Ok(subscriptions::subscription(&NotificationInboxStore::new(self.ctx.database.notifications()), user, issue).await?)
     }
     pub async fn thread_state(&self, user: AccountId, issue: IssueId) -> Result<(Option<Subscription>, bool), ServiceError> {
         Ok(signals::thread_state(self.enabled(), user, issue, &NotificationInboxStore::new(self.ctx.database.notifications())).await?)
     }
     pub async fn set_subscribed(&self, user: AccountId, issue: IssueId, subscribed: bool) -> Result<(), ServiceError> {
-        Ok(self.ctx.database.notifications().set_subscribed(issue, user, subscribed, Timestamp::now()).await?)
+        let store = NotificationInboxStore::new(self.ctx.database.notifications());
+        Ok(subscriptions::set_subscribed(&store, user, issue, subscribed, Timestamp::now()).await?)
     }
     pub async fn inbox(&self, user: &User, unread_only: bool, page: u32) -> Result<InboxPage, ServiceError> {
         self.inbox_page(user, unread_only, page.max(1), NOTIFICATIONS_PER_PAGE).await
