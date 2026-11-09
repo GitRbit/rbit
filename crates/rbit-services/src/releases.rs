@@ -1,57 +1,35 @@
-//! Releases: notes on a tag, and attached files stored under the attachments directory.
+//! Releases: the composition adapter over [`rbit_repositories::releases`].
 //!
 //! Milestone 2 workstream R (repository essentials) owns this file.
 //!
-//! # Rules
-//!
-//! * Anyone who can read the repository sees its published releases; drafts are visible
-//!   to writers only (to everyone else a draft does not exist). Writers create, edit,
-//!   publish and delete releases.
-//! * A release names a tag of the repository, at most one release per tag. A new
-//!   release may create its tag from a branch or commit (`ReleaseInput::target`); the
-//!   new tag is reported like a push.
-//! * Publishing — creating a release as non-draft, or turning a draft into a release —
-//!   publishes [`DomainEvent::ReleasePublished`] once.
-//! * A workflow task may create and edit releases and upload their files with its token
-//!   ([`ReleaseActor::Task`]), on its own repository with `contents: write` only. It writes
-//!   as rbit Actions (no author, `source = actions`), and a tag it creates is its push
-//!   ([`PushSource::Task`]), which starts no runs.
-//!
-//! # Attached files
-//!
-//! Bytes live on disk at `<attachments_dir>/<repo_id>/<asset_id>`: numeric ids only, so
-//! no user-supplied name ever becomes a path, and independent of the owner, so transfers
-//! move nothing. An upload streams into `<attachments_dir>/tmp/<random>.part` while it is
-//! hashed and measured and is abandoned (and deleted) the moment it exceeds
-//! `[releases] max_asset_bytes`; only a complete file gets a row, after which it is
-//! synced and renamed into place (if the rename fails the row is removed again).
-//! Deleting a file removes the row first, then the bytes, so a crash in between leaves
-//! an orphaned file rather than a row without bytes.
+//! The release application decides visibility, permissions, validation, limits and
+//! publication; this service passes it the opened repository's facts, maps its errors,
+//! and owns the effects: tags reported like pushes ([`PushSource::Task`] for a task,
+//! which starts no runs), [`DomainEvent::ReleasePublished`], tracing, and the attached
+//! files on disk (see the `files` module).
 //!
 //! [`ReleaseService::spawn_background`] removes unreferenced files when a repository
 //! is deleted, preserving current assets if its id was reused before cleanup, and at
 //! start-up sweeps `tmp/*.part` files older than a day (uploads interrupted by a crash).
 
+mod effects;
+mod files;
+
 use std::{
-    collections::HashSet,
-    fmt::Write as _,
-    io,
-    path::{Path, PathBuf},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::{Duration, SystemTime},
+    time::Duration,
 };
 
 use rbit_core::{
-    Account, AccountId, PushSource, RepoId, Timestamp, User,
-    release::{
-        Release, ReleaseAsset, ReleaseAssetId, ReleaseId, ReleaseSource, validate_asset_name, validate_release_name, validate_release_notes,
-    },
+    Account, PushSource, User,
+    release::{Release, ReleaseAsset, ReleaseAssetId, ReleaseId},
 };
-use rbit_git::GitError;
-use rbit_storage::sqlite::releases::{NewAsset, NewRelease, ReleaseChanges, ReleaseStore};
+use rbit_repositories::releases::{AssetLimits, ReleaseAccess, ReleaseError, ReleaseWriter, Releases};
+pub use rbit_repositories::releases::{RELEASES_PER_PAGE, ReleaseDetail, ReleaseInput, ReleasePage, human_bytes};
+use rbit_storage::sqlite::releases::ReleaseStore;
 use tokio::{
     io::AsyncRead,
     sync::{
@@ -61,8 +39,13 @@ use tokio::{
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::uploads::{ReceivedUpload, receive};
 use crate::{DomainEvent, PushService, RepoContext, ServiceContext, ServiceError, actions::tokens::TaskGrant};
+use effects::ReleaseEffects;
+use files::UploadFiles;
+#[cfg(test)]
+use files::sweep_stale_uploads;
+#[cfg(test)]
+use rbit_core::release::{NewRelease, ReleaseSource};
 
 // Actions: releases from workflows.
 /// Who makes or changes a release: a person, or a running workflow task with its token.
@@ -79,18 +62,11 @@ impl<'a> From<&'a User> for ReleaseActor<'a> {
 }
 
 impl ReleaseActor<'_> {
-    /// The person, recorded as author or uploader; `None` for a task.
-    fn account(self) -> Option<AccountId> {
+    /// The facts the release application decides on.
+    fn writer(self) -> ReleaseWriter {
         match self {
-            Self::User(user) => Some(user.id()),
-            Self::Task(_) => None,
-        }
-    }
-
-    fn source(self) -> ReleaseSource {
-        match self {
-            Self::User(_) => ReleaseSource::User,
-            Self::Task(_) => ReleaseSource::Actions,
+            Self::User(user) => ReleaseWriter::Person(user.id()),
+            Self::Task(grant) => ReleaseWriter::Task { repo: grant.repo, contents_write: grant.contents().can_write() },
         }
     }
 
@@ -101,59 +77,12 @@ impl ReleaseActor<'_> {
             Self::Task(grant) => PushSource::Task(grant.task),
         }
     }
-
-    /// A task changes only its own repository, and only with `contents: write`.
-    fn check(self, repo: &RepoContext) -> Result<(), ServiceError> {
-        match self {
-            Self::Task(grant) if grant.repo != repo.repo.repo.id || !grant.contents().can_write() => Err(ServiceError::Forbidden),
-            _ => Ok(()),
-        }
-    }
 }
 
-/// Releases per page of the releases list.
-pub const RELEASES_PER_PAGE: u32 = 10;
 /// How long [`ReleaseService::shutdown`] waits for background work.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 /// Interrupted uploads older than this are swept at start-up.
 const STALE_UPLOAD_AGE: Duration = Duration::from_hours(24);
-/// Longest declared content type kept for an attached file.
-const MAX_CONTENT_TYPE_LEN: usize = 255;
-
-/// Raw release form input, exactly as submitted.
-#[derive(Debug, Clone, Default)]
-pub struct ReleaseInput {
-    pub tag_name: String,
-    pub name: String,
-    pub notes: String,
-    pub is_draft: bool,
-    pub is_prerelease: bool,
-    /// When creating a release for a tag that does not exist yet: the branch (or commit)
-    /// to create it from. Empty means the tag must already exist.
-    pub target: String,
-}
-
-/// A release with its attached files.
-#[derive(Debug, Clone)]
-pub struct ReleaseDetail {
-    pub release: Release,
-    pub assets: Vec<ReleaseAsset>,
-}
-
-/// One page of the releases list.
-#[derive(Debug, Clone)]
-pub struct ReleasePage {
-    pub releases: Vec<ReleaseDetail>,
-    pub total: u64,
-    /// 1-based page actually served.
-    pub page: u32,
-}
-
-impl ReleasePage {
-    pub fn page_count(&self) -> u32 {
-        u32::try_from(self.total.div_ceil(u64::from(RELEASES_PER_PAGE)).max(1)).unwrap_or(u32::MAX)
-    }
-}
 
 /// An attached file opened for download.
 #[derive(Debug)]
@@ -180,6 +109,22 @@ struct Inner {
     started: AtomicBool,
 }
 
+/// The opened repository's facts for the release application.
+fn access(repo: &RepoContext) -> ReleaseAccess {
+    ReleaseAccess { repo: repo.repo.repo.id, can_write: repo.access.can_write(), archived: repo.repo.repo.is_archived() }
+}
+
+fn service_error<E: Into<ServiceError>>(error: ReleaseError<E>) -> ServiceError {
+    match error {
+        ReleaseError::NotFound => ServiceError::NotFound,
+        ReleaseError::Forbidden => ServiceError::Forbidden,
+        ReleaseError::Archived => ServiceError::Archived,
+        ReleaseError::Invalid(message) => ServiceError::Invalid(message),
+        ReleaseError::Conflict(what) => ServiceError::Conflict(what),
+        ReleaseError::Failure(error) => error.into(),
+    }
+}
+
 impl ReleaseService {
     pub(crate) fn new(ctx: ServiceContext) -> Self {
         Self {
@@ -198,76 +143,34 @@ impl ReleaseService {
         self.inner.ctx.database.releases()
     }
 
-    fn attachments_dir(&self) -> PathBuf {
-        self.inner.ctx.config.storage.attachments_dir()
-    }
-
-    /// `<attachments_dir>/<repo_id>/<asset_id>`.
-    fn asset_path(&self, repo: RepoId, asset: ReleaseAssetId) -> PathBuf {
-        self.attachments_dir().join(repo.0.to_string()).join(asset.0.to_string())
-    }
-
     // ------------------------------------------------------------------ reading
 
     /// One page (1-based, clamped) of the repository's releases, newest first; drafts
     /// lead the list for writers and are absent for everyone else.
     pub async fn list(&self, repo: &RepoContext, page: u32) -> Result<ReleasePage, ServiceError> {
-        let include_drafts = repo.access.can_write();
-        let repo_id = repo.repo.repo.id;
-        let total = self.store().count(repo_id, include_drafts).await?;
-        let mut result = ReleasePage { releases: Vec::new(), total, page: page.max(1) };
-        result.page = result.page.min(result.page_count());
-        let offset = (result.page - 1).saturating_mul(RELEASES_PER_PAGE);
-        let releases = self.store().list(repo_id, include_drafts, RELEASES_PER_PAGE, offset).await?;
-        let mut assets = self.store().assets_of(&releases.iter().map(|r| r.id).collect::<Vec<_>>()).await?;
-        result.releases =
-            releases.into_iter().map(|release| ReleaseDetail { assets: assets.remove(&release.id).unwrap_or_default(), release }).collect();
-        Ok(result)
+        Releases::list(&self.store(), access(repo), page).await.map_err(service_error)
     }
 
     /// `limit` releases from `offset`, ordered like [`Self::list`], and how many there
     /// are in all (for the API's pages).
     pub async fn page(&self, repo: &RepoContext, limit: u32, offset: u32) -> Result<(Vec<ReleaseDetail>, u64), ServiceError> {
-        let include_drafts = repo.access.can_write();
-        let repo_id = repo.repo.repo.id;
-        let total = self.store().count(repo_id, include_drafts).await?;
-        let releases = self.store().list(repo_id, include_drafts, limit, offset).await?;
-        let mut assets = self.store().assets_of(&releases.iter().map(|r| r.id).collect::<Vec<_>>()).await?;
-        let releases =
-            releases.into_iter().map(|release| ReleaseDetail { assets: assets.remove(&release.id).unwrap_or_default(), release }).collect();
-        Ok((releases, total))
+        Releases::page(&self.store(), access(repo), limit, offset).await.map_err(service_error)
     }
 
     /// The accounts that wrote `releases` or uploaded their files, as far as they still
     /// exist (for API and webhook JSON).
     pub async fn people(&self, releases: &[ReleaseDetail]) -> Result<Vec<Account>, ServiceError> {
-        let mut ids: Vec<_> = releases
-            .iter()
-            .flat_map(|detail| {
-                detail.release.author.iter().map(|author| author.id).chain(detail.assets.iter().filter_map(|a| a.uploader_id))
-            })
-            .collect();
-        ids.sort_unstable();
-        ids.dedup();
-        Ok(self.inner.ctx.database.accounts().find_accounts(&ids).await?)
+        Ok(self.inner.ctx.database.accounts().find_accounts(&Releases::people(releases)).await?)
     }
 
     /// The release of `tag`, if the viewer may see it.
     pub async fn by_tag(&self, repo: &RepoContext, tag: &str) -> Result<ReleaseDetail, ServiceError> {
-        let release = self.store().find_by_tag(repo.repo.repo.id, tag).await?;
-        self.visible(repo, release).await
+        Releases::by_tag(&self.store(), access(repo), tag).await.map_err(service_error)
     }
 
     /// Release `id`, if the viewer may see it.
     pub async fn by_id(&self, repo: &RepoContext, id: ReleaseId) -> Result<ReleaseDetail, ServiceError> {
-        let release = self.store().find(repo.repo.repo.id, id).await?;
-        self.visible(repo, release).await
-    }
-
-    async fn visible(&self, repo: &RepoContext, release: Option<Release>) -> Result<ReleaseDetail, ServiceError> {
-        let release = release.filter(|r| !r.is_draft || repo.access.can_write()).ok_or(ServiceError::NotFound)?;
-        let assets = self.store().assets(release.id).await?;
-        Ok(ReleaseDetail { release, assets })
+        Releases::by_id(&self.store(), access(repo), id).await.map_err(service_error)
     }
 
     /// The latest published release (full releases before pre-releases), for the sidebar.
@@ -277,57 +180,8 @@ impl ReleaseService {
 
     // ------------------------------------------------------------------ writing
 
-    fn require_writer(repo: &RepoContext) -> Result<(), ServiceError> {
-        if !repo.access.can_write() {
-            return Err(ServiceError::Forbidden);
-        }
-        repo.ensure_writable()
-    }
-
-    /// Checks the text fields of `input`. Returns the trimmed tag and the title (the tag
-    /// when left empty).
-    fn validated_text(input: &ReleaseInput) -> Result<(String, String), ServiceError> {
-        let tag = input.tag_name.trim();
-        if tag.is_empty() {
-            return Err(ServiceError::Invalid("choose the tag this release is for".to_owned()));
-        }
-        let name = match input.name.trim() {
-            "" => tag,
-            name => name,
-        };
-        validate_release_name(name).map_err(ServiceError::Invalid)?;
-        validate_release_notes(&input.notes).map_err(ServiceError::Invalid)?;
-        Ok((tag.to_owned(), name.to_owned()))
-    }
-
-    async fn tag_exists(repo: &RepoContext, tag: &str) -> Result<bool, ServiceError> {
-        Ok(repo.reader.ref_snapshot().await?.get(&format!("refs/tags/{tag}")).is_some())
-    }
-
-    /// [`Self::validated_text`], plus: the tag must exist.
-    async fn validated(repo: &RepoContext, input: &ReleaseInput) -> Result<(String, String), ServiceError> {
-        let (tag, name) = Self::validated_text(input)?;
-        if !Self::tag_exists(repo, &tag).await? {
-            return Err(ServiceError::Invalid(format!("there is no tag called {tag}; push it first")));
-        }
-        Ok((tag, name))
-    }
-
-    /// Creates tag `tag` at `target` for a new release, reported like a push of the tag
-    /// ([`DomainEvent::RepositoryPushed`]) so caches and webhooks see it.
-    async fn create_tag(&self, repo: &RepoContext, actor: ReleaseActor<'_>, tag: &str, target: &str) -> Result<(), ServiceError> {
-        let pending = self.inner.pushes.begin(repo, actor.push_source()).await;
-        match repo.reader.create_tag(tag.to_owned(), target.to_owned()).await {
-            Ok(_) => {
-                self.inner.pushes.complete(pending).await;
-                tracing::info!(repo = %repo.repo.full_name(), tag, target, "tag created for a release");
-                Ok(())
-            }
-            Err(GitError::InvalidBranchName(_)) => Err(ServiceError::Invalid(format!("{tag} is not a valid tag name"))),
-            Err(GitError::AlreadyExists) => Err(ServiceError::Conflict("the tag")),
-            Err(GitError::NotFound(_)) => Err(ServiceError::Invalid(format!("there is no branch or commit called {target}"))),
-            Err(other) => Err(other.into()),
-        }
+    fn effects<'a>(&'a self, repo: &'a RepoContext, actor: ReleaseActor<'a>) -> ReleaseEffects<'a> {
+        ReleaseEffects { service: self, repo, actor, store: self.store() }
     }
 
     /// Creates a release; publishes [`DomainEvent::ReleasePublished`] unless it is a draft.
@@ -338,38 +192,7 @@ impl ReleaseService {
         input: ReleaseInput,
     ) -> Result<Release, ServiceError> {
         let actor = actor.into();
-        actor.check(repo)?;
-        Self::require_writer(repo)?;
-        let (tag, name) = Self::validated_text(&input)?;
-        let repo_id = repo.repo.repo.id;
-        if !Self::tag_exists(repo, &tag).await? {
-            let target = input.target.trim();
-            if target.is_empty() {
-                return Err(ServiceError::Invalid(format!("there is no tag called {tag}; push it or choose a branch to create it from")));
-            }
-            if self.store().find_by_tag(repo_id, &tag).await?.is_some() {
-                return Err(ServiceError::Conflict("a release for this tag"));
-            }
-            self.create_tag(repo, actor, &tag, target).await?;
-        }
-        let id = self
-            .store()
-            .create(NewRelease {
-                repo_id,
-                tag_name: &tag,
-                name: &name,
-                notes: &input.notes,
-                is_draft: input.is_draft,
-                is_prerelease: input.is_prerelease,
-                author_id: actor.account(),
-                source: actor.source(),
-            })
-            .await?;
-        if !input.is_draft {
-            self.inner.ctx.events.publish(DomainEvent::ReleasePublished { repo: repo_id, release: id, actor: actor.account() });
-        }
-        tracing::info!(repo = %repo.repo.full_name(), tag, draft = input.is_draft, "release created");
-        self.store().find(repo_id, id).await?.ok_or(ServiceError::NotFound)
+        Releases::create(&self.effects(repo, actor), access(repo), actor.writer(), input).await.map_err(service_error)
     }
 
     /// Edits release `id`. Turning a draft into a release publishes it (once: the first
@@ -382,43 +205,19 @@ impl ReleaseService {
         input: ReleaseInput,
     ) -> Result<Release, ServiceError> {
         let actor = actor.into();
-        actor.check(repo)?;
-        Self::require_writer(repo)?;
-        let repo_id = repo.repo.repo.id;
-        let current = self.store().find(repo_id, id).await?.ok_or(ServiceError::NotFound)?;
-        let (tag, name) = Self::validated(repo, &input).await?;
-        let publishing = current.published_at.is_none() && !input.is_draft;
-        self.store()
-            .update(
-                id,
-                ReleaseChanges {
-                    tag_name: &tag,
-                    name: &name,
-                    notes: &input.notes,
-                    is_draft: input.is_draft,
-                    is_prerelease: input.is_prerelease,
-                    published_at: (!input.is_draft).then(Timestamp::now),
-                },
-            )
-            .await?;
-        if publishing {
-            self.inner.ctx.events.publish(DomainEvent::ReleasePublished { repo: repo_id, release: id, actor: actor.account() });
-        }
-        self.store().find(repo_id, id).await?.ok_or(ServiceError::NotFound)
+        Releases::update(&self.effects(repo, actor), access(repo), actor.writer(), id, input).await.map_err(service_error)
     }
 
     /// Deletes release `id` and its files (the tag stays).
     pub async fn delete(&self, repo: &RepoContext, id: ReleaseId) -> Result<(), ServiceError> {
-        Self::require_writer(repo)?;
+        Releases::require_writer(access(repo)).map_err(service_error::<ServiceError>)?;
         let repo_id = repo.repo.repo.id;
         let service = self.clone();
         self.inner
             .tasks
             .spawn(async move {
                 let _assets = service.inner.assets.write().await;
-                let release = service.store().find(repo_id, id).await?.ok_or(ServiceError::NotFound)?;
-                let assets = service.store().assets(release.id).await?;
-                service.store().delete(release.id).await?;
+                let (release, assets) = Releases::delete(&service.store(), repo_id, id).await.map_err(service_error)?;
                 for asset in assets {
                     service.remove_file(repo_id, asset.id).await;
                 }
@@ -431,7 +230,7 @@ impl ReleaseService {
 
     // ------------------------------------------------------------------ attached files
 
-    /// Stores `body` as the file `name` of release `id` (see the module docs for the
+    /// Stores `body` as the file `name` of release `id` (see the `files` module for the
     /// procedure). Fails with [`ServiceError::Invalid`] for a bad name, too many files or
     /// a file over the size limit, and [`ServiceError::Conflict`] when the name is taken.
     pub async fn upload_asset<'a>(
@@ -441,103 +240,17 @@ impl ReleaseService {
         id: ReleaseId,
         name: &str,
         content_type: &str,
-        mut body: impl AsyncRead + Unpin + Send,
+        body: impl AsyncRead + Unpin + Send,
     ) -> Result<ReleaseAsset, ServiceError> {
         let actor = actor.into();
-        actor.check(repo)?;
-        Self::require_writer(repo)?;
-        let repo_id = repo.repo.repo.id;
-        let release = self.store().find(repo_id, id).await?.ok_or(ServiceError::NotFound)?;
-        validate_asset_name(name).map_err(ServiceError::Invalid)?;
         let config = &self.inner.ctx.config.releases;
-        if self.store().count_assets(release.id).await? >= config.max_assets_per_release {
-            return Err(ServiceError::Invalid(format!("a release can have at most {} files", config.max_assets_per_release)));
-        }
-        if self.store().find_asset(release.id, name).await?.is_some() {
-            return Err(ServiceError::Conflict("a file with this name"));
-        }
-
-        let tmp_dir = self.attachments_dir().join("tmp");
-        tokio::fs::create_dir_all(&tmp_dir).await.map_err(ServiceError::internal)?;
-        let tmp = tmp_dir.join(format!("{}.part", random_hex()?));
-        let received = receive(&mut body, &tmp, config.max_asset_bytes).await;
-        let received = match received {
-            Ok(Some(received)) => received,
-            Ok(None) => {
-                remove_quietly(&tmp).await;
-                return Err(ServiceError::Invalid(format!("files can be at most {}", human_bytes(config.max_asset_bytes))));
-            }
-            Err(error) => {
-                remove_quietly(&tmp).await;
-                return Err(ServiceError::internal(error));
-            }
-        };
-        let content_type: String = content_type.trim().chars().filter(|c| !c.is_control()).take(MAX_CONTENT_TYPE_LEN).collect();
-        let name = name.to_owned();
-        let (uploader_id, source) = (actor.account(), actor.source());
-        let limit = config.max_assets_per_release;
-        let service = self.clone();
-        // Once bytes are complete, own the row-and-file placement independently of the
-        // HTTP request: cancellation must not leave a committed row without its file.
-        let asset = self
-            .inner
-            .tasks
-            .spawn(async move {
-                let new = NewAsset {
-                    release_id: release.id,
-                    repo_id,
-                    name: &name,
-                    size: received.size,
-                    content_type: if content_type.is_empty() { "application/octet-stream" } else { &content_type },
-                    sha256: received.digest,
-                    uploader_id,
-                    source,
-                };
-                service.place_asset(new, received, tmp, limit).await
-            })
+        let limits = AssetLimits { max_assets: config.max_assets_per_release, max_bytes: config.max_asset_bytes };
+        let mut files = UploadFiles { service: self, body };
+        let effects = self.effects(repo, actor);
+        let asset = Releases::upload(&effects, &mut files, access(repo), actor.writer(), id, name, content_type, limits)
             .await
-            .map_err(ServiceError::internal)??;
+            .map_err(service_error)?;
         tracing::info!(repo = %repo.repo.full_name(), name = asset.name, size = asset.size, "release file uploaded");
-        Ok(asset)
-    }
-
-    async fn place_asset(
-        &self,
-        new: NewAsset<'_>,
-        mut received: ReceivedUpload,
-        tmp: PathBuf,
-        limit: u32,
-    ) -> Result<ReleaseAsset, ServiceError> {
-        let _assets = self.inner.assets.write().await;
-        let inserted = self.store().insert_asset_limited(new, limit).await;
-        let asset = match inserted {
-            Ok(Some(asset)) => asset,
-            Ok(None) => {
-                remove_quietly(&tmp).await;
-                return Err(ServiceError::Invalid(format!("a release can have at most {limit} files")));
-            }
-            Err(error) => {
-                remove_quietly(&tmp).await;
-                return Err(error.into());
-            }
-        };
-
-        let target = self.asset_path(asset.repo_id, asset.id);
-        let placed = async {
-            if let Some(parent) = target.parent() {
-                tokio::fs::create_dir_all(parent).await?;
-            }
-            tokio::fs::rename(&tmp, &target).await
-        };
-        if let Err(error) = placed.await {
-            tracing::error!(%error, path = %target.display(), "cannot move an uploaded file into place; discarding it");
-            remove_quietly(&tmp).await;
-            if let Err(error) = self.store().delete_asset(asset.id).await {
-                tracing::error!(%error, asset = asset.id.0, "cannot remove the row of a discarded upload");
-            }
-            return Err(ServiceError::internal(error));
-        }
-        received.placed();
         Ok(asset)
     }
 
@@ -545,16 +258,13 @@ impl ReleaseService {
     /// release, and counts the download (best effort).
     pub async fn open_asset(&self, repo: &RepoContext, tag: &str, name: &str) -> Result<AssetDownload, ServiceError> {
         let _assets = self.inner.assets.read().await;
-        let release = self.by_tag(repo, tag).await?.release;
-        let asset = self.store().find_asset(release.id, name).await?.ok_or(ServiceError::NotFound)?;
+        let asset = Releases::asset_named(&self.store(), access(repo), tag, name).await.map_err(service_error)?;
         self.open_file(asset).await
     }
 
     /// File `id` of any release of `repo` and that release, if the viewer may see it.
     pub async fn asset(&self, repo: &RepoContext, id: ReleaseAssetId) -> Result<(ReleaseDetail, ReleaseAsset), ServiceError> {
-        let asset = self.store().find_asset_by_id(repo.repo.repo.id, id).await?.ok_or(ServiceError::NotFound)?;
-        let release = self.by_id(repo, asset.release_id).await?;
-        Ok((release, asset))
+        Releases::asset(&self.store(), access(repo), id).await.map_err(service_error)
     }
 
     /// Opens file `id` for download, like [`Self::open_asset`].
@@ -564,48 +274,21 @@ impl ReleaseService {
         self.open_file(asset).await
     }
 
-    /// Opens the bytes of `asset` and counts the download (best effort).
-    async fn open_file(&self, asset: ReleaseAsset) -> Result<AssetDownload, ServiceError> {
-        let file = match tokio::fs::File::open(self.asset_path(asset.repo_id, asset.id)).await {
-            Ok(file) => file,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                tracing::error!(asset = asset.id.0, "the bytes of a release file are missing");
-                return Err(ServiceError::NotFound);
-            }
-            Err(error) => return Err(ServiceError::internal(error)),
-        };
-        if let Err(error) = self.store().count_download(asset.id).await {
-            tracing::warn!(%error, asset = asset.id.0, "cannot count a download");
-        }
-        Ok(AssetDownload { asset, file })
-    }
-
     /// Deletes file `asset` of release `id`: the row, then the bytes.
     pub async fn delete_asset(&self, repo: &RepoContext, id: ReleaseId, asset: ReleaseAssetId) -> Result<(), ServiceError> {
-        Self::require_writer(repo)?;
+        Releases::require_writer(access(repo)).map_err(service_error::<ServiceError>)?;
         let repo_id = repo.repo.repo.id;
         let service = self.clone();
         self.inner
             .tasks
             .spawn(async move {
                 let _assets = service.inner.assets.write().await;
-                let release = service.store().find(repo_id, id).await?.ok_or(ServiceError::NotFound)?;
-                let asset = service.store().assets(release.id).await?.into_iter().find(|a| a.id == asset).ok_or(ServiceError::NotFound)?;
-                service.store().delete_asset(asset.id).await?;
+                let asset = Releases::delete_asset(&service.store(), repo_id, id, asset).await.map_err(service_error)?;
                 service.remove_file(repo_id, asset.id).await;
                 Ok(())
             })
             .await
             .map_err(ServiceError::internal)?
-    }
-
-    async fn remove_file(&self, repo: RepoId, asset: ReleaseAssetId) {
-        let path = self.asset_path(repo, asset);
-        if let Err(error) = tokio::fs::remove_file(&path).await
-            && error.kind() != io::ErrorKind::NotFound
-        {
-            tracing::warn!(%error, path = %path.display(), "cannot remove a release file");
-        }
     }
 
     // ------------------------------------------------------------------ background
@@ -622,7 +305,7 @@ impl ReleaseService {
         let sweeper = self.clone();
         self.inner.tasks.spawn(async move {
             let tmp = sweeper.attachments_dir().join("tmp");
-            let swept = sweep_stale_uploads(&tmp, STALE_UPLOAD_AGE).await;
+            let swept = files::sweep_stale_uploads(&tmp, STALE_UPLOAD_AGE).await;
             if swept > 0 {
                 tracing::info!(swept, "removed interrupted release uploads");
             }
@@ -655,88 +338,6 @@ impl ReleaseService {
             }
         }
     }
-
-    /// Removes unreferenced files after repository deletion. A delayed event may name
-    /// an id since reused by another repository, whose current files must survive.
-    pub(crate) async fn remove_repository_files(&self, repo: RepoId) {
-        let service = self.clone();
-        let removal = self.inner.tasks.spawn(async move {
-            let _assets = service.inner.assets.write().await;
-            if let Err(error) = service.remove_unreferenced_files(repo).await {
-                tracing::warn!(%error, repo = repo.0, "cannot remove the release files of a deleted repository");
-            }
-        });
-        if let Err(error) = removal.await {
-            tracing::warn!(%error, repo = repo.0, "release file removal task failed");
-        }
-    }
-
-    async fn remove_unreferenced_files(&self, repo: RepoId) -> Result<(), ServiceError> {
-        let keep: HashSet<_> = self.store().asset_ids_for_repo(repo).await?.into_iter().map(|id| id.0.to_string()).collect();
-        let dir = self.attachments_dir().join(repo.0.to_string());
-        let mut entries = match tokio::fs::read_dir(&dir).await {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
-            Err(error) => return Err(ServiceError::internal(error)),
-        };
-        while let Some(entry) = entries.next_entry().await.map_err(ServiceError::internal)? {
-            if entry.file_name().to_str().is_some_and(|name| keep.contains(name)) {
-                continue;
-            }
-            tokio::fs::remove_file(entry.path()).await.map_err(ServiceError::internal)?;
-        }
-        drop(entries);
-        if keep.is_empty() {
-            tokio::fs::remove_dir(&dir).await.map_err(ServiceError::internal)?;
-        }
-        Ok(())
-    }
-}
-
-/// Removes `*.part` files in `dir` older than `age`; returns how many.
-async fn sweep_stale_uploads(dir: &Path, age: Duration) -> usize {
-    let Ok(mut entries) = tokio::fs::read_dir(dir).await else { return 0 };
-    let mut swept = 0;
-    while let Ok(Some(entry)) = entries.next_entry().await {
-        let path = entry.path();
-        if path.extension().is_none_or(|ext| ext != "part") {
-            continue;
-        }
-        let stale = entry
-            .metadata()
-            .await
-            .and_then(|m| m.modified())
-            .is_ok_and(|modified| SystemTime::now().duration_since(modified).unwrap_or_default() >= age);
-        if stale && tokio::fs::remove_file(&path).await.is_ok() {
-            swept += 1;
-        }
-    }
-    swept
-}
-
-async fn remove_quietly(path: &Path) {
-    let _ = tokio::fs::remove_file(path).await;
-}
-
-/// 128 random bits as hex, for temporary file names.
-fn random_hex() -> Result<String, ServiceError> {
-    let mut bytes = [0u8; 16];
-    getrandom::fill(&mut bytes).map_err(|e| ServiceError::internal(io::Error::other(e.to_string())))?;
-    Ok(bytes.iter().fold(String::with_capacity(32), |mut hex, byte| {
-        let _ = write!(hex, "{byte:02x}");
-        hex
-    }))
-}
-
-/// `512 MiB`, `10 KiB` — for limit messages.
-pub fn human_bytes(bytes: u64) -> String {
-    const UNITS: [(u64, &str); 3] = [(1 << 30, "GiB"), (1 << 20, "MiB"), (1 << 10, "KiB")];
-    for (unit, label) in UNITS {
-        if bytes >= unit && bytes.is_multiple_of(unit) {
-            return format!("{} {label}", bytes / unit);
-        }
-    }
-    format!("{bytes} bytes")
 }
 
 #[cfg(test)]

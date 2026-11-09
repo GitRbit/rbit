@@ -1,14 +1,12 @@
-//! Source archives (`zip`, `tar.gz`) of a commit, with bounded concurrency.
+//! Source archives (`zip`, `tar.gz`): the adapter over [`rbit_repositories::archives`].
 //!
 //! Milestone 2 workstream R (repository essentials) owns this file.
 //!
-//! An archive is produced by `git archive` while it is downloaded, so it costs a process
-//! and CPU for as long as the client reads. [`ArchiveService`] therefore allows at most
-//! [`MAX_CONCURRENT_ARCHIVES`] at once, and `[repository] max_archives_per_ip` of them for
-//! one client; the slot is held by the returned stream and freed when it is dropped. When
-//! no slot is free the caller is told to retry ([`ArchiveError::Busy`],
-//! [`ArchiveError::TooManyFromClient`]) instead of queueing unboundedly. The web layer
-//! bounds how long a download may stall or last, so a slow reader cannot keep a slot.
+//! The archive application admits, names and starts an archive; this service supplies
+//! the instance-wide and per-address slots (`[repository] max_archives_per_ip` for one
+//! client), the opened repository's revision lookup and `git archive`. The slot is held
+//! by the returned stream and freed when it is dropped. The web layer bounds how long a
+//! download may stall or last, so a slow reader cannot keep a slot.
 
 use std::{
     io,
@@ -18,6 +16,8 @@ use std::{
 };
 
 use rbit_git::archive::{ArchiveFormat, ArchiveStream, Archiver};
+use rbit_repositories::archives::{ArchivePort, ArchiveRefusal, RepositoryArchives};
+pub use rbit_repositories::archives::{MAX_CONCURRENT_ARCHIVES, archive_base_name};
 use tokio::io::{AsyncRead, ReadBuf};
 
 use crate::{
@@ -25,38 +25,17 @@ use crate::{
     limits::{self, ConcurrencyLimiter, ConcurrencySlot, Refused},
 };
 
-/// Archives produced at the same time, instance-wide.
-pub const MAX_CONCURRENT_ARCHIVES: usize = 4;
 /// What a busy instance suggests as `Retry-After`, in seconds.
 pub const BUSY_RETRY_SECONDS: u64 = limits::RETRY_AFTER_SECONDS;
+
+/// Why an archive could not be started: [`ArchiveError::Busy`] and
+/// [`ArchiveError::TooManyFromClient`] are retried after [`BUSY_RETRY_SECONDS`].
+pub type ArchiveError = rbit_repositories::archives::ArchiveError<ServiceError>;
 
 #[derive(Debug, Clone)]
 pub struct ArchiveService {
     archiver: Archiver,
     slots: ConcurrencyLimiter,
-}
-
-/// Why an archive could not be started.
-#[derive(Debug, thiserror::Error)]
-pub enum ArchiveError {
-    /// Every archive slot is in use; retry after [`BUSY_RETRY_SECONDS`].
-    #[error("too many archives are being prepared; try again shortly")]
-    Busy,
-    /// The client already downloads as many archives as one address may; retry after
-    /// [`BUSY_RETRY_SECONDS`].
-    #[error("too many archives are being downloaded from this address; try again shortly")]
-    TooManyFromClient,
-    #[error(transparent)]
-    Service(#[from] ServiceError),
-}
-
-impl From<Refused> for ArchiveError {
-    fn from(refused: Refused) -> Self {
-        match refused {
-            Refused::Busy => Self::Busy,
-            Refused::TooManyFromClient => Self::TooManyFromClient,
-        }
-    }
 }
 
 /// An archive ready to stream.
@@ -94,6 +73,42 @@ impl AsyncRead for ArchiveBody {
     }
 }
 
+/// One archive request on a repository opened for its viewer.
+struct ArchiveRequest<'a> {
+    service: &'a ArchiveService,
+    repo: &'a RepoContext,
+}
+
+impl ArchivePort for ArchiveRequest<'_> {
+    type Format = ArchiveFormat;
+    type Slot = ConcurrencySlot;
+    type Stream = ArchiveStream;
+    type Error = ServiceError;
+
+    fn admit(&self, client: IpAddr) -> Result<ConcurrencySlot, ArchiveRefusal> {
+        self.service.slots.try_acquire(Some(client)).map_err(|refused| match refused {
+            Refused::Busy => ArchiveRefusal::Busy,
+            Refused::TooManyFromClient => ArchiveRefusal::TooManyFromClient,
+        })
+    }
+
+    async fn commit_id(&self, revision: &str) -> Result<String, ServiceError> {
+        Ok(self.repo.reader.commit_id(revision.to_owned()).await?)
+    }
+
+    async fn start(&self, commit_id: &str, base_name: &str, format: ArchiveFormat) -> Result<ArchiveStream, ServiceError> {
+        Ok(self.service.archiver.start(&self.repo.disk_path, commit_id, base_name, format).await?)
+    }
+
+    fn extension(format: ArchiveFormat) -> &'static str {
+        format.extension()
+    }
+
+    fn started(&self, format: ArchiveFormat) {
+        metrics::counter!("rbit_archives_total", "format" => format.extension()).increment(1);
+    }
+}
+
 impl ArchiveService {
     pub(crate) fn new(ctx: ServiceContext) -> Self {
         let ServiceContext { config, .. } = ctx;
@@ -113,38 +128,13 @@ impl ArchiveService {
         format: ArchiveFormat,
         client: IpAddr,
     ) -> Result<Archive, ArchiveError> {
-        let slot = self.slots.try_acquire(Some(client))?;
-        let commit_id = repo.reader.commit_id(revision.to_owned()).await.map_err(ServiceError::from)?;
-        let base_name = archive_base_name(repo.repo.repo.name.as_str(), revision);
-        let stream = self.archiver.start(&repo.disk_path, &commit_id, &base_name, format).await.map_err(ServiceError::from)?;
-        metrics::counter!("rbit_archives_total", "format" => format.extension()).increment(1);
+        let request = ArchiveRequest { service: self, repo };
+        let started = RepositoryArchives::start(&request, repo.repo.repo.name.as_str(), revision, format, client).await?;
         Ok(Archive {
-            commit_id,
-            file_name: format!("{base_name}{}", format.extension()),
+            commit_id: started.commit_id,
+            file_name: started.file_name,
             format,
-            body: ArchiveBody { stream, _slot: slot },
+            body: ArchiveBody { stream: started.stream, _slot: started.slot },
         })
-    }
-}
-
-/// `{repo}-{revision}` with every character outside `[A-Za-z0-9._-]` replaced by `-`, so
-/// it is safe as a file name, a `Content-Disposition` value and an archive prefix.
-pub fn archive_base_name(repo: &str, revision: &str) -> String {
-    let sanitized: String =
-        revision.chars().map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') { c } else { '-' }).collect();
-    let revision = sanitized.trim_matches(|c| c == '.' || c == '-');
-    format!("{repo}-{}", if revision.is_empty() { "archive" } else { revision })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn base_names_are_safe() {
-        assert_eq!(archive_base_name("demo", "v1.0"), "demo-v1.0");
-        assert_eq!(archive_base_name("demo", "feature/login"), "demo-feature-login");
-        assert_eq!(archive_base_name("demo", "../\"x\"\r\n"), "demo-x");
-        assert_eq!(archive_base_name("demo", "..."), "demo-archive");
     }
 }
