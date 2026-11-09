@@ -272,3 +272,38 @@ async fn backup_includes_lfs_objects() {
     assert_eq!(std::fs::read(&copied).unwrap(), b"large file content");
     assert_eq!(rows(&backup, "lfs_objects").await, 1, "the missing object's row is left out");
 }
+
+/// The highest migration `version` recorded in the database at `path`.
+async fn schema(path: &Path) -> i64 {
+    let options = sqlx::sqlite::SqliteConnectOptions::new().filename(path).read_only(true);
+    let mut connection = sqlx::ConnectOptions::connect(&options).await.unwrap();
+    let version = sqlx::query_scalar("SELECT MAX(version) FROM _sqlx_migrations").fetch_one(&mut connection).await.unwrap();
+    sqlx::Connection::close(connection).await.unwrap();
+    version
+}
+
+#[tokio::test]
+async fn backup_of_an_older_database_leaves_it_unmigrated() {
+    // A data directory last served by the previous release (migration 59), backed up with
+    // this binary before the upgrade: neither it nor the backup may be migrated, or the
+    // backup no longer restores for the previous release (the rollback path).
+    const PREVIOUS_RELEASE: i64 = 59;
+    let dir = tempfile::tempdir().unwrap();
+    let data_dir = dir.path().join("data");
+    std::fs::create_dir_all(data_dir.join("repositories")).unwrap();
+    let options = sqlx::sqlite::SqliteConnectOptions::new().filename(data_dir.join("rbit.db")).create_if_missing(true);
+    let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect_with(options).await.unwrap();
+    sqlx::migrate!("../rbit-storage/migrations").run_to(PREVIOUS_RELEASE, &pool).await.unwrap();
+    pool.close().await;
+    let backup = dir.path().join("backup");
+
+    let output = rbit(&data_dir, &["backup", "--output", backup.to_str().unwrap()]);
+    assert!(output.status.success(), "backup failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert_eq!(schema(&data_dir.join("rbit.db")).await, PREVIOUS_RELEASE, "the live database is not migrated");
+    assert_eq!(schema(&backup.join("rbit.db")).await, PREVIOUS_RELEASE, "the backup keeps the previous release's schema");
+
+    let restored = dir.path().join("restored");
+    let output = rbit(&restored, &["restore", "--from", backup.to_str().unwrap()]);
+    assert!(output.status.success(), "restore failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert_eq!(schema(&restored.join("rbit.db")).await, PREVIOUS_RELEASE, "restoring does not migrate either");
+}

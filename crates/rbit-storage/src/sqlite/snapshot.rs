@@ -40,6 +40,24 @@ fn read_only(path: &Path) -> Result<SqliteConnectOptions, StorageError> {
     Ok(writer_compatibility::register(SqliteConnectOptions::from_str("sqlite:")?).filename(path).read_only(true).create_if_missing(false))
 }
 
+/// The migrations this binary embeds that the database at `path` has not applied: it was
+/// last opened by an older rbit. Empty for a current or newer database; every embedded
+/// migration for a file without migration history. Nothing is written.
+pub async fn pending_migrations(path: &Path) -> Result<Vec<i64>, StorageError> {
+    let mut connection: SqliteConnection = read_only(path)?.connect().await?;
+    let has_table: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = '_sqlx_migrations')")
+            .fetch_one(&mut connection)
+            .await?;
+    let recorded: Vec<i64> = if has_table {
+        sqlx::query_scalar("SELECT version FROM _sqlx_migrations WHERE success").fetch_all(&mut connection).await?
+    } else {
+        Vec::new()
+    };
+    connection.close().await?;
+    Ok(embedded_migrations().into_iter().filter(|version| !recorded.contains(version)).collect())
+}
+
 /// Checks the database at `path` without changing it.
 pub async fn inspect(path: &Path) -> Result<SnapshotReport, StorageError> {
     let mut connection: SqliteConnection = read_only(path)?.connect().await?;
@@ -110,5 +128,24 @@ mod tests {
         let report = inspect(&path).await.unwrap();
         assert_eq!(report.unknown_migrations, [99999]);
         assert!(!report.is_clean());
+        assert_eq!(pending_migrations(&path).await.unwrap(), Vec::<i64>::new());
+    }
+
+    #[tokio::test]
+    async fn an_older_database_names_its_pending_migrations_without_changing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rbit.db");
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(read_only(&path).unwrap().read_only(false).create_if_missing(true))
+            .await
+            .unwrap();
+        sqlx::migrate!("./migrations").run_to(59, &pool).await.unwrap();
+        pool.close().await;
+        let before = std::fs::read(&path).unwrap();
+        let pending = pending_migrations(&path).await.unwrap();
+        assert_eq!(pending.first(), Some(&60));
+        assert_eq!(pending.last(), embedded_migrations().last());
+        assert_eq!(std::fs::read(&path).unwrap(), before, "checking writes nothing");
     }
 }

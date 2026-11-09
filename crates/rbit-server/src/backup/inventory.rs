@@ -103,7 +103,8 @@ pub async fn read(snapshot: &Path, format: u32) -> anyhow::Result<Inventory> {
             blobs.push(Blob::new(Kind::Lfs, &oid, path).recorded(size, &digest));
         }
     }
-    if format >= Kind::Artifact.since_format() {
+    // A database not yet migrated (backed up before an upgrade) may predate Actions.
+    if format >= Kind::Artifact.since_format() && has_table(&mut connection, "actions_artifacts").await? {
         read_actions(&mut connection, &mut blobs).await?;
     }
     connection.close().await?;
@@ -114,6 +115,13 @@ pub async fn read(snapshot: &Path, format: u32) -> anyhow::Result<Inventory> {
     })
 }
 
+async fn has_table(connection: &mut SqliteConnection, name: &str) -> anyhow::Result<bool> {
+    Ok(sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?)")
+        .bind(name)
+        .fetch_one(connection)
+        .await?)
+}
+
 async fn read_actions(connection: &mut SqliteConnection, blobs: &mut Vec<Blob>) -> anyhow::Result<()> {
     let actions = Path::new("actions");
     let artifacts: Vec<(i64, i64, i64, Vec<u8>)> =
@@ -122,8 +130,12 @@ async fn read_actions(connection: &mut SqliteConnection, blobs: &mut Vec<Blob>) 
         let path = actions.join("artifacts").join(run.to_string()).join(format!("{id}.tar.gz"));
         blobs.push(Blob::new(Kind::Artifact, &id, path).recorded(size, &sha256));
     }
-    let caches: Vec<(i64, i64, i64, Vec<u8>)> =
-        sqlx::query_as("SELECT repo_id, id, size, sha256 FROM actions_caches ORDER BY id").fetch_all(&mut *connection).await?;
+    // A database not yet migrated (backed up before an upgrade) may predate the cache.
+    let caches: Vec<(i64, i64, i64, Vec<u8>)> = if has_table(connection, "actions_caches").await? {
+        sqlx::query_as("SELECT repo_id, id, size, sha256 FROM actions_caches ORDER BY id").fetch_all(&mut *connection).await?
+    } else {
+        Vec::new()
+    };
     for (repo, id, size, sha256) in caches {
         let path = actions.join("caches").join(repo.to_string()).join(format!("{id}.tar.gz"));
         blobs.push(Blob::new(Kind::Cache, &id, path).recorded(size, &sha256));

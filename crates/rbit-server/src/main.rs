@@ -111,16 +111,22 @@ async fn run(cli: Cli) -> anyhow::Result<bool> {
         let config = config::load_deployment(file.as_deref())?;
         return backup::restore::run(config, from).await.map(|()| false);
     }
+    if let Command::Backup { output } = command {
+        // A backup never migrates: taken with a new binary before an upgrade, it must
+        // still restore for the old one.
+        let config = config::load_unmigrated(file.as_deref()).await?;
+        backup::restore::refuse_interrupted(&config)?;
+        return backup::run(config, output).await.map(|()| false);
+    }
     let config = config::load(file.as_deref()).await?;
     backup::restore::refuse_interrupted(&config)?;
 
     match command {
         Command::Serve => serve::run(config).await,
         Command::Migrate => serve::migrate(config).await.map(|()| false),
-        Command::Backup { output } => backup::run(config, output).await.map(|()| false),
         Command::User { command: UserCommand::Create { username, email, admin } } => {
             serve::create_user(config, username, email, admin).await.map(|()| false)
         }
-        Command::Client(_) | Command::Restore { .. } => unreachable!("handled before the configuration is loaded"),
+        Command::Client(_) | Command::Restore { .. } | Command::Backup { .. } => unreachable!("handled before the configuration is loaded"),
     }
 }

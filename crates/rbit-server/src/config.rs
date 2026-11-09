@@ -33,6 +33,27 @@ pub async fn load(file: Option<&Path>) -> anyhow::Result<Config> {
     sources.finish(saved)
 }
 
+/// [`load`] for `rbit backup`, which must copy the data as it is: a database older than this
+/// binary is not migrated (it may be the pre-upgrade backup an operator rolls back to), so
+/// its saved administrator settings, which may predate this version, are not applied.
+pub async fn load_unmigrated(file: Option<&Path>) -> anyhow::Result<Config> {
+    let sources = ConfigSources::parse(file)?;
+    let storage = &sources.deployment().storage;
+    let database = storage.sqlite_path();
+    if database.exists() && !crate::backup::restore::interrupted(&storage.data_dir) {
+        let pending =
+            rbit_storage::sqlite::snapshot::pending_migrations(&database).await.context("cannot read the database's migrations")?;
+        if !pending.is_empty() {
+            tracing::warn!(
+                pending = pending.len(),
+                "the database is older than this rbit; it is backed up as it is, without migrating or applying saved administrator settings"
+            );
+            return sources.finish(None);
+        }
+    }
+    load(file).await
+}
+
 /// The configuration without the administrator settings saved in the database, for
 /// `rbit restore`, which must not open the database of the directory it restores into.
 pub fn load_deployment(file: Option<&Path>) -> anyhow::Result<Config> {
