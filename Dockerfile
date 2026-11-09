@@ -36,7 +36,7 @@ FROM rust:${RUST_VERSION}-${DEBIAN_RELEASE} AS build
 WORKDIR /src
 COPY . .
 # Assets are embedded into the binary at compile time, so the CSS must exist first.
-COPY --from=assets /src/crates/rbit-web/assets/app.css crates/rbit-web/assets/app.css
+COPY --from=assets /src/crates/rbit-web/assets/app.css /src/crates/rbit-web/assets/deferred.css crates/rbit-web/assets/
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/src/target \

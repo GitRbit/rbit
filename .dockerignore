@@ -22,3 +22,4 @@ Dockerfile
 .dockerignore
 # Generated in the image's Node stage.
 crates/rbit-web/assets/app.css
+crates/rbit-web/assets/deferred.css

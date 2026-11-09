@@ -18,7 +18,7 @@ export const productionBuildArgs = Object.freeze([
 ]);
 
 export function assertSourceAssets(assets, tracked) {
-  const expected = [...new Set([...tracked, "app.css"])].sort();
+  const expected = [...new Set([...tracked, "app.css", "deferred.css"])].sort();
   if (assets.map(asset => asset.path).sort().join("\n") !== expected.join("\n")) throw Error("FIXTURE_ASSET_SET_REFUSED");
 }
 
@@ -44,7 +44,7 @@ async function main() {
     if (!path.startsWith(prefix)) throw Error("FIXTURE_ASSET_SET_REFUSED");
     return path.slice(prefix.length);
   });
-  assertSourceAssets(assets, tracked); // app.css is the only permitted untracked build output.
+  assertSourceAssets(assets, tracked); // app.css and deferred.css are the only permitted untracked build outputs.
   const directory = join(workspace, "actions-production-fixture");
   await mkdir(directory, { mode: 0o700 });
   const destination = join(directory, "actions-fixture");

@@ -26,7 +26,7 @@ test("the exact public asset policy covers every tracked runtime asset", () => {
 });
 test("only tracked public assets and the known fresh CSS build output may be exported", () => {
   const tracked = ["app.bundle.js", "vendor/htmx.min.js"];
-  const assets = [...tracked, "app.css"].map(path => ({ path }));
+  const assets = [...tracked, "app.css", "deferred.css"].map(path => ({ path }));
   assertSourceAssets(assets, tracked);
   assert.throws(() => assertSourceAssets([...assets, { path: "runtime.js" }], tracked), /ASSET_SET_REFUSED/);
   assert.throws(() => assertSourceAssets(assets.slice(1), tracked), /ASSET_SET_REFUSED/);
@@ -70,6 +70,7 @@ async function artifact(root) {
   const directory = join(root, "actions-production-fixture"), assets = join(directory, "public-assets");
   await mkdir(join(assets, "vendor"), { recursive: true });
   await writeFile(join(assets, "app.css"), "body{}");
+  await writeFile(join(assets, "deferred.css"), ".lpk{}");
   await writeFile(join(assets, "app.bundle.js"), "export {};");
   await writeFile(join(assets, "mermaid-frame.html"), "<!doctype html><p>public diagram frame</p>");
   await writeFile(join(assets, "vendor/htmx.min.js"), "void 0;");

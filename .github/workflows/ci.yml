@@ -174,7 +174,9 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: app-css
-          path: crates/rbit-web/assets/app.css
+          path: |
+            crates/rbit-web/assets/app.css
+            crates/rbit-web/assets/deferred.css
           retention-days: 1
 
   release:

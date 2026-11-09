@@ -31,8 +31,8 @@ The exporter selects by Cargo package ID and target identity, never basename.
 Revision, binary hash, lock hash and every copied public asset hash are recorded.
 Bounds remain one 512 MiB binary, 2048 asset files / 64 MiB and a 1 MiB input
 manifest. Links, private/runtime file types, unexpected top-level files, untracked
-assets and copy/hash drift are refused. `app.css` is the only explicitly permitted
-untracked asset, freshly built before the binary. The tracked asset build must
+assets and copy/hash drift are refused. `app.css` and `deferred.css` are the only
+explicitly permitted untracked assets, freshly built before the binary. The tracked asset build must
 leave no changes. Profile debug levels, single build job, incremental setting and
 SQLite compile flags match the existing Linux CI environment. The exporter bounds
 its focused compilation to 40 minutes inside the 60-minute job.

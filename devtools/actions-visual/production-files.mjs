@@ -61,7 +61,7 @@ export async function publicAssets(root) {
   }
   await walk();
   result.sort((left, right) => left.path.localeCompare(right.path, "en"));
-  if (!["app.css", "app.bundle.js", "vendor/htmx.min.js"].every(path => result.some(file => file.path === path))) {
+  if (!["app.css", "deferred.css", "app.bundle.js", "vendor/htmx.min.js"].every(path => result.some(file => file.path === path))) {
     throw Error("FIXTURE_REQUIRED_ASSET_MISSING");
   }
   return result;
