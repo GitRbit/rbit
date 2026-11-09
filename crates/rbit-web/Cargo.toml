@@ -17,6 +17,8 @@ rbit-identity-models.workspace = true
 zeroize.workspace = true
 rbit-core.workspace = true
 rbit-localization.workspace = true
+# Safe Markdown rendering, partial navigation, themes and the installable app.
+rbit-presentation.workspace = true
 rbit-auth.workspace = true
 rbit-git.workspace = true
 rbit-services.workspace = true
@@ -36,8 +38,6 @@ brotli.workspace = true
 
 askama.workspace = true
 askama_web.workspace = true
-pulldown-cmark.workspace = true
-ammonia.workspace = true
 syntect.workspace = true
 rust-embed.workspace = true
 mime_guess.workspace = true

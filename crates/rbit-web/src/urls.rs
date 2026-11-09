@@ -3,6 +3,8 @@
 
 use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use rbit_core::{IssueKind, IssueNumber};
+use rbit_presentation::markdown::LinkResolver;
+pub use rbit_presentation::markdown::{LinkKind, ResolvedLink};
 
 /// Characters escaped inside a single path segment (RFC 3986 `pchar` minus a few
 /// characters that are legal but confusing in file names).
@@ -107,26 +109,6 @@ impl RepoUrls {
     }
 }
 
-/// What a link inside a rendered document points at.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LinkKind {
-    /// `<a href>`: a file (`/blob/…`) or directory (`/tree/…`) page.
-    Page,
-    /// `<img src>`: the file's bytes (`/raw/…`).
-    Image,
-}
-
-/// The outcome of resolving one link target of a document.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ResolvedLink {
-    /// Absolute URLs, `#anchors`, `mailto:` and the like are left as written.
-    Unchanged,
-    /// A relative target, rewritten to a repository URL.
-    Rewritten(String),
-    /// A relative target that escapes the repository root; the link is dropped.
-    Dropped,
-}
-
 /// Where a rendered document (a README, a Markdown file, release notes) lives, so its
 /// relative links resolve against the document's directory at one revision.
 #[derive(Debug, Clone)]
@@ -184,6 +166,17 @@ impl DocumentBase {
             Some(fragment) if !fragment.is_empty() => format!("{url}#{fragment}"),
             _ => url,
         })
+    }
+}
+
+/// Rendered documents resolve their relative links against their place in the repository.
+impl LinkResolver for DocumentBase {
+    fn resolve(&self, target: &str, kind: LinkKind) -> ResolvedLink {
+        DocumentBase::resolve(self, target, kind)
+    }
+
+    fn boxed(&self) -> Box<dyn LinkResolver> {
+        Box::new(self.clone())
     }
 }
 

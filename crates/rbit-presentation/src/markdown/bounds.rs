@@ -130,7 +130,7 @@ mod tests {
                 let (source, (done, finished)) = (source.to_owned(), std::sync::mpsc::channel());
                 std::thread::spawn(move || {
                     let started = std::time::Instant::now();
-                    drop(super::super::markdown::render_markdown(&source, None));
+                    drop(super::super::render(&source, None));
                     let _ = done.send(started.elapsed());
                 });
                 finished.recv_timeout(std::time::Duration::from_secs(10)).expect("a hostile document rendered within ten seconds")

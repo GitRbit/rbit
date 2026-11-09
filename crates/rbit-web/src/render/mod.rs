@@ -4,14 +4,38 @@ mod document_cache;
 pub mod document_jobs;
 mod highlight;
 mod highlight_cache;
-mod markdown;
-mod markdown_bounds;
+#[cfg(test)]
+mod markdown_tests;
 pub mod references;
 
 pub use document_cache::{DocumentCache, DocumentCacheStats};
 pub use highlight::Highlighter;
 pub use highlight_cache::{CacheStats, HIGHLIGHTER_VERSION, HighlightCache, HighlightedFile};
-pub use markdown::{Rewritten, escape_html, render_markdown, render_markdown_rewriting};
+use rbit_presentation::markdown::{self, LinkResolver};
+pub use rbit_presentation::markdown::{Rewritten, escape_html};
+
+use crate::urls::DocumentBase;
+
+/// Renders untrusted Markdown with [`rbit_presentation::markdown::render`]; safe to insert
+/// into a page verbatim.
+///
+/// With a `base`, relative links and images resolve against the document's location in
+/// its repository (see [`DocumentBase::resolve`]); without one they are left as written.
+/// Documents with a base (READMEs, Markdown files, release notes) are kept in
+/// [`DocumentCache::shared`], so viewing one again copies the stored HTML instead of
+/// rendering it.
+pub fn render_markdown(source: &str, base: Option<&DocumentBase>) -> String {
+    match base {
+        Some(base) => DocumentCache::shared().get_or_render(source, base, || markdown::render(source, Some(base as &dyn LinkResolver))),
+        None => markdown::render(source, None),
+    }
+}
+
+/// [`render_markdown`] without the cache, with every run of plain text offered to
+/// `rewrite` (see [`rbit_presentation::markdown::render_rewriting`]).
+pub fn render_markdown_rewriting(source: &str, base: Option<&DocumentBase>, rewrite: &dyn Fn(&str) -> Option<Rewritten>) -> String {
+    markdown::render_rewriting(source, base.map(|base| base as &dyn LinkResolver), rewrite)
+}
 
 /// The character a row of code shows for `ch`: itself, or a visible stand-in when `ch`
 /// would break the line.

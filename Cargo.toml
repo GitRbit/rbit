@@ -26,6 +26,7 @@ members = [
     "crates/rbit-wikis",
     "crates/rbit-notifications",
     "crates/rbit-platform",
+    "crates/rbit-presentation",
     "tools/rewrite-check",
     "tools/render-probe",
     "tools/process-tree-probe",
@@ -54,6 +55,7 @@ rbit-actions = { path = "crates/rbit-actions" }
 rbit-wikis = { path = "crates/rbit-wikis" }
 rbit-notifications = { path = "crates/rbit-notifications" }
 rbit-platform = { path = "crates/rbit-platform" }
+rbit-presentation = { path = "crates/rbit-presentation" }
 rbit-core = { path = "crates/rbit-core" }
 rbit-storage = { path = "crates/rbit-storage" }
 rbit-auth = { path = "crates/rbit-auth" }

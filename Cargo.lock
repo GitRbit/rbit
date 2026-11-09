@@ -4421,6 +4421,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbit-presentation"
+version = "0.2.0"
+dependencies = [
+ "ammonia",
+ "pulldown-cmark",
+ "serde_json",
+ "sha2 0.11.1",
+]
+
+[[package]]
 name = "rbit-process-tree-probe"
 version = "0.2.0"
 dependencies = [
@@ -4640,7 +4650,6 @@ dependencies = [
 name = "rbit-web"
 version = "0.2.0"
 dependencies = [
- "ammonia",
  "askama",
  "askama_web",
  "async-compression",
@@ -4655,7 +4664,6 @@ dependencies = [
  "mime_guess",
  "percent-encoding",
  "proptest",
- "pulldown-cmark",
  "qrcode",
  "rbit-auth",
  "rbit-core",
@@ -4664,6 +4672,7 @@ dependencies = [
  "rbit-identity-models",
  "rbit-kernel",
  "rbit-localization",
+ "rbit-presentation",
  "rbit-services",
  "rbit-storage",
  "rbit-transport",

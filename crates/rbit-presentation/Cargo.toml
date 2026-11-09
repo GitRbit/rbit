@@ -1,0 +1,16 @@
+[package]
+name = "rbit-presentation"
+description = "Safe content rendering and view decisions: Markdown sanitising, partial navigation, themes and the installable app."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ammonia.workspace = true
+pulldown-cmark.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+
+[lints]
+workspace = true

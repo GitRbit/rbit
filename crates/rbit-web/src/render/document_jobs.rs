@@ -11,10 +11,7 @@ use std::sync::Arc;
 
 use tokio::sync::Semaphore;
 
-use super::{
-    document_cache::DocumentCache,
-    markdown::{escape_html, render_markdown},
-};
+use super::{document_cache::DocumentCache, escape_html, render_markdown};
 use crate::{
     error::{WebError, WebResult},
     urls::DocumentBase,
