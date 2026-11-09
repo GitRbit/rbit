@@ -94,7 +94,7 @@ When the remaining gate passes, record the run id here and change the ledger row
 | Measure | Value |
 | --- | --- |
 | Code commits | 1 (plus this record) |
-| Files changed | 3: a 92-line Node check, a 52-line test, two checker lines |
+| Files changed | 3: a 92-line Node check, a 49-line test, two checker lines |
 | Release workflow changes | none |
 
 Tricky parts: finding that the last published release predates the paired runner, so
