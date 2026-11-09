@@ -36,6 +36,8 @@
         "lib::webhooks::ports::Worker",
         "lib::mirrors::port::SyncView",
         "lib::push_mirrors::port::PushView",
+        "lib::imports::ports::Admission",
+        "lib::imports::ports::Run",
         "lib::forks::ForkService",
         "lib::forks::effects::ForkEffects",
         "lib::edits::EditView",
