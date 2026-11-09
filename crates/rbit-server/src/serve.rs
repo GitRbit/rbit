@@ -1,11 +1,11 @@
 //! Wiring: open storage, build services, run the HTTP server, shut down cleanly.
 
-use std::{io::BufRead, sync::Arc};
+use std::sync::Arc;
 
 use anyhow::Context;
 use axum::serve::{ListenerExt, TapIo};
 use rbit_core::Config;
-use rbit_services::{Services, SignUp, accounts};
+use rbit_services::Services;
 use rbit_storage::{Database, KvStore};
 use rbit_web::AppState;
 use tokio::net::{TcpListener, TcpStream};
@@ -27,7 +27,7 @@ async fn open_storage(config: &Config) -> anyhow::Result<Storage> {
 
 /// Opens (and migrates) only the `SQLite` database. The CLI commands use this alone:
 /// the key/value store is held exclusively by a running server, `SQLite` is not.
-async fn open_database(config: &Config) -> anyhow::Result<Database> {
+pub(crate) async fn open_database(config: &Config) -> anyhow::Result<Database> {
     let storage = &config.storage;
     tokio::fs::create_dir_all(storage.repositories_dir())
         .await
@@ -110,21 +110,6 @@ pub async fn migrate(config: Config) -> anyhow::Result<()> {
     let database = open_database(&config).await?;
     database.close().await;
     tracing::info!("database is up to date");
-    Ok(())
-}
-
-pub async fn create_user(config: Config, username: String, email: String, admin: bool) -> anyhow::Result<()> {
-    let database = open_database(&config).await?;
-
-    eprintln!("Password for {username} (read from stdin):");
-    let mut password = String::new();
-    std::io::stdin().lock().read_line(&mut password).context("cannot read password")?;
-    let password = password.trim_end_matches(['\r', '\n']).to_owned();
-
-    let input = SignUp { username, email, password };
-    let user = accounts::create_user_offline(&config, &database.accounts(), input, Some(admin)).await?;
-    tracing::info!(user = %user.name(), admin, "user created");
-    database.close().await;
     Ok(())
 }
 

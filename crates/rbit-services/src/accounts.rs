@@ -36,8 +36,10 @@ pub(crate) use original_recovery::{AccountSessionPersistence, session_persistenc
 pub use original_recovery::{OriginalCredentialFinalizer, OriginalCredentialMutation};
 mod registration;
 mod sessions;
+/// Maps registration failures to service errors; shared with the server's offline provisioning.
+pub use application_error::registration as registration_error;
 pub use original_sessions::{OriginalIssuedSession, OriginalResolvedSession};
-pub use registration::{create_user_offline, create_user_offline_original};
+pub use registration::create_user_offline_original;
 
 pub use rbit_identity::accounts::SignUp;
 

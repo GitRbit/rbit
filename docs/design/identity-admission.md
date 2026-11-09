@@ -75,7 +75,7 @@ the contract survives the extraction. Re-run `rg 'Passwords::' crates` before me
 | `rbit-services/src/recovery.rs`: `reset_password` | Initial-password reuse check, when needed, and replacement hash run in one admission. Do not consume the reset token or revoke sessions on Busy/Closed. |
 | `recovery.rs`: `admin_set_password` | Validate target/authorization/input, then hash through the shared handle before credential finalization. |
 | `rbit-services/src/two_factor.rs`: `verify_password`, `check_password_and_proof` | Inject the shared handle, reserve before taking a passkey challenge, then reuse that reservation for the password worker. TOTP/recovery-code checks retain their existing single-use behavior. |
-| `rbit-server/src/serve.rs`: `create_user` through `accounts::create_user_offline` | Use one short-lived explicitly constructed offline password-work owner for the operation; do not open redb or start all services merely to hash a CLI password. |
+| `rbit-server/src/provision.rs`: `create_user` through `AccountRegistration` | Use one short-lived explicitly constructed offline password-work owner for the operation; do not open redb or start all services merely to hash a CLI password. |
 
 The pinned production inventory contains nine direct `Passwords::` invocations across
 accounts, profiles, recovery and two_factor; signup/admin/CLI helpers add indirect paths.

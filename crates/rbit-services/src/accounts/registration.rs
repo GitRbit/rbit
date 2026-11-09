@@ -7,27 +7,9 @@ use rbit_storage::AccountStore;
 use super::{SignUp, application_error};
 use crate::ServiceError;
 
-/// SQL-only CLI path: its explicitly configured owner is local to this process.
-pub fn create_user_offline<'a>(
-    config: &'a Config,
-    accounts: &'a AccountStore,
-    input: SignUp,
-    is_admin: Option<bool>,
-) -> impl Future<Output = Result<User, ServiceError>> + Send + 'a {
-    create_user_offline_with::<false>(config, accounts, input, is_admin)
-}
-
-/// Explicit original provisioning; not selected by the existing offline CLI.
+/// Explicit original provisioning; the offline CLI (`rbit-server` `provision`) does not
+/// select it. Its explicitly configured owner is local to the caller.
 pub fn create_user_offline_original<'a>(
-    config: &'a Config,
-    accounts: &'a AccountStore,
-    input: SignUp,
-    is_admin: Option<bool>,
-) -> impl Future<Output = Result<User, ServiceError>> + Send + 'a {
-    create_user_offline_with::<true>(config, accounts, input, is_admin)
-}
-
-fn create_user_offline_with<'a, const ORIGINAL: bool>(
     config: &'a Config,
     accounts: &'a AccountStore,
     input: SignUp,
@@ -40,8 +22,7 @@ fn create_user_offline_with<'a, const ORIGINAL: bool>(
     let input = SignUp { username: input.username, email: input.email, password: String::new() };
     async move {
         let passwords = passwords?;
-        create_user_with::<ORIGINAL>(config, accounts, &passwords, SignUp { password: std::mem::take(&mut *password), ..input }, is_admin)
-            .await
+        create_user_with::<true>(config, accounts, &passwords, SignUp { password: std::mem::take(&mut *password), ..input }, is_admin).await
     }
 }
 

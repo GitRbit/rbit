@@ -4522,6 +4522,7 @@ dependencies = [
  "mimalloc",
  "rbit-core",
  "rbit-git",
+ "rbit-identity",
  "rbit-kernel",
  "rbit-services",
  "rbit-ssh",
@@ -4540,6 +4541,7 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
+ "zeroize",
 ]
 
 [[package]]

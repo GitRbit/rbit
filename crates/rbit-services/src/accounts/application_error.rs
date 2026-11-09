@@ -5,7 +5,7 @@ use rbit_storage::StorageError;
 
 use crate::ServiceError;
 
-pub(crate) fn registration(error: AccountError<StorageError>) -> ServiceError {
+pub fn registration(error: AccountError<StorageError>) -> ServiceError {
     map(error, |never| match never {})
 }
 

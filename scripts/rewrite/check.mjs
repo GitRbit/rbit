@@ -71,7 +71,8 @@ const FEATURE_EDGES = {
 const ADDED_EDGES = {
   "rbit-core": ["rbit-contracts", "rbit-access", "rbit-identity-models", "rbit-repositories", "rbit-collaboration"], "rbit-web": ["rbit-localization", "rbit-identity-models", "rbit-wikis", "rbit-presentation"],
   "rbit-auth": ["rbit-identity", "rbit-access"], "rbit-services": ["rbit-access", "rbit-wikis", "rbit-identity", "rbit-kernel", "rbit-repositories", "rbit-collaboration", "rbit-identity-models", "rbit-actions", "rbit-notifications"],
-  "rbit-server": ["rbit-kernel", "rbit-wikis"],
+  // rbit-server: `rbit user create` provisions through the identity registration application.
+  "rbit-server": ["rbit-kernel", "rbit-wikis", "rbit-identity"],
   "rbit-git": ["rbit-wikis", "rbit-kernel"],
   "rbit-storage": ["rbit-access", "rbit-identity-models", "rbit-repositories", "rbit-collaboration", "rbit-wikis", "rbit-notifications"],
 };

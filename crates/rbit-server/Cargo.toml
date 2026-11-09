@@ -13,6 +13,8 @@ path = "src/main.rs"
 [dependencies]
 rbit-core.workspace = true
 rbit-kernel.workspace = true
+# `rbit user create`: offline provisioning through the identity registration application.
+rbit-identity = { workspace = true, features = ["password-work"] }
 rbit-storage.workspace = true
 rbit-services.workspace = true
 rbit-web.workspace = true
@@ -39,6 +41,8 @@ semver.workspace = true
 toml.workspace = true
 tar.workspace = true
 flate2.workspace = true
+# The provisioned password is wiped from this process's buffers.
+zeroize.workspace = true
 
 [dev-dependencies]
 rbit-services.workspace = true

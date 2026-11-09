@@ -22,6 +22,7 @@ mod backup;
 mod cli;
 mod client;
 mod config;
+mod provision;
 mod serve;
 mod ssh;
 mod telemetry;
@@ -126,7 +127,7 @@ async fn run(cli: Cli) -> anyhow::Result<bool> {
         Command::Serve => serve::run(config).await,
         Command::Migrate => serve::migrate(config).await.map(|()| false),
         Command::User { command: UserCommand::Create { username, email, admin } } => {
-            serve::create_user(config, username, email, admin).await.map(|()| false)
+            provision::create_user(config, username, email, admin).await.map(|()| false)
         }
         Command::Client(_) | Command::Restore { .. } | Command::Backup { .. } => unreachable!("handled before the configuration is loaded"),
     }
