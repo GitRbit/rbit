@@ -249,7 +249,10 @@ translated, in its own language. Add arms in any order, a few at a time.
   line for it to every locale's file for that source module (the compiler names each
   missing one). A family without that method keeps compiling with English alone.
 
-The original exhaustive families are not table-backed: in the new locales they stay
+`node scripts/i18n-coverage.mjs` prints, per locale, how many messages are translated
+and how many fall back; `node scripts/i18n-coverage.mjs de fr` adds per-family counts for
+those locales (directory names). It is a progress report, never a gate. The original
+exhaustive families are not table-backed and not counted: in the new locales they stay
 English until they are converted to `MessageFamily`.
 
 `cargo test -p rbit-localization` checks a test-only table (`catalog/translations/tests.rs`):
