@@ -32,6 +32,8 @@ config_entries! {
         ConfigText::Help { section: "security", key: "max_password_jobs" } => text.literal("공유 비밀번호 작업 예산에서 동시에 실행되는 해싱 또는 검증 작업 수입니다(1–64, 기본값 2). 다시 시작해야 적용됩니다."),
         ConfigText::Label { section: "security", key: "trusted_proxies" } => text.literal("신뢰할 수 있는 프록시 네트워크"),
         ConfigText::Help { section: "security", key: "trusted_proxies" } => text.literal("X-Forwarded-For, Forwarded, X-Forwarded-Proto 헤더를 신뢰할 리버스 프록시(CIDR 네트워크, 예: 127.0.0.1/32, 10.0.0.0/8, ::1/128)입니다. 비워 두면(기본값) 항상 TCP 피어를 클라이언트로 간주합니다."),
+        ConfigText::Label { section: "security", key: "client_ip_header" } => text.literal("클라이언트 주소 헤더"),
+        ConfigText::Help { section: "security", key: "client_ip_header" } => text.literal("신뢰할 수 있는 프록시가 클라이언트 주소를 알려 주는 헤더입니다(예: Cloudflare 또는 Cloudflare Tunnel 뒤의 CF-Connecting-IP). 위의 신뢰할 수 있는 프록시 네트워크에서 온 경우에만 받아들이며 X-Forwarded-For보다 우선합니다. 비워 두면 X-Forwarded-For만 사용합니다."),
         ConfigText::Label { section: "security", key: "rate_limit" } => text.literal("속도 제한 사용"),
         ConfigText::Help { section: "security", key: "rate_limit" } => text.literal("클라이언트별로 로그인, 가입, 2단계 인증 코드, Git 자격 증명, 양식 제출을 제한합니다. 부하 테스트를 할 때만 끄는 것이 좋습니다."),
         ConfigText::Label { section: "security", key: "hsts" } => text.literal("HSTS 보내기"),

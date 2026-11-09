@@ -137,6 +137,8 @@ entries! { De:
         ConfigText::Help { section: "security", key: "max_password_jobs" } => text.literal("Gleichzeitige Hash- oder Prüfvorgänge im gemeinsamen Budget für Passwortarbeit (1–64; Standard 2). Neustart erforderlich."),
         ConfigText::Label { section: "security", key: "trusted_proxies" } => text.literal("Vertrauenswürdige Proxy-Netzwerke"),
         ConfigText::Help { section: "security", key: "trusted_proxies" } => text.literal("Reverse-Proxys (CIDR-Netzwerke, z. B. 127.0.0.1/32, 10.0.0.0/8, ::1/128), deren Headern X-Forwarded-For, Forwarded und X-Forwarded-Proto vertraut wird. Leer (Standard) bedeutet, dass der TCP-Peer immer der Client ist."),
+        ConfigText::Label { section: "security", key: "client_ip_header" } => text.literal("Header für die Client-Adresse"),
+        ConfigText::Help { section: "security", key: "client_ip_header" } => text.literal("Ein Header, in dem ein vertrauenswürdiger Proxy die Adresse des Clients meldet, etwa CF-Connecting-IP hinter Cloudflare oder Cloudflare Tunnel. Wird nur von den oben genannten vertrauenswürdigen Proxy-Netzwerken übernommen, vor X-Forwarded-For. Leer verwendet nur X-Forwarded-For."),
         ConfigText::Label { section: "security", key: "rate_limit" } => text.literal("Ratenbegrenzung aktivieren"),
         ConfigText::Help { section: "security", key: "rate_limit" } => text.literal("Drosselt Anmeldungen, Registrierungen, Zwei-Faktor-Codes, Git-Zugangsdaten und Formularübermittlungen pro Client. Abschalten lohnt sich nur für Lasttests."),
         ConfigText::Label { section: "security", key: "hsts" } => text.literal("HSTS senden"),

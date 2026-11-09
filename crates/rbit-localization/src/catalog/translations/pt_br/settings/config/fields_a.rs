@@ -76,6 +76,8 @@ config_entries! {
              X-Forwarded-For, Forwarded e X-Forwarded-Proto são considerados confiáveis. Vazio (o padrão) significa \
              que o par TCP é sempre o cliente.",
         ),
+        ConfigText::Label { section: "security", key: "client_ip_header" } => text.literal("Cabeçalho do endereço do cliente"),
+        ConfigText::Help { section: "security", key: "client_ip_header" } => text.literal("Um cabeçalho em que um proxy confiável informa o endereço do cliente, como CF-Connecting-IP atrás do Cloudflare ou do Cloudflare Tunnel. Aceito apenas das redes de proxy confiáveis acima, antes de X-Forwarded-For. Vazio usa apenas X-Forwarded-For."),
         ConfigText::Label { section: "security", key: "rate_limit" } => text.literal("Ativar limitação de requisições"),
         ConfigText::Help { section: "security", key: "rate_limit" } => text.literal(
             "Limita por cliente as entradas, cadastros, códigos de dois fatores, credenciais Git e envios de \

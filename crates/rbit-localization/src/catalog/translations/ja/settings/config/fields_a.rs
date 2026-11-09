@@ -96,6 +96,8 @@ config_entries! {
         ConfigText::Help { section: "security", key: "min_password_length" } => text.literal("アカウント登録時に受け付けるパスワードの最小文字数です。"),
         ConfigText::Help { section: "security", key: "max_password_jobs" } => text.literal("共有のパスワード処理枠で同時に実行するハッシュ化・検証ジョブの数です（1～64、デフォルトは 2）。再起動が必要です。"),
         ConfigText::Help { section: "security", key: "trusted_proxies" } => text.literal("X-Forwarded-For、Forwarded、X-Forwarded-Proto ヘッダーを信頼するリバースプロキシ（CIDR ネットワーク。例：127.0.0.1/32、10.0.0.0/8、::1/128）です。空欄（デフォルト）の場合、TCP の接続元を常にクライアントとみなします。"),
+        ConfigText::Label { section: "security", key: "client_ip_header" } => text.literal("クライアントアドレスのヘッダー"),
+        ConfigText::Help { section: "security", key: "client_ip_header" } => text.literal("信頼済みプロキシがクライアントのアドレスを伝えるヘッダー（Cloudflare や Cloudflare Tunnel の背後では CF-Connecting-IP など）。上記の信頼済みプロキシネットワークからのみ受け入れ、X-Forwarded-For より優先します。空の場合は X-Forwarded-For のみを使います。"),
         ConfigText::Help { section: "security", key: "rate_limit" } => text.literal("サインイン、アカウント登録、2 要素認証コード、Git の認証情報、フォーム送信をクライアントごとに制限します。無効にするのは負荷テストのときだけにしてください。"),
         ConfigText::Help { section: "security", key: "hsts" } => text.literal("公開 URL が https:// の場合に Strict-Transport-Security（1 年間）を送信し、ブラウザーがこのホストへの平文 HTTP を拒否するようにします。無効にするのは HTTPS の利用をやめる移行期間中だけにしてください。"),
         ConfigText::Help { section: "security", key: "hsts_include_subdomains" } => text.literal("このヘッダーに includeSubDomains を追加し、ホストのすべてのサブドメインにも HTTPS を適用します。"),

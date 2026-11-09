@@ -31,6 +31,8 @@ config_arms! {
         ConfigText::Help { section: "security", key: "max_password_jobs" } => text.literal("Одновременные задачи хеширования или проверки в общем бюджете работы с паролями (1–64; по умолчанию 2). Нужен перезапуск."),
         ConfigText::Label { section: "security", key: "trusted_proxies" } => text.literal("Доверенные сети прокси"),
         ConfigText::Help { section: "security", key: "trusted_proxies" } => text.literal("Обратные прокси (сети CIDR, например 127.0.0.1/32, 10.0.0.0/8, ::1/128), заголовкам X-Forwarded-For, Forwarded и X-Forwarded-Proto которых доверяют. Пусто (по умолчанию) — клиентом всегда считается TCP-узел."),
+        ConfigText::Label { section: "security", key: "client_ip_header" } => text.literal("Заголовок с адресом клиента"),
+        ConfigText::Help { section: "security", key: "client_ip_header" } => text.literal("Заголовок, в котором доверенный прокси сообщает адрес клиента, например CF-Connecting-IP за Cloudflare или Cloudflare Tunnel. Принимается только от доверенных сетей прокси, указанных выше, раньше X-Forwarded-For. Пусто — используется только X-Forwarded-For."),
         ConfigText::Label { section: "security", key: "rate_limit" } => text.literal("Включить ограничение частоты"),
         ConfigText::Help { section: "security", key: "rate_limit" } => text.literal("Ограничивать для каждого клиента частоту входа, регистрации, кодов двухфакторной аутентификации, учётных данных Git и отправки форм. Отключать имеет смысл только для нагрузочных тестов."),
         ConfigText::Label { section: "security", key: "hsts" } => text.literal("Отправлять HSTS"),

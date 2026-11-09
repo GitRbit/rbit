@@ -34,6 +34,8 @@ config_table! {
         ConfigText::Help { section: "security", key: "max_password_jobs" } => text.literal("Tâches simultanées de hachage ou de vérification dans le budget partagé des mots de passe (1–64\u{202f}; 2 par défaut). Redémarrage requis."),
         ConfigText::Label { section: "security", key: "trusted_proxies" } => text.literal("Réseaux de proxys de confiance"),
         ConfigText::Help { section: "security", key: "trusted_proxies" } => text.literal("Proxys inverses (réseaux CIDR, p. ex. 127.0.0.1/32, 10.0.0.0/8, ::1/128) dont les en-têtes X-Forwarded-For, Forwarded et X-Forwarded-Proto sont crus. Vide (par défaut) signifie que le pair TCP est toujours le client."),
+        ConfigText::Label { section: "security", key: "client_ip_header" } => text.literal("En-tête de l'adresse du client"),
+        ConfigText::Help { section: "security", key: "client_ip_header" } => text.literal("Un en-tête dans lequel un proxy de confiance indique l'adresse du client, comme CF-Connecting-IP derrière Cloudflare ou Cloudflare Tunnel. Accepté uniquement des réseaux de proxys de confiance ci-dessus, avant X-Forwarded-For. Vide utilise X-Forwarded-For seul."),
         ConfigText::Label { section: "security", key: "rate_limit" } => text.literal("Activer la limitation de débit"),
         ConfigText::Help { section: "security", key: "rate_limit" } => text.literal("Limite par client la connexion, l’inscription, les codes à deux facteurs, les identifiants Git et les envois de formulaires. À désactiver uniquement pour des tests de charge."),
         ConfigText::Label { section: "security", key: "hsts" } => text.literal("Envoyer HSTS"),

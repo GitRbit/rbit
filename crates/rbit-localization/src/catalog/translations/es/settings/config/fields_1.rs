@@ -62,6 +62,8 @@ config_arms! {
              Forwarded y X-Forwarded-Proto se aceptan. Vacío (el valor predeterminado) significa que el par TCP es \
              siempre el cliente.",
         ),
+        ConfigText::Label { section: "security", key: "client_ip_header" } => text.literal("Cabecera de la dirección del cliente"),
+        ConfigText::Help { section: "security", key: "client_ip_header" } => text.literal("Una cabecera en la que un proxy de confianza indica la dirección del cliente, como CF-Connecting-IP detrás de Cloudflare o Cloudflare Tunnel. Solo se acepta de las redes de proxies de confianza anteriores, antes que X-Forwarded-For. Vacío usa solo X-Forwarded-For."),
         ConfigText::Label { section: "security", key: "rate_limit" } => text.literal("Activar la limitación de frecuencia"),
         ConfigText::Help { section: "security", key: "rate_limit" } => text.literal(
             "Limita por cliente los inicios de sesión, los registros, los códigos de dos pasos, las credenciales de Git \

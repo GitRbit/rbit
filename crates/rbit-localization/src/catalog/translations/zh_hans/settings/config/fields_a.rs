@@ -51,6 +51,8 @@ config_table! {
             "其 X-Forwarded-For、Forwarded 和 X-Forwarded-Proto 头会被信任的反向代理（CIDR 网络，例如 127.0.0.1/32、\
              10.0.0.0/8、::1/128）。留空（默认）表示 TCP 对端始终就是客户端。",
         ),
+        ConfigText::Label { section: "security", key: "client_ip_header" } => text.literal("客户端地址标头"),
+        ConfigText::Help { section: "security", key: "client_ip_header" } => text.literal("受信任代理用来报告客户端地址的标头，例如 Cloudflare 或 Cloudflare Tunnel 之后的 CF-Connecting-IP。仅接受来自上方受信任代理网络的值，优先于 X-Forwarded-For。留空则只使用 X-Forwarded-For。"),
         ConfigText::Label { section: "security", key: "rate_limit" } => text.literal("启用速率限制"),
         ConfigText::Help { section: "security", key: "rate_limit" } => text.literal(
             "按客户端限制登录、注册、双重身份验证码、Git 凭据和表单提交的频率。只有在负载测试时才值得关闭。",
