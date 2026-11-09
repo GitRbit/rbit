@@ -49,6 +49,8 @@ mod repository_transfer;
 pub use repository_transfer::TransferStore;
 pub mod sealing;
 pub mod sqlite;
+mod ssh_key_directory;
+pub use ssh_key_directory::SshKeyDirectoryStore;
 mod work;
 
 pub use access_collaborators::CollaboratorAccessStore;

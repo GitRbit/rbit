@@ -95,6 +95,7 @@
         "lib::repository_forks::ForkCreationStore",
         "lib::repository_forks::ForkReadStore",
         "lib::repository_transfer::TransferStore",
+        "lib::ssh_key_directory::SshKeyDirectoryStore",
         "lib::sqlite::wiki_mutations::WikiMutationStore",
         "lib::sqlite::wiki_mutations::WikiMutationError",
         "lib::sqlite::wiki_mutations::authorization::WriteAccessRow",

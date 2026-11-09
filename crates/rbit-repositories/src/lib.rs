@@ -27,5 +27,6 @@ pub use rbit_contracts::RepoId;
 pub use visibility::Visibility;
 
 pub mod settings;
+pub mod ssh_keys;
 
 pub mod creation;

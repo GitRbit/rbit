@@ -19,11 +19,8 @@ const LAST_USED_RESOLUTION_SECONDS: i64 = 60 * 60;
 /// Names the conflicting field in [`StorageError::Conflict`].
 const KEY_FIELD: &str = "this key";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct SshKeyId(pub i64);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct DeployKeyId(pub i64);
+/// Key ids are the repository feature's, so sign-in decisions and storage share them.
+pub use rbit_repositories::ssh_keys::{DeployKeyId, SshKeyId};
 
 /// A validated public key ready to be stored.
 #[derive(Debug, Clone)]
