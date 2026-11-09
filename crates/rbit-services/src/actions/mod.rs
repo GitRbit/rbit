@@ -69,6 +69,7 @@ pub mod statuses;
 pub mod sweeper;
 pub mod tasks;
 pub mod tokens;
+mod trigger_inputs;
 pub mod triggers;
 pub mod trust;
 mod workflow_files;

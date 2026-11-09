@@ -12,7 +12,7 @@
 //! * Discovery ([`rbit_workflow::discovery`]): at the pushed commit, the first existing of
 //!   its workflow directories; at most its cap of `*.yml`/`*.yaml` files directly in it,
 //!   each within `[actions] max_workflow_bytes`, read through [`GitWorkflows`]. A skip marker in the head commit message skips the
-//!   push's runs. At most [`MAX_REF_UPDATES`] updated refs of one push are considered, one
+//!   push's runs. At most [`decide::MAX_REF_UPDATES`] updated refs of one push are considered, one
 //!   run per workflow and ref.
 //! * Evaluation holds a permit of the evaluation semaphore until its blocking work returns,
 //!   and the work checks a cooperative deadline ([`EVALUATION_BUDGET`]); running out of
@@ -33,18 +33,21 @@
 //! * `RecvError::Lagged`: logged and counted ([`ActionsService::missed_events`]); nothing is
 //!   rescanned. A push in that window can be repeated; rescanning every repository cannot.
 //!
+//! Which refs, events and runs count is decided by [`rbit_actions::triggers`]; this adapter
+//! reads storage and Git, evaluates workflows and starts runs.
+//!
 //! Workstream T (triggers and runs) owns this file.
 
 use std::{
     collections::HashMap,
     iter,
     sync::{Arc, atomic::Ordering},
-    time::Duration,
 };
 
+use rbit_actions::triggers::{self as decide, EVALUATION_BUDGET, LISTED_CHANGED_PATHS, PAYLOAD_COMMITS};
 use rbit_core::{
     AccountId, IssueId, IssueKind, PushSource, RepoId, Timestamp,
-    actions::{Run, RunEvent, Status},
+    actions::{Run, RunEvent},
     issue::IssueAction,
     repository::OwnedRepository,
 };
@@ -65,18 +68,10 @@ use super::{
     calls::CallLoader,
     context,
     runs::{Candidate, Problem, Trigger},
+    trigger_inputs::{activity_type, pull_event, pushed, run_stage},
     workflow_files::GitWorkflows,
 };
 use crate::{DomainEvent, ServiceError};
-
-/// Updated refs of one push that are considered.
-pub const MAX_REF_UPDATES: usize = 16;
-/// Changed paths listed for `paths` filters; beyond it, `paths` filters pass (as on GitHub).
-pub const MAX_CHANGED_PATHS: usize = 3_000;
-/// How long one evaluation may take before it gives up.
-pub const EVALUATION_BUDGET: Duration = Duration::from_secs(10);
-/// Commits listed in a push run's event payload, as in the `push` webhook.
-const PAYLOAD_COMMITS: usize = 20;
 
 impl ActionsService {
     /// Reads domain events until shutdown (see the module documentation).
@@ -156,19 +151,11 @@ impl ActionsService {
             return Ok(Vec::new());
         }
         let Some(owned) = database.admin().find_repository(repo).await? else { return Ok(Vec::new()) };
-        let updates: Vec<RefUpdate> = updates
-            .iter()
-            .filter(|update| !update.is_deleted() && (update.branch().is_some() || update.tag().is_some()))
-            .take(MAX_REF_UPDATES)
-            .cloned()
-            .collect();
+        let updates: Vec<RefUpdate> = decide::considered_refs(updates, pushed).into_iter().cloned().collect();
         if updates.is_empty() {
             return Ok(Vec::new());
         }
-        let default_head = updates
-            .iter()
-            .find(|update| update.branch() == Some(owned.repo.default_branch.as_str()))
-            .and_then(|update| update.after.clone());
+        let default_head = decide::default_branch_head(updates.iter().map(pushed), &owned.repo.default_branch).map(str::to_owned);
         if let Some(head) = default_head
             && let Err(error) = self.refresh_schedules(&owned, &head, Timestamp::now()).await
         {
@@ -233,15 +220,8 @@ impl ActionsService {
         actor: Option<AccountId>,
         action: &IssueAction,
     ) -> Result<Vec<Run>, ServiceError> {
-        let (activity, pusher) = match action {
-            IssueAction::Opened => (ActivityType::Opened, None),
-            IssueAction::Reopened => (ActivityType::Reopened, None),
-            IssueAction::Edited { .. } => (ActivityType::Edited, None),
-            IssueAction::ReadyForReview => (ActivityType::ReadyForReview, None),
-            IssueAction::Closed { .. } => (ActivityType::Closed, None),
-            IssueAction::Synchronized { source, .. } if source.starts_runs() => (ActivityType::Synchronize, Some(source.pusher())),
-            _ => return Ok(Vec::new()),
-        };
+        let Some((activity, pusher)) = decide::pull_trigger(pull_event(action)) else { return Ok(Vec::new()) };
+        let activity = activity_type(activity);
         let database = &self.ctx().database;
         if !database.actions_settings().is_enabled(repo).await? {
             return Ok(Vec::new());
@@ -258,7 +238,7 @@ impl ActionsService {
             return Ok(Vec::new());
         }
         // The author for everything but `synchronize`, whose actor pushed the new head.
-        let cause = pusher.unwrap_or(thread.author);
+        let cause = decide::pull_cause(pusher, thread.author);
         let trust = self.classify_pull_request(&owned, cause, thread.author, pull.is_cross_repository()).await?;
 
         let reader = self.reader(&owned);
@@ -321,7 +301,7 @@ impl ActionsService {
     async fn cancel_pull_runs(&self, repo: RepoId, number: i64) -> Result<(), ServiceError> {
         let store = self.ctx().database.actions_runs();
         for run in store.unfinished_for_pull(repo, number).await? {
-            if !matches!(run.status, Status::Waiting | Status::Blocked | Status::AwaitingApproval) {
+            if !decide::cancelled_when_pull_closes(run_stage(run.status)) {
                 continue;
             }
             if let Some(settled) = store.cancel_run(repo, run.id, Timestamp::now()).await? {
@@ -393,7 +373,7 @@ fn evaluate_push(
                 continue;
             }
         };
-        if has_skip_marker(&message(&head)) {
+        if has_skip_marker(&decide::head_message(&head.summary, head.body.as_deref())) {
             tracing::debug!(r#ref = %update.name, "skip marker in the head commit; no runs");
             continue;
         }
@@ -412,13 +392,8 @@ fn evaluate_push(
         if files.is_empty() {
             continue;
         }
-        // A new branch is compared with the default branch, which it most likely left.
-        let base = match (&update.before, update.branch()) {
-            (Some(before), _) => Some(before.clone()),
-            (None, Some(branch)) if branch != default_branch => Some(default_branch.to_owned()),
-            (None, _) => None,
-        };
-        let mut changed = LazyPaths::new(|| changed_paths(handle, reader, base.as_deref(), after));
+        let base = decide::comparison_base(pushed(update), default_branch);
+        let mut changed = LazyPaths::new(|| changed_paths(handle, reader, base, after));
         let event = Event::Push { reference: &update.name, deleted: false };
         let group = GroupContext { reference: update.name.clone(), sha: after.clone(), ..planning.clone() };
         let mut loader = CallLoader::new(handle, service, caller, reader, after, limits, deadline);
@@ -430,20 +405,12 @@ fn evaluate_push(
     outcomes
 }
 
-/// The full message of `commit`, where skip markers are looked for.
-fn message(commit: &CommitSummary) -> String {
-    match &commit.body {
-        Some(body) => format!("{}\n\n{body}", commit.summary),
-        None => commit.summary.clone(),
-    }
-}
-
 /// Blocking: the paths changed from `base` to `head`, with both sides of renames; `None`
-/// without a base, when the comparison fails, or beyond [`MAX_CHANGED_PATHS`] — then
-/// `paths` filters pass.
+/// without a base, when the comparison fails, or when [`decide::changed_paths_known`]
+/// refuses the list — then `paths` filters pass.
 pub(super) fn changed_paths(handle: &Handle, reader: &RepositoryReader, base: Option<&str>, head: &str) -> Option<Vec<String>> {
     let base = base?;
-    let limits = DiffLimits { max_files: MAX_CHANGED_PATHS + 1, max_file_bytes: 0, max_total_lines: 0, max_total_bytes: 0 };
+    let limits = DiffLimits { max_files: LISTED_CHANGED_PATHS, max_file_bytes: 0, max_total_lines: 0, max_total_bytes: 0 };
     let comparison = match handle.block_on(reader.compare(base.to_owned(), head.to_owned(), limits, 0)) {
         Ok(comparison) => comparison,
         Err(error) => {
@@ -451,9 +418,7 @@ pub(super) fn changed_paths(handle: &Handle, reader: &RepositoryReader, base: Op
             return None;
         }
     };
-    // Without a merge base (a force push of an unrelated history) the comparison lists
-    // nothing although files changed: they are unknown.
-    if comparison.files.len() > MAX_CHANGED_PATHS || comparison.merge_base.is_none() {
+    if !decide::changed_paths_known(comparison.files.len(), comparison.merge_base.is_some()) {
         return None;
     }
     Some(comparison.files.into_iter().flat_map(|file| iter::once(file.path).chain(file.old_path)).collect())
