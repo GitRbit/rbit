@@ -19,7 +19,8 @@ entries! { Es:
             "Si alguna cuenta usa esa dirección, le enviamos un enlace para elegir una contraseña nueva. El enlace \
              funciona una sola vez y caduca en una hora.",
         ),
-        RecoveryMessage::NothingArrived => text.literal("¿No llegó nada? Revisa tu carpeta de spam o"),
+        RecoveryMessage::NothingArrived => text.literal("¿No llegó nada? Revisa tu carpeta de spam o "),
+        RecoveryMessage::TryAgainEnd => text.literal("."),
         RecoveryMessage::TryAgain => text.literal("vuelve a intentarlo"),
         RecoveryMessage::SendResetLink => text.literal("Enviar enlace de restablecimiento"),
         RecoveryMessage::RememberedIt => text.literal("¿La recordaste?"),

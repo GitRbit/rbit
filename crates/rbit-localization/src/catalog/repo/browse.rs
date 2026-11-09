@@ -41,7 +41,7 @@ labels! {
         CopyRepositoryUrl => "repo.empty.copy-url", "Copy repository URL";
         SshRepositoryUrl => "repo.empty.ssh-url", "SSH repository URL";
         CopySshRepositoryUrl => "repo.empty.copy-ssh-url", "Copy SSH repository URL";
-        EmptySshNote => "repo.empty.ssh-note", "The commands below use HTTPS. To push over SSH, use the SSH URL instead and add a key in";
+        EmptySshNote => "repo.empty.ssh-note", "The commands below use HTTPS. To push over SSH, use the SSH URL instead and add a key in ";
         CreateNewRepository => "repo.empty.create", "Create a new repository";
         PushExistingRepository => "repo.empty.push", "Push an existing repository";
         CloseFileBrowser => "repo.languages.close", "Close file browser";

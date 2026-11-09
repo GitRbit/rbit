@@ -16,7 +16,7 @@ entries! { Es:
             text.argument(author);
         }
         PullMessage::New => text.literal("Nueva"),
-        PullMessage::NewSuffix => text.literal("solicitud de cambios"),
+        PullMessage::NewSuffix => text.literal("\u{a0}solicitud de cambios"),
         PullMessage::EmptyTitle => text.literal("No hay solicitudes de cambios aquí"),
         PullMessage::EmptyText => text.literal(
             "Las solicitudes de cambios proponen cambios desde una rama o una bifurcación. Compara ramas para abrir \

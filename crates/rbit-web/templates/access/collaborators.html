@@ -6,7 +6,7 @@
 <div class="mx-auto max-w-3xl">
   <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">{% call ui::localized(AccessMessage::Settings.text(page.locale)) %}{% endcall %}</a></p>
   <h1 class="mt-1 text-xl font-semibold tracking-tight">{% call ui::localized(AccessMessage::Collaborators.text(page.locale)) %}{% endcall %}</h1>
-  <p class="mt-1 text-[13px] text-ink-muted">{% call ui::localized(AccessMessage::IntroLead.text(page.locale)) %}{% endcall %} <span class="text-ink">{{ full_name }}</span> {% call ui::localized(AccessMessage::IntroDirectly.text(page.locale)) %}{% endcall %}{% if is_org %}{% call ui::localized(AccessMessage::IntroOrganization.text(page.locale)) %}{% endcall %}{% endif %}{% call ui::localized(AccessMessage::IntroTail.text(page.locale)) %}{% endcall %}</p>
+  <p class="mt-1 text-[13px] text-ink-muted">{% call ui::localized(AccessMessage::IntroLead.text(page.locale)) %}{% endcall %}<span class="text-ink">{{ full_name }}</span>{% call ui::localized(AccessMessage::IntroDirectly.text(page.locale)) %}{% endcall %}{% if is_org %}{% call ui::localized(AccessMessage::IntroOrganization.text(page.locale)) %}{% endcall %}{% endif %}{% call ui::localized(AccessMessage::IntroTail.text(page.locale)) %}{% endcall %}</p>
 
   <form method="post" action="{{ add_url }}" class="box mt-6" novalidate>
     <div class="box-header">

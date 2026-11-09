@@ -22,7 +22,7 @@
     <a href="{{ tabs.closed_url }}" class="btn {% if tabs.state == "closed" %}btn-primary{% else %}btn-ghost{% endif %} h-11 sm:h-8" {% if tabs.state == "closed" %}aria-current="page"{% endif %}{% if tab.fallback() %} lang="en"{% endif %}>{% call ui::icon("check", "size-3.5") %}{% endcall %}{% for part in tab.parts() %}{% if part.is_slot(0) %}<span class="tabular-nums">{{ tabs.closed }}</span>{% else %}{{ part.text() }}{% endif %}{% endfor %}</a>
   </nav>
   {% if let Some(author) = author_filter %}<span class="badge">{% call ui::localized(rbit_localization::PullMessage::AuthorFilter { author: author.as_str() }.localized(page.locale)) %}{% endcall %}</span>{% endif %}
-  {% if !header.archived %}<a href="{{ new_url }}" class="btn btn-primary ms-auto h-11 sm:h-8">{% call ui::icon("git-pull-request", "size-3.5") %}{% endcall %}{% call ui::localized(rbit_localization::PullMessage::New.localized(page.locale)) %}{% endcall %}<span class="hidden sm:inline">&nbsp;{% call ui::localized(rbit_localization::PullMessage::NewSuffix.localized(page.locale)) %}{% endcall %}</span></a>{% endif %}
+  {% if !header.archived %}<a href="{{ new_url }}" class="btn btn-primary ms-auto h-11 sm:h-8">{% call ui::icon("git-pull-request", "size-3.5") %}{% endcall %}{% call ui::localized(rbit_localization::PullMessage::New.localized(page.locale)) %}{% endcall %}<span class="hidden sm:inline">{% call ui::localized(rbit_localization::PullMessage::NewSuffix.localized(page.locale)) %}{% endcall %}</span></a>{% endif %}
 </div>
 
 <div class="box">

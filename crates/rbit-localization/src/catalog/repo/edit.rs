@@ -6,7 +6,8 @@ labels! {
     RepoEditLabel {
         NewFile => "repo.edit.new-file", "New file";
         Edit => "repo.edit.edit", "Edit";
-        On => "repo.edit.on", "On";
+        On => "repo.edit.on", "On ";
+        AfterName => "repo.edit.after-name", ". ";
         NewFileHint => "repo.edit.new-hint", "Type a path with / to create directories.";
         EditHint => "repo.edit.edit-hint", "Change the path to rename or move the file.";
         BackToFile => "repo.edit.back", "Back to the file";
@@ -18,20 +19,21 @@ labels! {
         DeleteHint => "repo.delete.hint", "The file stays in the history; a directory left empty disappears.";
         DeleteFile => "repo.delete.submit", "Delete file";
         UploadFiles => "repo.upload.title", "Upload files";
-        Into => "repo.upload.into", "Into";
-        OnBranch => "repo.upload.on", "on";
+        Into => "repo.upload.into", "Into ";
+        OnBranch => "repo.upload.on", " on ";
         UploadHint => "repo.upload.hint", "Files with the same name are replaced.";
         Files => "repo.upload.files", "Files";
-        NothingCommitted => "repo.commit-box.nothing", "Nothing was committed.";
+        NothingCommitted => "repo.commit-box.nothing", "Nothing was committed. ";
         ReviewNewCommits => "repo.commit-box.review", "Review the new commits";
-        KeptAndCommittedOnTop => "repo.commit-box.kept", "then commit again: your changes are kept below and will be committed on top of the new version.";
+        KeptAndCommittedOnTop => "repo.commit-box.kept", ", then commit again: your changes are kept below and will be committed on top of the new version.";
         BranchGone => "repo.commit-box.branch-gone", "Nothing was committed. Commit to a new branch instead; your changes are kept below.";
         CommitChangesLegend => "repo.commit-box.legend", "Commit changes";
         CommitMessage => "repo.commit-box.message", "Commit message";
         ExtendedDescription => "repo.commit-box.description", "Extended description";
         Optional => "repo.commit-box.optional", "optional";
         CommitDirectlyTo => "repo.commit-box.direct", "Commit directly to";
-        NotAllowed => "repo.commit-box.not-allowed", "Not allowed:";
+        NotAllowed => "repo.commit-box.not-allowed", "Not allowed: ";
+        NotAllowedEnd => "repo.commit-box.not-allowed-end", ".";
         NewBranchAndPull => "repo.commit-box.new-branch", "Create a new branch and start a pull request";
         NewBranchName => "repo.commit-box.new-branch-name", "New branch name";
     }
@@ -48,7 +50,8 @@ pub enum RepoEditMessage<'a> {
     BranchChanged { branch: &'a str },
     /// The conflict heading when a branch was deleted: "main no longer exists".
     BranchMissing { branch: &'a str },
-    /// Before the commit the branch now points at: "It now points at".
+    /// Before the commit the branch now points at: "It now points at " (the
+    /// space before the commit is part of the message).
     NowPointsAt,
     /// A file that cannot be edited: binary or over `limit`.
     NotEditable { limit: &'a str },
@@ -93,7 +96,7 @@ impl MessageFamily for RepoEditMessage<'_> {
                 text.argument(branch);
                 text.literal(" no longer exists");
             }
-            Self::NowPointsAt => text.literal("It now points at"),
+            Self::NowPointsAt => text.literal("It now points at "),
             Self::NotEditable { limit } => {
                 text.literal("This file is binary or larger than ");
                 text.argument(limit);

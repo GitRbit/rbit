@@ -5,8 +5,8 @@ labels! {
     AccessMessage, "settings.access" {
         Settings = "settings" => "Settings",
         Collaborators = "collaborators.title" => "Collaborators",
-        IntroLead = "collaborators.intro-lead" => "People added here get access to",
-        IntroDirectly = "collaborators.intro-directly" => "directly",
+        IntroLead = "collaborators.intro-lead" => "People added here get access to ",
+        IntroDirectly = "collaborators.intro-directly" => " directly",
         IntroOrganization = "collaborators.intro-organization" => ", whether or not they belong to the organization",
         IntroTail = "collaborators.intro-tail" => ".",
         AddCollaborator = "collaborators.add-title" => "Add a collaborator",

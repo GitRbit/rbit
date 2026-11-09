@@ -16,7 +16,7 @@
       {% for tag in tags %}<option value="{{ tag }}"></option>{% endfor %}
     </datalist>
     {% if is_new %}
-    <p class="hint">{% call ui::localized(rbit_localization::ReleaseLabel::AnExisting.text(page.locale)) %}{% endcall %} <a class="link" href="{{ tags_url }}">{% call ui::localized(rbit_localization::ReleaseLabel::TagLink.text(page.locale)) %}{% endcall %}</a>, {% call ui::localized(rbit_localization::ReleaseLabel::OrNewTag.text(page.locale)) %}{% endcall %}</p>
+    <p class="hint">{% call ui::localized(rbit_localization::ReleaseLabel::AnExisting.text(page.locale)) %}{% endcall %}<a class="link" href="{{ tags_url }}">{% call ui::localized(rbit_localization::ReleaseLabel::TagLink.text(page.locale)) %}{% endcall %}</a>{% call ui::localized(rbit_localization::ReleaseLabel::OrNewTag.text(page.locale)) %}{% endcall %}</p>
 
     <label class="label mt-5" for="release-target">{% call ui::localized(rbit_localization::ReleaseLabel::CreateTagFrom.text(page.locale)) %}{% endcall %} <span class="font-normal text-ink-faint">{% call ui::localized(rbit_localization::ReleaseLabel::TargetHint.text(page.locale)) %}{% endcall %}</span></label>
     <div class="relative">
@@ -28,7 +28,7 @@
       {% call ui::icon("chevron-down", "pointer-events-none absolute inset-e-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
     </div>
     {% else %}
-    <p class="hint">{% call ui::localized(rbit_localization::ReleaseLabel::OneOfTags.text(page.locale)) %}{% endcall %} <a class="link" href="{{ tags_url }}">{% call ui::localized(rbit_localization::ReleaseLabel::TagsLink.text(page.locale)) %}{% endcall %}</a>.</p>
+    <p class="hint">{% call ui::localized(rbit_localization::ReleaseLabel::OneOfTags.text(page.locale)) %}{% endcall %}<a class="link" href="{{ tags_url }}">{% call ui::localized(rbit_localization::ReleaseLabel::TagsLink.text(page.locale)) %}{% endcall %}</a>{% call ui::localized(rbit_localization::ReleaseLabel::TagsEnd.text(page.locale)) %}{% endcall %}</p>
     {% endif %}
 
     <label class="label mt-5" for="release-name">{% call ui::localized(rbit_localization::ReleaseLabel::Title.text(page.locale)) %}{% endcall %} <span class="font-normal text-ink-faint">{% call ui::localized(rbit_localization::ReleaseLabel::TitleHint.text(page.locale)) %}{% endcall %}</span></label>

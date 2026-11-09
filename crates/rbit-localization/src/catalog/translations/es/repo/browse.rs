@@ -45,7 +45,7 @@ entries! { Es:
         RepoBrowseLabel::SshRepositoryUrl => text.literal("URL SSH del repositorio"),
         RepoBrowseLabel::CopySshRepositoryUrl => text.literal("Copiar la URL SSH del repositorio"),
         RepoBrowseLabel::EmptySshNote => text.literal(
-            "Los comandos siguientes usan HTTPS. Para enviar por SSH, usa la URL SSH y añade una clave en",
+            "Los comandos siguientes usan HTTPS. Para enviar por SSH, usa la URL SSH y añade una clave en ",
         ),
         RepoBrowseLabel::CreateNewRepository => text.literal("Crear un repositorio nuevo"),
         RepoBrowseLabel::PushExistingRepository => text.literal("Enviar un repositorio existente"),

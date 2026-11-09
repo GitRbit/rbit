@@ -5,7 +5,7 @@
 {% block content %}
 <section class="mx-auto max-w-2xl">
   <h1 class="text-xl font-semibold tracking-tight break-words">{% call ui::localized(rbit_localization::RepoEditLabel::Delete.text(page.locale)) %}{% endcall %} <span class="font-mono text-lg" dir="ltr">{{ path }}</span></h1>
-  <p class="mt-1 text-[13px] text-ink-muted">{% call ui::localized(rbit_localization::RepoEditLabel::On.text(page.locale)) %}{% endcall %} <span class="font-mono text-xs" dir="ltr">{{ commit.branch }}</span>. {% call ui::localized(rbit_localization::RepoEditLabel::DeleteHint.text(page.locale)) %}{% endcall %}</p>
+  <p class="mt-1 text-[13px] text-ink-muted">{% call ui::localized(rbit_localization::RepoEditLabel::On.text(page.locale)) %}{% endcall %}<span class="font-mono text-xs" dir="ltr">{{ commit.branch }}</span>{% call ui::localized(rbit_localization::RepoEditLabel::AfterName.text(page.locale)) %}{% endcall %}{% call ui::localized(rbit_localization::RepoEditLabel::DeleteHint.text(page.locale)) %}{% endcall %}</p>
 
   <form method="post" action="{{ action_url }}" class="mt-6" novalidate>
     {% call ui::form_error(error) %}{% endcall %}

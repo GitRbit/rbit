@@ -5,7 +5,7 @@
 {% block content %}
 <section class="mx-auto max-w-4xl">
   <h1 class="text-xl font-semibold tracking-tight break-words">{% if is_new %}{% call ui::localized(rbit_localization::RepoEditLabel::NewFile.text(page.locale)) %}{% endcall %}{% else %}{% call ui::localized(rbit_localization::RepoEditLabel::Edit.text(page.locale)) %}{% endcall %} <span class="font-mono text-lg" dir="ltr">{{ original_path }}</span>{% endif %}</h1>
-  <p class="mt-1 text-[13px] text-ink-muted">{% call ui::localized(rbit_localization::RepoEditLabel::On.text(page.locale)) %}{% endcall %} <span class="font-mono text-xs" dir="ltr">{{ commit.branch }}</span>. {% if is_new %}{% call ui::localized(rbit_localization::RepoEditLabel::NewFileHint.text(page.locale)) %}{% endcall %}{% else %}{% call ui::localized(rbit_localization::RepoEditLabel::EditHint.text(page.locale)) %}{% endcall %}{% endif %}</p>
+  <p class="mt-1 text-[13px] text-ink-muted">{% call ui::localized(rbit_localization::RepoEditLabel::On.text(page.locale)) %}{% endcall %}<span class="font-mono text-xs" dir="ltr">{{ commit.branch }}</span>{% call ui::localized(rbit_localization::RepoEditLabel::AfterName.text(page.locale)) %}{% endcall %}{% if is_new %}{% call ui::localized(rbit_localization::RepoEditLabel::NewFileHint.text(page.locale)) %}{% endcall %}{% else %}{% call ui::localized(rbit_localization::RepoEditLabel::EditHint.text(page.locale)) %}{% endcall %}{% endif %}</p>
 
   {% if let Some(message) = not_editable %}
   <p class="box mt-6 px-4 py-10 text-center text-[13px] text-ink-muted">{{ message }}</p>

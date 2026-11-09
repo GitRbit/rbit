@@ -16,7 +16,7 @@
 </p>
 {% else if !verified %}
 <p class="mt-6 flex items-start gap-2 rounded-(--radius-ui) border border-warning/40 px-3 py-2.5 text-[13px]">
-  {% call ui::icon("alert", "mt-0.5 size-4 shrink-0 text-warning") %}{% endcall %}<span>{% call ui::localized(NotificationsMessage::VerifyLead.text(page.locale)) %}{% endcall %} <span class="font-medium break-all">{{ address }}</span> {% call ui::localized(NotificationsMessage::VerifyMiddle.text(page.locale)) %}{% endcall %} <a class="link" href="/settings/account">{% call ui::localized(NotificationsMessage::VerifyLink.text(page.locale)) %}{% endcall %}</a> {% call ui::localized(NotificationsMessage::VerifyTail.text(page.locale)) %}{% endcall %}</span>
+  {% call ui::icon("alert", "mt-0.5 size-4 shrink-0 text-warning") %}{% endcall %}<span>{% call ui::localized(NotificationsMessage::VerifyLead.text(page.locale)) %}{% endcall %}<span class="font-medium break-all">{{ address }}</span>{% call ui::localized(NotificationsMessage::VerifyMiddle.text(page.locale)) %}{% endcall %}<a class="link" href="/settings/account">{% call ui::localized(NotificationsMessage::VerifyLink.text(page.locale)) %}{% endcall %}</a>{% call ui::localized(NotificationsMessage::VerifyTail.text(page.locale)) %}{% endcall %}</span>
 </p>
 {% endif %}
 

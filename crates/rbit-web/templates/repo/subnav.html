@@ -69,7 +69,7 @@
           <input id="ssh-clone-url" class="input h-8 rounded-e-none font-mono text-xs sm:h-8" value="{{ ssh_url }}" readonly aria-label="{{ rbit_localization::RepoNavLabel::SshCloneUrl.text(page.locale) }}">
           <button type="button" class="btn btn-icon -ms-px h-8 rounded-s-none sm:h-8" data-copy="ssh-clone-url" aria-label="{{ rbit_localization::RepoNavLabel::CopySshCloneUrl.text(page.locale) }}" title="{{ rbit_localization::RepoNavLabel::Copy.text(page.locale) }}">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
         </div>
-        <p class="mt-2 text-xs text-ink-faint">{% call ui::localized(rbit_localization::RepoNavLabel::SshKeyNote.text(page.locale)) %}{% endcall %} <a class="underline hover:text-ink" href="/settings/keys">{% call ui::localized(rbit_localization::RepoNavLabel::YourSettings.text(page.locale)) %}{% endcall %}</a>.</p>
+        <p class="mt-2 text-xs text-ink-faint">{% call ui::localized(rbit_localization::RepoNavLabel::SshKeyNote.text(page.locale)) %}{% endcall %}<a class="underline hover:text-ink" href="/settings/keys">{% call ui::localized(rbit_localization::RepoNavLabel::YourSettings.text(page.locale)) %}{% endcall %}</a>{% call ui::localized(rbit_localization::RepoNavLabel::YourSettingsEnd.text(page.locale)) %}{% endcall %}</p>
         {% endif %}
         <a class="btn mt-3 w-full justify-center" href="{{ header.zip_url }}" hx-boost="false" download>{% call ui::icon("archive", "size-3.5") %}{% endcall %}{% call ui::localized(rbit_localization::RepoNavLabel::DownloadZip.text(page.locale)) %}{% endcall %}</a>
       </div>

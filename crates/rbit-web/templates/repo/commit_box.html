@@ -4,7 +4,7 @@
 <div class="box mb-5 border-line-strong px-4 py-3 text-[13px]" role="alert">
   <p class="font-medium">{% if conflict.current_short.is_some() %}{% call ui::localized(rbit_localization::RepoEditMessage::BranchChanged { branch: conflict.branch }.text(page.locale)) %}{% endcall %}{% else %}{% call ui::localized(rbit_localization::RepoEditMessage::BranchMissing { branch: conflict.branch }.text(page.locale)) %}{% endcall %}{% endif %}</p>
   {% if let Some(current) = conflict.current_short %}
-  <p class="mt-1 text-ink-muted">{% call ui::localized(rbit_localization::RepoEditMessage::NowPointsAt.text(page.locale)) %}{% endcall %} <span class="font-mono" dir="ltr">{{ current }}</span>. {% call ui::localized(rbit_localization::RepoEditLabel::NothingCommitted.text(page.locale)) %}{% endcall %} <a class="link" href="{{ conflict.history_url }}">{% call ui::localized(rbit_localization::RepoEditLabel::ReviewNewCommits.text(page.locale)) %}{% endcall %}</a>, {% call ui::localized(rbit_localization::RepoEditLabel::KeptAndCommittedOnTop.text(page.locale)) %}{% endcall %}</p>
+  <p class="mt-1 text-ink-muted">{% call ui::localized(rbit_localization::RepoEditMessage::NowPointsAt.text(page.locale)) %}{% endcall %}<span class="font-mono" dir="ltr">{{ current }}</span>{% call ui::localized(rbit_localization::RepoEditLabel::AfterName.text(page.locale)) %}{% endcall %}{% call ui::localized(rbit_localization::RepoEditLabel::NothingCommitted.text(page.locale)) %}{% endcall %}<a class="link" href="{{ conflict.history_url }}">{% call ui::localized(rbit_localization::RepoEditLabel::ReviewNewCommits.text(page.locale)) %}{% endcall %}</a>{% call ui::localized(rbit_localization::RepoEditLabel::KeptAndCommittedOnTop.text(page.locale)) %}{% endcall %}</p>
   {% else %}
   <p class="mt-1 text-ink-muted">{% call ui::localized(rbit_localization::RepoEditLabel::BranchGone.text(page.locale)) %}{% endcall %}</p>
   {% endif %}
@@ -26,7 +26,7 @@
       <span class="min-w-0">
         <span class="block font-medium">{% call ui::localized(rbit_localization::RepoEditLabel::CommitDirectlyTo.text(page.locale)) %}{% endcall %} <span class="font-mono text-xs" dir="ltr">{{ commit.branch }}</span></span>
         {% if let Some(reason) = commit.protected_reason %}
-        <span class="block text-[13px]">{% call ui::localized(rbit_localization::RepoEditLabel::NotAllowed.text(page.locale)) %}{% endcall %} {{ reason }}.</span>
+        <span class="block text-[13px]">{% call ui::localized(rbit_localization::RepoEditLabel::NotAllowed.text(page.locale)) %}{% endcall %}{{ reason }}{% call ui::localized(rbit_localization::RepoEditLabel::NotAllowedEnd.text(page.locale)) %}{% endcall %}</span>
         {% endif %}
       </span>
     </label>

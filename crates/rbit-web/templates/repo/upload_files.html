@@ -5,7 +5,7 @@
 {% block content %}
 <section class="mx-auto max-w-2xl">
   <h1 class="text-xl font-semibold tracking-tight">{% call ui::localized(rbit_localization::RepoEditLabel::UploadFiles.text(page.locale)) %}{% endcall %}</h1>
-  <p class="mt-1 text-[13px] text-ink-muted break-words">{% call ui::localized(rbit_localization::RepoEditLabel::Into.text(page.locale)) %}{% endcall %} <span class="font-mono text-xs" dir="ltr">{{ directory }}</span> {% call ui::localized(rbit_localization::RepoEditLabel::OnBranch.text(page.locale)) %}{% endcall %} <span class="font-mono text-xs" dir="ltr">{{ commit.branch }}</span>. {% call ui::localized(rbit_localization::RepoEditLabel::UploadHint.text(page.locale)) %}{% endcall %}</p>
+  <p class="mt-1 text-[13px] text-ink-muted break-words">{% call ui::localized(rbit_localization::RepoEditLabel::Into.text(page.locale)) %}{% endcall %}<span class="font-mono text-xs" dir="ltr">{{ directory }}</span>{% call ui::localized(rbit_localization::RepoEditLabel::OnBranch.text(page.locale)) %}{% endcall %}<span class="font-mono text-xs" dir="ltr">{{ commit.branch }}</span>{% call ui::localized(rbit_localization::RepoEditLabel::AfterName.text(page.locale)) %}{% endcall %}{% call ui::localized(rbit_localization::RepoEditLabel::UploadHint.text(page.locale)) %}{% endcall %}</p>
 
   {#- Not boosted: the files stream to the server as an ordinary form submission. -#}
   <form method="post" action="{{ action_url }}" enctype="multipart/form-data" class="mt-6" hx-boost="false" novalidate>

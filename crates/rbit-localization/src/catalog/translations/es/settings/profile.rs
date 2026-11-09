@@ -44,10 +44,10 @@ entries! { Es:
             "El correo electrónico no está disponible en este servidor, así que las notificaciones solo aparecen en \
              tu bandeja de entrada.",
         ),
-        NotificationsMessage::VerifyLead => text.literal("Verifica"),
-        NotificationsMessage::VerifyMiddle => text.literal("en la"),
+        NotificationsMessage::VerifyLead => text.literal("Verifica "),
+        NotificationsMessage::VerifyMiddle => text.literal(" en la "),
         NotificationsMessage::VerifyLink => text.literal("configuración de la cuenta"),
-        NotificationsMessage::VerifyTail => text.literal("para recibir correos de notificación."),
+        NotificationsMessage::VerifyTail => text.literal(" para recibir correos de notificación."),
         NotificationsMessage::Email => text.literal("Correo electrónico"),
         NotificationsMessage::SendTo => text.literal("Enviar a"),
         NotificationsMessage::When => text.literal("Cuándo"),

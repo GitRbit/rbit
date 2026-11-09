@@ -7,8 +7,8 @@ entries! { Es:
     AccessMessage => MessageWriter |text| {
         AccessMessage::Settings => text.literal("Configuración"),
         AccessMessage::Collaborators => text.literal("Colaboradores"),
-        AccessMessage::IntroLead => text.literal("Las personas que añadas aquí obtienen acceso a"),
-        AccessMessage::IntroDirectly => text.literal("directamente"),
+        AccessMessage::IntroLead => text.literal("Las personas que añadas aquí obtienen acceso a "),
+        AccessMessage::IntroDirectly => text.literal(" directamente"),
         AccessMessage::IntroOrganization => text.literal(", pertenezcan o no a la organización"),
         AccessMessage::IntroTail => text.literal("."),
         AccessMessage::AddCollaborator => text.literal("Añadir un colaborador"),

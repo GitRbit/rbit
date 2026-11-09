@@ -11,6 +11,7 @@ pub enum RecoveryMessage<'a> {
     LinkSent,
     NothingArrived,
     TryAgain,
+    TryAgainEnd,
     SendResetLink,
     RememberedIt,
     RequestNewLink,
@@ -46,6 +47,7 @@ impl MessageFamily for RecoveryMessage<'_> {
             Self::LinkSent => "recovery.forgot.sent",
             Self::NothingArrived => "recovery.forgot.nothing-arrived",
             Self::TryAgain => "recovery.forgot.try-again",
+            Self::TryAgainEnd => "recovery.forgot.try-again-end",
             Self::SendResetLink => "recovery.forgot.submit",
             Self::RememberedIt => "recovery.forgot.remembered",
             Self::RequestNewLink => "recovery.reset.request-new-link",
@@ -85,8 +87,9 @@ impl MessageFamily for RecoveryMessage<'_> {
                 "If an account uses that address, we've sent it a link to choose a new password. The link works once and \
                  expires in an hour."
             }
-            Self::NothingArrived => "Nothing arrived? Check your spam folder, or",
+            Self::NothingArrived => "Nothing arrived? Check your spam folder, or ",
             Self::TryAgain => "try again",
+            Self::TryAgainEnd => ".",
             Self::SendResetLink => "Send reset link",
             Self::RememberedIt => "Remembered it?",
             Self::RequestNewLink => "Request a new link",

@@ -29,13 +29,14 @@ labels! {
         DeleteRelease => "releases.delete", "Delete release";
         FormLead => "releases.form-lead", "A release describes a tag: its notes, and files to download.";
         Tag => "releases.tag", "Tag";
-        AnExisting => "releases.tag-hint-start", "An existing";
+        AnExisting => "releases.tag-hint-start", "An existing ";
         TagLink => "releases.tag-link", "tag";
-        OrNewTag => "releases.tag-hint-end", "or a new one created from the branch below.";
+        OrNewTag => "releases.tag-hint-end", ", or a new one created from the branch below.";
         CreateTagFrom => "releases.target", "Create a new tag from";
         TargetHint => "releases.target-hint", "used only when the tag does not exist";
-        OneOfTags => "releases.tags-hint-start", "One of the repository's";
+        OneOfTags => "releases.tags-hint-start", "One of the repository's ";
         TagsLink => "releases.tags-link", "tags";
+        TagsEnd => "releases.tags-end", ".";
         Title => "releases.name", "Title";
         TitleHint => "releases.name-hint", "optional, defaults to the tag";
         Notes => "releases.notes", "Notes";

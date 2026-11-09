@@ -12,7 +12,8 @@ pub enum PullMessage<'a> {
     AuthorFilter {
         author: &'a str,
     },
-    /// "New" on narrow screens; [`Self::NewSuffix`] follows on wider ones.
+    /// "New" on narrow screens; [`Self::NewSuffix`] follows on wider ones, starting with
+    /// the separator its language needs (a no-break space in English, none in Chinese).
     New,
     NewSuffix,
     EmptyTitle,
@@ -139,7 +140,7 @@ impl MessageFamily for PullMessage<'_> {
                 Self::FiltersLabel => "Pull request filters",
                 Self::StateNav => "Pull request state",
                 Self::New => "New",
-                Self::NewSuffix => "pull request",
+                Self::NewSuffix => "\u{a0}pull request",
                 Self::EmptyTitle => "No pull requests here",
                 Self::EmptyText => "Pull requests propose changes from a branch or a fork. Compare branches to open one.",
                 Self::OpenTitle => "Open a pull request",
