@@ -1,104 +1,103 @@
-# Actions secrets and environments: first slice
+# Actions secrets and environments acceptance
 
-Evidence for the first slice of the `actions.secrets` ledger row (sealed scoped secrets,
-variables, environment approvals and timers). The owner is `rbit-actions`. The row stays
-`baseline-retained`: this slice moves the rules, while the sealing mechanism and the SQL
-gates stay in their adapters for the reason given below. It follows the
+Acceptance evidence for the `actions.secrets` ledger row (sealed scoped secrets,
+variables, environment approvals and timers). The owner is `rbit-actions`. It follows the
 [identity retirement](identity-retirement.md) pattern.
+
+The rules moved first, while `rbit-core` still depended on `rbit-actions` for the
+fork-policy re-exports. The model boundary forbids cryptography in `rbit-core`'s graph, so
+sealing, the key file and the glob engine had to wait. Batch 3 removed that edge
+(`token_permissions` takes `trusted: bool`), and this branch, rebased onto it, moves the
+rest. `rbit-core` keeps the stored records (`SecretScope`, `SecretId`, `SealedSecret`,
+`BranchPolicy`), and `rbit-actions` names none of them, so no new edge or model crate is
+needed.
 
 ## What moved
 
 | Decision | Legacy place | Now |
 | --- | --- | --- |
-| Value limits and checks (1 to N bytes, no NUL, the messages), `MAX_VARIABLE_BYTES`, `MAX_PER_SCOPE`, the `UNREADABLE` message | `rbit-services/src/actions/secrets.rs` | `rbit_actions::secrets::{check_value, MAX_VARIABLE_BYTES, MAX_PER_SCOPE, UNREADABLE}` (re-exported at the services paths) |
-| A repository or environment secret is visible to its repository only | `ActionsService::put_secret` | `secrets::check_visibility` |
-| A task opens its secrets in store order, the first of each name winning, never opens a shadowed one, and fails closed naming the first it cannot open | `ActionsService::task_secrets` | `secrets::open_task_secrets` |
-| An environment's secrets fail closed the same way, in order, without deduplication | `ActionsService::environment_values` | `secrets::open_environment_secrets` |
-| Branch policy type | `rbit_core::actions::BranchPolicy` | `rbit_actions::environments::BranchPolicy` (re-exported at the old path) |
-| Ref gate: branch or tag from the full ref, any / protected branches / selected patterns, protection read only for a protected policy and a branch, the refusal message | `ActionsService::environment_values` | `environments::DeploymentGate` over the `RefRules` port |
-| Selected patterns as full-ref patterns (`main` names a branch, `refs/tags/v*` a tag, `!` kept) | `environments::ref_patterns` in services | `environments::full_ref_patterns` |
-| Review rights (listed and able to read; self-review refusal and message) | `environments::may_review` in services | `environments::may_review` |
-| Reviewer and wait timer bounds and messages | services and `MAX_REVIEWERS` in the environment store | `environments::{check_reviewer_count, check_wait_timer, MAX_REVIEWERS, MAX_WAIT_TIMER_MINUTES}`; the store re-exports the reviewer bound through `rbit_core::actions::MAX_ENVIRONMENT_REVIEWERS` |
+| The secrets key, AES-256-GCM sealing and opening, associated data binding scope kind, scope id and secret id, key ids, key file format | `rbit-services/src/actions/secrets.rs` (`SecretsKey`) | `rbit_actions::secrets::{SecretsKey, SecretAddress, KEY_PREFIX}` |
+| When the key file is read, refused or created (only while no secret is sealed), and every message | `secrets::load_key` | `secrets::load_key` over the `KeyFile` port; `KeyUnavailable` (re-exported in services) |
+| Value limits and checks, repository-only visibility, `MAX_VALUE_BYTES`, `MAX_VARIABLE_BYTES`, `MAX_PER_SCOPE`, `UNREADABLE` | services | `rbit_actions::secrets` (re-exported in services) |
+| Opening a task's secrets (first of each name, never a shadowed one, fail closed) and an environment's (in order, fail closed) | services | `secrets::{open_task_secrets, open_environment_secrets}` |
+| Environment names, selected patterns (1 to 50, valid, not all negative) and their messages | `put_environment` | `environments::check_name_and_policy` |
+| Full-ref rewriting and glob matching of selected patterns | services (`ref_patterns`, `selected`) | `environments::{full_ref_patterns, selected}` with `rbit_workflow::pattern` |
+| The deployment ref gate: branch or tag, any / protected / selected, protection read only for a protected policy and a branch, the refusal message | services | `environments::DeploymentGate` over `ProtectedBranches`, reading the stored policy as `RefPolicy` |
+| Review rights; reviewer and wait-timer bounds | services | `environments::{may_review, check_reviewer_count, check_wait_timer, MAX_REVIEWERS, MAX_WAIT_TIMER_MINUTES}` |
 
-Services keep calling the same `ActionsService` methods with the same messages, error
-kinds and query order. `StoredRefRules` (services) answers the gate's port from
-`branch_protection().list` and the workflow glob engine.
+## What the adapters keep
 
-## What stays, and why
+- `rbit-services/src/actions/secrets.rs`:
+  - the disk `KeyFile` (`tokio::fs`, create-new with mode `0600`, the Unix group/other permission check, the Windows ACL warning) and the creation log line;
+  - a `SecretsKey` that maps stored scopes, ids and `SealedSecret`s onto the sealing key's addresses and parts;
+  - storage CRUD with audit, and the in-process key cache.
+- `rbit-services/src/actions/environments.rs`: storage, audit, reviewer lookup, release of
+  waiting jobs, branch protection as `ProtectedBranches`, and `ref_policy` from the stored
+  `BranchPolicy`.
+- `rbit-storage`: secret and environment tables, and a defensive cap of six reviewers on
+  insert.
+- The review gate and the wait timer are atomic SQL in `actions_runs` (settle and claim).
+  They belong to the `actions.scheduling` row and are not claimed here.
 
-`rbit-core` depends on `rbit-actions` (the reviewed fork-policy edge), and the unified
-model boundary (`scripts/rewrite/identity-model-boundary.mjs`) forbids `zeroize`,
-`base64`, `sha2`, `getrandom` and `subtle` in `rbit-core`'s resolved graph. Cargo
-features cannot hide them: the check resolves the workspace with feature unification.
-So `rbit-actions` must stay free of cryptography and of `rbit-workflow` (which depends on
-`zeroize`). That keeps four things where they are:
-
-- the key file, AES-256-GCM sealing and opening, and the associated-data format
-  (`rbit-services/src/actions/secrets.rs`, `SecretsKey`, `load_key`);
-- the glob engine that matches full-ref patterns, and the name and pattern validation
-  that needs it (`put_environment`'s first checks);
-- the review gate and the wait timer, which are atomic SQL in `actions_runs` (settle and
-  claim);
-- environment, secret and variable storage (`actions_environments.rs`, `actions_secrets.rs`).
-
-Moving the first two needs either the fork-policy edge replaced (for example by moving
-`token_permissions`'s trust argument off `RunTrust`) or a crypto-free crate for the
-shared types; that is an architecture decision for review, not part of this slice. Moving
-the SQL gates belongs to `actions.scheduling`.
-
-## Boundary that fails if the moved rules return
+## Boundary that fails if legacy paths return
 
 `scripts/rewrite/actions-secrets-retirement.mjs`, run by `scripts/rewrite/check.mjs`,
 rejects in production sources outside `rbit-actions`:
 
-- a `BranchPolicy` type;
-- a redefined `MAX_PER_SCOPE`, `MAX_VARIABLE_BYTES`, `MAX_WAIT_TIMER_MINUTES`, `MAX_REVIEWERS` or `UNREADABLE`;
-- the environment protection messages (deploy refusal, self-review, reviewer and timer bounds);
-- full-ref pattern rewriting;
-- in the services and server adapters, the secret value and scope messages.
+- redefined secret or environment limits;
+- the environment protection messages and full-ref rewriting;
+- in the services and server adapters only:
+  - the secret value and scope messages;
+  - AES-GCM (`Aes256Gcm`), a `KEY_PREFIX` or `AAD_PREFIX` constant, a `KeyUnavailable` type, or the missing-key rule;
+  - `valid_environment_name`, `ref_patterns`, or the negative-pattern message.
 
-The REST API's own refusal of a `visibility` field on repository secrets is a request-shape
-rule and is allowed. Against the legacy files at the branch's start it reports 7 violations;
-against this tree, none. `scripts/tests/actions-secrets-retirement.test.mjs` pins both.
+Three things are allowed: `rbit-storage`'s unrelated instance sealing, the REST API's
+request-shape refusal of `visibility`, and the services `SecretsKey` record mapper.
+`scripts/tests/actions-secrets-retirement.test.mjs` pins the rules and the current tree.
 
 ## Gates
 
 | Gate | Evidence |
 | --- | --- |
-| Behaviour parity | Same messages, order and laziness; opening order, deduplication and fail-closed unchanged; sealing code untouched. The unchanged `selected` pattern tests in services now exercise `full_ref_patterns` plus the glob engine, and the unchanged secrets unit tests exercise the delegated `check_value`. Existing suites listed in Results pass unchanged. |
-| Security | "Approval never grants secrets" is still `trust::Grants`; untrusted runs, environment protection and fail-closed opening are unchanged; values never reach `Debug` or logs. |
-| Migration and rollback | No schema, migration, stored format or route change. Rollback is the previous binary. |
-| Performance | Same queries; one name vector per task or environment with secrets. No release measurement claimed. |
+| Behaviour parity | Sealing, key file and pattern code moved unchanged. A new test pins the stored associated-data bytes and the key file format. Messages, read order and laziness are unchanged. The services unit tests are unchanged (sealing round trips, key ids, fresh nonces, key file creation, refusal of broken and shared key files, `check_value`, selected patterns) and run through the services `SecretsKey`, `load_key` and the re-exports. |
+| Security | Ciphertexts stay bound to their row, a replaced key is detected, a missing key while secrets exist stays missing, untrusted runs get nothing (`trust::Grants`), and secrets fail closed. Values never reach `Debug`. |
+| Migration and rollback | No schema, stored ciphertext, key file or route change: secrets sealed before the change open after it, and the other way round. Rollback is the previous binary. |
+| Performance | Same queries and the same cipher work per secret; one name vector per task or environment. No release measurement claimed. |
 
 ## Results
 
-A quick run of the repository's own CI jobs at the third commit (`8a3577c6`, base
-`42aca5a2`): rewrite contracts (including the logical-type check), workspace-wide
-formatting and all-target Clippy with `-D warnings`, licenses and advisories and the
-front-end build passed. Nextest ran the changed packages (`rbit-actions`, `rbit-core`,
-`rbit-services`, `rbit-storage`): 1,405 tests, 1,405 passed, none skipped. Among them, all
-passing and unchanged: `rbit-services` `actions_secrets`, `actions_settings` and the
-environment and secrets unit tests; `rbit-storage` `actions` (secrets, environments,
-reviews). The new `rbit-actions` tests (`secrets::tests`, `environments::tests`) passed.
+A quick run of the repository's own CI jobs at `da705cd4` (base `88d16e99`, the batch 3
+tip): rewrite contracts (including the logical-type check), workspace-wide formatting and
+all-target Clippy with `-D warnings` (which compiles every crate, `rbit-web` included),
+licenses and advisories and the front-end build passed. Nextest ran the changed packages,
+`rbit-actions` and `rbit-services`: 817 tests, 817 passed, none skipped. Among them,
+unchanged and passing: `rbit-services` `actions_secrets`,
+`actions_settings`, the secrets and environment unit tests (sealing round trips, key files,
+`check_value`, selected patterns) and the Actions integration suites. The new
+`rbit-actions` `secrets::key_tests`, `secrets::tests` and `environments::tests` passed too.
 `rbit-web` suites (`actions_environments`, `actions_settings`, `actions_fork_runs`) were not
-part of the quick run; the integration batch's full check covers them. Windows legs were not
-run. Locally, a `check` of the touched crates was clean.
+part of the quick run. Windows legs were not run. Locally, a `check` of `rbit-actions`,
+`rbit-core` and `rbit-services` (all targets) was clean.
 
 ## Cost
 
 | Measure | Value |
 | --- | --- |
-| Code commits | 3 (plus this record) |
-| Files changed by code commits | 15 |
-| `rbit-actions` production | 5 files, +227 / −1 |
-| `rbit-core`, `rbit-storage`, `rbit-services` production | 6 files, +68 / −103 |
-| Tests | 2 new files, +134 |
-| Checker and policy scripts | one new 38-line Node guard, a 39-line test |
+| Code commits | 5 (rules, adapters, boundary; sealing and key file; boundary) |
+| `rbit-actions` production | 7 files, +466 / −1 (`secrets`, `secrets/key`, `secrets/key_file`, `environments`, `environments/gate`, wiring) |
+| `rbit-services` production | 2 files, +134 / −213 |
+| Tests | 3 new `rbit-actions` files, +292 |
+| Checker and policy scripts | one 45-line Node guard with a 46-line test |
 
-Tricky parts: the first attempt moved sealing into `rbit-actions` and failed the model
-boundary at once, since the fork-policy edge puts everything `rbit-actions` links into
-`rbit-core`'s graph. Rules without dependencies could move; the mechanism could not.
+Tricky parts:
 
-Estimate: the remainder of this row (sealing, the key file, the glob-bound checks) is
-about one session once the edge decision is made. The SQL gates go with
-`actions.scheduling`.
+- My first attempt moved sealing while `rbit-core` still linked `rbit-actions`, and it
+  failed the model boundary. A crypto-free model crate would also have worked; batch 3
+  removed the edge instead, and this slice was rebuilt on that.
+- `rbit-actions` may not name `rbit-core`'s records, so sealing works on row addresses and
+  raw parts, and the gate reads the stored policy as a borrowed `RefPolicy`. The services
+  `SecretsKey` keeps the record-level signatures, so the services tests did not change.
+- The key file mixes policy (when to create, what to refuse, every message) with platform
+  I/O (mode bits). The policy moved behind a port; the permission check stays with the disk.
+
+Estimate: with no edge in the way, the code itself was about one session.
