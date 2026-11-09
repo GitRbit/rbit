@@ -4245,6 +4245,7 @@ dependencies = [
 name = "rbit-collaboration"
 version = "0.2.0"
 dependencies = [
+ "rbit-access",
  "rbit-contracts",
  "rbit-identity-models",
  "rbit-repositories",

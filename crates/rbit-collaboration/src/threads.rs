@@ -4,12 +4,14 @@ mod enums;
 mod models;
 mod new_issue;
 mod number;
+mod permissions;
 mod text;
 
 pub use enums::{IssueKind, StateReason};
 pub use models::{Issue, IssueId};
 pub use new_issue::NewIssue;
 pub use number::IssueNumber;
+pub use permissions::{CommentPermissions, IssuePermissions, comment_permissions, issue_permissions, thread_permissions};
 pub use text::{IssueText, IssueTextError, IssueTitle, MAX_TEXT_BYTES, MAX_TITLE_CHARS};
 
 #[cfg(feature = "applications")]

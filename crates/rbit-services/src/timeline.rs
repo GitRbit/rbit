@@ -3,7 +3,7 @@
 //!
 //! The integrator owns this file (T0 in `docs/design/milestone-2b.md`, frozen for the
 //! issue and pull request workstreams). It decides permissions with the pure
-//! [`issue_permissions`] and [`comment_permissions`] tables, writes through
+//! `rbit_collaboration::threads` permission tables, writes through
 //! `rbit_storage::sqlite::issues::IssueStore` and publishes, for both kinds,
 //! `DomainEvent::IssueComment` (created, edited, deleted) and `DomainEvent::Issue` with
 //! `Edited`, `Closed`, `Reopened`, `Locked` and `Unlocked`. Opening a thread
@@ -25,7 +25,7 @@ mod writer;
 use rbit_core::{
     Account, AccountId, Comment, CommentId, EventId, Issue, IssueId, IssueKind, IssueNumber, IssuePermissions, RepoId, StateReason,
     TimelineEvent, Timestamp, User,
-    issue::{CommentAction, IssueAction, comment_permissions, issue_permissions},
+    issue::{CommentAction, IssueAction, comment_permissions},
 };
 pub use rbit_storage::sqlite::issues::{TimelineCursor, TimelineItemId};
 
@@ -90,13 +90,13 @@ impl ThreadServices {
 /// then pass the archive guard, so writers of an archived repository learn why they may
 /// not ([`RepoContext::ensure_writable`]).
 fn permissions(actor: &User, ctx: &IssueContext) -> IssuePermissions {
-    issue_permissions(Some(actor), ctx.repo.access, &ctx.issue)
+    rbit_collaboration::threads::issue_permissions(Some(actor), ctx.repo.access, &ctx.issue)
 }
 
-/// What `viewer` is offered on a thread of `repo`: [`issue_permissions`], or nothing at
-/// all while the repository is archived (it is read-only).
+/// What `viewer` is offered on a thread of `repo`, decided by
+/// [`rbit_collaboration::threads::thread_permissions`].
 pub(crate) fn thread_permissions(viewer: Option<&User>, repo: &RepoContext, issue: &Issue) -> IssuePermissions {
-    if repo.repo.repo.is_archived() { IssuePermissions::default() } else { issue_permissions(viewer, repo.access, issue) }
+    rbit_collaboration::threads::thread_permissions(viewer, repo.access, repo.repo.repo.is_archived(), issue)
 }
 
 #[cfg(test)]

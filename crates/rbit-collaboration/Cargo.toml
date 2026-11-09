@@ -11,6 +11,7 @@ default = []
 applications = []
 
 [dependencies]
+rbit-access = { workspace = true }
 rbit-repositories = { workspace = true, default-features = false }
 rbit-contracts = { workspace = true, default-features = false }
 rbit-identity-models = { workspace = true, default-features = false }
