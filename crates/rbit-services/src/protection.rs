@@ -1,6 +1,5 @@
-//! Branch protection: managing rules, the push gate's decision and merge requirements.
-//!
-//! Milestone 2 workstream B (branch protection) owns this file.
+//! Branch protection service adapter: maps the `rbit-access` protection applications onto
+//! repository contexts, service errors, tracing and the audit log.
 //!
 //! Hooks other code calls (signatures fixed by `docs/design/milestone-2b.md` §3):
 //! * [`ProtectionService::check_push`] — the push gate in both receive paths
@@ -9,40 +8,38 @@
 //! * [`ProtectionService::check_merge`] and [`ProtectionService::may_delete_branch`] — P's merge;
 //! * [`ProtectionService::protected_branches`] — the branches page's badges.
 //!
-//! Rules:
-//! * Repository administrators list, add, change and delete rules (everyone else gets
-//!   [`ServiceError::Forbidden`]; pages and the API answer 404 first when the repository
-//!   is hidden). Every change is audited ("Repository access").
-//! * Allowed users must have write access; allowed teams must be teams of the owning
-//!   organisation; at most [`MAX_ALLOWED`] of each. Without `restrict_pushers` the lists
-//!   are not kept.
-//! * `require_status_checks` (milestone 3, S) needs 1 to [`MAX_REQUIRED_CONTEXTS`]
-//!   distinct contexts; without the flag they are not kept.
-//! * Archived repositories refuse every push before any rule is consulted
-//!   ([`RepoContext::ensure_writable`]).
-//! * The decisions themselves are pure ([`rbit_core::protection`]); this service only
-//!   loads the rules and the pusher's teams. Bypasses by administrators that changed a
-//!   push's outcome are audited as `BranchProtectionBypassed`.
+//! Rule management (administrators only, validation, allowed users and teams) and the
+//! decisions live in [`rbit_access::protection`]; the rule store keeps the rule limit,
+//! pattern uniqueness and organisation-only teams atomic. This adapter refuses pushes to
+//! archived repositories before any rule is consulted ([`RepoContext::ensure_writable`]),
+//! resolves allowed users' write access through the repository access policy, and audits
+//! every rule change ("Repository access") and every administrator bypass that changed a
+//! push's outcome (`BranchProtectionBypassed`).
 
+use std::future::Future;
+
+use rbit_access::{
+    organizations::AccessError,
+    protection::{Principal, ProtectionGate, RuleDirectory, RuleDraft, RuleManagement, RuleScope, Writer},
+};
 use rbit_auth::repo_access;
 pub use rbit_core::protection::{MergeRules, PushActor, PushVerdict, Refusal};
 use rbit_core::{
-    AccountKind, RefUpdate, User,
+    AccountId, AccountKind, RefUpdate, RepoId, User,
     membership::{Team, TeamId},
-    protection::{self, BranchPattern, BranchProtection, MAX_ALLOWED, ProtectionId, ProtectionRule, Pusher, RuleSettings},
-    status::{MAX_REQUIRED_CONTEXTS, StatusContext},
+    protection::{BranchProtection, ProtectionId, RuleSettings, is_protected},
 };
 use rbit_git::RefKind;
-use rbit_storage::{
-    StorageError,
-    sqlite::protection::{BranchProtectionStore, RuleChange, RuleInput},
-};
+use rbit_storage::sqlite::protection::BranchProtectionStore;
 
 use crate::{
     AuditService, RepoContext, ServiceContext, ServiceError,
     audit::{AuditAction, AuditEntry},
     repositories::viewer_grants,
 };
+
+/// The rule's protections in a few words, for the audit log.
+pub use rbit_access::protection::summary;
 
 /// A rule as submitted: the pattern and names as typed, the flags as ticked.
 #[derive(Debug, Clone, Default)]
@@ -68,6 +65,57 @@ impl ProtectionInput {
             contexts: rule.rule.required_contexts.iter().map(ToString::to_string).collect(),
         }
     }
+
+    fn draft(&self) -> RuleDraft<'_> {
+        RuleDraft { pattern: &self.pattern, settings: self.settings, users: &self.users, teams: &self.teams, contexts: &self.contexts }
+    }
+}
+
+/// Name lookups for one repository: allowed users need write access to it under the
+/// repository access policy, allowed teams belong to its owning organisation.
+struct RepoDirectory<'a> {
+    ctx: &'a ServiceContext,
+    repo: &'a RepoContext,
+}
+
+impl RuleDirectory for RepoDirectory<'_> {
+    type Error = ServiceError;
+    type User = AccountId;
+    type Team = TeamId;
+    type OwnerTeam = Team;
+
+    async fn writer(&self, name: &str) -> Result<Writer<AccountId>, ServiceError> {
+        let accounts = self.ctx.database.accounts();
+        let Some(account) = accounts.find_account_by_name(name).await? else { return Ok(Writer::Unknown) };
+        if account.kind != AccountKind::User {
+            return Ok(Writer::Unknown);
+        }
+        let Some(user) = accounts.find_user(account.id).await? else { return Ok(Writer::Unknown) };
+        let grants = viewer_grants(&self.ctx.database.repositories(), Some(&user), &self.repo.repo).await?;
+        if !repo_access(Some(&user), &self.repo.repo, &grants).can_write() {
+            return Ok(Writer::WithoutWrite(user.name().to_string()));
+        }
+        Ok(Writer::Writer(user.id()))
+    }
+
+    async fn team_named(&self, name: &str) -> Result<Option<TeamId>, ServiceError> {
+        Ok(self.ctx.database.teams().find_by_name(self.repo.repo.owner.id, name).await?.map(|team| team.id))
+    }
+
+    fn owner_teams(&self) -> impl Future<Output = Result<Vec<Team>, ServiceError>> + Send {
+        let teams = self.ctx.database.teams();
+        let owner = self.repo.repo.owner.id;
+        async move { Ok(teams.list(owner).await?.into_iter().map(|summary| summary.team).collect()) }
+    }
+}
+
+fn scope(repo: &RepoContext) -> RuleScope<'_, RepoId> {
+    RuleScope {
+        repo: repo.repo.repo.id,
+        owner: repo.repo.owner.name.as_str(),
+        organization: repo.repo.owner.is_organization(),
+        can_admin: repo.access.can_admin(),
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -89,25 +137,21 @@ impl ProtectionService {
 
     /// The repository's rules, by pattern. Administrators only.
     pub async fn list(&self, repo: &RepoContext) -> Result<Vec<BranchProtection>, ServiceError> {
-        require_admin(repo)?;
-        Ok(self.store().list(repo.repo.repo.id).await?)
+        let (store, directory) = (self.store(), RepoDirectory { ctx: &self.ctx, repo });
+        RuleManagement::new(&store, &directory).list(scope(repo)).await.map_err(managed)
     }
 
     /// Rule `id`; [`ServiceError::NotFound`] if the repository has no such rule.
     pub async fn get(&self, repo: &RepoContext, id: ProtectionId) -> Result<BranchProtection, ServiceError> {
-        require_admin(repo)?;
-        self.store().get(repo.repo.repo.id, id).await?.ok_or(ServiceError::NotFound)
+        let (store, directory) = (self.store(), RepoDirectory { ctx: &self.ctx, repo });
+        RuleManagement::new(&store, &directory).get(scope(repo), id).await.map_err(managed)
     }
 
     /// The teams of the owning organisation, by name, to pick allowed teams from (empty
     /// for personal repositories).
     pub async fn teams(&self, repo: &RepoContext) -> Result<Vec<Team>, ServiceError> {
-        require_admin(repo)?;
-        if !repo.repo.owner.is_organization() {
-            return Ok(Vec::new());
-        }
-        let teams = self.ctx.database.teams().list(repo.repo.owner.id).await?;
-        Ok(teams.into_iter().map(|summary| summary.team).collect())
+        let (store, directory) = (self.store(), RepoDirectory { ctx: &self.ctx, repo });
+        RuleManagement::new(&store, &directory).owner_teams(scope(repo)).await.map_err(managed)
     }
 
     /// The repository's branch names, for "Matches: …" on the rule pages.
@@ -118,15 +162,9 @@ impl ProtectionService {
 
     /// Adds a rule.
     pub async fn create(&self, actor: &User, repo: &RepoContext, input: &ProtectionInput) -> Result<BranchProtection, ServiceError> {
-        require_admin(repo)?;
-        let rule = self.validate(repo, input).await?;
-        let id = match self.store().create(repo.repo.repo.id, &rule, actor.id()).await.map_err(pattern_taken)? {
-            RuleChange::Saved(id) => id,
-            RuleChange::TooManyRules => {
-                return Err(ServiceError::Invalid(format!("a repository can have at most {} rules", protection::MAX_RULES)));
-            }
-            RuleChange::TeamOutsideOrganization | RuleChange::NotFound => return Err(team_outside(repo)),
-        };
+        let (store, directory) = (self.store(), RepoDirectory { ctx: &self.ctx, repo });
+        let management = RuleManagement::new(&store, &directory);
+        let (id, rule) = management.create(scope(repo), actor.id(), input.draft()).await.map_err(managed)?;
         tracing::info!(repo = %repo.repo.full_name(), pattern = %rule.pattern, by = %actor.name(), "branch protection rule added");
         self.record(AuditAction::BranchProtectionCreated, actor, repo, format!("{} ({})", rule.pattern, summary(&rule.settings))).await;
         self.get(repo, id).await
@@ -140,13 +178,9 @@ impl ProtectionService {
         id: ProtectionId,
         input: &ProtectionInput,
     ) -> Result<BranchProtection, ServiceError> {
-        let current = self.get(repo, id).await?;
-        let rule = self.validate(repo, input).await?;
-        match self.store().update(repo.repo.repo.id, id, &rule).await.map_err(pattern_taken)? {
-            RuleChange::Saved(_) => {}
-            RuleChange::NotFound => return Err(ServiceError::NotFound),
-            RuleChange::TeamOutsideOrganization | RuleChange::TooManyRules => return Err(team_outside(repo)),
-        }
+        let (store, directory) = (self.store(), RepoDirectory { ctx: &self.ctx, repo });
+        let management = RuleManagement::new(&store, &directory);
+        let (current, rule) = management.update(scope(repo), id, input.draft()).await.map_err(managed)?;
         let renamed = if current.rule.pattern == rule.pattern { String::new() } else { format!(", was {}", current.rule.pattern) };
         tracing::info!(repo = %repo.repo.full_name(), pattern = %rule.pattern, by = %actor.name(), "branch protection rule changed");
         let detail = format!("{} ({}{renamed})", rule.pattern, summary(&rule.settings));
@@ -156,58 +190,11 @@ impl ProtectionService {
 
     /// Deletes rule `id`.
     pub async fn delete(&self, actor: &User, repo: &RepoContext, id: ProtectionId) -> Result<(), ServiceError> {
-        let current = self.get(repo, id).await?;
-        if !self.store().delete(repo.repo.repo.id, id).await? {
-            return Err(ServiceError::NotFound);
-        }
+        let (store, directory) = (self.store(), RepoDirectory { ctx: &self.ctx, repo });
+        let current = RuleManagement::new(&store, &directory).delete(scope(repo), id).await.map_err(managed)?;
         tracing::info!(repo = %repo.repo.full_name(), pattern = %current.rule.pattern, by = %actor.name(), "branch protection rule deleted");
         self.record(AuditAction::BranchProtectionDeleted, actor, repo, current.rule.pattern.to_string()).await;
         Ok(())
-    }
-
-    /// Checks `input` and resolves its names.
-    async fn validate(&self, repo: &RepoContext, input: &ProtectionInput) -> Result<RuleInput, ServiceError> {
-        let pattern = BranchPattern::parse(&input.pattern).map_err(|error| ServiceError::Invalid(error.to_string()))?;
-        input.settings.validate().map_err(|error| ServiceError::Invalid(error.to_string()))?;
-        let mut rule = RuleInput { pattern, settings: input.settings, users: Vec::new(), teams: Vec::new(), contexts: Vec::new() };
-        if input.settings.require_status_checks {
-            rule.contexts = required_contexts(&input.contexts)?;
-        }
-        if !input.settings.restrict_pushers {
-            return Ok(rule);
-        }
-        let users = distinct(&input.users);
-        let teams = distinct(&input.teams);
-        if users.len() > MAX_ALLOWED || teams.len() > MAX_ALLOWED {
-            return Err(ServiceError::Invalid(format!("a rule can allow at most {MAX_ALLOWED} users and {MAX_ALLOWED} teams")));
-        }
-        for name in users {
-            rule.users.push(self.writer_called(repo, name).await?);
-        }
-        if !teams.is_empty() && !repo.repo.owner.is_organization() {
-            return Err(ServiceError::Invalid("only repositories of organizations can allow teams".to_owned()));
-        }
-        for name in teams {
-            let team = self.ctx.database.teams().find_by_name(repo.repo.owner.id, name).await?;
-            let team = team.ok_or_else(|| ServiceError::Invalid(format!("{} has no team called {name}", repo.repo.owner.name)))?;
-            rule.teams.push(team.id);
-        }
-        Ok(rule)
-    }
-
-    /// The user called `name`, who must have write access to the repository.
-    async fn writer_called(&self, repo: &RepoContext, name: &str) -> Result<rbit_core::AccountId, ServiceError> {
-        let unknown = || ServiceError::Invalid(format!("there is no user called {name}"));
-        let account = self.ctx.database.accounts().find_account_by_name(name).await?.ok_or_else(unknown)?;
-        if account.kind != AccountKind::User {
-            return Err(unknown());
-        }
-        let user = self.ctx.database.accounts().find_user(account.id).await?.ok_or_else(unknown)?;
-        let grants = viewer_grants(&self.ctx.database.repositories(), Some(&user), &repo.repo).await?;
-        if !repo_access(Some(&user), &repo.repo, &grants).can_write() {
-            return Err(ServiceError::Invalid(format!("{} does not have write access to this repository", user.name())));
-        }
-        Ok(user.id())
     }
 
     async fn record(&self, action: AuditAction, actor: &User, repo: &RepoContext, detail: String) {
@@ -215,24 +202,6 @@ impl ProtectionService {
     }
 
     // ------------------------------------------------------------ decisions
-
-    /// The rules the decisions need.
-    async fn rules(&self, repo: &RepoContext) -> Result<Vec<ProtectionRule>, ServiceError> {
-        Ok(self.store().list(repo.repo.repo.id).await?.into_iter().map(|protection| protection.rule).collect())
-    }
-
-    /// `user` as the decisions see them, with their teams when some rule names teams.
-    async fn pusher(
-        &self,
-        repo: &RepoContext,
-        rules: &[ProtectionRule],
-        user: &User,
-        access: rbit_core::RepoAccess,
-    ) -> Result<Pusher, ServiceError> {
-        let names_teams = rules.iter().any(|rule| rule.settings.restrict_pushers && !rule.allowed_teams.is_empty());
-        let teams: Vec<TeamId> = if names_teams { self.store().teams_of(repo.repo.repo.id, user.id()).await? } else { Vec::new() };
-        Ok(Pusher::User { id: user.id(), access, teams })
-    }
 
     /// Decides the ref updates a client asked for, before any object arrives. `repo` is the
     /// resolved repository (never a mirror) and `actor` already has write access. An
@@ -242,13 +211,9 @@ impl ProtectionService {
             tracing::info!(repo = %repo.repo.full_name(), "push to an archived repository refused");
             return Ok(PushVerdict::refuse_all(updates, &archived.to_string()));
         }
-        let rules = self.rules(repo).await?;
-        let pusher = match actor.user {
-            Some(user) if !actor.deploy_key => self.pusher(repo, &rules, user, actor.access).await?,
-            // Deploy keys (and anything without an account) are never listed nor admins.
-            _ => Pusher::DeployKey { access: actor.access },
-        };
-        let decision = protection::decide_push(&rules, &pusher, updates);
+        let principal = Principal { user: actor.user.map(User::id), deploy_key: actor.deploy_key, access: actor.access };
+        let store = self.store();
+        let decision = ProtectionGate::new(&store).check_push(repo.repo.repo.id, principal, updates).await?;
         if let Some(user) = actor.user {
             for bypass in &decision.bypasses {
                 tracing::info!(repo = %repo.repo.full_name(), r#ref = %bypass.name, by = %user.name(), "branch protection bypassed");
@@ -264,20 +229,15 @@ impl ProtectionService {
 
     /// What merging into `branch` requires of `merger` (`repo` is opened for the merger).
     pub async fn check_merge(&self, repo: &RepoContext, merger: &User, branch: &str) -> Result<MergeRules, ServiceError> {
-        let rules = self.rules(repo).await?;
-        if !protection::is_protected(&rules, branch) {
-            return Ok(MergeRules::unprotected());
-        }
-        let pusher = self.pusher(repo, &rules, merger, repo.access).await?;
-        Ok(protection::merge_rules(&rules, &pusher, branch))
+        let store = self.store();
+        Ok(ProtectionGate::new(&store).merge(repo.repo.repo.id, merger.id(), repo.access, branch).await?)
     }
 
     /// Whether `actor` may delete `branch` (P's "delete head branch"): the same decision as
     /// a push deleting it (`repo` is opened for the actor).
     pub async fn may_delete_branch(&self, repo: &RepoContext, actor: &User, branch: &str) -> Result<bool, ServiceError> {
-        let rules = self.rules(repo).await?;
-        let pusher = self.pusher(repo, &rules, actor, repo.access).await?;
-        Ok(protection::may_delete(&rules, &pusher, branch))
+        let store = self.store();
+        Ok(ProtectionGate::new(&store).may_delete(repo.repo.repo.id, actor.id(), repo.access, branch).await?)
     }
 
     /// Why `actor` may not add commits to the existing `branch` directly, or `None` when
@@ -288,141 +248,38 @@ impl ProtectionService {
         if let Err(archived) = repo.ensure_writable() {
             return Ok(Some(archived.to_string()));
         }
-        let rules = self.rules(repo).await?;
-        let pusher = self.pusher(repo, &rules, actor, repo.access).await?;
-        let update = RefUpdate { name: format!("refs/heads/{branch}"), before: Some(String::new()), after: Some(String::new()) };
-        let decision = protection::decide_push(&rules, &pusher, &[update]);
-        Ok(decision.verdict.refusals.into_iter().next().map(|refusal| refusal.reason))
+        let store = self.store();
+        Ok(ProtectionGate::new(&store).branch_update_refusal(repo.repo.repo.id, actor.id(), repo.access, branch).await?)
     }
 
     /// The names of the repository's existing branches that some rule protects.
     pub async fn protected_branches(&self, repo: &RepoContext) -> Result<Vec<String>, ServiceError> {
-        let rules = self.rules(repo).await?;
+        let store = self.store();
+        let rules = ProtectionGate::new(&store).rules(repo.repo.repo.id).await?;
         if rules.is_empty() {
             return Ok(Vec::new());
         }
         let branches = self.branch_names(repo).await?;
-        Ok(branches.into_iter().filter(|branch| protection::is_protected(&rules, branch)).collect())
+        Ok(branches.into_iter().filter(|branch| is_protected(&rules, branch)).collect())
     }
 
     /// Evaluate only the names requested by a paged listing.
     pub async fn protected_branch_names(&self, repo: &RepoContext, branches: &[String]) -> Result<Vec<String>, ServiceError> {
-        let rules = self.rules(repo).await?;
+        let store = self.store();
+        let rules = ProtectionGate::new(&store).rules(repo.repo.repo.id).await?;
         if rules.is_empty() {
             return Ok(Vec::new());
         }
-        Ok(branches.iter().filter(|branch| protection::is_protected(&rules, branch)).cloned().collect())
+        Ok(branches.iter().filter(|branch| is_protected(&rules, branch)).cloned().collect())
     }
 }
 
-fn require_admin(repo: &RepoContext) -> Result<(), ServiceError> {
-    if repo.access.can_admin() { Ok(()) } else { Err(ServiceError::Forbidden) }
-}
-
-/// The trimmed, non-empty, distinct entries of `names`, in order.
-fn distinct(names: &[String]) -> Vec<&str> {
-    let mut seen: Vec<&str> = Vec::new();
-    for name in names.iter().map(|name| name.trim()).filter(|name| !name.is_empty()) {
-        if !seen.contains(&name) {
-            seen.push(name);
-        }
-    }
-    seen
-}
-
-/// The validated, distinct contexts a rule requires: at least one, at most
-/// [`MAX_REQUIRED_CONTEXTS`]. Contexts are case-sensitive and may contain spaces.
-fn required_contexts(contexts: &[String]) -> Result<Vec<StatusContext>, ServiceError> {
-    let mut parsed: Vec<StatusContext> = Vec::new();
-    for context in contexts.iter().filter(|context| !context.trim().is_empty()) {
-        let context = StatusContext::parse(context).map_err(|error| ServiceError::Invalid(format!("required check: {error}")))?;
-        if !parsed.contains(&context) {
-            parsed.push(context);
-        }
-    }
-    if parsed.is_empty() {
-        return Err(ServiceError::Invalid("requiring status checks needs at least one required check".to_owned()));
-    }
-    if parsed.len() > MAX_REQUIRED_CONTEXTS {
-        return Err(ServiceError::Invalid(format!("a rule can require at most {MAX_REQUIRED_CONTEXTS} status checks")));
-    }
-    Ok(parsed)
-}
-
-fn pattern_taken(error: StorageError) -> ServiceError {
+/// Rule outcomes keep their meaning; lookups already speak service errors.
+fn managed(error: AccessError<ServiceError>) -> ServiceError {
     match error {
-        StorageError::Conflict(_) => ServiceError::Invalid("a rule for this pattern already exists".to_owned()),
-        other => other.into(),
-    }
-}
-
-fn team_outside(repo: &RepoContext) -> ServiceError {
-    ServiceError::Invalid(format!("allowed teams must be teams of {}", repo.repo.owner.name))
-}
-
-/// The rule's protections in a few words, for the audit log.
-pub fn summary(settings: &RuleSettings) -> String {
-    let mut parts = Vec::new();
-    if settings.deny_force_push {
-        parts.push("no force pushes".to_owned());
-    }
-    if settings.deny_deletion {
-        parts.push("no deletion".to_owned());
-    }
-    if settings.require_pull_request {
-        parts.push(match settings.required_approvals {
-            0 => "pull request".to_owned(),
-            1 => "1 approval".to_owned(),
-            n => format!("{n} approvals"),
-        });
-    }
-    if settings.require_status_checks {
-        parts.push("status checks".to_owned());
-    }
-    if settings.restrict_pushers {
-        parts.push("restricted".to_owned());
-    }
-    if settings.allow_admin_bypass {
-        parts.push("admins bypass".to_owned());
-    }
-    if parts.is_empty() { "no restrictions".to_owned() } else { parts.join(", ") }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn summaries_and_names() {
-        assert_eq!(summary(&RuleSettings::default()), "no force pushes, no deletion");
-        let all = RuleSettings {
-            require_pull_request: true,
-            required_approvals: 2,
-            restrict_pushers: true,
-            allow_admin_bypass: true,
-            ..RuleSettings::default()
-        };
-        assert_eq!(summary(&all), "no force pushes, no deletion, 2 approvals, restricted, admins bypass");
-        let none = RuleSettings { deny_force_push: false, deny_deletion: false, ..RuleSettings::default() };
-        assert_eq!(summary(&none), "no restrictions");
-        let names = ["a".to_owned(), " b ".to_owned(), String::new(), "a".to_owned()];
-        assert_eq!(distinct(&names), ["a", "b"]);
-        assert_eq!(summary(&RuleSettings { require_status_checks: true, ..none }), "status checks");
-    }
-
-    #[test]
-    fn required_contexts_are_validated() {
-        let contexts = |names: &[&str]| names.iter().map(|name| (*name).to_owned()).collect::<Vec<_>>();
-        let parsed = required_contexts(&contexts(&["ci/build", " ", "lint: all", "ci/build"])).unwrap();
-        let names: Vec<_> = parsed.iter().map(StatusContext::as_str).collect();
-        assert_eq!(names, ["ci/build", "lint: all"], "in order, distinct, spaces allowed");
-        let message = |result: Result<Vec<StatusContext>, ServiceError>| match result {
-            Err(ServiceError::Invalid(message)) => message,
-            other => panic!("expected a validation error, got {other:?}"),
-        };
-        assert!(message(required_contexts(&contexts(&["", "  "]))).contains("at least one"));
-        let many: Vec<String> = (0..=MAX_REQUIRED_CONTEXTS).map(|n| format!("check-{n}")).collect();
-        assert!(message(required_contexts(&many)).contains("at most"));
-        assert!(message(required_contexts(&["x".repeat(256)])).contains("required check"));
+        AccessError::NotFound => ServiceError::NotFound,
+        AccessError::Forbidden => ServiceError::Forbidden,
+        AccessError::Invalid(message) => ServiceError::Invalid(message),
+        AccessError::Store(error) => error,
     }
 }
