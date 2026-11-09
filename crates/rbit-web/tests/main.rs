@@ -35,6 +35,8 @@ mod hostile_downloads;
 mod hostile_load;
 mod listings;
 mod locale_preferences;
+// The localization safety regression group.
+mod localization_safety;
 mod markdown_preview;
 mod mirror_progress;
 mod notification_settings;
