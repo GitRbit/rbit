@@ -1,5 +1,5 @@
-//! Repository page families: every key renders in English, keeps a unique id and falls
-//! back to the same English text, marked as such, in Spanish.
+//! Repository page families: every key renders in English, keeps a unique id and has its
+//! own Spanish entry.
 use std::collections::BTreeSet;
 
 use rbit_localization::{
@@ -9,7 +9,7 @@ use rbit_localization::{
 };
 
 /// Renders `messages` in every catalog and returns their ids. English and the diagnostic
-/// catalogs never fall back; Spanish falls back to exactly the English text.
+/// catalogs never fall back, and neither does Spanish, which translates every key.
 fn check<M: MessageFamily + std::fmt::Debug>(messages: &[M]) -> Vec<&'static str> {
     for &message in messages {
         let english = Catalog::new(Locale::English).localized(message);
@@ -19,14 +19,14 @@ fn check<M: MessageFamily + std::fmt::Debug>(messages: &[M]) -> Vec<&'static str
             assert!(!Catalog::new(locale).localized(message).fallback(), "{message:?} in {locale:?}");
         }
         let spanish = Catalog::new(Locale::Spanish).localized(message);
-        assert_eq!(spanish.as_str(), english.as_str(), "{message:?}");
-        assert!(spanish.fallback(), "{message:?} has no Spanish entry yet");
+        assert!(!spanish.as_str().trim().is_empty(), "{message:?}");
+        assert!(!spanish.fallback(), "{message:?} has a Spanish entry");
     }
     messages.iter().map(|message| message.id()).collect()
 }
 
 #[test]
-fn repository_labels_render_in_english_and_fall_back_in_spanish() {
+fn repository_labels_render_in_english_and_translate_to_spanish() {
     let mut ids = Vec::new();
     ids.extend(check(RepoNavLabel::ALL));
     ids.extend(check(RepoBrowseLabel::ALL));
@@ -67,7 +67,7 @@ fn repository_messages_render_arguments_and_plurals() {
 }
 
 #[test]
-fn repository_messages_fall_back_in_spanish_with_plain_arguments() {
+fn repository_messages_translate_to_spanish_with_plain_arguments() {
     let mut ids = Vec::new();
     ids.extend(check(&[RepoNavMessage::ForkCount { count: 2 }, RepoNavMessage::StargazerCount { count: 1 }]));
     ids.extend(check(&[
@@ -138,5 +138,5 @@ fn repository_messages_fall_back_in_spanish_with_plain_arguments() {
     let unique: BTreeSet<_> = ids.iter().collect();
     assert_eq!(unique.len(), ids.len(), "message ids are unique");
     let fork = Catalog::new(Locale::Spanish).localized(RepoBrowseMessage::ForkTitle { owner: "<alice>", name: "project" });
-    assert_eq!(fork.as_str(), "Fork <alice>/project", "arguments stay plain text");
+    assert_eq!(fork.as_str(), "Bifurcar <alice>/project", "arguments stay plain text");
 }
