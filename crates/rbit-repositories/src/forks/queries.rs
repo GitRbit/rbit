@@ -53,6 +53,11 @@ impl<'a, S: ForkReadRepository> ForkQueries<'a, S> {
         let forks = self.store.list_readable(repo, viewer.account, viewer.is_admin, limit, offset).await?;
         Ok((forks, self.store.count_readable(repo, viewer.account, viewer.is_admin).await?))
     }
+    /// The fork network `viewer` may read: one SQL visibility query, no per-row checks.
+    /// Pull head resolution and LFS object sharing both draw on exactly this set.
+    pub async fn network(&self, viewer: ForkViewer, repo: RepoId) -> Result<Vec<OwnedRepository>, S::Error> {
+        self.store.network_readable(repo, viewer.account, viewer.is_admin).await
+    }
     pub async fn has_private_ancestor(&self, repo: RepoId) -> Result<bool, S::Error> {
         let mut seen = HashSet::from([repo]);
         let mut current = repo;

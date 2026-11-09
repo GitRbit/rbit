@@ -173,7 +173,7 @@ impl ActionsService {
         }
 
         let database = &self.ctx().database;
-        let fork = database.forks().forks_among(&[owned.repo.id]).await?.contains(&owned.repo.id);
+        let fork = crate::forks::is_fork(database, owned.repo.id).await?;
         let base_url = self.ctx().config.server.base_url();
         let payload = context::dispatch_event(owned, fork, &actor.account, &candidate.path, &reference, &inputs, base_url);
         let payload = context::fit_payload(payload);

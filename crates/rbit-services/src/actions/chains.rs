@@ -87,7 +87,7 @@ impl ActionsService {
         }
         let people = self.people([run.actor, run.trigger_actor]).await?;
         let base_url = self.ctx().config.server.base_url();
-        let fork = database.forks().forks_among(&[repo]).await?.contains(&repo);
+        let fork = crate::forks::is_fork(database, repo).await?;
         let sender = run.trigger_actor.or(run.actor).and_then(|id| people.get(&id));
         let mut body = json!({
             "action": action.as_str(),
@@ -192,7 +192,7 @@ impl ActionsService {
             return Ok(Vec::new());
         }
         let base_url = self.ctx().config.server.base_url();
-        let fork = self.ctx().database.forks().forks_among(&[owned.repo.id]).await?.contains(&owned.repo.id);
+        let fork = crate::forks::is_fork(&self.ctx().database, owned.repo.id).await?;
         let body = json!({
             "action": event_type,
             "branch": owned.repo.default_branch,

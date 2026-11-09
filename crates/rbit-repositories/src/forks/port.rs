@@ -42,6 +42,13 @@ pub trait ForkReadRepository: Sync {
         limit: u32,
         offset: u32,
     ) -> impl Future<Output = Result<Vec<OwnedRepository>, Self::Error>> + Send;
+    /// Readable members of `repo`'s bounded fork network, `repo` included when readable.
+    fn network_readable(
+        &self,
+        repo: RepoId,
+        viewer: Option<AccountId>,
+        admin: bool,
+    ) -> impl Future<Output = Result<Vec<OwnedRepository>, Self::Error>> + Send;
 }
 pub trait ForkParentAccess: Sync {
     type Error;

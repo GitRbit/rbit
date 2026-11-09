@@ -1,22 +1,9 @@
-//! Forks: copying a repository to another owner and remembering where it came from.
+//! Fork composition: native Git copy, relationship recording and events around
+//! [`rbit_repositories::forks`], which owns the fork rules and visibility queries.
 //!
-//! Milestone 2 workstream R (repository essentials) owns this file.
-//!
-//! # Rules
-//!
-//! * Anyone who can read a repository may fork it, into their own account or an
-//!   organisation where they may create repositories (the same rule as for new
-//!   repositories, [`RepositoryService::owner_for_new_repository`]).
-//! * The fork keeps the parent's visibility (a private parent yields a private fork),
-//!   description and default branch; its branches and tags are copied on disk with
-//!   `git clone --bare --local` (see [`rbit_git::fork`]).
-//! * A fork cannot be made public while its parent, or any repository further up the
-//!   fork network, is private ([`has_private_ancestor`]): that would publish the private
-//!   history. (Forks are not removed when someone loses access to the parent.)
-//! * Metadata precedes copying. Completed copy/relationship errors attempt disk and
-//!   SQL rollback; cancellation or failed cleanup can still require repair.
-//! * Forking publishes [`crate::DomainEvent::RepositoryForked`] — not `RepositoryCreated`.
-//! * Deleting the parent leaves its forks intact; they simply lose their parent.
+//! Every fork-store read in this crate goes through [`ForkQueries`] here: the
+//! [`ForkService`] methods and the crate helpers `forks_among`, `is_fork`,
+//! `network` and `has_private_ancestor`.
 
 use crate::{EventBus, RepoContext, RepositoryService, ServiceContext, ServiceError};
 use rbit_core::{Config, RepoId, User, repository::OwnedRepository};
@@ -67,10 +54,10 @@ impl ForkService {
         })
     }
     pub async fn forks_among(&self, repos: &[RepoId]) -> Result<HashSet<RepoId>, ServiceError> {
-        Ok(ForkQueries::new(&ForkReadStore::new(self.database.forks())).forks_among(repos).await?)
+        forks_among(&self.database, repos).await
     }
     pub async fn is_fork(&self, repo: RepoId) -> Result<bool, ServiceError> {
-        Ok(ForkQueries::new(&ForkReadStore::new(self.database.forks())).is_fork(repo).await?)
+        is_fork(&self.database, repo).await
     }
     pub async fn count(&self, viewer: Option<&User>, repo: &RepoContext) -> Result<u64, ServiceError> {
         Ok(ForkQueries::new(&ForkReadStore::new(self.database.forks())).count(reading::viewer(viewer), repo.repo.repo.id).await?)
@@ -94,4 +81,15 @@ impl ForkService {
 }
 pub(crate) async fn has_private_ancestor(database: &Database, repo: RepoId) -> Result<bool, ServiceError> {
     Ok(ForkQueries::new(&ForkReadStore::new(database.forks())).has_private_ancestor(repo).await?)
+}
+/// Which of `repos` are forks; one query, none for an empty slice.
+pub(crate) async fn forks_among(database: &Database, repos: &[RepoId]) -> Result<HashSet<RepoId>, ServiceError> {
+    Ok(ForkQueries::new(&ForkReadStore::new(database.forks())).forks_among(repos).await?)
+}
+pub(crate) async fn is_fork(database: &Database, repo: RepoId) -> Result<bool, ServiceError> {
+    Ok(ForkQueries::new(&ForkReadStore::new(database.forks())).is_fork(repo).await?)
+}
+/// The readable fork network of `repo` for `viewer`, `repo` included when readable.
+pub(crate) async fn network(database: &Database, viewer: Option<&User>, repo: RepoId) -> Result<Vec<OwnedRepository>, ServiceError> {
+    Ok(ForkQueries::new(&ForkReadStore::new(database.forks())).network(reading::viewer(viewer), repo).await?)
 }

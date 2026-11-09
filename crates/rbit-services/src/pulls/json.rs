@@ -192,7 +192,7 @@ pub async fn load(ctx: &ServiceContext, issue: &Issue, pull: &PullRequest, base_
     };
     let mut ids: Vec<RepoId> = vec![repo.repo.id];
     ids.extend(head_repo.as_ref().map(|head| head.repo.id));
-    let forks = database.forks().forks_among(&ids).await?;
+    let forks = crate::forks::forks_among(database, &ids).await?;
     let mut people: Vec<_> = issue.author.into_iter().chain(pull.merged_by).collect();
     let requested_ids = database.reviews().requested(issue.id).await?;
     people.extend(requested_ids.iter().copied());

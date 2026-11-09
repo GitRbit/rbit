@@ -116,7 +116,7 @@ pub async fn payload(ctx: &ServiceContext, event: &DomainEvent, base_url: &str) 
             })
         })
         .collect();
-    let fork = ctx.database.forks().forks_among(&[*repo]).await?.contains(repo);
+    let fork = crate::forks::is_fork(&ctx.database, *repo).await?;
     let sender = match actor {
         Some(actor) => ctx.database.accounts().find_accounts(&[*actor]).await?.pop().map(|who| account(&who, base_url)),
         None => Some(actions_bot()),

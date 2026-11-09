@@ -79,6 +79,15 @@ impl ForkReadRepository for Store {
         self.log(format!("list:{}:{viewer:?}:{admin}:{limit}:{offset}", parent.0));
         ready(if self.fail { Err("list") } else { Ok(Vec::new()) })
     }
+    fn network_readable(
+        &self,
+        repo: RepoId,
+        viewer: Option<AccountId>,
+        admin: bool,
+    ) -> impl Future<Output = Result<Vec<OwnedRepository>, Self::Error>> + Send {
+        self.log(format!("network:{}:{viewer:?}:{admin}", repo.0));
+        ready(if self.fail { Err("network") } else { Ok(vec![models::repository(repo.0)]) })
+    }
 }
 impl ForkParentAccess for Store {
     type Error = &'static str;
@@ -146,4 +155,13 @@ fn fork_flags_and_count_use_only_the_existing_store_operations() {
     assert_eq!(run(app.count(ForkViewer { account: None, is_admin: false }, RepoId(4))).unwrap(), 7);
     assert_eq!(store.trace(), ["flags:[RepoId(4)]", "count:4:None:false"]);
     assert_eq!(format!("{app:?}"), "ForkQueries { .. }");
+}
+#[test]
+fn network_is_one_viewer_bound_store_query() {
+    let store = Store::default();
+    let viewer = ForkViewer { account: Some(AccountId(3)), is_admin: false };
+    assert_eq!(run(ForkQueries::new(&store).network(viewer, RepoId(5))).unwrap().len(), 1);
+    assert_eq!(store.trace(), ["network:5:Some(AccountId(3)):false"]);
+    let fail = Store { fail: true, ..Store::default() };
+    assert_eq!(run(ForkQueries::new(&fail).network(viewer, RepoId(5))).map(|found| found.len()), Err("network"));
 }

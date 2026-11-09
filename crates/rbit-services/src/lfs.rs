@@ -339,8 +339,7 @@ impl LfsService {
     ) -> Result<Option<u64>, ServiceError> {
         let id = repo.repo.repo.id;
         if network.is_none() {
-            let readable =
-                self.inner.ctx.database.forks().network_readable(id, viewer.map(User::id), viewer.is_some_and(|v| v.is_admin)).await?;
+            let readable = crate::forks::network(&self.inner.ctx.database, viewer, id).await?;
             *network = Some(readable.into_iter().map(|r| r.repo.id).filter(|other| *other != id).collect());
         }
         let others = network.as_deref().unwrap_or_default();

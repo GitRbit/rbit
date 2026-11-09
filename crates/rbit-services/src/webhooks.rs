@@ -576,7 +576,7 @@ impl WebhookService {
 
     /// Whether `repo` was created as a fork (the `fork` flag of repository objects).
     async fn is_fork(&self, repo: RepoId) -> Result<bool, ServiceError> {
-        Ok(self.inner.ctx.database.forks().forks_among(&[repo]).await?.contains(&repo))
+        crate::forks::is_fork(&self.inner.ctx.database, repo).await
     }
 
     /// Release `id` of `repo` with its files, author and uploaders, as payloads embed it;

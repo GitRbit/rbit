@@ -263,12 +263,7 @@ impl PullService {
 
     /// The repositories of `repo`'s fork network that `viewer` may read (including `repo`).
     pub async fn network(&self, viewer: Option<&User>, repo: &RepoContext) -> Result<Vec<OwnedRepository>, ServiceError> {
-        Ok(self
-            .ctx()
-            .database
-            .forks()
-            .network_readable(repo.repo.repo.id, viewer.map(User::id), viewer.is_some_and(|v| v.is_admin))
-            .await?)
+        crate::forks::network(&self.ctx().database, viewer, repo.repo.repo.id).await
     }
 
     /// The head repository a [`HeadSpec`] names, opened for `viewer`: `base` itself, the

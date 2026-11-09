@@ -199,7 +199,7 @@ pub async fn payload(ctx: &ServiceContext, event: &DomainEvent, base_url: &str) 
     let database = &ctx.database;
     let Some(owned) = database.admin().find_repository(repo).await? else { return Ok(None) };
     let Some(run) = database.actions_runs().find_run(repo, run).await? else { return Ok(None) };
-    let fork = database.forks().forks_among(&[repo]).await?.contains(&repo);
+    let fork = crate::forks::is_fork(database, repo).await?;
     let people = people(ctx, [run.actor, run.trigger_actor]).await?;
     let sender = run.trigger_actor.or(run.actor).and_then(|id| people.get(&id)).map_or_else(actions_bot, |who| account(who, base_url));
     let mut body = json!({

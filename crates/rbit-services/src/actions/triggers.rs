@@ -194,7 +194,7 @@ impl ActionsService {
             Some(id) => database.accounts().find_user(id).await?.map(|user| user.account),
             None => None,
         };
-        let fork = database.forks().forks_among(&[repo]).await?.contains(&repo);
+        let fork = crate::forks::is_fork(database, repo).await?;
         let reader = self.reader(&owned);
         let base_url = self.ctx().config.server.base_url();
         let mut allowance = self.allowance();

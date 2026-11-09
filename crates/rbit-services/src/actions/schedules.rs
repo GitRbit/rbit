@@ -198,7 +198,7 @@ impl ActionsService {
             self.refresh_schedules(&owned, &sha, Timestamp::now()).await?;
             return Ok(Fired::Gone);
         };
-        let fork = database.forks().forks_among(&[owned.repo.id]).await?.contains(&owned.repo.id);
+        let fork = crate::forks::is_fork(database, owned.repo.id).await?;
         let payload = context::fit_payload(context::schedule_event(&owned, fork, &entry.cron, self.ctx().config.server.base_url()));
         let trigger = Trigger {
             repo: &owned,

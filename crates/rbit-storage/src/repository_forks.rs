@@ -71,4 +71,12 @@ impl ForkReadRepository for ForkReadStore {
     ) -> impl Future<Output = Result<Vec<OwnedRepository>, Self::Error>> + Send {
         self.store.list_readable(parent, viewer, admin, limit, offset)
     }
+    fn network_readable(
+        &self,
+        repo: RepoId,
+        viewer: Option<AccountId>,
+        admin: bool,
+    ) -> impl Future<Output = Result<Vec<OwnedRepository>, Self::Error>> + Send {
+        self.store.network_readable(repo, viewer, admin)
+    }
 }

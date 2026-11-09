@@ -168,7 +168,7 @@ async fn load(
 }
 
 async fn base_body(ctx: &ServiceContext, loaded: &Loaded, action: &str, base_url: &str) -> Result<Value, ServiceError> {
-    let fork = ctx.database.forks().forks_among(&[loaded.repo.repo.id]).await?.contains(&loaded.repo.repo.id);
+    let fork = crate::forks::is_fork(&ctx.database, loaded.repo.repo.id).await?;
     Ok(json!({
         "action": action,
         "number": loaded.issue.number.get(),

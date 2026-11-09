@@ -145,7 +145,7 @@ async fn finish(
     event: WebhookEvent,
     base_url: &str,
 ) -> Result<HookPayload, ServiceError> {
-    let fork = ctx.database.forks().forks_among(&[repo.repo.id]).await?.contains(&repo.repo.id);
+    let fork = crate::forks::is_fork(&ctx.database, repo.repo.id).await?;
     body["repository"] = repository(repo, base_url, fork);
     let sender = match actor {
         Some(id) => find_account(ctx, id).await?,
