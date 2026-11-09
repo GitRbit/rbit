@@ -71,9 +71,9 @@ use std::path::Path;
 
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 
+pub use self::access_tokens::{AccessTokenStore, NewAccessToken};
 pub use self::accounts::{AccountStore, LoginRecord, NewUser, SessionUser};
 pub use self::repositories::{ForkParent, NewRepository, RepositoryPage, RepositoryStore};
-pub use self::access_tokens::{AccessTokenStore, NewAccessToken};
 
 use crate::{
     StorageError,
