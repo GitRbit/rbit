@@ -1,6 +1,7 @@
 //! Language changes are native settings writes, never redirects to caller URLs. A signed-in
 //! user's choice is saved to the account; a visitor's goes into the `rbit-locale` cookie,
-//! which negotiation honours before Accept-Language.
+//! which negotiation honours before Accept-Language. The header's language dialog posts the
+//! same form.
 use super::SavedQuery;
 use crate::{
     AppState,
@@ -10,7 +11,7 @@ use crate::{
     localization::{AccountLanguage, PREFERENCE_COOKIE, RequestLocale},
     views::{
         layout::Page,
-        settings::{LanguagePage, VisitorLanguagePage},
+        settings::{LanguageDialog, LanguagePage, VisitorLanguagePage},
     },
 };
 use axum::{
@@ -31,7 +32,7 @@ use serde::Deserialize;
 const VISITOR_COOKIE_DAYS: i64 = 365;
 
 /// `GET /settings/language`: the account's language settings, or for a visitor who is not
-/// signed in the same form saved in a cookie.
+/// signed in the same form saved in a cookie (the header button's no-script destination).
 pub async fn show(
     viewer: Viewer,
     page: Page,
@@ -45,6 +46,13 @@ pub async fn show(
     } else {
         VisitorLanguagePage::new(page, visitor_choice(resolved.source, resolved.locale), saved).into_response()
     }
+}
+
+/// `GET /settings/language/dialog`: the header's language dialog, fetched by `language-picker.js`.
+/// Like Explore, it opts into a diagnostic locale when the resolver enables one, so it opens
+/// in the direction of the page that asked for it.
+pub async fn dialog(page: Page, AccountLanguage(account): AccountLanguage, RequestLocale(resolved): RequestLocale) -> LanguageDialog {
+    LanguageDialog::new(page.with_locale(resolved.locale), account.is_some() || resolved.source == PreferenceSource::Anonymous)
 }
 
 #[derive(Debug, Deserialize)]

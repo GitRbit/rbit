@@ -16,6 +16,7 @@
 @import "./monitoring.css";
 @import "./direction.css";
 @import "./scripts.css";
+@import "./language-picker.css";
 @plugin "@tailwindcss/typography";
 
 @source "../templates";

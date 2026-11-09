@@ -215,6 +215,12 @@ explicitly English; catalog theme names and machine filter values are unchanged.
 This candidate requires actual hosted browser/Rust acceptance; Node fixtures alone
 are not browser proof or a claim that all settings content has been translated.
 
+The header's language button, which precedes the theme buttons, fetches its dialog from
+the exact read-only `/settings/language/dialog` endpoint as the pointer or focus heads for
+it, so that path joins the read allowlist without a query or fragment. The dialog saves
+through the same `POST /settings/language` form the language checks already admit; no
+other write is added.
+
 
 ### Late page-check diagnostics
 

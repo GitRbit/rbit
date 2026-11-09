@@ -23,6 +23,10 @@ impl PageChrome {
         self.catalog.localized(Message::Explore)
     }
 
+    pub fn language(&self) -> Localized {
+        self.catalog.localized(Message::Language)
+    }
+
     pub fn switch_theme(&self) -> Localized {
         self.catalog.localized(Message::SwitchTheme)
     }

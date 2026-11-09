@@ -24,7 +24,7 @@ reset clears the old anonymous preference cookie as well as the account selectio
 The form performs a fixed full navigation; it accepts no redirect destination.
 Ordinary CSRF, form-size, authentication and password-change restrictions still apply.
 
-## Visitors
+## Visitors and the header's language dialog
 
 Visitors who are not signed in use the same form. `GET /settings/language` renders it
 for them without the settings navigation, and `POST /settings/language`, with the same
@@ -35,6 +35,15 @@ never sent to other sites. Negotiation reads it after the account choice and bef
 Accept-Language; an unsupported, repeated or oversized value falls through. Choosing
 the browser default removes it, and a signed-in save removes it too, so the account
 choice alone decides.
+
+The header's globe button sits before the theme buttons in reading order (so it
+mirrors with them right to left). Without scripts it is a link to that page; with
+scripts it opens a modal dialog fetched from `GET /settings/language/dialog`, listing
+every language by its native name with its own `lang`, the current one marked
+`aria-current`. A row posts the page's form (the redirect is not followed), then the
+page reloads once. The reloaded document carries the new catalog key, which the
+mismatch logic below records without reloading again. A refused save opens the page
+itself, where the form reports the problem.
 
 Upgrade/constraint/roundtrip tests use actual SQLite. Session tests count one real
 acquisition and one statement; EXPLAIN tests additionally require the existing login

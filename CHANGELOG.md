@@ -106,6 +106,10 @@ This section remains unreleased until the complete rewrite and release gates pas
 
 - Typed localization foundations and shared Explore page/results rendering, including
   opt-in expansion and right-to-left diagnostic locales and direct HTMX fragments.
+- A language button in the header, before the theme buttons, opens a dialog listing every
+  interface language by its own name. Signed-in choices are saved to the account; visitors
+  can now choose too, kept in a `rbit-locale` cookie that holds only the language and is
+  honoured before the browser's languages. Without scripts it opens the language page.
 - Development worktrees under `worktrees/`, shared Cargo output with guarded artifact
   handoff, isolated runtime data and ports, and configurable inactive-cache pruning.
   See [development worktrees](docs/development-worktrees.md).

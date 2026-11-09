@@ -1,7 +1,8 @@
 {% import "macros.html" as ui %}
-{#- Light/dark switch and the theme picker as menu rows: the phone-sized stand-ins for the
-    top bar's sun/moon and palette buttons. -#}
-{% macro theme_menu_items(page, chrome) %}
+{#- Language, light/dark switch and the theme picker as menu rows: the phone-sized stand-ins
+    for the top bar's globe, sun/moon and palette buttons. -#}
+{% macro display_menu_items(page, chrome) %}
+<a class="menu-item sm:hidden" href="/settings/language" hx-boost="false" aria-haspopup="dialog" data-language-dialog-open>{% call ui::icon("globe", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.language()) %}{% endcall %}</a>
 {%- let toggle = page.theme.toggled() %}
 <form method="post" action="/themes" class="sm:hidden" hx-boost="false" data-theme-form data-asset-version="{{ crate::assets::build_version() }}">
   <input type="hidden" name="next" value="{{ page.path }}">
@@ -67,9 +68,15 @@
 
       <div class="ms-auto flex shrink-0 items-center gap-1">
         <a href="/explore" class="btn btn-ghost hidden sm:inline-flex {% if page.is_at("/explore") %}text-ink{% endif %}">{% call ui::localized(chrome.explore()) %}{% endcall %}</a>
+        {#- Opens the language dialog; without scripts, the language page (account settings when
+            signed in, a cookie choice otherwise). It leads the display controls, so it sits
+            before the theme buttons in reading order and mirrors with them right to left. -#}
+        <a href="/settings/language" class="btn btn-ghost btn-icon hidden sm:inline-flex" hx-boost="false" aria-haspopup="dialog" aria-label="{{ chrome.language() }}" title="{{ chrome.language() }}" data-language-dialog-open>
+          {% call ui::icon("globe", "size-4") %}{% endcall %}
+        </a>
         {#- One click flips light/dark, keeping a tinted scheme's family (Gruvbox dark ↔ light);
             the palette menu next to it picks any theme. Both are plain forms without JS. On
-            phones both move into the account menu (or, signed out, the site menu). -#}
+            phones all three move into the account menu (or, signed out, the site menu). -#}
         {%- let toggle = page.theme.toggled() %}
         <form method="post" action="/themes" class="hidden sm:contents" hx-boost="false" data-theme-form data-asset-version="{{ crate::assets::build_version() }}">
           <input type="hidden" name="next" value="{{ page.path }}">
@@ -113,7 +120,7 @@
             <a class="menu-item" href="/new">{% call ui::icon("plus", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.new_repository()) %}{% endcall %}</a>
             {% if user.can_create_org %}<a class="menu-item" href="/organizations/new">{% call ui::icon("building", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.new_organization()) %}{% endcall %}</a>{% endif %}
             <div class="menu-divider"></div>
-            {% call theme_menu_items(page, chrome) %}{% endcall %}
+            {% call display_menu_items(page, chrome) %}{% endcall %}
             <a class="menu-item" href="/settings">{% call ui::icon("settings", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.settings()) %}{% endcall %}</a>
             {% if user.is_admin %}
             <a class="menu-item" href="/admin">{% call ui::icon("shield", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.administration()) %}{% endcall %}</a>
@@ -134,7 +141,7 @@
             <a class="menu-item" href="/explore">{% call ui::icon("compass", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.explore()) %}{% endcall %}</a>
             <a class="menu-item" href="/signup">{% call ui::icon("user-plus", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.create_account()) %}{% endcall %}</a>
             <div class="menu-divider"></div>
-            {% call theme_menu_items(page, chrome) %}{% endcall %}
+            {% call display_menu_items(page, chrome) %}{% endcall %}
           </div>
         </details>
         {% endif %}

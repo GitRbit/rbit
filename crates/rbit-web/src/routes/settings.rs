@@ -43,6 +43,7 @@ pub fn routes() -> Router<AppState> {
         .route("/settings/account", get(account))
         .route("/settings/appearance", get(appearance))
         .route("/settings/language", get(language::show).post(language::save))
+        .route("/settings/language/dialog", get(language::dialog))
         .route("/settings/account/email", post(change_email))
         .route("/settings/account/username", post(change_username))
         .route("/settings/account/password", post(change_password))

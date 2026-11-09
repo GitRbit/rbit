@@ -2,6 +2,8 @@
 export const productionOrigin = "http://127.0.0.1:4189";
 export const productionRun = "/alice/rocket/actions/runs/1";
 export const productionLanguage = "/settings/language";
+// The header's language dialog, fetched as the pointer or focus heads for its button.
+export const productionLanguageDialog = "/settings/language/dialog";
 export const productionExplore = "/explore";
 export const productionOverview = "/alice/rocket/actions";
 export const productionJob = "/alice/rocket/actions/runs/2/jobs/2";
@@ -29,7 +31,7 @@ export function publicAssetPath(path) {
 
 // Repository navigation preloads are actual application GET behavior. Permit only
 // these exact synthetic-repository read routes, not arbitrary repository prefixes.
-const readPaths = new Set(["/themes/picker", productionLanguage, productionExplore, productionRun, "/alice/rocket/actions/runs/2", productionJob,
+const readPaths = new Set(["/themes/picker", productionLanguageDialog, productionLanguage,productionExplore, productionRun, "/alice/rocket/actions/runs/2", productionJob,
   `${productionJob}/logs`, `${productionJob}/logs/raw`, "/alice/rocket", productionOverview,
   "/alice/rocket/actions/workflows/ci.yml", ...["issues", "pulls", "commits", "branches", "tags", "releases", "activity"]
     .map(name => `/alice/rocket/${name}`), "/manifest.webmanifest", "/sw.js"]);
@@ -50,7 +52,7 @@ export function allowedProductionRequest(value, method, form = {}) {
     if (url.pathname === productionLanguage && url.search
       && (url.searchParams.getAll("saved").length !== 1 || url.searchParams.get("saved") !== "1"
         || [...url.searchParams.keys()].some(key => key !== "saved"))) return false;
-    if (url.pathname === "/themes/picker" && (url.search || url.hash)) return false;
+    if ((url.pathname === "/themes/picker" || url.pathname === productionLanguageDialog) && (url.search || url.hash)) return false;
     if (url.pathname === productionExplore && url.search) return false;
     if (url.pathname === `${productionJob}/logs`
       && (url.searchParams.getAll("step").length !== 1 || !["0", "1"].includes(url.searchParams.get("step"))

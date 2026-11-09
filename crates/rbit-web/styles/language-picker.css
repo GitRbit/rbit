@@ -1,0 +1,111 @@
+/* Header language dialog (templates/settings/language_dialog.html): the theme picker's dialog
+   in miniature. The same surface, hairlines, backdrop and fade; a short list of languages, each
+   named in its own language, the current one checked. It closes without motion when the
+   visitor prefers reduced motion (the global rule in app.css). */
+.lpk {
+  display: flex;
+  flex-direction: column;
+  width: min(22rem, calc(100vw - 2rem));
+  max-width: none;
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 24px 64px -12px rgb(0 0 0 / 0.35), 0 0 0 1px rgb(0 0 0 / 0.04);
+  transition: opacity 120ms ease-out, translate 120ms ease-out, display 120ms allow-discrete, overlay 120ms allow-discrete;
+}
+
+.lpk:not([open]) { display: none; opacity: 0; translate: 0 6px; }
+
+@starting-style {
+  .lpk[open] { opacity: 0; translate: 0 6px; }
+}
+
+.lpk::backdrop {
+  background: rgb(0 0 0 / 0.4);
+  backdrop-filter: blur(2px);
+}
+
+html:has(.lpk[open]) { overflow: hidden; }
+
+.lpk-head {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 12px;
+  height: 52px;
+  padding-inline: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.lpk-title { flex: 1; min-width: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+
+.lpk-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.lpk-opt {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 44px;
+  padding-inline: 8px;
+  border-radius: 6px;
+  color: var(--ink);
+  font-size: 13px;
+  text-align: start;
+  cursor: pointer;
+}
+
+.lpk-opt:hover,
+.lpk-opt:focus-visible { background: var(--hover); }
+
+.lpk-opt:focus-visible { outline-offset: 0; }
+
+.lpk-opt:disabled { cursor: progress; opacity: 0.6; }
+
+/* The name keeps its own direction (dir=auto) but sits at the row's start, so it lines up
+   with the page's reading direction; the check takes the rest of the row's end. */
+.lpk-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.lpk-check { flex-shrink: 0; margin-inline-start: auto; visibility: hidden; }
+.lpk-opt[aria-current="true"] .lpk-check { visibility: visible; }
+.lpk-opt[aria-current="true"] .lpk-name { font-weight: 500; }
+
+.lpk-foot {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 10px 16px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--subtle);
+  color: var(--ink-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.lpk-reset {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.lpk-reset:hover { text-decoration-color: var(--ink); }
+
+@media (width >= 40rem) {
+  .lpk-opt { height: 40px; }
+}

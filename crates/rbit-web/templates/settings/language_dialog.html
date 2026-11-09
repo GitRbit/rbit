@@ -1,0 +1,28 @@
+{% import "macros.html" as ui %}
+{#- The header's language dialog: fetched by language-picker.js the first time the globe button is
+    pressed (without scripts that button links to the language page). Each row is a submit
+    button of the language page's form, named in its own language; the script saves the choice
+    and reloads the page in it. The current language is marked `aria-current`. -#}
+<dialog class="lpk" lang="{{ page.locale.tag() }}" dir="{{ page.locale.direction().as_str() }}" aria-labelledby="lpk-title" data-language-dialog>
+  <div class="lpk-head">
+    <h2 class="lpk-title" id="lpk-title">{% call ui::localized(text.title) %}{% endcall %}</h2>
+    <button class="btn btn-ghost btn-icon -me-2" type="button" aria-label="{{ text.close }}" title="{{ text.close }}" data-lpk-close>{% call ui::icon("x", "size-4") %}{% endcall %}</button>
+  </div>
+  <form class="lpk-list" id="lpk-form" method="post" action="/settings/language" hx-boost="false" data-language-form>
+    {%- for language in rbit_localization::Locale::LANGUAGES %}
+    <button class="lpk-opt" type="submit" name="locale" value="{{ language.tag() }}" lang="{{ language.tag() }}"{% if language.tag() == page.locale.tag() %} aria-current="true"{% endif %} data-lpk-option>
+      <span class="lpk-name" dir="auto">{{ language.native_name() }}</span>
+      {% call ui::icon("check", "lpk-check size-3.5") %}{% endcall %}
+    </button>
+    {%- endfor %}
+  </form>
+  <footer class="lpk-foot">
+    <p>{% call ui::localized(text.coverage) %}{% endcall %}</p>
+    {%- if !page.is_signed_in() %}
+    <p>{% call ui::localized(text.device_only) %}{% endcall %}</p>
+    {%- endif %}
+    {%- if has_choice %}
+    <button class="lpk-reset" type="submit" form="lpk-form" name="locale" value="" data-lpk-option>{% call ui::localized(text.browser) %}{% endcall %}</button>
+    {%- endif %}
+  </footer>
+</dialog>

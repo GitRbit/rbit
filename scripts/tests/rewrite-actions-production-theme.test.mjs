@@ -40,3 +40,12 @@ test("picker acceptance adds only its exact read endpoint, never theme writes", 
     assert.equal(allowedProductionRequest(productionOrigin + path, "POST"), false);
   }
 });
+test("the header's language dialog is one exact read; it saves through the language form only", () => {
+  assert.equal(allowedProductionRequest(productionOrigin + "/settings/language/dialog", "GET"), true);
+  for (const path of ["/settings/language/dialog?locale=es", "/settings/language/dialog#other"]) {
+    assert.equal(allowedProductionRequest(productionOrigin + path, "GET"), false);
+  }
+  const form = { body: "locale=es", origin: productionOrigin, contentType: "application/x-www-form-urlencoded" };
+  assert.equal(allowedProductionRequest(productionOrigin + "/settings/language/dialog", "POST", form), false);
+  assert.equal(allowedProductionRequest(productionOrigin + "/settings/language", "POST", form), true);
+});

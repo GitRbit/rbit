@@ -4,6 +4,8 @@
 // Theme menu and gallery: instant switching, live previews, filtering.
 import "./theme-picker.js";
 import "./locale.js";
+// The header's language dialog: saves the choice like the language page, then reloads once.
+import "./language-picker.js";
 
 // Preloading, partial swaps, progress and focus for boosted navigation.
 import "./nav.js";
