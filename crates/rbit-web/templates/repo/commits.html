@@ -10,14 +10,14 @@
 <div class="space-y-6">
   {% for day in days %}
   <section aria-label="{{ rbit_localization::RepoHistoryMessage::CommitsOn { date: day.date }.text(page.locale) }}">
-    <h2 class="mb-2 text-xs font-medium text-ink-muted">{{ day.date }}</h2>
+    <h2 class="mb-2 text-xs font-medium text-ink-muted">{% call ui::localized(day.when.date(page.locale)) %}{% endcall %}</h2>
     <ol class="box">
       {% for commit in day.commits %}
       <li class="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
         {% call ui::avatar(commit.avatar, "size-6 text-[9px]") %}{% endcall %}
         <div class="min-w-0 flex-1">
           <a href="{{ commit.url }}" class="block truncate text-[13px] font-medium hover:underline hover:underline-offset-4" title="{{ commit.summary }}">{{ commit.summary }}</a>
-          <p class="mt-0.5 truncate text-xs text-ink-muted">{{ commit.author }} · <time datetime="{{ commit.when_iso }}">{{ commit.when }}</time></p>
+          <p class="mt-0.5 truncate text-xs text-ink-muted">{{ commit.author }} · <time datetime="{{ commit.when_iso }}">{% call ui::localized(commit.when.relative(page.locale)) %}{% endcall %}</time></p>
         </div>
         {% if let Some(mark) = commit.status %}{% include "statuses/mark.html" %}{% endif %}
         <div class="flex shrink-0" dir="ltr">

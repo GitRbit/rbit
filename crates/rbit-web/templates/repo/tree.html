@@ -79,7 +79,7 @@
         {% call ui::icon("tag", "mt-0.5 size-3.5 shrink-0 text-ink-muted") %}{% endcall %}
         <span class="min-w-0">
           <span class="flex items-center gap-2"><span class="truncate font-medium group-hover:underline group-hover:underline-offset-4">{{ release.name }}</span><span class="badge">{% call ui::localized(rbit_localization::RepoBrowseLabel::Latest.text(page.locale)) %}{% endcall %}</span></span>
-          <time class="block text-xs text-ink-faint" datetime="{{ release.when_iso }}">{{ release.when }}</time>
+          <time class="block text-xs text-ink-faint" datetime="{{ release.when_iso }}">{% call ui::localized(release.when.relative(page.locale)) %}{% endcall %}</time>
         </span>
       </a>
     </section>

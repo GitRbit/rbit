@@ -40,7 +40,7 @@
           {% if row.badge.class == "state-badge-draft" %}<span class="badge">{% call ui::localized(rbit_localization::ThreadMessage::Draft.localized(page.locale)) %}{% endcall %}</span>{% endif %}
         </div>
         {% let meta = row.meta().rich(page.locale) %}
-        <p class="mt-0.5 truncate text-xs text-ink-muted"><span{% if meta.fallback() %} lang="en"{% endif %}>{% for part in meta.parts() %}{% if part.is_slot(0) %}<time datetime="{{ row.when_iso }}" title="{{ row.when_iso }}">{{ row.when }}</time>{% else %}{{ part.text() }}{% endif %}{% endfor %}</span>{% if let Some(review) = row.review %} · <span class="{{ review.1 }}">{% call ui::localized(review.0.localized(page.locale)) %}{% endcall %}</span>{% endif %}</p>
+        <p class="mt-0.5 truncate text-xs text-ink-muted"><span{% if meta.fallback() %} lang="en"{% endif %}>{% for part in meta.parts() %}{% if part.is_slot(0) %}<time datetime="{{ row.when_iso }}" title="{{ row.when_iso }}">{% call ui::localized(row.when.relative(page.locale)) %}{% endcall %}</time>{% else %}{{ part.text() }}{% endif %}{% endfor %}</span>{% if let Some(review) = row.review %} · <span class="{{ review.1 }}">{% call ui::localized(review.0.localized(page.locale)) %}{% endcall %}</span>{% endif %}</p>
       </div>
       {% if row.comment_count > 0 %}<span class="flex shrink-0 items-center gap-1 text-xs text-ink-faint" title="{{ rbit_localization::IssueMessage::Comments { count: row.comment_count.clone().into() }.localized(page.locale) }}">{% call ui::icon("message-square", "size-3.5") %}{% endcall %}{{ row.comment_count }}</span>{% endif %}
     </li>

@@ -3,7 +3,7 @@
   <div class="monitor-summary">
     <div><p class="monitor-label">{% call ui::localized(MonitoringMessage::Requests.text(locale)) %}{% endcall %}</p><p class="monitor-number">{{ requests }}</p></div>
     <div><p class="monitor-label">{% call ui::localized(MonitoringMessage::ErrorRate.text(locale)) %}{% endcall %}</p><p class="monitor-number">{{ errors }}</p></div>
-    <div><p class="monitor-label">{% call ui::localized(MonitoringMessage::ProcessUptime.text(locale)) %}{% endcall %}</p><p class="monitor-uptime">{{ uptime }}</p></div>
+    <div><p class="monitor-label">{% call ui::localized(MonitoringMessage::ProcessUptime.text(locale)) %}{% endcall %}</p><p class="monitor-uptime">{% call ui::localized(uptime) %}{% endcall %}</p></div>
   </div>
   <div class="monitor-charts">
     {% for chart in charts %}

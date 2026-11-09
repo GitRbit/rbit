@@ -17,7 +17,7 @@
       {%- else if part.kind == "muted" -%}<span class="text-ink-faint">{{ part.text }}</span>
       {%- else -%}{{ part.text }}
       {%- endif -%}
-      {%- endfor %}</span> <a href="#{{ event.anchor }}" class="whitespace-nowrap text-ink-faint hover:text-ink-muted hover:underline hover:underline-offset-4"><time datetime="{{ event.when_iso }}" title="{{ event.when_iso }}">{{ event.when }}</time></a>
+      {%- endfor %}</span> <a href="#{{ event.anchor }}" class="whitespace-nowrap text-ink-faint hover:text-ink-muted hover:underline hover:underline-offset-4"><time datetime="{{ event.when_iso }}" title="{{ event.when_iso }}">{% call ui::localized(event.when.relative(page.locale)) %}{% endcall %}</time></a>
     </p>
     {% if let Some(detail) = event.detail %}<p class="mt-0.5 truncate text-xs text-ink-faint">{{ detail }}</p>{% endif %}
   </div>

@@ -31,7 +31,7 @@
       </ol>
     </nav>
     <h1 class="mt-1 text-2xl font-semibold tracking-tight break-words" dir="auto">{{ title }}</h1>
-    <p class="mt-1 text-xs text-ink-muted">{% call ui::localized(wiki.t.text(WikiMessage::LastEdited)) %}{% endcall %} <time datetime="{{ updated_iso }}">{{ updated }}</time></p>
+    <p class="mt-1 text-xs text-ink-muted">{% call ui::localized(wiki.t.text(WikiMessage::LastEdited)) %}{% endcall %} <time datetime="{{ updated_iso }}">{% call ui::localized(updated) %}{% endcall %}</time></p>
   </div>
   <div class="flex shrink-0 flex-wrap items-center gap-2">
     {% if wiki.can_write && revision.is_none() %}

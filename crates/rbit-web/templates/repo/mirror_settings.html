@@ -21,8 +21,8 @@
       <div>
         <dt class="text-xs text-ink-muted">{% call ui::localized(rbit_localization::RepoSettingsLabel::LastFetch.text(page.locale)) %}{% endcall %}</dt>
         <dd class="mt-0.5 flex items-center gap-2">
-          {% if let Some((when, iso)) = mirror.last_sync %}
-          <time datetime="{{ iso }}" title="{{ iso }}">{{ when }}</time>
+          {% if let Some(at) = mirror.last_sync %}
+          <time datetime="{{ at.iso() }}" title="{{ at.iso() }}">{% call ui::localized(at.relative(page.locale)) %}{% endcall %}</time>
           {% if mirror.last_error.is_some() %}<span class="badge border-danger/40 text-danger">{% call ui::localized(rbit_localization::RepoSettingsLabel::Failed.text(page.locale)) %}{% endcall %}</span>{% else %}<span class="badge border-success/40 text-success">{% call ui::localized(rbit_localization::RepoSettingsLabel::Ok.text(page.locale)) %}{% endcall %}</span>{% endif %}
           {% else %}
           <span class="text-ink-faint">{% call ui::localized(rbit_localization::RepoSettingsLabel::NotYet.text(page.locale)) %}{% endcall %}</span>
@@ -31,7 +31,7 @@
       </div>
       <div>
         <dt class="text-xs text-ink-muted">{% call ui::localized(rbit_localization::RepoSettingsLabel::NextFetch.text(page.locale)) %}{% endcall %}</dt>
-        <dd class="mt-0.5"><time datetime="{{ mirror.next_sync_iso }}" title="{{ mirror.next_sync_iso }}">{{ mirror.next_sync }}</time></dd>
+        <dd class="mt-0.5"><time datetime="{{ mirror.next_sync_iso }}" title="{{ mirror.next_sync_iso }}">{% call ui::localized(mirror.next_sync.until(page.locale)) %}{% endcall %}</time></dd>
       </div>
     </div>
     {% if let Some(error) = mirror.last_error %}

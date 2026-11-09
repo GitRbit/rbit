@@ -2,6 +2,7 @@
 //!
 //! Workstream D owns this file.
 
+use crate::views::when::When;
 use askama::Template;
 use askama_web::WebTemplate;
 use rbit_localization::Locale;
@@ -211,7 +212,7 @@ pub struct StargazerRow {
     pub label: String,
     pub url: String,
     pub avatar: Avatar,
-    pub starred: String,
+    pub starred: When,
     pub starred_iso: String,
 }
 
@@ -223,7 +224,7 @@ impl From<&Stargazer> for StargazerRow {
             label: account.label().to_owned(),
             url: format!("/{}", account.name),
             avatar: Avatar::for_account(account),
-            starred: stargazer.starred_at.relative(),
+            starred: When(stargazer.starred_at),
             starred_iso: stargazer.starred_at.iso8601(),
         }
     }

@@ -10,6 +10,7 @@
 //!
 //! Workstream U (interface and secrets) owns this file.
 
+use crate::views::when::When;
 use askama::Template;
 use askama_web::WebTemplate;
 use rbit_core::{
@@ -39,7 +40,7 @@ pub struct RunnerRow {
     /// Online, offline, disabled or never seen.
     pub state: ActionsRunnersMessage<'static>,
     pub tone: &'static str,
-    pub last_seen: Option<String>,
+    pub last_seen: Option<When>,
     pub ephemeral: bool,
     pub disabled: bool,
     /// The scope this page manages: its buttons are shown.
@@ -82,7 +83,7 @@ impl RunnerRow {
             capacity: capabilities.capacity,
             state,
             tone,
-            last_seen: runner.last_online.map(Timestamp::relative),
+            last_seen: runner.last_online.map(When),
             ephemeral: runner.ephemeral,
             disabled: runner.disabled,
             manageable,
@@ -95,8 +96,8 @@ impl RunnerRow {
 #[derive(Debug, Clone)]
 pub struct TokenRow {
     pub id: i64,
-    pub created: String,
-    pub expires: String,
+    pub created: When,
+    pub expires: When,
     /// How many uses are left, or why there are none.
     pub uses: ActionsRunnersMessage<'static>,
     pub usable: bool,
@@ -118,8 +119,8 @@ impl TokenRow {
         };
         Self {
             id: token.id.0,
-            created: token.created_at.relative(),
-            expires: token.expires_at.until(),
+            created: When(token.created_at),
+            expires: When(token.expires_at),
             uses,
             usable: token.is_usable(now),
             labels: token.labels.as_ref().map(|labels| labels.iter().map(RunnerLabel::as_str).collect::<Vec<_>>().join(", ")),

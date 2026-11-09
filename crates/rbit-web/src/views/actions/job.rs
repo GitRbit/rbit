@@ -1,5 +1,6 @@
 //! Bounded job and step log presentation; storage windows remain service-owned.
 use super::{RunSummary, StateLook, elapsed};
+use crate::views::when::Took;
 use crate::{
     render::escape_html,
     views::{
@@ -121,7 +122,7 @@ pub struct StepView {
     pub number: i64,
     pub name: String,
     pub look: StateLook,
-    pub duration: Option<String>,
+    pub duration: Option<Took>,
     /// Shown expanded: the running step, else the first that failed.
     pub open: bool,
     /// `None` for a step that never started.
@@ -162,7 +163,7 @@ pub struct JobPage {
     pub run_url: String,
     pub name: String,
     pub look: StateLook,
-    pub duration: Option<String>,
+    pub duration: Option<Took>,
     pub labels: String,
     /// Not finished: the page refreshes itself.
     pub active: bool,

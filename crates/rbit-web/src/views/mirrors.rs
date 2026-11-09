@@ -11,6 +11,7 @@ use crate::views::{
     home::OwnerOption,
     layout::Page,
     repo::RepoHeader,
+    when::When,
 };
 
 /// Cards this workstream adds to the repository settings page: "Mirror", for mirrors.
@@ -48,9 +49,10 @@ pub struct NewMirrorPage {
 pub struct MirrorView {
     pub url: String,
     pub interval_minutes: u64,
-    pub last_sync: Option<(String, String)>,
+    pub last_sync: Option<When>,
     pub last_error: Option<String>,
-    pub next_sync: String,
+    /// Shown as "in 3 hours" ("in under a minute" once due) in the page's language.
+    pub next_sync: When,
     pub next_sync_iso: String,
 }
 
@@ -59,22 +61,11 @@ impl From<&Mirror> for MirrorView {
         Self {
             url: mirror.url.to_string(),
             interval_minutes: mirror.interval_minutes,
-            last_sync: mirror.last_sync_at.map(|at| (at.relative(), at.iso8601())),
+            last_sync: mirror.last_sync_at.map(When),
             last_error: mirror.last_error.clone(),
-            next_sync: until(mirror.next_sync_at.seconds() - rbit_core::Timestamp::now().seconds()),
+            next_sync: When(mirror.next_sync_at),
             next_sync_iso: mirror.next_sync_at.iso8601(),
         }
-    }
-}
-
-/// "in 3 hours" for a time `seconds` from now; "due now" once it has passed.
-fn until(seconds: i64) -> String {
-    let plural = |n: i64, unit: &str| if n == 1 { format!("in 1 {unit}") } else { format!("in {n} {unit}s") };
-    match seconds {
-        ..60 => "due now".to_owned(),
-        60..3600 => plural(seconds / 60, "minute"),
-        3600..86_400 => plural(seconds / 3600, "hour"),
-        _ => plural(seconds / 86_400, "day"),
     }
 }
 
@@ -106,14 +97,6 @@ pub struct MirrorProgressPage {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn upcoming_fetches_read_naturally() {
-        assert_eq!(until(-5), "due now");
-        assert_eq!(until(90), "in 1 minute");
-        assert_eq!(until(3 * 3600 + 5), "in 3 hours");
-        assert_eq!(until(2 * 86_400), "in 2 days");
-    }
 
     #[test]
     fn only_mirrors_get_a_settings_card() {

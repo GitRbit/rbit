@@ -1,6 +1,7 @@
 //! Run presentation: existing job ordering, metadata, review, artifacts and summaries.
 
 use super::{ActionsUrls, StateLook, elapsed, event_label, event_message, name_of, short_ref};
+use crate::views::when::{Took, When};
 use crate::views::{layout::Page, repo::RepoHeader};
 use askama::Template;
 use askama_web::WebTemplate;
@@ -16,7 +17,7 @@ pub struct JobRow {
     pub name: String,
     pub url: String,
     pub look: StateLook,
-    pub duration: Option<String>,
+    pub duration: Option<Took>,
     /// "build, lint": the jobs it needs; empty without `needs`.
     pub needs: String,
     /// 0 for jobs without `needs`, then one more than the deepest job needed.
@@ -89,9 +90,9 @@ pub struct RunSummary {
     pub actor: Option<String>,
     pub approved_by: Option<String>,
     pub attempt: i64,
-    pub when: String,
+    pub when: When,
     pub when_iso: String,
-    pub duration: Option<String>,
+    pub duration: Option<Took>,
     pub error: Option<String>,
     /// Read-only token, no secrets: a fork or an outside author.
     pub untrusted: bool,
@@ -114,7 +115,7 @@ impl RunSummary {
             actor: name_of(people, run.trigger_actor.or(run.actor)),
             approved_by: name_of(people, run.approved_by),
             attempt: run.attempt,
-            when: run.created_at.relative(),
+            when: When(run.created_at),
             when_iso: run.created_at.iso8601(),
             duration: elapsed(run.started_at, run.finished_at),
             error: run.error.clone(),
@@ -184,8 +185,8 @@ impl SummaryView {
 #[derive(Debug, Clone)]
 pub struct ArtifactRow {
     pub name: String,
-    pub size: String,
-    pub expires: String,
+    pub size: crate::views::when::Size,
+    pub expires: When,
     pub expires_iso: String,
     pub url: String,
 }
@@ -194,8 +195,8 @@ impl ArtifactRow {
     pub fn new(artifact: &rbit_core::actions::Artifact, urls: &ActionsUrls, number: i64) -> Self {
         Self {
             name: artifact.name.clone(),
-            size: crate::render::format_size(artifact.size),
-            expires: artifact.expires_at.until(),
+            size: crate::views::when::Size(artifact.size),
+            expires: When(artifact.expires_at),
             expires_iso: artifact.expires_at.iso8601(),
             url: format!("{}/artifacts/{}", urls.run(number), artifact.id.0),
         }

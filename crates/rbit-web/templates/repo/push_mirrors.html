@@ -29,8 +29,8 @@
           {% if mirror.sync_on_push %}<span class="badge">{% call ui::localized(rbit_localization::RepoSettingsLabel::OnPush.text(page.locale)) %}{% endcall %}</span>{% endif %}
         </div>
         <div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-muted">
-          {% if let Some((when, iso)) = mirror.last_attempt %}
-          <span class="flex items-center gap-2">{% call ui::localized(rbit_localization::RepoSettingsLabel::LastPush.text(page.locale)) %}{% endcall %} <time datetime="{{ iso }}" title="{{ iso }}">{{ when }}</time>
+          {% if let Some(at) = mirror.last_attempt %}
+          <span class="flex items-center gap-2">{% call ui::localized(rbit_localization::RepoSettingsLabel::LastPush.text(page.locale)) %}{% endcall %} <time datetime="{{ at.iso() }}" title="{{ at.iso() }}">{% call ui::localized(at.relative(page.locale)) %}{% endcall %}</time>
             {% if mirror.last_error.is_some() %}<span class="badge border-danger/40 text-danger">{% call ui::localized(rbit_localization::RepoSettingsLabel::Failed.text(page.locale)) %}{% endcall %}</span>{% else %}<span class="badge border-success/40 text-success">{% call ui::localized(rbit_localization::RepoSettingsLabel::Ok.text(page.locale)) %}{% endcall %}</span>{% endif %}
           </span>
           {% else %}

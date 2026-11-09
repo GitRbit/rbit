@@ -15,7 +15,7 @@
   </div>
   <div class="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line bg-subtle px-4 py-2.5 text-[13px] sm:px-5">
     {% call ui::avatar(commit.avatar, "size-5 text-[9px]") %}{% endcall %}
-    <span><span class="font-medium">{{ commit.author }}</span> <span class="text-ink-muted">{% call ui::localized(rbit_localization::RepoHistoryLabel::Committed.text(page.locale)) %}{% endcall %}</span> <time class="text-ink-muted" datetime="{{ commit.when_iso }}" title="{{ commit.when_iso }}">{{ commit.when }}</time></span>
+    <span><span class="font-medium">{{ commit.author }}</span> <span class="text-ink-muted">{% call ui::localized(rbit_localization::RepoHistoryLabel::Committed.text(page.locale)) %}{% endcall %}</span> <time class="text-ink-muted" datetime="{{ commit.when_iso }}" title="{{ commit.when_iso }}">{% call ui::localized(commit.when.relative(page.locale)) %}{% endcall %}</time></span>
     {% if let Some(committer) = committer %}<span class="text-ink-muted">· {% call ui::localized(rbit_localization::RepoHistoryLabel::CommittedBy.text(page.locale)) %}{% endcall %} {{ committer }}</span>{% endif %}
     <div class="ms-auto flex items-center gap-3 font-mono text-xs text-ink-muted">
       {% if !parents.is_empty() %}

@@ -32,7 +32,7 @@
       {% endif %}
     </div>
     {% if let Some(duration) = job.duration %}
-    <span class="shrink-0 whitespace-nowrap text-xs tabular-nums text-ink-faint">{{ duration }}</span>
+    <span class="shrink-0 whitespace-nowrap text-xs tabular-nums text-ink-faint">{% call ui::localized(duration.text(page.locale)) %}{% endcall %}</span>
     {% endif %}
     {% if job.can_rerun %}
     {% let rerun_label = self.rerun_label(job.name.as_str()) %}
@@ -57,7 +57,7 @@
     <a class="shrink-0 text-xs text-ink-faint hover:text-ink hover:underline hover:underline-offset-4"
        href="{{ artifact.url }}/tar.gz" hx-boost="false" download title="{{ text.download_tar }}">tar.gz</a>
     <span class="shrink-0 whitespace-nowrap text-xs tabular-nums text-ink-faint">
-      {{ artifact.size }} · {{ text.expires }} <time datetime="{{ artifact.expires_iso }}">{% call ui::localized(text.english(artifact.expires)) %}{% endcall %}</time>
+      {{ artifact.size.text(page.locale) }} · {{ text.expires }} <time datetime="{{ artifact.expires_iso }}">{% call ui::localized(artifact.expires.until(page.locale)) %}{% endcall %}</time>
     </span>
   </li>
   {% endfor %}

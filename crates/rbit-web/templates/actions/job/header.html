@@ -32,7 +32,7 @@
     {% if let Some(duration) = duration %}
     <div>
       <dt class="text-ink-faint">{{ text.duration }}</dt>
-      <dd class="mt-1 tabular-nums text-ink-muted">{{ duration }}</dd>
+      <dd class="mt-1 tabular-nums text-ink-muted">{% call ui::localized(duration.text(page.locale)) %}{% endcall %}</dd>
     </div>
     {% endif %}
   </dl>

@@ -8,8 +8,12 @@ use rbit_localization::{
 };
 use rbit_services::admin::Dashboard;
 
-use super::{AdminLink, AdminSection, bytes, count, monitoring, uptime};
-use crate::views::{layout::Page, notification_email::hour_label};
+use super::{AdminLink, AdminSection, monitoring};
+use crate::views::{
+    layout::Page,
+    notification_email::hour_label,
+    when::{bytes, count, uptime},
+};
 
 /// A number on the dashboard.
 #[derive(Debug, Clone)]
@@ -56,31 +60,32 @@ impl DashboardPage {
         let locale = page.locale;
         let counts = &dashboard.counts;
         let system = &dashboard.system;
-        let (admins, suspended) = (count(counts.admins), count(counts.suspended));
+        let (admins, suspended) = (count(locale, counts.admins), count(locale, counts.suspended));
         let users = if counts.admins == 1 { AdminText::UsersDetailOne(&suspended) } else { AdminText::UsersDetail(&admins, &suspended) };
-        let repositories = AdminText::RepositoriesDetail(&count(counts.public_repositories), &count(counts.private_repositories));
+        let repositories =
+            AdminText::RepositoriesDetail(&count(locale, counts.public_repositories), &count(locale, counts.private_repositories));
         let tiles = vec![
             StatTile {
                 label: DashboardMessage::Users,
-                value: count(counts.users),
+                value: count(locale, counts.users),
                 detail: users.text(&locale),
                 url: AdminSection::Users.url(),
             },
             StatTile {
                 label: DashboardMessage::Organizations,
-                value: count(counts.organizations),
+                value: count(locale, counts.organizations),
                 detail: DashboardMessage::SharedNamespaces.text(&locale),
                 url: AdminSection::Organizations.url(),
             },
             StatTile {
                 label: DashboardMessage::Repositories,
-                value: count(counts.public_repositories + counts.private_repositories),
+                value: count(locale, counts.public_repositories + counts.private_repositories),
                 detail: repositories.text(&locale),
                 url: AdminSection::Repositories.url(),
             },
             StatTile {
                 label: DashboardMessage::AccessTokens,
-                value: count(counts.access_tokens),
+                value: count(locale, counts.access_tokens),
                 detail: DashboardMessage::AcrossAllUsers.text(&locale),
                 url: AdminSection::Users.url(),
             },
@@ -91,9 +96,12 @@ impl DashboardPage {
             InfoRow::mono(name("rbit"), system.rbit_version),
             InfoRow::mono(name("SQLite"), system.sqlite_version.clone()),
             InfoRow::mono(name("Git"), system.git_version.clone().unwrap_or_else(unavailable)),
-            InfoRow::text(DashboardMessage::Uptime.text(&locale), uptime(system.uptime)),
+            InfoRow::text(DashboardMessage::Uptime.text(&locale), uptime(locale, system.uptime).to_string()),
             InfoRow::mono(DashboardMessage::DataDirectory.text(&locale), system.data_dir.display().to_string()),
-            InfoRow::text(DashboardMessage::DiskUsage.text(&locale), system.data_dir_bytes.map_or_else(unavailable, bytes)),
+            InfoRow::text(
+                DashboardMessage::DiskUsage.text(&locale),
+                system.data_dir_bytes.map_or_else(unavailable, |size| bytes(locale, size)),
+            ),
         ];
         let title = AdminMessage::SiteAdministration.text(&locale);
         Self {

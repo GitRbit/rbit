@@ -11,7 +11,7 @@
     {% let opened = summary.sentence.rich(page.locale) %}
     <span{% if opened.fallback() %} lang="en"{% endif %}>
       {%- for part in opened.parts() %}{% if part.is_slot(0) %}{% if let Some(url) = summary.author.url %}<a href="{{ url }}" class="font-medium text-ink hover:underline hover:underline-offset-4">{{ summary.author.name }}</a>{% else %}<span class="font-medium">{{ summary.author.name }}</span>{% endif %}
-      {%- else if part.is_slot(1) %}<time datetime="{{ summary.when_iso }}" title="{{ summary.when_iso }}">{{ summary.when }}</time>
+      {%- else if part.is_slot(1) %}<time datetime="{{ summary.when_iso }}" title="{{ summary.when_iso }}">{% call ui::localized(summary.when.relative(page.locale)) %}{% endcall %}</time>
       {%- else %}{{ part.text() }}{% endif %}{% endfor -%}
     </span>
   </div>

@@ -39,7 +39,7 @@
           {% if !event.detail.is_empty() %}<span>{{ event.detail }}</span>{% endif %}
         </p>
       </div>
-      <time class="shrink-0 whitespace-nowrap text-xs text-ink-faint" datetime="{{ event.iso }}" title="{{ event.date }}">{{ event.relative }}</time>
+      <time class="shrink-0 whitespace-nowrap text-xs text-ink-faint" datetime="{{ event.iso }}" title="{{ event.date }}">{% call ui::localized(event.relative) %}{% endcall %}</time>
     </li>
     {% endfor %}
   </ul>

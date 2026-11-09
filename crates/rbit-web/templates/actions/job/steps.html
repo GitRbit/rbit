@@ -16,7 +16,7 @@
           {% let look = text.look(step.look) %}
           {% include "actions/state.html" %}
           <span class="min-w-0 flex-1 break-words text-[13px] font-medium">{{ step.name }}</span>
-          {% if let Some(duration) = step.duration %}<span class="shrink-0 whitespace-nowrap text-xs tabular-nums text-ink-faint">{{ duration }}</span>{% endif %}
+          {% if let Some(duration) = step.duration %}<span class="shrink-0 whitespace-nowrap text-xs tabular-nums text-ink-faint">{% call ui::localized(duration.text(page.locale)) %}{% endcall %}</span>{% endif %}
         </summary>
         <div class="border-t border-line">
           {% include "actions/step_body.html" %}

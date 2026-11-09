@@ -7,6 +7,7 @@ use rbit_localization::{
 };
 
 use crate::monitoring::{HISTORY_LIMIT, Sample, Snapshot, Totals};
+use crate::views::when::{decimal, integer, uptime};
 
 #[expect(clippy::cast_precision_loss, reason = "rates and chart coordinates are approximate; exact counts stay u64")]
 fn approximate(value: u64) -> f64 {
@@ -26,7 +27,7 @@ pub struct Chart {
 }
 
 impl Chart {
-    fn new(title: Localized, unit: Localized, samples: &[Sample], value: impl Fn(&Sample) -> Option<f64>) -> Self {
+    fn new(title: Localized, unit: Localized, samples: &[Sample], locale: Locale, value: impl Fn(&Sample) -> Option<f64>) -> Self {
         use std::fmt::Write;
         let values: Vec<_> = samples.iter().map(&value).collect();
         let peak = values.iter().flatten().copied().fold(1.0_f64, f64::max);
@@ -51,8 +52,8 @@ impl Chart {
         Self {
             title,
             unit,
-            value: values.last().copied().flatten().map_or_else(|| "—".to_owned(), |v| format!("{v:.1}")),
-            ceiling: format!("{peak:.1}"),
+            value: values.last().copied().flatten().map_or_else(|| "—".to_owned(), |v| decimal(locale, v)),
+            ceiling: decimal(locale, peak),
             path,
             last_x,
             last_y,
@@ -65,7 +66,7 @@ impl Chart {
 pub struct ResponseRow {
     pub label: &'static str,
     pub meaning: Localized,
-    pub count: u64,
+    pub count: String,
     pub share: String,
     pub width: u32,
 }
@@ -76,10 +77,10 @@ pub struct MonitoringPanel {
     pub locale: Locale,
     pub charts: Vec<Chart>,
     pub responses: Vec<ResponseRow>,
-    pub git: [u64; 2],
-    pub requests: u64,
+    pub git: [String; 2],
+    pub requests: String,
     pub errors: String,
-    pub uptime: String,
+    pub uptime: Localized,
     pub coverage: String,
     pub ready: bool,
     pub updated: String,
@@ -99,8 +100,9 @@ impl MonitoringPanel {
             total
         });
         let requests = totals.requests();
-        let percent =
-            |n: u64| if requests == 0 { "—".to_owned() } else { format!("{:.1}%", approximate(n) / approximate(requests) * 100.0) };
+        let percent = |n: u64| {
+            if requests == 0 { "—".to_owned() } else { format!("{}%", decimal(locale, approximate(n) / approximate(requests) * 100.0)) }
+        };
         let responses =
             [("1xx", M::Informational), ("2xx", M::Successful), ("3xx", M::Redirects), ("4xx", M::ClientErrors), ("5xx", M::ServerErrors)]
                 .into_iter()
@@ -108,7 +110,7 @@ impl MonitoringPanel {
                 .map(|(i, (label, meaning))| ResponseRow {
                     label,
                     meaning: meaning.text(&locale),
-                    count: totals.responses[i],
+                    count: integer(locale, totals.responses[i]),
                     share: percent(totals.responses[i]),
                     width: if requests == 0 {
                         0
@@ -130,18 +132,18 @@ impl MonitoringPanel {
         Self {
             locale,
             charts: vec![
-                Chart::new(traffic, M::RequestsPerSecond.text(&locale), samples, |s| {
+                Chart::new(traffic, M::RequestsPerSecond.text(&locale), samples, locale, |s| {
                     Some(approximate(s.totals.requests()) / s.seconds.max(0.001))
                 }),
-                Chart::new(latency, M::MillisecondsAverage.text(&locale), samples, |s| {
+                Chart::new(latency, M::MillisecondsAverage.text(&locale), samples, locale, |s| {
                     (s.totals.requests() > 0).then(|| approximate(s.totals.duration_us) / approximate(s.totals.requests()) / 1000.0)
                 }),
             ],
             responses,
-            git: totals.git,
-            requests,
+            git: totals.git.map(|count| integer(locale, count)),
+            requests: integer(locale, requests),
             errors: percent(totals.responses[4]),
-            uptime: super::uptime(snapshot.uptime),
+            uptime: uptime(locale, snapshot.uptime),
             coverage: AdminText::Coverage(
                 u64::try_from(samples.len()).unwrap_or(u64::MAX),
                 u64::try_from(HISTORY_LIMIT).unwrap_or(u64::MAX),
@@ -174,7 +176,7 @@ mod tests {
         assert_eq!(panel.charts[1].value, "—");
         assert!(!panel.charts[1].has_point);
         assert_eq!(panel.errors, "10.0%");
-        assert_eq!(panel.git, [3, 1]);
+        assert_eq!(panel.git, ["3", "1"]);
         assert!(panel.charts[0].path.contains('L'));
         assert!(!panel.charts[1].path.contains('L'), "idle latency must be a gap");
         assert_eq!(panel.responses[1].width, 90);

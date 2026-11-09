@@ -1,5 +1,6 @@
 //! Pull request list view models.
 
+use crate::views::when::When;
 use rbit_localization::{CollabSentence, ReviewMessage};
 
 use super::{IssueState, Page, Pagination, PullListItem, RepoHeader, StateBadge, Template, WebTemplate, badge};
@@ -18,7 +19,7 @@ pub struct PullRowView {
     pub number: String,
     pub badge: StateBadge,
     pub author: String,
-    pub when: String,
+    pub when: When,
     pub when_iso: String,
     pub labels: Vec<LabelView>,
     pub head_label: String,
@@ -44,7 +45,7 @@ impl PullRowView {
             number: issue.number.to_string(),
             badge: badge(issue, item.pull.is_draft, item.pull.is_merged()),
             author: item.author.as_ref().map_or_else(|| "ghost".to_owned(), |author| author.name.to_string()),
-            when: at.relative(),
+            when: When(at),
             when_iso: at.iso8601(),
             labels,
             head_label: item.pull.head_branch.clone(),

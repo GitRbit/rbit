@@ -65,7 +65,7 @@ pub(super) async fn history(
         .zip(previous)
         .map(|(entry, previous)| {
             let generation = entry.head.generation.get();
-            let (date, iso) = dates(entry.at);
+            let (date, iso) = dates(entry.at, text.locale());
             let shown = content(entry);
             WikiHistoryRow {
                 label: text.text(WikiMessage::Revision { generation }),

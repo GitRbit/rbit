@@ -10,6 +10,10 @@ use rbit_core::{
     IssueState, Timestamp,
     issue_query::{DEFAULT_QUERY, IssueQuery},
 };
+use rbit_localization::{
+    Catalog, Locale, Localized,
+    time::{CivilDate, TimeMessage},
+};
 use rbit_services::issues::MilestoneProgress;
 
 use crate::views::{
@@ -17,19 +21,22 @@ use crate::views::{
     issues::{IssueRow, list_url},
     layout::Page,
     repo::RepoHeader,
+    when::relative,
 };
 
-const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-/// `2026-12-31` as `Dec 31, 2026` (anything else as written).
-pub fn human_day(day: &str) -> String {
+/// `2026-12-31` as `Dec 31, 2026` in English, `31. Dez. 2026` in German (anything else
+/// as written).
+pub fn human_day(day: &str, locale: Locale) -> String {
     let mut parts = day.splitn(3, '-');
     let (Some(year), Some(month), Some(date)) = (parts.next(), parts.next(), parts.next()) else { return day.to_owned() };
-    let (Ok(month), Ok(date)) = (month.parse::<usize>(), date.parse::<u32>()) else { return day.to_owned() };
-    match MONTHS.get(month.wrapping_sub(1)) {
-        Some(name) => format!("{name} {date}, {year}"),
-        None => day.to_owned(),
+    let (Ok(year), Ok(month), Ok(day_of_month)) = (year.parse::<i32>(), month.parse::<u8>(), date.parse::<u8>()) else {
+        return day.to_owned();
+    };
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day_of_month) {
+        return day.to_owned();
     }
+    let date = CivilDate { year, month, day: day_of_month };
+    Catalog::new(locale).localized(TimeMessage::Date(date)).to_string()
 }
 
 /// Today as `YYYY-MM-DD` (UTC), for "past due".
@@ -47,7 +54,7 @@ pub struct MilestoneView {
     pub due: Option<String>,
     pub overdue: bool,
     pub closed: bool,
-    pub closed_when: Option<String>,
+    pub closed_when: Option<Localized>,
     pub open_issues: u64,
     pub closed_issues: u64,
     /// `0..=100`, for the bar's `width` attribute and the label.
@@ -60,7 +67,7 @@ pub struct MilestoneView {
 }
 
 impl MilestoneView {
-    pub fn new(progress: &MilestoneProgress, base: &str) -> Self {
+    pub fn new(progress: &MilestoneProgress, base: &str, locale: Locale) -> Self {
         let milestone = &progress.milestone;
         let total = progress.open_issues + progress.closed_issues;
         let percent = (progress.closed_issues * 100).checked_div(total).unwrap_or(0);
@@ -71,10 +78,10 @@ impl MilestoneView {
             id: milestone.id.0,
             title: milestone.title.clone(),
             description: milestone.description.lines().next().unwrap_or_default().to_owned(),
-            due: milestone.due_on.as_deref().map(human_day),
+            due: milestone.due_on.as_deref().map(|day| human_day(day, locale)),
             overdue: !closed && milestone.due_on.as_deref().is_some_and(|due| due < today().as_str()),
             closed,
-            closed_when: milestone.closed_at.map(Timestamp::relative),
+            closed_when: milestone.closed_at.map(|at| relative(at, locale)),
             open_issues: progress.open_issues,
             closed_issues: progress.closed_issues,
             percent,
@@ -171,14 +178,16 @@ mod tests {
 
     #[test]
     fn progress_due_dates_and_links() {
-        let view = MilestoneView::new(&progress(1, 3, Some("2000-02-29")), "/a/b");
+        let view = MilestoneView::new(&progress(1, 3, Some("2000-02-29")), "/a/b", Locale::English);
         assert_eq!((view.percent, view.description.as_str()), (75, "First line"));
         assert_eq!(view.due.as_deref(), Some("Feb 29, 2000"));
         assert!(view.overdue);
         assert_eq!(view.issues_url, "/a/b/issues?q=is%3Aopen%20is%3Aissue%20milestone%3Av1%2E0");
-        assert_eq!(MilestoneView::new(&progress(0, 0, None), "/a/b").percent, 0);
-        assert!(!MilestoneView::new(&progress(0, 0, Some("9999-12-31")), "/a/b").overdue);
-        assert_eq!(human_day("2026-13-01"), "2026-13-01");
+        assert_eq!(MilestoneView::new(&progress(0, 0, None), "/a/b", Locale::English).percent, 0);
+        assert!(!MilestoneView::new(&progress(0, 0, Some("9999-12-31")), "/a/b", Locale::English).overdue);
+        assert_eq!(human_day("2026-13-01", Locale::English), "2026-13-01");
+        assert_eq!(human_day("2026-11-08", Locale::German), "8. Nov. 2026");
+        assert_eq!(human_day("2026-11-08", Locale::Korean), "2026년 11월 8일");
     }
 
     #[test]
@@ -197,7 +206,7 @@ mod tests {
                 theme: crate::themes::Theme::System,
             },
             header: RepoHeader::default(),
-            milestones: vec![MilestoneView::new(&progress(1, 3, None), "/a/b")],
+            milestones: vec![MilestoneView::new(&progress(1, 3, None), "/a/b", Locale::English)],
             open: 1,
             closed: 0,
             showing_closed: false,

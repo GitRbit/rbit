@@ -37,7 +37,7 @@
     {% call ui::avatar(commit.avatar, "size-6 text-[9px]") %}{% endcall %}
     <div class="min-w-0 flex-1">
       <p class="truncate text-[13px] font-medium" title="{{ commit.summary }}">{{ commit.summary }}</p>
-      <p class="mt-0.5 truncate text-xs text-ink-muted">{{ commit.author }} · <time datetime="{{ commit.when_iso }}">{{ commit.when }}</time></p>
+      <p class="mt-0.5 truncate text-xs text-ink-muted">{{ commit.author }} · <time datetime="{{ commit.when_iso }}">{% call ui::localized(commit.when.relative(page.locale)) %}{% endcall %}</time></p>
     </div>
     <span class="badge shrink-0 font-mono" dir="ltr">{{ commit.short_id }}</span>
   </li>

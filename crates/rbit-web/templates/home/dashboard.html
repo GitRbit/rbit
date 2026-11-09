@@ -48,7 +48,7 @@
           </div>
           <div class="flex shrink-0 items-center gap-3 text-xs text-ink-faint">
             {% if repo.star_count > 0 %}<span class="flex items-center gap-1" title="{{ page.text(rbit_localization::shell::pages::PageMessage::Stars(*repo.star_count)) }}">{% call ui::icon("star", "size-3") %}{% endcall %}{{ repo.star_count }}</span>{% endif %}
-            <time datetime="{{ repo.updated_iso }}">{{ repo.updated }}</time>
+            <time datetime="{{ repo.updated_iso }}">{% call ui::localized(repo.updated.relative(page.locale)) %}{% endcall %}</time>
           </div>
         </a>
       </li>
@@ -99,7 +99,7 @@
           <a href="{{ repo.url }}" class="flex items-center gap-2.5 px-4 py-2.5 hover:bg-subtle">
             {% call ui::avatar(repo.owner_avatar, "size-5 text-[9px]") %}{% endcall %}
             <span class="min-w-0 flex-1 truncate text-[13px]"><span class="text-ink-muted">{{ repo.owner }}/</span>{{ repo.name }}</span>
-            <time class="shrink-0 text-xs text-ink-faint" datetime="{{ repo.updated_iso }}">{{ repo.updated }}</time>
+            <time class="shrink-0 text-xs text-ink-faint" datetime="{{ repo.updated_iso }}">{% call ui::localized(repo.updated.relative(page.locale)) %}{% endcall %}</time>
           </a>
         </li>
         {% endfor %}

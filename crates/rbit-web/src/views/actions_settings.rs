@@ -117,7 +117,7 @@ impl RepoChoice {
 #[derive(Debug, Clone)]
 pub struct SecretRow {
     pub name: String,
-    pub updated: String,
+    pub updated: crate::views::when::When,
     pub updated_iso: String,
     /// Sealed with the current key; otherwise it must be set again.
     pub readable: bool,
@@ -135,7 +135,7 @@ impl SecretRow {
 
         Self {
             name: secret.info.name.to_string(),
-            updated: secret.info.updated_at.relative(),
+            updated: secret.info.updated_at.into(),
             updated_iso: secret.info.updated_at.iso8601(),
             readable: secret.readable,
             receivers: owner_repositories.map(|_| secret.repositories.len()),
@@ -204,7 +204,7 @@ impl SecretsSection {
 pub struct VariableRow {
     pub name: String,
     pub value: String,
-    pub updated: String,
+    pub updated: crate::views::when::When,
     pub updated_iso: String,
 }
 
@@ -213,7 +213,7 @@ impl From<&Variable> for VariableRow {
         Self {
             name: variable.name.to_string(),
             value: variable.value.clone(),
-            updated: variable.updated_at.relative(),
+            updated: variable.updated_at.into(),
             updated_iso: variable.updated_at.iso8601(),
         }
     }
@@ -282,7 +282,7 @@ pub struct TrustedRow {
     pub name: String,
     pub url: String,
     pub approved_by: Option<String>,
-    pub since: String,
+    pub since: crate::views::when::When,
     pub since_iso: String,
 }
 
@@ -293,7 +293,7 @@ impl From<&TrustedAuthor> for TrustedRow {
             name: author.account.name.to_string(),
             url: format!("/{}", author.account.name),
             approved_by: author.approved_by.as_ref().map(|account| account.name.to_string()),
-            since: author.since.relative(),
+            since: author.since.into(),
             since_iso: author.since.iso8601(),
         }
     }

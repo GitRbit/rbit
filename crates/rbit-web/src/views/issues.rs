@@ -125,7 +125,7 @@ pub struct IssueRow {
     pub state: StateIcon,
     pub labels: Vec<LabelChip>,
     pub author: String,
-    pub when: String,
+    pub when: crate::views::when::When,
     pub when_iso: String,
     pub closed: bool,
     pub comments: u32,
@@ -161,7 +161,7 @@ impl IssueRow {
             state: StateIcon::for_issue(issue),
             labels,
             author: author.map_or_else(|| "ghost".to_owned(), |a| a.name.to_string()),
-            when: at.relative(),
+            when: at.into(),
             when_iso: at.iso8601(),
             closed,
             comments: issue.comment_count,
@@ -416,7 +416,7 @@ pub struct ThreadSummary {
     pub author: ActorView,
     /// The author in slot 0, the time in slot 1.
     pub sentence: CollabSentence<'static>,
-    pub when: String,
+    pub when: crate::views::when::When,
     pub when_iso: String,
 }
 
@@ -429,7 +429,7 @@ impl ThreadSummary {
                 (IssueKind::Pull, comments) => CollabSentence::OpenedPull { comments },
                 (IssueKind::Issue, comments) => CollabSentence::OpenedIssue { comments },
             },
-            when: issue.created_at.relative(),
+            when: issue.created_at.into(),
             when_iso: issue.created_at.iso8601(),
         }
     }

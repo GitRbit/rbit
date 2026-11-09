@@ -196,7 +196,7 @@ impl From<&ActiveSession> for SessionRow {
 pub struct ActivityRow {
     pub label: &'static str,
     pub detail: String,
-    pub when: String,
+    pub when: crate::views::when::When,
     pub when_iso: String,
     pub ip_address: Option<String>,
     pub is_failure: bool,
@@ -207,7 +207,7 @@ impl From<&AuditEvent> for ActivityRow {
         Self {
             label: event.action.label(),
             detail: event.detail.clone(),
-            when: event.created_at.relative(),
+            when: event.created_at.into(),
             when_iso: event.created_at.iso8601(),
             ip_address: event.ip_address.clone(),
             is_failure: event.action.is_failure(),

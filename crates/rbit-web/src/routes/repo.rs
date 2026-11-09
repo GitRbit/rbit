@@ -507,13 +507,13 @@ pub async fn blob(
     // A Git LFS pointer is shown as its object, which the editor cannot change.
     let is_text = lfs_stored.is_none() && matches!(content, BlobContent::Code(_) | BlobContent::Markdown(_));
     Ok(BlobPage {
+        size: format_size(view.size, page.locale),
         page: page.titled(format!("{path} · {}", loaded.ctx.repo.full_name())),
         header: loaded.header_at(&state, "code", &revision),
         switcher: loaded.switcher(&revision, RefTarget::Tree, ""),
         breadcrumbs: breadcrumbs(loaded.ctx.repo.repo.name.as_str(), urls, &revision, &path),
         latest: CommitView::new(&view.commit, urls),
         file_name: name,
-        size: format_size(view.size),
         line_count,
         language,
         blame_url: urls.blame(&revision, &path),

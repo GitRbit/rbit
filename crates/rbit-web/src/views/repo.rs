@@ -130,7 +130,7 @@ pub struct CommitView {
     pub summary: String,
     pub author: String,
     pub avatar: Avatar,
-    pub when: String,
+    pub when: crate::views::when::When,
     pub when_iso: String,
     pub date: String,
     /// Browse the repository as of this commit.
@@ -149,7 +149,7 @@ impl CommitView {
             summary: commit.summary.clone(),
             author: commit.author_name.clone(),
             avatar: Avatar::for_identity(&commit.author_name, &commit.author_email.to_lowercase()),
-            when: commit.authored_at.relative(),
+            when: commit.authored_at.into(),
             when_iso: commit.authored_at.iso8601(),
             date: commit.authored_at.date(),
             browse_url: urls.tree(&commit.id, ""),
@@ -338,7 +338,9 @@ impl BlobPage {
 /// Commits grouped under a calendar-day heading.
 #[derive(Debug, Clone)]
 pub struct CommitDay {
+    /// The UTC day, for grouping; the heading shows `when`'s date in the page's language.
     pub date: String,
+    pub when: crate::views::when::When,
     pub commits: Vec<CommitView>,
 }
 
@@ -349,7 +351,7 @@ impl CommitDay {
         for commit in commits {
             match days.last_mut() {
                 Some(day) if day.date == commit.date => day.commits.push(commit),
-                _ => days.push(Self { date: commit.date.clone(), commits: vec![commit] }),
+                _ => days.push(Self { date: commit.date.clone(), when: commit.when, commits: vec![commit] }),
             }
         }
         days

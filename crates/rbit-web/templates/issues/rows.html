@@ -13,7 +13,7 @@
       </div>
       {% let meta = row.meta().rich(page.locale) %}
       <p class="mt-1 truncate text-xs text-ink-faint">
-        <span{% if meta.fallback() %} lang="en"{% endif %}>{% for part in meta.parts() %}{% if part.is_slot(0) %}<time datetime="{{ row.when_iso }}" title="{{ row.when_iso }}">{{ row.when }}</time>{% else %}{{ part.text() }}{% endif %}{% endfor %}</span>
+        <span{% if meta.fallback() %} lang="en"{% endif %}>{% for part in meta.parts() %}{% if part.is_slot(0) %}<time datetime="{{ row.when_iso }}" title="{{ row.when_iso }}">{% call ui::localized(row.when.relative(page.locale)) %}{% endcall %}</time>{% else %}{{ part.text() }}{% endif %}{% endfor %}</span>
         {%- if let Some((title, url)) = row.milestone %} · <a href="{{ url }}" class="hover:text-ink-muted hover:underline hover:underline-offset-4">{% call ui::icon("milestone", "inline size-3 align-[-2px]") %}{% endcall %} {{ title }}</a>{% endif %}
         {%- if row.locked %} · {% call ui::icon("lock", "inline size-3 align-[-2px]") %}{% endcall %}<span class="sr-only">{% call ui::localized(rbit_localization::IssueMessage::Locked.localized(page.locale)) %}{% endcall %}</span>{% endif %}
       </p>

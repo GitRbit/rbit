@@ -21,6 +21,11 @@ impl UiText {
         Self { catalog: Catalog::new(locale) }
     }
 
+    /// The locale this text is written in.
+    pub const fn locale(self) -> Locale {
+        self.catalog.locale()
+    }
+
     /// One message, falling back to English where the locale has not translated it.
     pub fn get<M: MessageFamily>(self, message: M) -> Localized {
         self.catalog.localized(message)

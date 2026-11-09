@@ -40,7 +40,7 @@
           <a href="{{ hunk.commit.url }}" class="min-w-0 flex-1 truncate font-medium hover:underline hover:underline-offset-4" title="{{ hunk.commit.summary }}">{{ hunk.commit.summary }}</a>
           {%- if let Some(source) = hunk.source_path %}<span class="hidden shrink-0 font-mono text-ink-faint md:inline" dir="ltr" title="{{ rbit_localization::RepoHistoryLabel::PathInThatCommit.text(page.locale) }}">{{ source }}</span>{% endif -%}
           <span class="hidden shrink-0 text-ink-muted sm:inline">{{ hunk.commit.author }}</span>
-          <time class="shrink-0 text-ink-faint" datetime="{{ hunk.commit.when_iso }}" title="{{ hunk.commit.when_iso }}">{{ hunk.commit.when }}</time>
+          <time class="shrink-0 text-ink-faint" datetime="{{ hunk.commit.when_iso }}" title="{{ hunk.commit.when_iso }}">{% call ui::localized(hunk.commit.when.relative(page.locale)) %}{% endcall %}</time>
         </div></div>
         {%- when BlameRow::Line(line) %}
         <div class="code-line" id="L{{ line.number }}"><span class="line-number" data-line="{{ line.number }}"></span><span class="line-code">{{ line.html|safe }}</span></div>

@@ -9,7 +9,7 @@
       {%- if part.is_slot(0) %}{% if let Some(url) = review.reviewer.url %}<a href="{{ url }}" class="font-medium text-ink hover:underline hover:underline-offset-4">{{ review.reviewer.name }}</a>{% else %}<span class="font-medium">{{ review.reviewer.name }}</span>{% endif %}
       {%- else if !part.text().trim().is_empty() %}<span class="{{ review.tone }}">{{ part.text().trim() }}</span>{% endif %}
       {%- endfor %}
-      <a href="#{{ review.anchor }}" class="text-ink-faint hover:underline hover:underline-offset-4"><time datetime="{{ review.when_iso }}" title="{{ review.when_iso }}">{{ review.when }}</time></a>
+      <a href="#{{ review.anchor }}" class="text-ink-faint hover:underline hover:underline-offset-4"><time datetime="{{ review.when_iso }}" title="{{ review.when_iso }}">{% call ui::localized(review.when.relative(page.locale)) %}{% endcall %}</time></a>
     </p>
     {% if let Some((by, message)) = review.dismissal %}<p class="mb-2 text-xs text-ink-faint">{% call ui::localized(rbit_localization::ReviewMessage::DismissedBy { by: by.as_str(), message: message.as_str() }.localized(page.locale)) %}{% endcall %}</p>{% endif %}
     {% if !review.body_html.is_empty() || !review.comments.is_empty() %}

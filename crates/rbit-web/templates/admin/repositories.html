@@ -31,7 +31,7 @@
           </div>
           {% if let Some(description) = repo.description %}<p class="truncate text-xs text-ink-muted">{{ description }}</p>{% endif %}
         </td>
-        <td class="hidden whitespace-nowrap px-4 text-ink-muted md:table-cell"><time datetime="{{ repo.updated_iso }}">{{ repo.updated }}</time></td>
+        <td class="hidden whitespace-nowrap px-4 text-ink-muted md:table-cell"><time datetime="{{ repo.updated_iso }}">{% call ui::localized(repo.updated) %}{% endcall %}</time></td>
         <td class="px-4 py-2.5 text-end">
           <a href="{{ repo.delete_url }}" class="btn btn-danger" aria-label="{{ AdminText::DeleteLabel(repo.full_name).text(page.locale) }}">{% call ui::localized(AdminMessage::Delete.text(page.locale)) %}{% endcall %}</a>
         </td>

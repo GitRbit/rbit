@@ -15,7 +15,10 @@ use rbit_services::{
 };
 
 use super::{AdminLink, AdminSection};
-use crate::views::layout::Page;
+use crate::views::{
+    layout::Page,
+    when::{date, relative},
+};
 
 const AUDIT_URL: &str = AdminSection::AuditLog.url();
 
@@ -79,13 +82,13 @@ pub struct AuditRow {
     pub ip_address: Option<String>,
     pub detail: String,
     /// e.g. `Oct 15, 2026`, with the relative time as a tooltip.
-    pub date: String,
-    pub relative: String,
+    pub date: Localized,
+    pub relative: Localized,
     pub iso: String,
 }
 
-impl From<&AuditEvent> for AuditRow {
-    fn from(event: &AuditEvent) -> Self {
+impl AuditRow {
+    pub fn new(event: &AuditEvent, locale: Locale) -> Self {
         Self {
             label: event.action.label(),
             category: event.action.category().label(),
@@ -95,8 +98,8 @@ impl From<&AuditEvent> for AuditRow {
             target: event.target_name.clone(),
             ip_address: event.ip_address.clone(),
             detail: event.detail.clone(),
-            date: event.created_at.date(),
-            relative: event.created_at.relative(),
+            date: date(event.created_at, locale),
+            relative: relative(event.created_at, locale),
             iso: event.created_at.iso8601(),
         }
     }
@@ -139,7 +142,7 @@ impl AuditPage {
                 next_url: paged.has_next().then(|| audit_url(search, category, paged.page + 1)),
                 is_filtered: !search.is_empty() || category.is_some(),
             },
-            events: paged.items.iter().map(AuditRow::from).collect(),
+            events: paged.items.iter().map(|event| AuditRow::new(event, locale)).collect(),
         }
     }
 }

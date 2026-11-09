@@ -34,7 +34,7 @@ pub struct WikiPageTemplate {
     pub crumbs: Vec<Crumb>,
     /// Sanitized by the shared Markdown renderer.
     pub html: String,
-    pub updated: String,
+    pub updated: Localized,
     pub updated_iso: String,
     pub edit_url: String,
     pub history_url: String,
@@ -88,7 +88,7 @@ pub struct WikiHistoryRow {
     pub title: String,
     pub change: Localized,
     pub author: Option<String>,
-    pub date: String,
+    pub date: Localized,
     pub iso: String,
     pub compare_url: Option<String>,
 }
@@ -174,7 +174,7 @@ pub struct WikiDeletedRow {
     /// The generation that deleted the page: restoring after another change conflicts.
     pub base: i64,
     pub deleted_by: Option<String>,
-    pub date: String,
+    pub date: Localized,
     pub iso: String,
 }
 

@@ -1,5 +1,6 @@
 //! Small, reusable view models shared across pages.
 
+use crate::views::when::When;
 use std::collections::HashMap;
 
 use rbit_core::{Account, OrgMembership, RepoId, repository::OwnedRepository};
@@ -50,7 +51,7 @@ pub struct RepoCard {
     pub is_private: bool,
     /// Archived (read-only): marked with a badge.
     pub is_archived: bool,
-    pub updated: String,
+    pub updated: When,
     pub updated_iso: String,
     pub owner_avatar: Avatar,
     pub star_count: i64,
@@ -72,7 +73,7 @@ impl From<&OwnedRepository> for RepoCard {
             description: item.repo.description.clone(),
             is_private: !item.repo.visibility.is_public(),
             is_archived: item.repo.is_archived(),
-            updated: item.repo.updated_at.relative(),
+            updated: When(item.repo.updated_at),
             updated_iso: item.repo.updated_at.iso8601(),
             owner_avatar: Avatar::for_account(&item.owner),
             star_count: 0,

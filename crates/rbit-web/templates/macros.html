@@ -230,7 +230,7 @@
     </div>
     <div class="flex shrink-0 items-center gap-3 text-xs text-ink-faint">
       {% if repo.star_count > 0 %}<span class="flex items-center gap-1" title="{{ page.text(rbit_localization::shell::pages::PageMessage::Stars(*repo.star_count)) }}">{% call icon("star", "size-3") %}{% endcall %}{{ repo.star_count }}</span>{% endif %}
-      <time datetime="{{ repo.updated_iso }}">{{ repo.updated }}</time>
+      <time datetime="{{ repo.updated_iso }}">{% call localized(repo.updated.relative(page.locale)) %}{% endcall %}</time>
     </div>
   </a>
 </li>

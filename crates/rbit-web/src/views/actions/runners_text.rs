@@ -1,4 +1,5 @@
 //! Messages of the runners section that take arguments.
+use crate::views::when::When;
 use rbit_localization::{ActionsRunnersMessage as Message, Localized};
 
 use super::ui_text::{Mark, Rich, SLOTS, UiText};
@@ -55,8 +56,9 @@ impl UiText {
         self.get(Message::Capacity { count: u64::from(runner.capacity) })
     }
 
-    pub fn seen(self, when: &str) -> Localized {
-        self.get(Message::Seen { when })
+    pub fn seen(self, when: &When) -> Localized {
+        let when = when.relative(self.locale());
+        self.get(Message::Seen { when: when.as_str() })
     }
 
     pub fn remove_runner(self, name: &str) -> Localized {
@@ -64,10 +66,12 @@ impl UiText {
     }
 
     pub fn token_created(self, token: &TokenRow) -> Localized {
-        self.get(Message::Created { when: &token.created })
+        let when = token.created.relative(self.locale());
+        self.get(Message::Created { when: when.as_str() })
     }
 
     pub fn token_expires(self, token: &TokenRow) -> Localized {
-        self.get(Message::Expires { when: &token.expires })
+        let when = token.expires.until(self.locale());
+        self.get(Message::Expires { when: when.as_str() })
     }
 }

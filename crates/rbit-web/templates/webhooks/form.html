@@ -93,7 +93,7 @@
             </span>
             <span class="mt-0.5 flex flex-wrap gap-x-3 text-xs text-ink-muted">
               <span class="truncate font-mono" dir="ltr">{{ delivery.guid }}</span>
-              <time datetime="{{ delivery.when_iso }}">{{ delivery.when }}</time>
+              <time datetime="{{ delivery.when_iso }}">{% call ui::localized(delivery.when.relative(page.locale)) %}{% endcall %}</time>
               {% if !delivery.duration.is_empty() %}<span>{{ delivery.duration }}</span>{% endif %}
             </span>
           </span>

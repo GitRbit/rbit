@@ -166,7 +166,7 @@ mod tests {
             description: description.map(str::to_owned),
             is_private,
             is_archived: false,
-            updated: "now".to_owned(),
+            updated: rbit_core::Timestamp::now().into(),
             updated_iso: "2026-01-01T00:00:00Z".to_owned(),
             owner_avatar: Avatar { initials: "A".to_owned(), palette: 0 },
             star_count: 0,

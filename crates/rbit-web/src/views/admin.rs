@@ -6,7 +6,7 @@ pub mod dashboard;
 pub mod monitoring;
 pub mod restart;
 
-use std::{collections::HashSet, time::Duration};
+use std::collections::HashSet;
 
 use crate::views::notification_email::hour_label;
 use askama::Template;
@@ -25,6 +25,7 @@ use rbit_services::admin::{OrgRecord, Paged, UserRecord};
 use crate::views::{
     components::{Avatar, FormError},
     layout::Page,
+    when::{count, date, relative},
 };
 
 // ------------------------------------------------------------------ shell
@@ -187,7 +188,7 @@ pub struct UserRow {
     /// The row is the viewing administrator (self-targeted actions are hidden).
     pub is_self: bool,
     pub repositories: String,
-    pub joined: String,
+    pub joined: Localized,
     pub joined_iso: String,
     pub promote_url: String,
     pub demote_url: String,
@@ -201,7 +202,7 @@ pub struct UserRow {
 }
 
 impl UserRow {
-    pub fn new(record: &UserRecord, viewer: AccountId) -> Self {
+    pub fn new(record: &UserRecord, viewer: AccountId, locale: Locale) -> Self {
         let user = &record.user;
         let base = format!("/admin/users/{}", user.id().0);
         Self {
@@ -216,8 +217,8 @@ impl UserRow {
             is_suspended: record.is_suspended(),
             is_verified: false,
             is_self: user.id() == viewer,
-            repositories: count(record.repository_count),
-            joined: user.account.created_at.date(),
+            repositories: count(locale, record.repository_count),
+            joined: date(user.account.created_at, locale),
             joined_iso: user.account.created_at.iso8601(),
             promote_url: format!("{base}/promote"),
             demote_url: format!("{base}/demote"),
@@ -278,13 +279,14 @@ pub struct UsersPage {
 
 impl UsersPage {
     pub fn new(page: Page, viewer: &User, search: &str, paged: &Paged<UserRecord>) -> Self {
+        let locale = page.locale;
         Self {
             page: titled(page, AdminMessage::Users),
             admin_nav: AdminSection::Users.nav(),
             error: FormError::default(),
             notice: None,
             listing: Listing::new(AdminSection::Users, search, paged),
-            users: paged.items.iter().map(|record| UserRow::new(record, viewer.id())).collect(),
+            users: paged.items.iter().map(|record| UserRow::new(record, viewer.id(), locale)).collect(),
             email_available: false,
         }
     }
@@ -326,7 +328,7 @@ pub struct SetPasswordPage {
 
 impl SetPasswordPage {
     pub fn new(page: Page, viewer: &User, record: &UserRecord, min_password_length: usize, email_available: bool) -> Self {
-        let user = UserRow::new(record, viewer.id());
+        let user = UserRow::new(record, viewer.id(), page.locale);
         Self {
             page: {
                 let title = AdminText::SetPasswordFor(&user.name).text(&page.locale);
@@ -383,7 +385,7 @@ pub struct DeleteUserPage {
 
 impl DeleteUserPage {
     pub fn new(page: Page, viewer: &User, record: &UserRecord, error: FormError) -> Self {
-        let user = UserRow::new(record, viewer.id());
+        let user = UserRow::new(record, viewer.id(), page.locale);
         let title = AdminText::DeletePageTitle(&user.name).text(&page.locale);
         Self { page: page.titled(title.as_str()), admin_nav: AdminSection::Users.nav(), error, user }
     }
@@ -400,12 +402,12 @@ pub struct OrgRow {
     pub avatar: Avatar,
     pub members: String,
     pub repositories: String,
-    pub created: String,
+    pub created: Localized,
     pub created_iso: String,
 }
 
-impl From<&OrgRecord> for OrgRow {
-    fn from(record: &OrgRecord) -> Self {
+impl OrgRow {
+    fn new(record: &OrgRecord, locale: Locale) -> Self {
         let account = &record.account;
         Self {
             name: account.name.to_string(),
@@ -413,9 +415,9 @@ impl From<&OrgRecord> for OrgRow {
             has_display_name: account.display_name.as_deref().is_some_and(|name| !name.is_empty()),
             url: format!("/{}", account.name),
             avatar: Avatar::for_account(account),
-            members: count(record.member_count),
-            repositories: count(record.repository_count),
-            created: account.created_at.date(),
+            members: count(locale, record.member_count),
+            repositories: count(locale, record.repository_count),
+            created: date(account.created_at, locale),
             created_iso: account.created_at.iso8601(),
         }
     }
@@ -432,11 +434,12 @@ pub struct OrganizationsPage {
 
 impl OrganizationsPage {
     pub fn new(page: Page, search: &str, paged: &Paged<OrgRecord>) -> Self {
+        let locale = page.locale;
         Self {
             page: titled(page, AdminMessage::Organizations),
             admin_nav: AdminSection::Organizations.nav(),
             listing: Listing::new(AdminSection::Organizations, search, paged),
-            orgs: paged.items.iter().map(OrgRow::from).collect(),
+            orgs: paged.items.iter().map(|record| OrgRow::new(record, locale)).collect(),
         }
     }
 }
@@ -453,13 +456,13 @@ pub struct RepoRow {
     pub description: Option<String>,
     pub is_private: bool,
     pub is_archived: bool,
-    pub updated: String,
+    pub updated: Localized,
     pub updated_iso: String,
     pub delete_url: String,
 }
 
-impl From<&OwnedRepository> for RepoRow {
-    fn from(item: &OwnedRepository) -> Self {
+impl RepoRow {
+    fn new(item: &OwnedRepository, locale: Locale) -> Self {
         Self {
             owner: item.owner.name.to_string(),
             name: item.repo.name.to_string(),
@@ -469,7 +472,7 @@ impl From<&OwnedRepository> for RepoRow {
             description: item.repo.description.clone().filter(|d| !d.is_empty()),
             is_private: !item.repo.visibility.is_public(),
             is_archived: item.repo.is_archived(),
-            updated: item.repo.updated_at.relative(),
+            updated: relative(item.repo.updated_at, locale),
             updated_iso: item.repo.updated_at.iso8601(),
             delete_url: format!("/admin/repositories/{}/delete", item.repo.id.0),
         }
@@ -487,11 +490,12 @@ pub struct RepositoriesPage {
 
 impl RepositoriesPage {
     pub fn new(page: Page, search: &str, paged: &Paged<OwnedRepository>) -> Self {
+        let locale = page.locale;
         Self {
             page: titled(page, AdminMessage::Repositories),
             admin_nav: AdminSection::Repositories.nav(),
             listing: Listing::new(AdminSection::Repositories, search, paged),
-            repos: paged.items.iter().map(RepoRow::from).collect(),
+            repos: paged.items.iter().map(|item| RepoRow::new(item, locale)).collect(),
         }
     }
 }
@@ -507,7 +511,7 @@ pub struct DeleteRepositoryPage {
 
 impl DeleteRepositoryPage {
     pub fn new(page: Page, repo: &OwnedRepository, error: FormError) -> Self {
-        let repo = RepoRow::from(repo);
+        let repo = RepoRow::new(repo, page.locale);
         Self {
             page: {
                 let title = AdminText::DeletePageTitle(&repo.full_name).text(&page.locale);
@@ -587,57 +591,6 @@ pub fn titled<M: MessageFamily>(page: Page, section: M) -> Page {
     page.titled(title.as_str())
 }
 
-/// `1234567` → `1,234,567`.
-pub fn count(value: i64) -> String {
-    let digits = value.unsigned_abs().to_string();
-    let mut grouped = String::with_capacity(digits.len() + digits.len() / 3 + 1);
-    if value < 0 {
-        grouped.push('-');
-    }
-    for (index, digit) in digits.chars().enumerate() {
-        if index > 0 && (digits.len() - index).is_multiple_of(3) {
-            grouped.push(',');
-        }
-        grouped.push(digit);
-    }
-    grouped
-}
-
-/// Binary units with one decimal: `0 B`, `512 B`, `1.5 KiB`, `3.2 GiB`.
-pub fn bytes(value: u64) -> String {
-    const UNITS: [&str; 5] = ["KiB", "MiB", "GiB", "TiB", "PiB"];
-    if value < 1024 {
-        return format!("{value} B");
-    }
-    let mut unit = 0;
-    let mut scaled = value;
-    while scaled >= 1024 * 1024 && unit < UNITS.len() - 1 {
-        scaled /= 1024;
-        unit += 1;
-    }
-    // `scaled` is now in [1024, 1024²): divide once more with one decimal of precision.
-    let tenths = scaled * 10 / 1024;
-    format!("{}.{} {}", tenths / 10, tenths % 10, UNITS[unit])
-}
-
-/// The two most significant units: `45 seconds`, `12 minutes`, `3 hours 5 minutes`, `2 days 4 hours`.
-pub fn uptime(duration: Duration) -> String {
-    const UNITS: [(u64, &str); 4] = [(86_400, "day"), (3_600, "hour"), (60, "minute"), (1, "second")];
-    let mut remaining = duration.as_secs();
-    let mut parts = Vec::new();
-    for (size, name) in UNITS {
-        let amount = remaining / size;
-        if amount > 0 || (parts.is_empty() && size == 1) {
-            parts.push(format!("{amount} {name}{}", if amount == 1 { "" } else { "s" }));
-            remaining %= size;
-        }
-        if parts.len() == 2 || (!parts.is_empty() && amount == 0) {
-            break;
-        }
-    }
-    parts.join(" ")
-}
-
 #[derive(Debug, Template, WebTemplate)]
 #[template(path = "admin/configuration.html")]
 pub struct ConfigurationPage {
@@ -651,35 +604,6 @@ pub struct ConfigurationPage {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn formats_counts() {
-        assert_eq!(count(0), "0");
-        assert_eq!(count(999), "999");
-        assert_eq!(count(1_000), "1,000");
-        assert_eq!(count(1_234_567), "1,234,567");
-        assert_eq!(count(-1_234), "-1,234");
-    }
-
-    #[test]
-    fn formats_bytes() {
-        assert_eq!(bytes(0), "0 B");
-        assert_eq!(bytes(1023), "1023 B");
-        assert_eq!(bytes(1024), "1.0 KiB");
-        assert_eq!(bytes(1536), "1.5 KiB");
-        assert_eq!(bytes(5 * 1024 * 1024 + 300 * 1024), "5.2 MiB");
-        assert_eq!(bytes(3 * 1024 * 1024 * 1024), "3.0 GiB");
-    }
-
-    #[test]
-    fn formats_uptime() {
-        assert_eq!(uptime(Duration::ZERO), "0 seconds");
-        assert_eq!(uptime(Duration::from_secs(45)), "45 seconds");
-        assert_eq!(uptime(Duration::from_secs(61)), "1 minute 1 second");
-        assert_eq!(uptime(Duration::from_secs(3 * 3600 + 5 * 60 + 7)), "3 hours 5 minutes");
-        assert_eq!(uptime(Duration::from_secs(2 * 86_400 + 30)), "2 days");
-        assert_eq!(uptime(Duration::from_hours(28)), "1 day 4 hours");
-    }
 
     #[test]
     fn listing_urls_encode_search_and_skip_defaults() {
@@ -721,7 +645,7 @@ mod tests {
                 url: "https://github.com/GitRbit/rbit/releases/tag/v99.0.0".into(),
             }),
         };
-        let snapshot = crate::monitoring::Snapshot { uptime: Duration::ZERO, samples: Vec::new() };
+        let snapshot = crate::monitoring::Snapshot { uptime: std::time::Duration::ZERO, samples: Vec::new() };
         let html = dashboard::DashboardPage {
             page,
             admin_nav: AdminSection::Dashboard.nav(),

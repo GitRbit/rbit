@@ -91,7 +91,7 @@ mod tests {
             summary: "Initial commit".to_owned(),
             author: "Alice".to_owned(),
             avatar: Avatar::default(),
-            when: "today".to_owned(),
+            when: rbit_core::Timestamp::now().into(),
             when_iso: String::new(),
             date: String::new(),
             browse_url: String::new(),

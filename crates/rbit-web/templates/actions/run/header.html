@@ -12,7 +12,7 @@
         {% if let Some(actor) = run.actor %}
         <span aria-hidden="true">·</span><span>{{ text.triggered_by }} <bdi>{{ actor }}</bdi></span>
         {% endif %}
-        <span aria-hidden="true">·</span><time datetime="{{ run.when_iso }}">{% call ui::localized(text.english(run.when)) %}{% endcall %}</time>
+        <span aria-hidden="true">·</span><time datetime="{{ run.when_iso }}">{% call ui::localized(run.when.relative(page.locale)) %}{% endcall %}</time>
       </p>
     </div>
     {% if can_write %}
@@ -61,7 +61,7 @@
     {% if let Some(duration) = run.duration %}
     <div class="min-w-0">
       <dt class="text-xs text-ink-muted">{{ text.duration }}</dt>
-      <dd class="mt-1 tabular-nums">{{ duration }}</dd>
+      <dd class="mt-1 tabular-nums">{% call ui::localized(duration.text(page.locale)) %}{% endcall %}</dd>
     </div>
     {% endif %}
     <div class="min-w-0">

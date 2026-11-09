@@ -4,7 +4,10 @@ use rbit_localization::{ActionsSecretsMessage as Secrets, ActionsSettingsMessage
 use rbit_services::actions::triggers::WORKFLOW_DIRS;
 
 use super::ui_text::{Mark, Rich, SLOTS, UiText};
-use crate::views::actions_settings::{SecretRow, TrustedRow};
+use crate::views::{
+    actions_settings::{SecretRow, TrustedRow},
+    when::When,
+};
 
 /// How workflows read a secret and a variable, shown as code.
 const SECRET_EXPRESSION: &str = "${{ secrets.NAME }}";
@@ -32,7 +35,8 @@ impl UiText {
 
     /// "Trusted {since} by {approver}", the time in a `<time>` element.
     pub fn trusted(self, author: &TrustedRow) -> Rich {
-        let since = [Mark::time(&author.since, &author.since_iso)];
+        let when = author.since.relative(self.locale());
+        let since = [Mark::time(when.as_str(), &author.since_iso)];
         match &author.approved_by {
             Some(approver) => self.rich(Settings::TrustedSinceBy { since: SLOTS[0], approver }, &since),
             None => self.rich(Settings::TrustedSince { since: SLOTS[0] }, &since),
@@ -51,9 +55,10 @@ impl UiText {
         self.get(Secrets::SecretsUnavailable { problem })
     }
 
-    /// "Updated {when}", the time in a `<time>` element.
-    pub fn updated(self, when: &str, iso: &str) -> Rich {
-        self.rich(Secrets::Updated { when: SLOTS[0] }, &[Mark::time(when, iso)])
+    /// "Updated {when}", the time in a `<time>` element, both in the page's language.
+    pub fn updated(self, when: &When, iso: &str) -> Rich {
+        let when = when.relative(self.locale());
+        self.rich(Secrets::Updated { when: SLOTS[0] }, &[Mark::time(when.as_str(), iso)])
     }
 
     /// Which of the owner's repositories receive an owner secret; nothing for a repository's.

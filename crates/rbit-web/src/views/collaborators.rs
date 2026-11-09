@@ -6,6 +6,7 @@
 //! a permission picker and a remove button each), an add form, and — for organisation
 //! repositories — the teams with access, which are managed on the team pages.
 
+use crate::views::when::date;
 use askama::Template;
 use askama_web::WebTemplate;
 use rbit_core::membership::{Collaborator, Permission, TeamGrant};
@@ -87,7 +88,7 @@ pub struct CollaboratorRow {
 
 impl CollaboratorRow {
     /// `base_url` is `/{owner}/{repo}/settings/collaborators`.
-    pub fn new(collaborator: &Collaborator, base_url: &str, viewer: &str) -> Self {
+    pub fn new(collaborator: &Collaborator, base_url: &str, viewer: &str, locale: rbit_localization::Locale) -> Self {
         let user = &collaborator.user;
         let row_url = format!("{base_url}/{}", user.name);
         Self {
@@ -100,7 +101,7 @@ impl CollaboratorRow {
             permission_url: format!("{row_url}/permission"),
             remove_url: format!("{row_url}/remove"),
             is_viewer: user.name.as_str().eq_ignore_ascii_case(viewer),
-            added: collaborator.added_at.date(),
+            added: date(collaborator.added_at, locale).to_string(),
             added_iso: collaborator.added_at.iso8601(),
         }
     }
@@ -170,12 +171,13 @@ impl CollaboratorsPage {
     pub fn new(page: Page, header: RepoHeader, collaborators: &[Collaborator], teams: &[TeamGrant], is_org: bool, viewer: &str) -> Self {
         let full_name = format!("{}/{}", header.owner, header.name);
         let add_url = format!("{}/collaborators", header.settings_url);
+        let locale = page.locale;
         Self {
             page: {
                 let title = AccessText::CollaboratorsTitle(&full_name).text(&page.locale);
                 page.titled(title.as_str())
             },
-            collaborators: collaborators.iter().map(|c| CollaboratorRow::new(c, &add_url, viewer)).collect(),
+            collaborators: collaborators.iter().map(|c| CollaboratorRow::new(c, &add_url, viewer, locale)).collect(),
             teams: teams.iter().map(|grant| TeamGrantRow::new(grant, &header.owner)).collect(),
             teams_url: format!("/{}/teams", header.owner),
             settings_url: header.settings_url.clone(),

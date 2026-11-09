@@ -41,7 +41,7 @@
           <summary class="flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-subtle">
             <div class="min-w-0 flex-1">
               <p class="truncate text-[13px] font-medium">{{ passkey.name }}</p>
-              <p class="mt-0.5 flex flex-wrap gap-x-3 text-xs text-ink-muted"><span>{{ passkey.added }}</span><span>{{ passkey.last_used }}</span></p>
+              <p class="mt-0.5 flex flex-wrap gap-x-3 text-xs text-ink-muted" lang="en"><span>{{ passkey.added }}</span><span>{{ passkey.last_used }}</span></p>
             </div>
             <span class="shrink-0 text-xs text-danger">{% call ui::localized(SecurityMessage::Remove.text(page.locale)) %}{% endcall %}</span>
           </summary>
@@ -83,7 +83,7 @@
         <div class="min-w-0">
           <h4 class="flex items-center gap-2 text-[13px] font-medium">{% call ui::localized(SecurityMessage::Authenticator.text(page.locale)) %}{% endcall %}{% if overview.two_factor.authenticator %} <span class="badge border-success/40 text-success">{% call ui::localized(SecurityMessage::On.text(page.locale)) %}{% endcall %}</span>{% endif %}</h4>
           {% if overview.two_factor.authenticator %}
-          <p class="mt-0.5 text-xs text-ink-muted">{{ overview.two_factor.since }}</p>
+          <p class="mt-0.5 text-xs text-ink-muted" lang="en">{{ overview.two_factor.since }}</p>
           {% else %}
           <p class="mt-0.5 text-[13px] text-ink-muted">{% call ui::localized(SecurityMessage::AuthenticatorText.text(page.locale)) %}{% endcall %}</p>
           {% endif %}
@@ -151,8 +151,8 @@
         <p class="flex min-w-0 items-center gap-2"><span class="truncate font-medium">{{ identity.provider_name }}</span>{% if !identity.configured %}<span class="badge">{% call ui::localized(SecurityMessage::NoLongerAvailable.text(page.locale)) %}{% endcall %}</span>{% endif %}</p>
         <p class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-ink-muted">
           {% if !identity.detail.is_empty() %}<span class="min-w-0 break-all">{{ identity.detail }}</span>{% endif %}
-          <span>{{ identity.linked }}</span>
-          <span>{{ identity.last_used }}</span>
+          <span lang="en">{{ identity.linked }}</span>
+          <span lang="en">{{ identity.last_used }}</span>
         </p>
       </div>
       {% if identity.can_unlink %}
@@ -198,8 +198,8 @@
           </div>
           <p class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-ink-muted">
             {% if let Some(ip) = session.ip_address %}<span class="font-mono" dir="ltr">{{ ip }}</span>{% endif %}
-            <time datetime="{{ session.signed_in_iso }}">{{ session.signed_in }}</time>
-            <span>{{ session.last_active }}</span>
+            <time datetime="{{ session.signed_in_iso }}" lang="en">{{ session.signed_in }}</time>
+            <span lang="en">{{ session.last_active }}</span>
           </p>
         </div>
         {% if !session.is_current %}
@@ -228,7 +228,7 @@
           <p class="truncate text-[13px] {% if event.is_failure %}text-danger{% endif %}">{{ event.label }}{% if !event.detail.is_empty() %}<span class="text-ink-muted"> · {{ event.detail }}</span>{% endif %}</p>
           {% if let Some(ip) = event.ip_address %}<p class="mt-0.5 font-mono text-xs text-ink-faint"><bdi dir="ltr">{{ ip }}</bdi></p>{% endif %}
         </div>
-        <time class="shrink-0 text-xs text-ink-faint" datetime="{{ event.when_iso }}">{{ event.when }}</time>
+        <time class="shrink-0 text-xs text-ink-faint" datetime="{{ event.when_iso }}">{% call ui::localized(event.when.relative(page.locale)) %}{% endcall %}</time>
       </li>
       {% endfor %}
     </ul>

@@ -35,8 +35,8 @@
   </ol>
 
   <p class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-muted">
-    {% if let Some((when, iso)) = started %}<span>{% call ui::localized(rbit_localization::RepoCreateLabel::Started.text(page.locale)) %}{% endcall %} <time datetime="{{ iso }}" title="{{ iso }}">{{ when }}</time></span>{% else %}<span>{% call ui::localized(rbit_localization::RepoCreateLabel::WaitingForSlot.text(page.locale)) %}{% endcall %}</span>{% endif %}
-    {% if let Some((when, iso)) = finished %}<span>{% call ui::localized(rbit_localization::RepoCreateLabel::Ended.text(page.locale)) %}{% endcall %} <time datetime="{{ iso }}" title="{{ iso }}">{{ when }}</time></span>{% endif %}
+    {% if let Some(at) = started %}<span>{% call ui::localized(rbit_localization::RepoCreateLabel::Started.text(page.locale)) %}{% endcall %} <time datetime="{{ at.iso() }}" title="{{ at.iso() }}">{% call ui::localized(at.relative(page.locale)) %}{% endcall %}</time></span>{% else %}<span>{% call ui::localized(rbit_localization::RepoCreateLabel::WaitingForSlot.text(page.locale)) %}{% endcall %}</span>{% endif %}
+    {% if let Some(at) = finished %}<span>{% call ui::localized(rbit_localization::RepoCreateLabel::Ended.text(page.locale)) %}{% endcall %} <time datetime="{{ at.iso() }}" title="{{ at.iso() }}">{% call ui::localized(at.relative(page.locale)) %}{% endcall %}</time></span>{% endif %}
     {% if active %}<span>{% call ui::localized(rbit_localization::RepoCreateLabel::UpdatesByItself.text(page.locale)) %}{% endcall %}</span>{% endif %}
   </p>
 

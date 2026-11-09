@@ -1,5 +1,6 @@
 //! Pull request review and conversation view models.
 
+use crate::views::when::When;
 use rbit_localization::{CollabSentence, ReviewMessage};
 
 use super::{
@@ -21,7 +22,7 @@ pub struct ReviewCommentView {
     pub anchor: String,
     pub author: ActorView,
     pub body_html: String,
-    pub when: String,
+    pub when: When,
     pub when_iso: String,
     pub path: String,
     /// `L12` / `R12`.
@@ -63,7 +64,7 @@ impl ReviewCommentView {
             anchor: review_comment_anchor(comment.id.0),
             author: ActorView::new(author),
             body_html: render_issue_markdown(&comment.body, refs),
-            when: comment.created_at.relative(),
+            when: When(comment.created_at),
             when_iso: comment.created_at.iso8601(),
             path: comment.path.clone(),
             line_label: format!("{side}{}", comment.line),
@@ -92,7 +93,7 @@ pub struct ReviewView {
     /// `text-success`, `text-danger` or `text-ink-muted`.
     pub tone: &'static str,
     pub body_html: String,
-    pub when: String,
+    pub when: When,
     pub when_iso: String,
     pub comments: Vec<ReviewCommentView>,
     /// Who dismissed it, and why.
@@ -123,7 +124,7 @@ impl ReviewView {
             icon,
             tone,
             body_html: if review.body.trim().is_empty() { String::new() } else { render_issue_markdown(&review.body, refs) },
-            when: at.relative(),
+            when: When(at),
             when_iso: at.iso8601(),
             comments,
             dismissal,

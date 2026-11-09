@@ -283,7 +283,7 @@ pub struct CommentView {
     pub body_html: String,
     /// The Markdown source, for the edit form.
     pub source: String,
-    pub when: String,
+    pub when: crate::views::when::When,
     pub when_iso: String,
     pub edited: bool,
     pub can_edit: bool,
@@ -332,7 +332,7 @@ pub struct EventView {
     pub fallback: bool,
     /// A muted second line (a commit summary), if any.
     pub detail: Option<String>,
-    pub when: String,
+    pub when: crate::views::when::When,
     pub when_iso: String,
 }
 
@@ -455,7 +455,7 @@ pub fn build_thread(
         by_thread_author: false,
         body_html: if issue.body.as_str().trim().is_empty() { String::new() } else { render_issue_markdown(issue.body.as_str(), refs) },
         source: issue.body.to_string(),
-        when: issue.created_at.relative(),
+        when: issue.created_at.into(),
         when_iso: issue.created_at.iso8601(),
         edited: false,
         can_edit: permissions.can_edit,
@@ -520,7 +520,7 @@ pub fn items(ctx: &IssueContext, timeline: &Timeline, refs: &RefContext, options
                         by_thread_author: comment.author.is_some() && comment.author == ctx.issue.author,
                         body_html: render_issue_markdown(comment.body.as_str(), refs),
                         source: comment.body.to_string(),
-                        when: comment.created_at.relative(),
+                        when: comment.created_at.into(),
                         when_iso: comment.created_at.iso8601(),
                         edited: comment.edited_at.is_some(),
                         can_edit: *can_edit,
@@ -564,7 +564,7 @@ fn event_view(
         sentence: sentence.parts,
         fallback: sentence.fallback,
         detail: sentence.detail,
-        when: at.relative(),
+        when: at.into(),
         when_iso: at.iso8601(),
     }
 }

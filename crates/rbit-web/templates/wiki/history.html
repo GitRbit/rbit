@@ -29,7 +29,7 @@
           {% if let Some(renamed_from) = entry.renamed_from %}<span class="mt-0.5 block truncate text-xs text-ink-muted" dir="auto">{% call ui::localized(renamed_from) %}{% endcall %}</span>{% endif %}
         </td>
         <td class="px-4 py-2.5 text-ink-muted">{% if let Some(author) = entry.author %}<a href="/{{ author }}" class="hover:text-ink">{{ author }}</a>{% else %}{% call ui::localized(wiki.t.text(WikiMessage::UnknownAuthor)) %}{% endcall %}{% endif %}</td>
-        <td class="whitespace-nowrap px-4 py-2.5 text-ink-muted"><time datetime="{{ entry.iso }}">{{ entry.date }}</time></td>
+        <td class="whitespace-nowrap px-4 py-2.5 text-ink-muted"><time datetime="{{ entry.iso }}">{% call ui::localized(entry.date) %}{% endcall %}</time></td>
         <td class="whitespace-nowrap px-4 py-2.5 text-end">{% if let Some(compare_url) = entry.compare_url %}<a href="{{ compare_url }}" class="btn btn-ghost h-7 px-2 text-xs sm:h-7" title="{{ wiki.t.text(WikiMessage::CompareWithPrevious) }}">{% call ui::icon("git-compare", "size-3.5") %}{% endcall %}<span class="hidden sm:inline">{% call ui::localized(wiki.t.text(WikiMessage::CompareWithPrevious)) %}{% endcall %}</span></a>{% endif %}</td>
       </tr>
       {% endfor %}

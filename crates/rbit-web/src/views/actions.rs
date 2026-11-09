@@ -11,11 +11,11 @@
 
 use std::collections::BTreeMap;
 
+use crate::views::when::Took;
 use rbit_core::{
     Account, AccountId, Timestamp,
     actions::{Job, Run, RunEvent, Status},
 };
-use rbit_services::actions::statuses::duration;
 
 mod job;
 mod job_text;
@@ -108,10 +108,10 @@ pub const fn event_message(event: RunEvent) -> rbit_localization::OverviewContro
 }
 
 /// How long something took: from its start to its end, or to now while it runs.
-fn elapsed(started: Option<Timestamp>, finished: Option<Timestamp>) -> Option<String> {
+fn elapsed(started: Option<Timestamp>, finished: Option<Timestamp>) -> Option<Took> {
     let started = started?;
     let end = finished.unwrap_or_else(Timestamp::now);
-    Some(duration(end.seconds() - started.seconds()))
+    Some(Took(end.seconds() - started.seconds()))
 }
 
 fn name_of(people: &BTreeMap<AccountId, Account>, id: Option<AccountId>) -> Option<String> {
@@ -159,7 +159,7 @@ pub fn workflow_file(path: &str) -> &str {
 }
 
 /// How long `job` ran, or has been running.
-pub fn job_duration(job: &Job) -> Option<String> {
+pub fn job_duration(job: &Job) -> Option<Took> {
     elapsed(job.started_at, job.finished_at)
 }
 

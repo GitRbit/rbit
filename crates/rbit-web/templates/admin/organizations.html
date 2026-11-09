@@ -35,7 +35,7 @@
         </td>
         <td class="px-4 text-end tabular-nums text-ink-muted sm:text-start">{{ org.members }}</td>
         <td class="hidden px-4 tabular-nums text-ink-muted sm:table-cell">{{ org.repositories }}</td>
-        <td class="hidden whitespace-nowrap px-4 text-ink-muted lg:table-cell"><time datetime="{{ org.created_iso }}">{{ org.created }}</time></td>
+        <td class="hidden whitespace-nowrap px-4 text-ink-muted lg:table-cell"><time datetime="{{ org.created_iso }}">{% call ui::localized(org.created) %}{% endcall %}</time></td>
       </tr>
       {% endfor %}
     </tbody>

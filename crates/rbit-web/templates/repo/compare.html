@@ -39,7 +39,7 @@
       {% call ui::avatar(commit.avatar, "size-6 text-[9px]") %}{% endcall %}
       <div class="min-w-0 flex-1">
         <a href="{{ commit.url }}" class="block truncate text-[13px] font-medium hover:underline hover:underline-offset-4" title="{{ commit.summary }}">{{ commit.summary }}</a>
-        <p class="mt-0.5 truncate text-xs text-ink-muted">{{ commit.author }} · <time datetime="{{ commit.when_iso }}">{{ commit.when }}</time></p>
+        <p class="mt-0.5 truncate text-xs text-ink-muted">{{ commit.author }} · <time datetime="{{ commit.when_iso }}">{% call ui::localized(commit.when.relative(page.locale)) %}{% endcall %}</time></p>
       </div>
       <a href="{{ commit.url }}" class="btn h-7 shrink-0 px-2 font-mono text-xs sm:h-7" dir="ltr">{{ commit.short_id }}</a>
     </li>

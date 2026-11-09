@@ -20,7 +20,7 @@
       <span class="block truncate text-[13px] font-medium" dir="auto">{{ entry.title }}</span>
       <span class="block truncate font-mono text-[11px] text-ink-faint" dir="auto">{{ entry.path }}</span>
     </a>
-    <span class="text-xs text-ink-muted">{% if let Some(author) = entry.deleted_by %}<a href="/{{ author }}" class="hover:text-ink">{{ author }}</a>{% else %}{% call ui::localized(wiki.t.text(WikiMessage::UnknownAuthor)) %}{% endcall %}{% endif %} · <time datetime="{{ entry.iso }}">{{ entry.date }}</time></span>
+    <span class="text-xs text-ink-muted">{% if let Some(author) = entry.deleted_by %}<a href="/{{ author }}" class="hover:text-ink">{{ author }}</a>{% else %}{% call ui::localized(wiki.t.text(WikiMessage::UnknownAuthor)) %}{% endcall %}{% endif %} · <time datetime="{{ entry.iso }}">{% call ui::localized(entry.date) %}{% endcall %}</time></span>
     {% if wiki.can_write %}
     <form method="post" action="{{ entry.restore_url }}" class="shrink-0">
       <input type="hidden" name="base" value="{{ entry.base }}">

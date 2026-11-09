@@ -41,7 +41,7 @@
         </div>
         <p class="mt-2 flex min-w-0 items-center gap-1.5 text-xs text-ink-muted">
           <a href="{{ row.commit.url }}" class="truncate hover:text-ink">{{ row.commit.summary }}</a>
-          <span class="shrink-0 text-ink-faint">· {{ row.commit.author }} · <time datetime="{{ row.commit.when_iso }}">{{ row.commit.when }}</time></span>
+          <span class="shrink-0 text-ink-faint">· {{ row.commit.author }} · <time datetime="{{ row.commit.when_iso }}">{% call ui::localized(row.commit.when.relative(page.locale)) %}{% endcall %}</time></span>
         </p>
       </div>
       {% if let Some(url) = row.compare_url %}

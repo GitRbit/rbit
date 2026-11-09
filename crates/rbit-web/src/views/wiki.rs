@@ -22,6 +22,11 @@ impl WikiText {
         Self(Catalog::new(locale))
     }
 
+    /// The language the wiki's text is written in.
+    pub const fn locale(&self) -> Locale {
+        self.0.locale()
+    }
+
     pub fn text(&self, message: WikiMessage<'_>) -> Localized {
         self.0.localized(message)
     }
@@ -144,9 +149,8 @@ pub struct WikiChrome {
 }
 
 /// `YYYY-MM-DD` (UTC) for display and the full RFC 3339 value for `datetime`.
-pub fn dates(at: Timestamp) -> (String, String) {
-    let iso = at.iso8601();
-    (iso.get(..10).unwrap_or(&iso).to_owned(), iso)
+pub fn dates(at: Timestamp, locale: Locale) -> (Localized, String) {
+    (crate::views::when::date(at, locale), at.iso8601())
 }
 
 /// One breadcrumb: the page path's ancestors are not pages themselves, so only the

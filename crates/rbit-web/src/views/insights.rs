@@ -85,7 +85,10 @@ pub struct EntryCommit {
     pub summary: String,
     /// The commit's own page.
     pub url: String,
-    pub when: String,
+    /// The UTC calendar day, `2026-11-08`: the fragment is pinned (cached for a year and
+    /// shared by readers of every language), so it shows neither a phrase that would go
+    /// stale nor one in any reader's language.
+    pub day: String,
     pub when_iso: String,
 }
 
@@ -94,7 +97,7 @@ impl EntryCommit {
         Self {
             summary: commit.summary.clone(),
             url: urls.commit(&commit.id),
-            when: commit.authored_at.relative(),
+            day: commit.authored_at.iso8601().chars().take(10).collect(),
             when_iso: commit.authored_at.iso8601(),
         }
     }
@@ -137,7 +140,7 @@ mod tests {
         let commit = EntryCommit {
             summary: "Fix <bug>".into(),
             url: "/a/b/commit/0123".into(),
-            when: "2 days ago".into(),
+            day: "2026-01-01".into(),
             when_iso: "2026-01-01T00:00:00Z".into(),
         };
         let fragment = EntryCommitsFragment {
@@ -151,6 +154,7 @@ mod tests {
         assert!(html.contains(r#"id="entry-commit-0""#) && html.contains(r#"id="entry-commit-1""#));
         assert!(html.contains(r#"href="/a/b/commit/0123""#));
         assert!(html.contains("Fix &#60;bug&#62;") || html.contains("Fix &lt;bug&gt;"), "{html}");
+        assert!(html.contains(">2026-01-01</time>"), "a language-neutral day that does not go stale: {html}");
     }
 
     #[test]

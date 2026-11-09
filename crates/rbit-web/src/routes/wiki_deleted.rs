@@ -72,7 +72,7 @@ async fn deleted_page(
         .entries
         .iter()
         .map(|entry| {
-            let (date, iso) = dates(entry.deleted_at);
+            let (date, iso) = dates(entry.deleted_at, opened.text.locale());
             WikiDeletedRow {
                 title: entry.title.to_string(),
                 path: entry.path.to_string(),

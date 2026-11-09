@@ -2,6 +2,7 @@
 //!
 //! Milestone 2 workstream I (issues) owns this file and `templates/notifications/**`.
 
+use crate::views::when::When;
 use askama::Template;
 use askama_web::WebTemplate;
 use rbit_core::{IssueKind, IssueState, StateReason};
@@ -25,7 +26,7 @@ pub struct NotificationRow {
     pub icon_class: &'static str,
     pub state_label: InboxMessage<'static>,
     pub reason: &'static str,
-    pub when: String,
+    pub when: When,
     pub when_iso: String,
     pub unread: bool,
     pub read_url: String,
@@ -54,7 +55,7 @@ impl NotificationRow {
             icon_class,
             state_label,
             reason: notification.reason.label(),
-            when: notification.updated_at.relative(),
+            when: When(notification.updated_at),
             when_iso: notification.updated_at.iso8601(),
             unread: notification.unread,
             read_url: format!("{base}/read"),

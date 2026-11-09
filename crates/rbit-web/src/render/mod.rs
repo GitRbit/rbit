@@ -48,8 +48,8 @@ pub fn is_markdown(file_name: &str) -> bool {
     [".md", ".markdown", ".mdown", ".mkd"].iter().any(|ext| lower.ends_with(ext))
 }
 
-/// Human-readable byte size (`1.4 KB`).
-pub fn format_size(bytes: u64) -> String {
+/// Human-readable byte size (`1.4 KB`, `1,4 KB` in German).
+pub fn format_size(bytes: u64, locale: rbit_localization::Locale) -> String {
     const UNITS: [&str; 4] = ["B", "KB", "MB", "GB"];
     #[allow(clippy::cast_precision_loss)]
     let mut value = bytes as f64;
@@ -58,7 +58,11 @@ pub fn format_size(bytes: u64) -> String {
         value /= 1024.0;
         unit += 1;
     }
-    if unit == 0 { format!("{bytes} B") } else { format!("{value:.1} {}", UNITS[unit]) }
+    if unit == 0 {
+        format!("{} B", rbit_localization::number::integer(locale, bytes))
+    } else {
+        format!("{} {}", crate::views::when::decimal(locale, value), UNITS[unit])
+    }
 }
 
 #[cfg(test)]
@@ -74,7 +78,9 @@ mod tests {
 
     #[test]
     fn sizes() {
-        assert_eq!(format_size(512), "512 B");
-        assert_eq!(format_size(1536), "1.5 KB");
+        let english = rbit_localization::Locale::English;
+        assert_eq!(format_size(512, english), "512 B");
+        assert_eq!(format_size(1536, english), "1.5 KB");
+        assert_eq!(format_size(1536, rbit_localization::Locale::French), "1,5 KB");
     }
 }

@@ -18,7 +18,7 @@
   <div class="px-3 py-2.5">
     <p class="flex flex-wrap items-center gap-x-2 text-[13px]">
       {% if let Some(url) = comment.author.url %}<a href="{{ url }}" class="font-medium text-ink hover:underline hover:underline-offset-4">{{ comment.author.name }}</a>{% else %}<span class="font-medium text-ink-muted">{{ comment.author.name }}</span>{% endif %}
-      <a href="#{{ comment.anchor }}" class="text-xs text-ink-faint hover:underline hover:underline-offset-4"><time datetime="{{ comment.when_iso }}" title="{{ comment.when_iso }}">{{ comment.when }}</time></a>
+      <a href="#{{ comment.anchor }}" class="text-xs text-ink-faint hover:underline hover:underline-offset-4"><time datetime="{{ comment.when_iso }}" title="{{ comment.when_iso }}">{% call ui::localized(comment.when.relative(page.locale)) %}{% endcall %}</time></a>
       {% if comment.pending %}<span class="badge text-warning">{% call ui::localized(rbit_localization::ReviewMessage::Pending.localized(page.locale)) %}{% endcall %}</span>{% endif %}
     </p>
     <div class="prose-rbit mt-1">{{ comment.body_html|safe }}</div>

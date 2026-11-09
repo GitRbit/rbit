@@ -27,7 +27,7 @@
         <span class="block truncate font-medium">{{ asset.name }}</span>
         <span class="block truncate font-mono text-[11px] text-ink-faint" title="SHA-256"><bdi dir="ltr">{{ asset.sha256 }}</bdi></span>
       </span>
-      <span class="hidden shrink-0 text-xs text-ink-faint sm:inline">{{ asset.size }} · {% call ui::localized(rbit_localization::ReleaseMessage::Downloads { count: *asset.download_count }.text(page.locale)) %}{% endcall %}</span>
+      <span class="hidden shrink-0 text-xs text-ink-faint sm:inline">{{ asset.size.text(page.locale) }} · {% call ui::localized(rbit_localization::ReleaseMessage::Downloads { count: *asset.download_count }.text(page.locale)) %}{% endcall %}</span>
       <form method="post" action="{{ asset.delete_url }}" class="shrink-0">
         <button type="submit" class="btn btn-ghost btn-icon h-7 w-7 sm:h-7 sm:w-7" aria-label="{{ rbit_localization::ReleaseMessage::RemoveFile { name: asset.name }.text(page.locale) }}" title="{{ rbit_localization::ReleaseLabel::Remove.text(page.locale) }}">{% call ui::icon("trash", "size-3.5") %}{% endcall %}</button>
       </form>

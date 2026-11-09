@@ -19,7 +19,7 @@
 {% if rows.is_empty() %}{% call ui::localized_empty_state("circle-dot", page.text(rbit_localization::shell::home::HomeMessage::NoMatchingThreads), page.text(rbit_localization::shell::home::HomeMessage::NoMatchingThreadsText)) %}{% endcall %}{% else %}
 <ul>{% for entry in rows %}<li class="row flex items-start gap-3 px-4 py-3">
 <span class="mt-1 shrink-0 {{ entry.row.state.class }}" aria-label="{{ entry.row.state.label }}">{% call ui::icon(entry.row.state.icon, "size-4") %}{% endcall %}</span>
-<div class="min-w-0 flex-1"><p class="break-words text-xs text-ink-muted">{{ entry.repository }} {{ entry.row.number }}</p><a class="break-words font-medium hover:underline" href="{{ entry.row.url }}">{{ entry.row.title }}</a><p class="mt-1 text-xs text-ink-muted">{{ entry.row.author }} · <time datetime="{{ entry.row.when_iso }}">{{ entry.row.when }}</time> · {% call ui::text(page, rbit_localization::shell::home::HomeMessage::CommentCount(*entry.row.comments)) %}{% endcall %}</p></div>
+<div class="min-w-0 flex-1"><p class="break-words text-xs text-ink-muted">{{ entry.repository }} {{ entry.row.number }}</p><a class="break-words font-medium hover:underline" href="{{ entry.row.url }}">{{ entry.row.title }}</a><p class="mt-1 text-xs text-ink-muted">{{ entry.row.author }} · <time datetime="{{ entry.row.when_iso }}">{% call ui::localized(entry.row.when.relative(page.locale)) %}{% endcall %}</time> · {% call ui::text(page, rbit_localization::shell::home::HomeMessage::CommentCount(*entry.row.comments)) %}{% endcall %}</p></div>
 </li>{% endfor %}</ul>{% endif %}
 </section>
 {% call ui::pagination(pagination) %}{% endcall %}

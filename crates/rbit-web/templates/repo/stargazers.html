@@ -20,7 +20,7 @@
           <span class="block truncate font-medium">{{ gazer.label }}</span>
           {% if gazer.label != gazer.name %}<span class="block truncate text-xs text-ink-muted">{{ gazer.name }}</span>{% endif %}
         </span>
-        <time class="shrink-0 text-xs text-ink-faint" datetime="{{ gazer.starred_iso }}">{{ gazer.starred }}</time>
+        <time class="shrink-0 text-xs text-ink-faint" datetime="{{ gazer.starred_iso }}">{% call ui::localized(gazer.starred.relative(page.locale)) %}{% endcall %}</time>
       </a>
     </li>
     {% endfor %}

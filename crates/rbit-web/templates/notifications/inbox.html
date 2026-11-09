@@ -34,7 +34,7 @@
         <span class="mt-0.5 shrink-0 {{ row.icon_class }}" title="{{ page.text(*row.state_label) }}">{% call ui::icon(row.icon, "size-4") %}{% endcall %}<span class="sr-only">{% call ui::text(page, row.state_label) %}{% endcall %}</span></span>
         <div class="min-w-0 flex-1">
           <a href="{{ row.url }}" class="break-words {% if row.unread %}font-medium text-ink{% endif %} hover:underline hover:underline-offset-4">{{ row.title }} <span class="font-normal text-ink-faint">{{ row.number }}</span></a>
-          <p class="mt-0.5 text-xs text-ink-faint">{{ row.reason }} · <time datetime="{{ row.when_iso }}" title="{{ row.when_iso }}">{{ row.when }}</time></p>
+          <p class="mt-0.5 text-xs text-ink-faint">{{ row.reason }} · <time datetime="{{ row.when_iso }}" title="{{ row.when_iso }}">{% call ui::localized(row.when.relative(page.locale)) %}{% endcall %}</time></p>
         </div>
         <div class="flex shrink-0 items-center gap-1">
           {% if row.unread %}

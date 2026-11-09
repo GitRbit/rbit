@@ -8,7 +8,11 @@ use rbit_localization::{
 };
 
 use super::{SettingsLink, SettingsSection};
-use crate::views::{components::FormError, layout::Page};
+use crate::views::{
+    components::FormError,
+    layout::Page,
+    when::{date, relative_at},
+};
 
 /// Expiry preselected in the create form.
 const DEFAULT_EXPIRY: Option<u32> = Some(30);
@@ -40,18 +44,19 @@ impl TokenRow {
         let is_expired = token.expires_at.is_some_and(|at| at <= now);
         let expiry = match token.expires_at {
             None => TokensMessage::NoExpiration.text(&locale),
-            Some(at) if is_expired => TokenText::Expired(&at.date()).text(&locale),
-            Some(at) => TokenText::Expires(&at.date()).text(&locale),
+            Some(at) if is_expired => TokenText::Expired(date(at, locale).as_str()).text(&locale),
+            Some(at) => TokenText::Expires(date(at, locale).as_str()).text(&locale),
         };
         Self {
             name: token.name.clone(),
             hint: format!("…{}", token.hint),
             scope_label: token.scope.label(),
-            created: TokenText::CreatedOn(&token.created_at.date()).text(&locale),
+            created: TokenText::CreatedOn(date(token.created_at, locale).as_str()).text(&locale),
             created_iso: token.created_at.iso8601(),
-            last_used: token
-                .last_used_at
-                .map_or_else(|| TokensMessage::NeverUsed.text(&locale), |at| TokenText::LastUsed(&at.relative()).text(&locale)),
+            last_used: token.last_used_at.map_or_else(
+                || TokensMessage::NeverUsed.text(&locale),
+                |at| TokenText::LastUsed(relative_at(at, now, locale).as_str()).text(&locale),
+            ),
             expiry,
             is_expired,
             revoke_url: format!("/settings/tokens/{}/revoke", token.id.0),

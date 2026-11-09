@@ -139,7 +139,7 @@ impl Opened {
         revision: Option<WikiRevisionNote>,
         state: &AppState,
     ) -> WikiPageTemplate {
-        let (updated, updated_iso) = dates(view.page.updated_at);
+        let (updated, updated_iso) = dates(view.page.updated_at, self.text.locale());
         let id = view.page.id;
         WikiPageTemplate {
             page: self.page(page, view.page.title.as_str()),

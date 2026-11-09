@@ -68,5 +68,6 @@ pub mod themes;
 pub mod timeline;
 pub mod transfer;
 pub mod webhooks;
+pub mod when;
 pub mod wiki;
 pub mod wiki_pages;

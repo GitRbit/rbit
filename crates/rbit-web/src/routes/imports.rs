@@ -7,6 +7,7 @@
 //! repository's administrators; everyone else gets 404. The token is never put back into
 //! the form.
 
+use crate::views::when::When;
 use axum::{
     Form, Router,
     extract::{Path, State},
@@ -201,8 +202,8 @@ async fn status(
             }
             format!("{sentence}.")
         }),
-        started: import.started_at.map(|at| (at.relative(), at.iso8601())),
-        finished: import.finished_at.map(|at| (at.relative(), at.iso8601())),
+        started: import.started_at.map(When),
+        finished: import.finished_at.map(When),
         self_url: format!("{}/import", loaded.urls.home()),
         source_url: import.source_url,
     })

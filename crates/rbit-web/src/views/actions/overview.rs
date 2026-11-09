@@ -1,5 +1,6 @@
 //! Existing Actions overview rows, filter choices, workflow navigation and polling policy.
 use super::{ActionsUrls, DispatchFormView, StateLook, elapsed, event_label, event_message, name_of, short_ref};
+use crate::views::when::{Took, When};
 use crate::views::{layout::Page, repo::RepoHeader};
 use askama::Template;
 use askama_web::WebTemplate;
@@ -23,9 +24,9 @@ pub struct RunRow {
     pub event_message: Control,
     pub reference: String,
     pub actor: Option<String>,
-    pub when: String,
+    pub when: When,
     pub when_iso: String,
-    pub duration: Option<String>,
+    pub duration: Option<Took>,
     /// Why the workflow has no jobs, for workflow-error runs.
     pub error: Option<String>,
 }
@@ -42,7 +43,7 @@ impl RunRow {
             event_message: event_message(run.event),
             reference: short_ref(&run.reference),
             actor: name_of(people, run.trigger_actor.or(run.actor)),
-            when: run.created_at.relative(),
+            when: When(run.created_at),
             when_iso: run.created_at.iso8601(),
             duration: if run.status.is_done() || run.status == Status::Running { elapsed(run.started_at, run.finished_at) } else { None },
             error: run.error.clone(),

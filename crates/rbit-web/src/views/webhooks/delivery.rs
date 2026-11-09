@@ -1,4 +1,5 @@
 //! `…/hooks/{id}/deliveries/{delivery}`: what was sent and what came back.
+use crate::views::when::relative;
 use askama::Template;
 use askama_web::WebTemplate;
 use rbit_core::{
@@ -57,10 +58,10 @@ impl DeliveryPage {
             event: event_name(delivery),
             status: StatusBadge::for_delivery(delivery, locale),
             attempts: delivery.attempts,
-            created: delivery.created_at.relative(),
+            created: relative(delivery.created_at, locale).to_string(),
             created_iso: delivery.created_at.iso8601(),
             next_attempt,
-            duration: delivery.duration_ms.map(|ms| format!("{ms} ms")).unwrap_or_default(),
+            duration: delivery.duration_ms.map(|ms| format!("{} ms", rbit_localization::number::integer(locale, ms))).unwrap_or_default(),
             request_headers: delivery.request_headers.clone(),
             payload,
             response_status: delivery.response_status,

@@ -33,7 +33,7 @@
             <span>{{ hook.events }}</span>
             {% if let Some(last) = hook.last %}
             <span class="badge {{ last.class }}">{{ last.label }}</span>
-            <time datetime="{{ hook.last_iso }}">{{ hook.last_at }}</time>
+            {% if let Some(at) = hook.last_at %}<time datetime="{{ hook.last_iso }}">{% call ui::localized(at.relative(page.locale)) %}{% endcall %}</time>{% endif %}
             {% else %}
             <span>{% call ui::localized(WebhookMessage::NoDeliveries.text(page.locale)) %}{% endcall %}</span>
             {% endif %}

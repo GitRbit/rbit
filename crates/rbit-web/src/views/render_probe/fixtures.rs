@@ -80,7 +80,7 @@ pub(super) fn explore(actor: Actor, theme: Theme, locale: Locale, empty: bool) -
             description: Some(UNTRUSTED.into()),
             is_private: false,
             is_archived: true,
-            updated: "1 hour ago".into(),
+            updated: rbit_core::Timestamp(rbit_core::Timestamp::now().seconds() - 3660).into(),
             updated_iso: "2026-11-05T12:00:00Z".into(),
             owner_avatar: Avatar::for_identity("Keeper", "keeper"),
             star_count: 2,

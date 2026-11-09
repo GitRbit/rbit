@@ -11,7 +11,7 @@
     <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-muted">
       <a href="{{ release.tag_url }}" class="inline-flex items-center gap-1 font-mono hover:text-ink" dir="ltr">{% call ui::icon("tag", "size-3") %}{% endcall %}{{ release.tag }}</a>
       {% if release.by_actions %}<span>· <span translate="no">rbit-actions</span> <span class="badge">{% call ui::localized(rbit_localization::ReleaseLabel::Bot.text(page.locale)) %}{% endcall %}</span></span>{% else if let Some(author) = release.author %}<span>· <a href="/{{ author }}" class="hover:text-ink">{{ author }}</a></span>{% endif %}
-      <span>· {% if release.is_draft %}{% call ui::localized(rbit_localization::ReleaseLabel::Created.text(page.locale)) %}{% endcall %}{% endif %} <time datetime="{{ release.when_iso }}" title="{{ release.when_iso }}">{{ release.when }}</time></span>
+      <span>· {% if release.is_draft %}{% call ui::localized(rbit_localization::ReleaseLabel::Created.text(page.locale)) %}{% endcall %}{% endif %} <time datetime="{{ release.when_iso }}" title="{{ release.when_iso }}">{% call ui::localized(release.when.relative(page.locale)) %}{% endcall %}</time></span>
     </p>
   </div>
   {% if can_write %}<a href="{{ release.edit_url }}" class="btn h-7 shrink-0 px-2.5 text-xs sm:h-7">{% call ui::localized(rbit_localization::ReleaseLabel::Edit.text(page.locale)) %}{% endcall %}</a>{% endif %}
@@ -26,7 +26,7 @@
     <li class="flex min-w-0 items-center gap-2">
       {% call ui::icon("package", "size-3.5 shrink-0 text-ink-faint") %}{% endcall %}
       <a href="{{ asset.url }}" class="min-w-0 flex-1 truncate font-medium hover:underline hover:underline-offset-4" hx-boost="false" title="{{ rbit_localization::ReleaseMessage::Checksum { sha256: asset.sha256 }.text(page.locale) }}">{{ asset.name }}</a>
-      <span class="shrink-0 text-xs text-ink-faint">{{ asset.size }}</span>
+      <span class="shrink-0 text-xs text-ink-faint">{{ asset.size.text(page.locale) }}</span>
     </li>
     {% endfor %}
     <li class="flex items-center gap-2">

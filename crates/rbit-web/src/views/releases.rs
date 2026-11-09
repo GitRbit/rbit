@@ -2,13 +2,14 @@
 //!
 //! Milestone 2 workstream R (repository essentials) owns this file.
 
+use crate::views::when::{Size, When};
 use askama::Template;
 use askama_web::WebTemplate;
 use rbit_core::release::{Release, ReleaseAsset};
 use rbit_services::releases::ReleaseDetail;
 
 use crate::{
-    render::{format_size, render_markdown},
+    render::render_markdown,
     urls::{DocumentBase, RepoUrls},
     views::{
         components::{FormError, Pagination},
@@ -22,7 +23,7 @@ use crate::{
 pub struct AssetLink {
     pub id: i64,
     pub name: String,
-    pub size: String,
+    pub size: Size,
     pub download_count: u64,
     pub sha256: String,
     pub url: String,
@@ -45,7 +46,7 @@ pub struct ReleaseCard {
     // Actions: releases from workflows.
     /// Made by a workflow with its token: shown as rbit-actions with a "bot" badge.
     pub by_actions: bool,
-    pub when: String,
+    pub when: When,
     pub when_iso: String,
     pub url: String,
     pub edit_url: String,
@@ -73,7 +74,7 @@ impl ReleaseCard {
             is_latest: latest.is_some_and(|l| l.id == release.id),
             author: release.author.as_ref().map(|a| a.name.clone()),
             by_actions: release.source == rbit_core::release::ReleaseSource::Actions,
-            when: shown.relative(),
+            when: When(shown),
             when_iso: shown.iso8601(),
             url: urls.release(tag),
             edit_url: urls.release_action(release.id.0, "edit"),
@@ -90,7 +91,7 @@ impl AssetLink {
         Self {
             id: asset.id.0,
             name: asset.name.clone(),
-            size: format_size(asset.size),
+            size: Size(asset.size),
             download_count: asset.download_count,
             sha256: asset.sha256_hex(),
             url: urls.release_download(&release.tag_name, &asset.name),
@@ -105,7 +106,7 @@ pub struct LatestRelease {
     pub name: String,
     pub tag: String,
     pub url: String,
-    pub when: String,
+    pub when: When,
     pub when_iso: String,
     pub releases_url: String,
 }
@@ -117,7 +118,7 @@ impl LatestRelease {
             name: release.name.clone(),
             tag: release.tag_name.clone(),
             url: urls.release(&release.tag_name),
-            when: shown.relative(),
+            when: When(shown),
             when_iso: shown.iso8601(),
             releases_url: urls.releases(),
         }
@@ -243,7 +244,7 @@ mod tests {
         assert_eq!(card.zip_url, "/alice/demo/archive/release/1.0.zip");
         assert_eq!(card.assets[0].url, "/alice/demo/releases/download/release/1.0/app%201.zip");
         assert_eq!(card.assets[0].delete_url, "/alice/demo/releases/3/assets/9/delete");
-        assert_eq!(card.assets[0].size, "2.0 KB");
+        assert_eq!(card.assets[0].size.text(rbit_localization::Locale::English), "2.0 KB");
         assert!(card.is_latest && card.is_prerelease);
         assert!(card.notes_html.contains(r#"href="/alice/demo/blob/release/1.0/docs/guide.md""#), "{}", card.notes_html);
     }

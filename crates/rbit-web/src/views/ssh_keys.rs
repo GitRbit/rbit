@@ -6,7 +6,14 @@
 use askama::Template;
 use askama_web::WebTemplate;
 use rbit_core::Timestamp;
-use rbit_localization::settings::keys::{KeyLabel, KeysMessage};
+use rbit_localization::{
+    Locale, Localized,
+    settings::{
+        access::AccessText,
+        keys::{KeyLabel, KeysMessage},
+        tokens::{TokenText, TokensMessage},
+    },
+};
 use rbit_services::ssh_keys::{DeployKey, SshKey};
 
 use crate::views::{
@@ -14,6 +21,7 @@ use crate::views::{
     layout::Page,
     repo::RepoHeader,
     settings::{SettingsLink, SettingsSection},
+    when::{date, relative},
 };
 
 /// A human name for an SSH algorithm identifier.
@@ -36,10 +44,10 @@ pub struct KeyRow {
     pub fingerprint: String,
     pub type_label: &'static str,
     /// e.g. `Added Oct 15, 2026`.
-    pub added: String,
+    pub added: Localized,
     pub added_iso: String,
     /// e.g. `Last used 3 hours ago` or `Never used`.
-    pub last_used: String,
+    pub last_used: Localized,
     /// Deploy keys only: `Read-only` or `Read and write`.
     pub access_label: Option<&'static str>,
     pub delete_url: String,
@@ -53,20 +61,24 @@ impl KeyRow {
         created_at: Timestamp,
         last_used_at: Option<Timestamp>,
         delete_url: String,
+        locale: Locale,
     ) -> Self {
         Self {
             title: title.to_owned(),
             fingerprint: fingerprint.to_owned(),
             type_label: key_type_label(algorithm),
-            added: format!("Added {}", created_at.date()),
+            added: AccessText::Added(date(created_at, locale).as_str()).text(&locale),
             added_iso: created_at.iso8601(),
-            last_used: last_used_at.map_or_else(|| "Never used".to_owned(), |at| format!("Last used {}", at.relative())),
+            last_used: last_used_at.map_or_else(
+                || TokensMessage::NeverUsed.text(&locale),
+                |at| TokenText::LastUsed(relative(at, locale).as_str()).text(&locale),
+            ),
             access_label: None,
             delete_url,
         }
     }
 
-    pub fn for_user_key(key: &SshKey) -> Self {
+    pub fn for_user_key(key: &SshKey, locale: Locale) -> Self {
         Self::new(
             &key.title,
             &key.fingerprint,
@@ -74,13 +86,14 @@ impl KeyRow {
             key.created_at,
             key.last_used_at,
             format!("/settings/keys/{}/delete", key.id.0),
+            locale,
         )
     }
 
     /// `repo_url` is `/{owner}/{repo}`.
-    pub fn for_deploy_key(key: &DeployKey, repo_url: &str) -> Self {
+    pub fn for_deploy_key(key: &DeployKey, repo_url: &str, locale: Locale) -> Self {
         let delete_url = format!("{repo_url}/settings/keys/{}/delete", key.id.0);
-        let mut row = Self::new(&key.title, &key.fingerprint, &key.algorithm, key.created_at, key.last_used_at, delete_url);
+        let mut row = Self::new(&key.title, &key.fingerprint, &key.algorithm, key.created_at, key.last_used_at, delete_url, locale);
         row.access_label = Some(if key.read_only { "Read-only" } else { "Read and write" });
         row
     }
@@ -110,9 +123,9 @@ pub struct SshKeysPage {
 impl SshKeysPage {
     pub fn new(page: Page, keys: &[SshKey], test_command: Option<String>) -> Self {
         Self {
+            keys: keys.iter().map(|key| KeyRow::for_user_key(key, page.locale)).collect(),
             page: page.titled("SSH keys"),
             settings_nav: SettingsSection::SshKeys.nav(),
-            keys: keys.iter().map(KeyRow::for_user_key).collect(),
             form: KeyForm::default(),
             error: FormError::default(),
             test_command,
@@ -146,10 +159,10 @@ impl DeployKeysPage {
     pub fn new(page: Page, header: RepoHeader, keys: &[DeployKey]) -> Self {
         let full_name = format!("{}/{}", header.owner, header.name);
         Self {
+            keys: keys.iter().map(|key| KeyRow::for_deploy_key(key, &header.home_url, page.locale)).collect(),
             page: page.titled(format!("Deploy keys · {full_name}")),
             keys_url: format!("{}/settings/keys", header.home_url),
             settings_url: header.settings_url.clone(),
-            keys: keys.iter().map(|key| KeyRow::for_deploy_key(key, &header.home_url)).collect(),
             full_name,
             header,
             form: KeyForm::default(),
@@ -195,9 +208,12 @@ mod tests {
             created_at: NOW,
             last_used_at: None,
         };
-        let row = KeyRow::for_user_key(&key);
-        assert_eq!(row.added, "Added Oct 15, 2026");
-        assert_eq!(row.last_used, "Never used");
+        let row = KeyRow::for_user_key(&key, Locale::English);
+        assert_eq!(row.added.as_str(), "Added Oct 15, 2026");
+        assert_eq!(row.last_used.as_str(), "Never used");
+        let german = KeyRow::for_user_key(&key, Locale::German);
+        assert!(german.added.as_str().ends_with("15. Okt. 2026"), "{}", german.added);
+        assert!(!german.added.fallback() && !german.last_used.fallback());
         assert_eq!(row.delete_url, "/settings/keys/7/delete");
         assert_eq!(row.access_label, None);
 
@@ -212,10 +228,10 @@ mod tests {
             created_at: NOW,
             last_used_at: Some(NOW),
         };
-        let row = KeyRow::for_deploy_key(&deploy, "/alice/proj");
+        let row = KeyRow::for_deploy_key(&deploy, "/alice/proj", Locale::English);
         assert_eq!(row.type_label, "RSA");
         assert_eq!(row.access_label, Some("Read and write"));
         assert_eq!(row.delete_url, "/alice/proj/settings/keys/3/delete");
-        assert!(row.last_used.starts_with("Last used"));
+        assert!(row.last_used.as_str().starts_with("Last used"));
     }
 }

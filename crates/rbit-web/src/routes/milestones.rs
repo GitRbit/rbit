@@ -82,10 +82,11 @@ async fn list(
     let (milestones, (open, closed_count)) =
         tokio::try_join!(issues.milestones(&loaded.ctx, Some(wanted)), issues.milestone_counts(&loaded.ctx))?;
     let home = loaded.urls.home();
+    let locale = page.locale;
     Ok(MilestonesPage {
         page: titled(page, |locale| format!("{} · {}", IssueMessage::Milestones.localized(locale), loaded.ctx.repo.full_name())),
         header: loaded.header(&state, "issues"),
-        milestones: milestones.iter().map(|progress| MilestoneView::new(progress, &home)).collect(),
+        milestones: milestones.iter().map(|progress| MilestoneView::new(progress, &home, locale)).collect(),
         open,
         closed: closed_count,
         showing_closed: closed,
@@ -115,7 +116,7 @@ async fn show(
     let search = IssueQuery { state: Some(state_filter), milestone: Some(progress.milestone.title.clone()), ..IssueQuery::default() };
     let results = issues.search(viewer.user(), &loaded.ctx, &search, query.page.unwrap_or(1)).await?;
     let home = loaded.urls.home();
-    let view = MilestoneView::new(&progress, &home);
+    let view = MilestoneView::new(&progress, &home, page.locale);
     let base = DocumentBase::new(loaded.urls.clone(), loaded.default_branch().to_owned(), "");
     let description = &progress.milestone.description;
     let state_param = if showing_closed { "state=closed&" } else { "" };

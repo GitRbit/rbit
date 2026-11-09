@@ -10,6 +10,7 @@ use crate::views::{
     components::{FormError, SettingsCard},
     layout::Page,
     repo::RepoHeader,
+    when::When,
 };
 
 /// The "Push mirrors" card on the repository settings page.
@@ -30,8 +31,8 @@ pub struct PushMirrorView {
     pub has_secret: bool,
     pub enabled: bool,
     pub sync_on_push: bool,
-    /// `(relative, ISO 8601)` of the last attempt.
-    pub last_attempt: Option<(String, String)>,
+    /// The last attempt, shown relative in the page's language.
+    pub last_attempt: Option<When>,
     pub last_error: Option<String>,
     pub edit_url: String,
     pub sync_url: String,
@@ -47,7 +48,7 @@ impl PushMirrorView {
             has_secret: mirror.has_secret,
             enabled: mirror.enabled,
             sync_on_push: mirror.sync_on_push,
-            last_attempt: mirror.last_attempt_at.map(|at| (at.relative(), at.iso8601())),
+            last_attempt: mirror.last_attempt_at.map(When),
             last_error: mirror.last_error.clone(),
             sync_url: format!("{url}/sync"),
             delete_url: format!("{url}/delete"),

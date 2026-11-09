@@ -55,6 +55,7 @@ pub async fn profile(
 
     let listed = if tab == "stars" { &starred } else { &own_repos };
 
+    let joined = crate::views::when::date(account.created_at, page.locale).to_string();
     Ok(ProfilePage {
         contributions,
         page: page.titled(account.label().to_owned()),
@@ -62,7 +63,7 @@ pub async fn profile(
         label: account.label().to_owned(),
         bio: account.bio.clone(),
         avatar: Avatar::for_account(&account),
-        joined: account.created_at.date(),
+        joined,
         website: extras.website,
         location: extras.location,
         tab,

@@ -89,8 +89,8 @@ pub struct ImportStatusPage {
     pub dropped_warnings: u64,
     pub error: Option<String>,
     /// `(relative, ISO 8601)` of the start and the end.
-    pub started: Option<(String, String)>,
-    pub finished: Option<(String, String)>,
+    pub started: Option<crate::views::when::When>,
+    pub finished: Option<crate::views::when::When>,
     pub self_url: String,
 }
 

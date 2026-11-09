@@ -32,10 +32,10 @@
           {% endif %}
         </div>
         <div class="shrink-0 text-end text-xs text-ink-faint">
-          <time class="block whitespace-nowrap" datetime="{{ run.when_iso }}">{% call ui::localized(text.english(run.when)) %}{% endcall %}</time>
+          <time class="block whitespace-nowrap" datetime="{{ run.when_iso }}">{% call ui::localized(run.when.relative(page.locale)) %}{% endcall %}</time>
           {% if let Some(duration) = run.duration %}
           <span class="mt-1 flex items-center justify-end gap-1 whitespace-nowrap tabular-nums">
-            {% call ui::icon("clock", "size-3") %}{% endcall %}{{ duration }}
+            {% call ui::icon("clock", "size-3") %}{% endcall %}{% call ui::localized(duration.text(page.locale)) %}{% endcall %}
           </span>
           {% endif %}
         </div>
