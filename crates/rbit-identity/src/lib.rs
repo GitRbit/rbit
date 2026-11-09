@@ -13,7 +13,7 @@ pub mod names;
 pub mod sessions;
 pub mod token;
 #[cfg(feature = "session-tokens")]
-pub use token::SessionToken;
+pub use token::{AccessTokenSecret, SessionToken};
 pub use token::TokenDigest;
 
 #[cfg(feature = "credentials")]

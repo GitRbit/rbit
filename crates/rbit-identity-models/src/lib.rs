@@ -3,6 +3,7 @@
 //! Credential operations and session runtimes stay in `rbit-identity`. Model consumers
 //! depend here directly so enabling those operations elsewhere cannot widen this graph.
 
+pub mod access_tokens;
 pub mod account;
 pub mod accounts;
 pub mod credential;

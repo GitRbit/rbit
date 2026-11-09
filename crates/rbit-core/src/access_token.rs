@@ -1,9 +1,9 @@
 //! Personal access tokens: long-lived credentials for Git over HTTPS and the REST API.
 
-use crate::{AccountId, RepoAccess, Timestamp};
+use crate::RepoAccess;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct AccessTokenId(pub i64);
+/// Token identity and lifecycle records are identity-owned; this path stays compatible.
+pub use rbit_identity_models::access_tokens::AccessTokenId;
 
 /// What a token may do. A token never grants more than its owner has.
 ///
@@ -65,28 +65,19 @@ impl TokenScope {
 }
 
 /// Token metadata. The secret itself is shown once at creation and never stored.
-#[derive(Debug, Clone)]
-pub struct AccessToken {
-    pub id: AccessTokenId,
-    pub account_id: AccountId,
-    pub name: String,
-    /// The last characters of the secret, so users can tell tokens apart.
-    pub hint: String,
-    pub scope: TokenScope,
-    pub created_at: Timestamp,
-    pub last_used_at: Option<Timestamp>,
-    pub expires_at: Option<Timestamp>,
-}
-
-impl AccessToken {
-    pub fn is_expired(&self) -> bool {
-        self.expires_at.is_some_and(|at| at <= Timestamp::now())
-    }
-}
+pub type AccessToken = rbit_identity_models::access_tokens::AccessTokenRecord<TokenScope>;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_token_paths_are_the_identity_records() {
+        use rbit_identity_models::access_tokens::{AccessTokenId as Id, AccessTokenRecord};
+        use std::any::TypeId;
+        assert_eq!(TypeId::of::<AccessTokenId>(), TypeId::of::<Id>());
+        assert_eq!(TypeId::of::<AccessToken>(), TypeId::of::<AccessTokenRecord<TokenScope>>());
+    }
 
     #[test]
     fn scope_caps_access() {

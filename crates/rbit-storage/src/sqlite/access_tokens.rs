@@ -18,15 +18,7 @@ macro_rules! select_token {
 }
 
 /// Everything needed to store a token. The secret itself never reaches this layer.
-#[derive(Debug)]
-pub struct NewAccessToken {
-    pub account_id: AccountId,
-    pub name: String,
-    pub digest: [u8; 32],
-    pub hint: String,
-    pub scope: TokenScope,
-    pub expires_at: Option<Timestamp>,
-}
+pub type NewAccessToken = rbit_identity_models::access_tokens::NewAccessTokenRecord<TokenScope>;
 
 #[derive(Debug, Clone)]
 pub struct AccessTokenStore {
