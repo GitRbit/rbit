@@ -15,11 +15,9 @@ use super::pool::Pool;
 use rbit_core::{AccountId, IssueId, IssueKind, IssueNumber, IssueState, RepoId, StateReason, Timestamp};
 
 use crate::StorageError;
+/// The fan-out batch bound is feature policy; one transaction records at most one batch.
+pub use rbit_notifications::NOTIFICATION_BATCH_SIZE;
 pub use rbit_notifications::{Notification, NotificationReason, NotificationRecipient, Subscription};
-
-/// Maximum recipients in one fan-out transaction, keeping `SQLite`'s writer available
-/// between batches even for threads with many subscribers.
-pub const NOTIFICATION_BATCH_SIZE: usize = 100;
 
 /// The rank of reason column `$column` in SQL (matching [`NotificationReason`]'s order).
 macro_rules! rank {

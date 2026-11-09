@@ -1,7 +1,11 @@
-//! Feature port forwarding; original SQL and row decoding remain unchanged.
+//! Feature port forwarding for the inbox and its delivery side; original SQL, row
+//! decoding, transactions and batching remain unchanged.
 use crate::{StorageError, sqlite::notifications::NotificationStore};
-use rbit_core::{AccountId, IssueId, Timestamp};
-use rbit_notifications::{Notification, Subscription, port::InboxRepository};
+use rbit_core::{AccountId, IssueId, RepoId, Timestamp};
+use rbit_notifications::{
+    Notification, NotificationReason, NotificationRecipient, Subscription,
+    port::{DeliveryRepository, InboxRepository},
+};
 /// One owned store handle, borrowed by the feature application. Construction moves
 /// the existing handle; it adds no query, heap allocation or underlying handle clone.
 pub struct NotificationInboxStore {
@@ -62,6 +66,38 @@ impl InboxRepository for NotificationInboxStore {
     }
     fn mark_all_read(&self, user: AccountId, now: Timestamp) -> impl Future<Output = Result<u64, Self::Error>> + Send {
         NotificationStore::mark_all_read(&self.store, user, now)
+    }
+}
+
+impl DeliveryRepository for NotificationInboxStore {
+    type Error = StorageError;
+    fn participate(
+        &self,
+        issue: IssueId,
+        user: AccountId,
+        reason: NotificationReason,
+        at: Timestamp,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+        NotificationStore::participate(&self.store, issue, user, reason, at)
+    }
+    fn subscribers(&self, issue: IssueId) -> impl Future<Output = Result<Vec<(AccountId, NotificationReason)>, Self::Error>> + Send {
+        NotificationStore::subscribers(&self.store, issue)
+    }
+    fn known_participants(&self, issue: IssueId, users: &[AccountId]) -> impl Future<Output = Result<Vec<AccountId>, Self::Error>> + Send {
+        NotificationStore::known_participants(&self.store, issue, users)
+    }
+    fn notify_many(
+        &self,
+        issue: IssueId,
+        repo: RepoId,
+        actor: Option<AccountId>,
+        at: Timestamp,
+        recipients: &[NotificationRecipient],
+    ) -> impl Future<Output = Result<Vec<(AccountId, NotificationReason)>, Self::Error>> + Send {
+        NotificationStore::notify_many(&self.store, issue, repo, actor, at, recipients)
+    }
+    fn prune_read(&self, before: Timestamp) -> impl Future<Output = Result<u64, Self::Error>> + Send {
+        NotificationStore::prune_read(&self.store, before)
     }
 }
 
