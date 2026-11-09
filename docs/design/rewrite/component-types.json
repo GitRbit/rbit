@@ -45,7 +45,7 @@
         "lib::lfs::batch_view::BatchView",
         "lib::forks::reading::ParentAccess",
         "lib::external_auth::original::OriginalExternalSignIn",
-        "lib::external_auth::original::Completion",
+        "lib::external_auth::flows::ModeAccounts",
         "lib::external_auth::original::Legacy",
         "lib::external_auth::original::Original",
         "lib::external_auth::original::ProviderCreation",

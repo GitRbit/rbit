@@ -16,6 +16,9 @@
 //! only). Callbacks are throttled per client address ([`ThrottleScope::ExternalSignIn`]);
 //! failures cost extra and are audited.
 //!
+//! The callback checks, linking, registration and sign-in decisions are
+//! `rbit_identity::external`'s; this module runs the provider exchange and the adapters.
+//!
 //! **Linking** ([`Services::complete_external_sign_in`]), for an identity — always the
 //! provider's stable subject, never an address or login name:
 //!
@@ -46,15 +49,29 @@ pub use callback_mode::OriginalProviderCallback;
 pub use links::OriginalLinkCallback;
 
 use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex, PoisonError},
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
-use rbit_auth::{Flow, FlowKey, IdTokenCheck, JwkSet, OidcError, SessionToken, TokenDigest, oidc};
+use rbit_auth::{Flow, FlowKey, IdTokenCheck, JwkSet, OidcError, SessionToken, oidc};
 use rbit_core::{
-    AccountId, AccountName, Email, Timestamp, User,
+    AccountId, Timestamp, User,
     config::{ProviderConfig, ProviderKind, ProviderRegistration},
+};
+#[cfg(test)]
+use rbit_identity::external::suggest_username;
+use rbit_identity::external::{
+    LAST_METHOD, ProviderPolicy, callback,
+    callback::Refusal,
+    is_last_method,
+    pending::PendingRegistrations,
+    provider::{self, apply_userinfo, needs_userinfo},
+    suggested_username, vouched_email,
+};
+pub use rbit_identity::external::{
+    VerifiedIdentity,
+    callback::{CallbackParams, FLOW_TTL_SECONDS},
+    pending::REGISTRATION_TTL,
 };
 use rbit_identity_models::sessions::ClientInfo;
 use rbit_storage::{
@@ -69,13 +86,9 @@ use crate::{
     DomainEvent, ServiceContext, ServiceError, Services, ThrottleScope, ThrottleService,
     audit::{AuditAction, AuditEntry, AuditService},
 };
+#[cfg(test)]
+use rbit_core::AccountName;
 
-/// How long a started sign-in may take at the provider.
-pub const FLOW_TTL_SECONDS: i64 = 10 * 60;
-/// How long the "choose a username" step stays open.
-pub const REGISTRATION_TTL: Duration = Duration::from_mins(15);
-/// Pending registrations kept at most (oldest beyond this are dropped).
-const MAX_PENDING_REGISTRATIONS: usize = 10_000;
 /// The `server_secrets` row whose key seals flow cookies.
 const KEY_NAME: &str = "external-sign-in";
 /// How long discovery documents and key sets are reused.
@@ -89,32 +102,6 @@ pub struct ProviderSummary {
     pub id: String,
     pub name: String,
     pub kind: ProviderKind,
-}
-
-/// Who the provider says signed in. Built only by [`ExternalAuthService::callback`] after
-/// verification (and by tests).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VerifiedIdentity {
-    pub provider_id: String,
-    /// The provider's stable id for the user (`sub`, or GitHub's numeric id).
-    pub subject: String,
-    pub email: Option<String>,
-    /// The provider vouches for `email`.
-    pub email_verified: bool,
-    /// The provider's login name (`preferred_username`, GitHub's `login`).
-    pub username: Option<String>,
-    pub display_name: Option<String>,
-    /// The ID token reports multi-factor authentication (`amr` contains `mfa`).
-    pub mfa: bool,
-}
-
-/// What the provider sent back to the callback URL.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct CallbackParams<'a> {
-    pub code: Option<&'a str>,
-    pub state: Option<&'a str>,
-    pub error: Option<&'a str>,
-    pub error_description: Option<&'a str>,
 }
 
 /// A verified callback, ready for [`Services::complete_external_sign_in`].
@@ -180,7 +167,11 @@ pub struct SignInMethods {
 impl SignInMethods {
     /// Unlinking `provider_id` would leave the account without a way to sign in.
     pub fn is_last_method(&self, provider_id: &str) -> bool {
-        !self.has_password && !self.identities.iter().any(|identity| identity.configured && identity.provider_id != provider_id)
+        is_last_method(
+            self.has_password,
+            self.identities.iter().map(|identity| (identity.provider_id.as_str(), identity.configured)),
+            provider_id,
+        )
     }
 }
 
@@ -196,7 +187,6 @@ struct Provider {
 struct PendingRegistration {
     identity: VerifiedIdentity,
     next: String,
-    started: Instant,
 }
 
 #[derive(Debug)]
@@ -209,7 +199,7 @@ struct Inner {
     audit: AuditService,
     throttle: ThrottleService,
     key: OnceCell<FlowKey>,
-    pending: Mutex<HashMap<TokenDigest, PendingRegistration>>,
+    pending: PendingRegistrations<PendingRegistration>,
     original_links: links::OriginalLinks,
 }
 
@@ -256,7 +246,7 @@ impl ExternalAuthService {
                 audit: AuditService::from_store(ctx.database.audit()),
                 throttle,
                 key: OnceCell::new(),
-                pending: Mutex::default(),
+                pending: PendingRegistrations::default(),
                 original_links: links::OriginalLinks::new(ctx.kv.sessions().epoch_sidecar()),
             }),
         })
@@ -331,20 +321,14 @@ impl ExternalAuthService {
             ProviderKind::Github => (format!("{}/login/oauth/authorize", config.github_base_url()), None),
         };
         let mut url = self.client()?.endpoint(&endpoint).map_err(|error| unreachable_provider(config, &error))?;
-        {
-            let mut query = url.query_pairs_mut();
-            query
-                .append_pair("response_type", "code")
-                .append_pair("client_id", &config.client_id)
-                .append_pair("redirect_uri", &redirect_uri)
-                .append_pair("scope", &scopes)
-                .append_pair("state", &flow.state)
-                .append_pair("code_challenge", &challenge)
-                .append_pair("code_challenge_method", rbit_auth::Pkce::METHOD);
-            if let Some(nonce) = &nonce {
-                query.append_pair("nonce", nonce);
-            }
-        }
+        url.query_pairs_mut().extend_pairs(provider::authorization_query(
+            &config.client_id,
+            &redirect_uri,
+            &scopes,
+            &flow.state,
+            &challenge,
+            nonce.as_deref(),
+        ));
         Ok((url.into(), key.seal(flow)))
     }
 
@@ -404,33 +388,15 @@ impl ExternalAuthService {
         params: CallbackParams<'_>,
     ) -> Result<M::Output, callback_mode::CheckError> {
         let config = &provider.config;
-        let key = self.key().await.map_err(|error| Refusal::new(error.to_string(), "something went wrong; try again"))?;
-        let expired = "the sign-in took too long or was started in another browser; try again";
-        let flow = cookie
-            .and_then(|value| key.open(value, Timestamp::now().seconds(), FLOW_TTL_SECONDS))
-            .ok_or_else(|| Refusal::new("missing, forged or expired flow cookie", expired))?;
-        if flow.provider != config.id {
-            return Err(Refusal::new("flow cookie for another provider", expired).into());
-        }
-        if !params.state.is_some_and(|state| flow.state_matches(state)) {
-            return Err(Refusal::new("state mismatch", expired).into());
-        }
-        if let Some(error) = params.error {
-            let detail = params.error_description.map_or_else(|| error.to_owned(), |description| format!("{error}: {description}"));
-            let message = if error == "access_denied" {
-                format!("{} didn't sign you in (access was denied)", config.name)
-            } else {
-                format!("{} reported an error: {}", config.name, truncate(&detail, 120))
-            };
-            return Err(Refusal::new(format!("provider error {detail}"), message).into());
-        }
-        let code = params.code.filter(|code| !code.is_empty() && code.len() <= 2048).ok_or_else(|| Refusal::new("no code", expired))?;
+        let policy = policy(config);
+        let key = self.key().await.map_err(|error| Refusal::new(error.to_string(), callback::FAILED))?;
+        let (flow, code) = callback::check(key, &policy, cookie, params, Timestamp::now().seconds())?;
         M::before_exchange(self, &flow)?;
         let identity = match config.kind {
             ProviderKind::Oidc => self.oidc_identity(provider, key, &flow, code).await,
             ProviderKind::Github => self.github_identity(provider, key, &flow, code).await,
         }
-        .map_err(|log| Refusal::new(log, format!("{} couldn't confirm who you are; try again", config.name)))?;
+        .map_err(|log| callback::unconfirmed(&policy, log))?;
         M::finish(self, flow, identity)
     }
 
@@ -506,29 +472,17 @@ impl ExternalAuthService {
             verified = oidc::verify_id_token(id_token, &keys, &check);
         }
         let token = verified.map_err(|error| format!("ID token refused: {error}"))?;
-        let mut identity = VerifiedIdentity {
-            provider_id: config.id.clone(),
-            subject: token.subject,
-            email: token.email,
-            email_verified: token.email_verified,
-            username: token.preferred_username,
-            display_name: token.name,
-            mfa: token.amr.iter().any(|method| method == "mfa"),
-        };
-        // Some providers keep the address out of the ID token; ask the userinfo endpoint.
-        if identity.email.is_none()
+        let mut identity = provider::oidc_identity(&config.id, token);
+        if needs_userinfo(&identity)
             && let (Some(userinfo), Some(access_token)) =
                 (discovery.userinfo_endpoint.as_deref(), tokens.get("access_token").and_then(Value::as_str))
         {
             match client.get_json(userinfo, Some(access_token), &[]).await {
-                Ok(info) if info.get("sub").and_then(Value::as_str) == Some(identity.subject.as_str()) => {
-                    identity.email = info.get("email").and_then(Value::as_str).map(str::to_owned);
-                    identity.email_verified = matches!(info.get("email_verified"), Some(Value::Bool(true)))
-                        || info.get("email_verified").and_then(Value::as_str).is_some_and(|value| value.eq_ignore_ascii_case("true"));
-                    identity.username =
-                        identity.username.or_else(|| info.get("preferred_username").and_then(Value::as_str).map(str::to_owned));
+                Ok(info) => {
+                    if !apply_userinfo(&mut identity, &info) {
+                        tracing::warn!(provider = %config.id, "userinfo answered for another subject; ignored");
+                    }
                 }
-                Ok(_) => tracing::warn!(provider = %config.id, "userinfo answered for another subject; ignored"),
                 Err(error) => tracing::info!(provider = %config.id, %error, "userinfo request failed; continuing without an address"),
             }
         }
@@ -565,48 +519,17 @@ impl ExternalAuthService {
             }
         };
         let user = parse_github_user(&user, emails.as_ref())?;
-        Ok(VerifiedIdentity {
-            provider_id: config.id.clone(),
-            subject: user.id,
-            email_verified: user.verified_email.is_some(),
-            email: user.verified_email,
-            username: Some(user.login),
-            display_name: user.name,
-            mfa: false,
-        })
+        Ok(provider::github_identity(&config.id, user.id, user.login, user.name, user.verified_email))
     }
 
     // ------------------------------------------------------------------ registration
 
-    fn lock_pending(&self) -> std::sync::MutexGuard<'_, HashMap<TokenDigest, PendingRegistration>> {
-        self.inner.pending.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-
     fn start_registration(&self, identity: VerifiedIdentity, next: String) -> SessionToken {
-        let token = SessionToken::generate();
-        let now = Instant::now();
-        let mut pending = self.lock_pending();
-        pending.retain(|_, entry| now.duration_since(entry.started) < REGISTRATION_TTL);
-        if pending.len() >= MAX_PENDING_REGISTRATIONS
-            && let Some(oldest) = pending.iter().min_by_key(|(_, entry)| entry.started).map(|(digest, _)| *digest)
-        {
-            pending.remove(&oldest);
-        }
-        pending.insert(token.digest(), PendingRegistration { identity, next, started: now });
-        token
+        self.inner.pending.start(PendingRegistration { identity, next })
     }
 
     fn pending_registration(&self, token: &SessionToken) -> Option<PendingRegistration> {
-        let mut pending = self.lock_pending();
-        let digest = token.digest();
-        match pending.get(&digest) {
-            Some(entry) if entry.started.elapsed() < REGISTRATION_TTL => Some(entry.clone()),
-            Some(_) => {
-                pending.remove(&digest);
-                None
-            }
-            None => None,
-        }
+        self.inner.pending.get(token)
     }
 
     /// The "choose a username" step behind `token`, if it is still open and for
@@ -618,28 +541,16 @@ impl ExternalAuthService {
         Some(RegistrationDraft {
             provider_id: provider_id.to_owned(),
             provider_name,
-            username: suggest_username(&[
-                identity.username.as_deref(),
-                identity.email.as_deref().and_then(|email| email.split('@').next()),
-            ]),
+            username: suggested_username(identity),
             email: identity.email.clone().unwrap_or_default(),
-            email_verified: identity.email_verified && identity.email.is_some(),
+            email_verified: vouched_email(identity),
             next: pending.next,
         })
     }
 
     /// Abandons a pending registration.
     pub fn end_registration(&self, token: &SessionToken) {
-        self.lock_pending().remove(&token.digest());
-    }
-
-    /// Whether a first sign-in with `provider` may create an account now.
-    fn may_register(provider: &ProviderConfig, registration_open: bool) -> bool {
-        match provider.allow_registration {
-            ProviderRegistration::Never => false,
-            ProviderRegistration::Always => true,
-            ProviderRegistration::FollowSite => registration_open,
-        }
+        self.inner.pending.end(token);
     }
 
     // ------------------------------------------------------------------ settings
@@ -687,10 +598,7 @@ impl ExternalAuthService {
                 Ok(())
             }
             Unlinked::NotFound => Err(ServiceError::NotFound),
-            Unlinked::LastMethod => Err(ServiceError::Invalid(
-                "this is the only way to sign in to your account; set a password (with a reset link) or link another provider first"
-                    .to_owned(),
-            )),
+            Unlinked::LastMethod => Err(ServiceError::Invalid(LAST_METHOD.to_owned())),
         }
     }
 
@@ -699,16 +607,14 @@ impl ExternalAuthService {
     }
 }
 
-/// A refused callback: what to log, and what to tell the user.
-struct Refusal {
-    log: String,
-    user: String,
-}
-
-impl Refusal {
-    fn new(log: impl Into<String>, user: impl Into<String>) -> Self {
-        Self { log: log.into(), user: user.into() }
-    }
+/// A configured provider's sign-in policy, for `rbit_identity::external`.
+fn policy(config: &ProviderConfig) -> ProviderPolicy<'_> {
+    let registration = match config.allow_registration {
+        ProviderRegistration::Never => rbit_identity::external::ProviderRegistration::Never,
+        ProviderRegistration::FollowSite => rbit_identity::external::ProviderRegistration::FollowSite,
+        ProviderRegistration::Always => rbit_identity::external::ProviderRegistration::Always,
+    };
+    ProviderPolicy { id: &config.id, name: &config.name, trust_email: config.trust_email, trust_mfa: config.trust_mfa, registration }
 }
 
 fn summary(config: &ProviderConfig) -> ProviderSummary {
@@ -720,27 +626,9 @@ fn unreachable_provider(config: &ProviderConfig, error: &ProviderError) -> Servi
     ServiceError::Invalid(format!("{} can't be reached right now; try again in a moment", config.name))
 }
 
-fn truncate(text: &str, max: usize) -> String {
-    text.chars().filter(|c| !c.is_control()).take(max).collect()
-}
-
 /// The throttle key for a client address.
 fn ip_key(client: &ClientInfo) -> String {
     client.ip.map_or_else(|| "unknown".to_owned(), |ip| ip.to_canonical().to_string())
-}
-
-/// The first candidate that makes a valid username once characters outside
-/// `[A-Za-z0-9._-]` are dropped (empty when none does).
-fn suggest_username(candidates: &[Option<&str>]) -> String {
-    candidates
-        .iter()
-        .flatten()
-        .map(|candidate| {
-            let cleaned: String = candidate.chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-')).collect();
-            cleaned.trim_start_matches('.').chars().take(AccountName::MAX_LEN).collect::<String>()
-        })
-        .find(|name| name.parse::<AccountName>().is_ok())
-        .unwrap_or_default()
 }
 
 // ---------------------------------------------------------------------- flows across services
@@ -748,12 +636,6 @@ fn suggest_username(candidates: &[Option<&str>]) -> String {
 mod flows;
 mod original;
 pub use original::OriginalExternalSignIn;
-
-/// "Corp SSO (alice)" plus `suffix`, for the link audit entry.
-fn linked_entry(user: &User, config: &ProviderConfig, identity: &VerifiedIdentity, client: &ClientInfo, suffix: &str) -> AuditEntry {
-    let who = identity.username.as_deref().or(identity.email.as_deref()).map(|who| format!(" ({})", truncate(who, 64))).unwrap_or_default();
-    AuditEntry::new(AuditAction::ExternalIdentityLinked).by(user).from_ip(client.ip).detail(format!("{}{who}{suffix}", config.name))
-}
 
 #[cfg(test)]
 mod tests {

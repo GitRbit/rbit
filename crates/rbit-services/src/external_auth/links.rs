@@ -2,10 +2,12 @@
 mod owner;
 use super::{
     Callback, CallbackParams, ClientInfo, ExternalAuthService, Flow, LinkConflict, Mutex, NewExternalIdentity, OriginalProviderCallback,
-    ProviderConfig, ServiceError, Services, Timestamp, linked_entry,
+    ProviderConfig, ServiceError, Services, Timestamp,
 };
 use crate::accounts::OriginalResolvedSession;
+use crate::audit::{AuditAction, AuditEntry};
 pub(super) use owner::OriginalLinks;
+use rbit_identity::external::{completion, linked_detail};
 use rbit_identity_models::sessions::SessionPromotion;
 use rbit_storage::EpochSessionStore;
 use std::sync::Weak;
@@ -117,7 +119,10 @@ impl Services {
                 };
                 match identities.link_at_epoch(account, identity, Timestamp::now(), actual.epoch()).await? {
                     rbit_storage::sqlite::external_identities::GuardedIdentityLink::Linked(_) => {
-                        audit.record(linked_entry(&user, &config, &callback.identity, &client, "")).await;
+                        let detail = linked_detail(&config.name, &callback.identity, "");
+                        audit
+                            .record(AuditEntry::new(AuditAction::ExternalIdentityLinked).by(&user).from_ip(client.ip).detail(detail))
+                            .await;
                         Ok(())
                     }
                     rbit_storage::sqlite::external_identities::GuardedIdentityLink::Conflict(conflict) => {
@@ -131,15 +136,14 @@ impl Services {
     }
 }
 fn taken(config: &ProviderConfig) -> ServiceError {
-    ServiceError::Invalid(format!("this {} account is already linked to another account here", config.name))
+    ServiceError::Invalid(completion::already_linked(&config.name))
 }
 fn conflict_error(conflict: LinkConflict, config: &ProviderConfig) -> ServiceError {
-    match conflict {
-        LinkConflict::IdentityTaken => taken(config),
-        LinkConflict::ProviderTaken => {
-            ServiceError::Invalid(format!("your account is already linked to another {} account; unlink it first", config.name))
-        }
-    }
+    let conflict = match conflict {
+        LinkConflict::IdentityTaken => completion::LinkConflict::IdentityTaken,
+        LinkConflict::ProviderTaken => completion::LinkConflict::ProviderTaken,
+    };
+    ServiceError::Invalid(completion::link_refused(conflict, &config.name))
 }
 
 #[cfg(test)]

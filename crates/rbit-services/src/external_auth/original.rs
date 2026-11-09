@@ -19,16 +19,10 @@ pub enum OriginalExternalSignIn {
     Linked,
     Register(SessionToken),
 }
-pub(super) enum Completion<A> {
-    SignedIn(A),
-    SecondFactorRequired(SessionToken),
-    Linked,
-    Register(SessionToken),
-}
 
 /// Private, concrete two-mode seam, not a runtime configuration or plugin interface.
 pub(super) trait Mode {
-    type Origin: Send;
+    type Origin: Send + Sync;
     type Account: Send;
     fn find(
         store: &ExternalIdentityStore,
