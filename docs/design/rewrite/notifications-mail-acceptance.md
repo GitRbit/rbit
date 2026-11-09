@@ -38,7 +38,8 @@ builders), queueing and hook selection, the delivery worker, and the HTTP client
 its outbound address guard (`GuardedResolver`, `target_url`, `may_contact`) remain in
 `rbit-services`. The address guard is shared with external sign-in and imports, and
 it is unchanged. The next slices are payload construction, then queueing and hook
-selection behind ports, then the worker. The row records these notes.
+selection behind ports, then the worker. The row records these notes. They are done in the
+[webhooks acceptance](integrations-webhooks-acceptance.md).
 
 ## Legacy code removed
 
