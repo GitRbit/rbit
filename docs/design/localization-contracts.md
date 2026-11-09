@@ -68,8 +68,8 @@ Every other translation chooses its noun forms with `Plural::of(locale, count)` 
 `en`/`de` one (1) and other; `es` one (1), many (whole millions) and other; `fr`/`pt-BR`
 one (0 and 1), many (whole millions) and other; `ru` one (1, 21, …; not 11), few (2–4,
 22–24, …; not 12–14) and many (the rest); `zh-Hans`/`ja`/`ko` other only.
-`Plural::categories(locale)` lists them. There is no date or number formatting engine yet:
-numbers are written with ASCII digits and no grouping.
+`Plural::categories(locale)` lists them. Counts, times, dates and sizes follow the page's
+language as [localized times and numbers](localized-time.md) describes.
 
 `LocalizedText` is plain Unicode text with ordinary Display behavior. Arguments are
 copied as text, never parsed as catalog syntax or HTML. Render through ordinary
@@ -113,8 +113,8 @@ required catalog:
 - `Catalog::localized(message)` returns a `Localized`: the text plus whether it fell
   back. Without a translation it is the English text with `fallback() == true`.
   English and the `en-XA`/`ar-XB` diagnostics derive from English and never fall back.
-  `Localized::english_only` wraps text that only exists in English, such as core
-  relative timestamps, with the same rule.
+  `Localized::english_only` wraps text that only exists in English, such as a service's
+  error message, with the same rule.
 
 Templates render a `Localized` through the `ui::localized` macro in `macros.html`.
 It marks fallback text `<span lang="en">` so assistive technology reads it as
@@ -304,8 +304,8 @@ Explore continues to use the existing public-only repository search service and 
 query values/URLs for search, sort, archive filters and paging. Feature-owned typed
 messages cover its title, description, controls, result count, empty states, archive
 badge, star label and pagination. Repository names/descriptions remain user content.
-Existing core relative timestamps and untranslated feature regions are still English;
-locale-aware date/relative-time formatting remains a later presentation contract.
+Untranslated feature regions are still English; relative times follow the page's
+language ([localized times and numbers](localized-time.md)).
 
 Full documents include `home/explore_results.html`. A live search with exactly one
 `HX-Request: true` and `HX-Target: explore-results` renders that same component
