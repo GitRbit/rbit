@@ -1,108 +1,137 @@
-# Actions artifacts and caches: first slice
+# Actions artifacts and caches acceptance
 
-Progress record for the `actions.artifacts-caches` ledger row ("Checkout, cache/artifact
-scope, safe archive extraction and retention"), ledger target `rbit-runner`. The row
-stays `baseline-retained`: this slice moves the decisions the server and the runner
-shared, and documents what remains. It was done together with the
-[backends row](actions-backends-acceptance.md), which it retires.
+Acceptance evidence for the `actions.artifacts-caches` ledger row ("Checkout, cache/artifact
+scope, safe archive extraction and retention"). It follows the
+[identity retirement](identity-retirement.md) pattern and was retired in two slices; the
+first was done together with the [backends row](actions-backends-acceptance.md).
 
-## Where the decisions belong
+## Ledger target: `rbit-actions`, not `rbit-runner`
 
-`rbit-runner` is a binary that depends on no server crate, so the server cannot call
-into it. The row's behaviour has three owners:
+The row was filed under `rbit-runner`, but most of its decisions are the server's, and
+`rbit-runner` is a binary with no server dependency: the server cannot call into it. The
+[rewrite plan](../ground-up-rewrite-plan.md) gives `rbit-actions` "server scheduling,
+runners, jobs, leases, environments, secrets, caches and artifacts" and `rbit-runner` the
+"local cache". The ledger target is therefore changed to `rbit-actions`. The row's three
+owners are now:
 
 | Part | Owner |
 | --- | --- |
-| Checkout, the runner-local cache (layout, LRU eviction, `cache.max_bytes`), archive packing and safe extraction (no write through a link, only new files, `w/`/`h/` roots), artifact upload/download steps | `rbit-runner` (already there; unchanged) |
-| Rules both sides apply: key/`restore-keys`/version format, restore probe order, scope derivation from the run, scope/ref naming, content-digest header, archive root names | runner contract, `rbit-workflow` (**moved by this slice**) |
-| The server's shared cache and artifact store: files under `<data_dir>/actions`, quotas, eviction, retention sweep, zip/tar.gz downloads, REST API | `rbit-services` today; the [rewrite plan](../ground-up-rewrite-plan.md) assigns server "caches and artifacts" to `rbit-actions` (**remaining**) |
+| Checkout, the runner-local cache (layout, LRU eviction, `cache.max_bytes`), archive packing and safe extraction (no write through a link, only new files) | `rbit-runner` (unchanged) |
+| Rules both sides apply: key, `restore-keys` and version format, restore probe order, scopes from the run, scope/ref naming, content digest, archive root names | runner contract `rbit-workflow` (`protocol::caches`, `spec::cache_scopes`; slice 1) |
+| The server's artifact store and shared cache: upload acceptance, quotas, retention, LRU eviction, expiry, orphan rules, download conversion | `rbit-actions` (`archives`, `artifacts`, `caches`, `downloads`; slice 2) |
 
-`rbit_workflow::protocol` is the runner's wire contract and the plan keeps
-runner/workflow shared types free of server details, so it is the closest replacement
-crate that both sides can use. No internal crate edge is added; `rbit-workflow` gains the
-external `sha2` dependency (already in the lock file, used by the runner) so the scope
-digest keeps its exact bytes.
+No internal crate edge is added. `rbit-actions` uses `rbit-workflow`, which
+`FEATURE_EDGES` already allows, plus the external `flate2` and `tar` (already in the lock
+file) for download conversion.
 
-## What moved
+## Slice 1: shared rules into the runner contract
 
-| Decision | Legacy place(s) | Now |
+Moved verbatim from `rbit-services` and `rbit-runner` into `rbit-workflow`: the key and
+version rules (`MAX_CACHE_KEY_CHARS`, `MAX_RESTORE_KEYS`, `cache_key_fits`,
+`valid_cache_key`, `valid_cache_version`), the restore order (`restore_probes`), scope/ref
+naming (`scope_ref`, `ref_to_scope`), run scopes (`CacheScopes::for_run`,
+`cache_ref_scope`), `sha256_from_hex` and the archive roots `w`/`h`. The write scope of an
+untrusted run is `rbit_actions::trust::Isolation::cache_write_scope`, and
+`scheduler::cache_scopes` only composes the two. Enforced by
+`scripts/rewrite/actions-runner-retirement.mjs`.
+
+## Slice 2: the server store behind ports in `rbit-actions`
+
+| Decision | Legacy place | Now |
 | --- | --- | --- |
-| Key ≤ 512 characters, no comma; non-empty for the server | `services::caches::{MAX_CACHE_KEY_CHARS, valid_key}`; `runner::steps::cache::MAX_KEY_CHARS` and an inline check | `protocol::{MAX_CACHE_KEY_CHARS, cache_key_fits, valid_cache_key}` |
-| At most 10 `restore-keys`; version is 64 lowercase hex | `services::caches::{MAX_RESTORE_KEYS, valid_version}` | `protocol::{MAX_RESTORE_KEYS, valid_cache_version}` |
-| Restore order: exact key per read scope, then each prefix per read scope | loops in `services::caches::find_task_cache` and `runner::steps::cache::Store::find` | `protocol::{restore_probes, CacheProbe}` |
-| Scope ↔ ref naming of the cache REST API | `services::caches::{scope_ref, ref_to_scope}` | `protocol::{scope_ref, ref_to_scope}` |
-| Task scopes from run ref, trust, pull number; unsafe refs named `ref/<digest>`; scope path safety | `services::scheduler::{cache_scopes, ref_scope}`, `spec::CacheScopes::validate` closure | `spec::{CacheScopes::for_run, RunCacheScope, cache_ref_scope}`; the write scope of an untrusted run is `rbit_actions::trust::Isolation::cache_write_scope`, and `scheduler::cache_scopes` only composes the two |
-| `Rbit-Content-Sha256` parsing | `services::artifacts::digest_from_hex` | `protocol::sha256_from_hex` |
-| Archive roots `w` (workspace) and `h` (home) | `services::downloads::STORED_ROOT`, runner `Area::prefix` and `extract` | `protocol::{ARCHIVE_WORKSPACE_DIR, ARCHIVE_HOME_DIR}` |
+| Upload checks: name, digest, lease before and after the body; room = min(instance cap, repository quota left); the two "too large" texts; digest match; name conflict text; replaced file removed before placing; failed placement deletes the row | `services::artifacts::upload_artifact` | `rbit_actions::artifacts::ArtifactStorage::upload` |
+| Retention: `retention-days` clamped to 1..instance; `expires_at = now + days·86,400` | same | `artifacts::retention_days`, `ArtifactStorage::upload` |
+| Newest attempt's artifact per name, sorted by name | `services::artifacts::latest_per_name` | `artifacts::latest_per_name` |
+| Removal (file, then row) and expiry (256 per pass) | `delete_artifact`, `expire_artifacts` | `ArtifactStorage::{remove, expire}` |
+| Cache lookup checks and probe loop | `services::caches::find_task_cache` | `rbit_actions::caches::SharedCache::find` |
+| Restore: only the task's repository and read scopes; open, then count the use | `open_task_cache` | `SharedCache::open` |
+| Save: checks, existing key skipped unless replacing, quota cap and text, digest, lease after body, `Exists` race, replaced file first, failed placement rollback, then eviction | `save_task_cache` | `SharedCache::save` |
+| Eviction: least recently used first, never the saved entry, until within the quota (256 at most) | `evict_caches` | `SharedCache::evict` |
+| Removal and expiry after `cache_retention_days` | `remove_cache`, `expire_caches` | `SharedCache::{remove, expire}`, `archives::days_before` |
+| Orphan rules: 1 h for files without rows, 24 h for unfinished uploads, `tmp`, run directories, `<id>.tar.gz` | `sweeper` constants and parsing, `orphaned_cache_file` | `archives::{ORPHAN_AGE, STALE_UPLOAD_AGE, UPLOADS_DIRECTORY, ArtifactDirectory, cache_entry_file}` |
+| Download conversion (zip with descriptors and ZIP64, tar.gz; regular files under `w/` only, no `..`, absolute or drive names; mode bits only) | `services::actions::downloads` | `rbit_actions::downloads` (moved with history, split into `downloads.rs` and `downloads/zip_format.rs`; tests in `downloads/tests.rs`) |
 
-All moved verbatim: same limits, comparisons, order, digest bytes and error text.
+Ports are static traits with associated types (as in `claims`): `ArchiveFiles` and
+`ArchiveUploads` for files; `ArtifactRecords`, `ArtifactUploadStore`, `ArtifactRetention`;
+`CacheRecords`, `CacheTaskStore`, `CacheSaveStore`, `CacheRetention`. The application
+holds no I/O, runtime or clock; refusals carry the exact runner-facing text and port
+errors pass through unchanged.
+
+Adapters in `rbit-services/src/actions`: `archive_files.rs` (temporary file, counting and
+hashing, rename, removal; moved from `artifacts.rs`), `artifact_ports.rs` and
+`cache_ports.rs` (ports over `actions_artifacts`/`actions_caches` and the lease checks
+that `actions.scheduling` owns). `artifacts.rs` and `caches.rs` keep access checks
+(`require_pages`, writers), read models for pages and REST, file opening and logging.
+`rbit_services::actions::downloads` re-exports `rbit_actions::downloads`, so `rbit-web`
+and the log archive are unchanged. The sweep keeps its directory walk and asks the
+orphan rules.
 
 ## Legacy code removed
 
-`services::caches::{MAX_CACHE_KEY_CHARS, MAX_RESTORE_KEYS, valid_key, valid_version,
-scope_ref, ref_to_scope}` and their unit tests; `services::scheduler::ref_scope` and the
-body of `cache_scopes`; `services::artifacts::digest_from_hex` and its test (equivalents
-now in `rbit-workflow`); the restore loops; `runner::steps::cache::MAX_KEY_CHARS`; the
-`"w"`/`"h"` literals. `rbit-web` takes `scope_ref` from the contract.
+From `rbit-services`: the upload and save bodies, `latest_per_name`, `evict_caches`,
+`remove_cache`, the expiry bodies, `SECONDS_PER_DAY`, `SWEEP_ARTIFACTS`, `EVICT_ENTRIES`,
+the sweeper's `ORPHAN_AGE`/`STALE_UPLOAD_AGE` and directory parsing, the cache file name
+parsing, `CacheLookup`/`CacheSave`/`Upload` definitions (re-exported from `rbit-actions`),
+and `actions/downloads.rs` with the crate's `tar` and dev `zip` dependencies.
 
 ## Boundary that fails if legacy paths return
 
-`scripts/rewrite/actions-runner-retirement.mjs` (wired into `scripts/rewrite/check.mjs`)
-rejects, in production `src` outside `rbit-workflow`: a redefined key or restore-key
-limit; a function named `valid_key`, `valid_version`, `scope_ref`, `ref_to_scope`,
-`ref_scope` or `digest_from_hex`; a `for prefix in … restore_keys` loop; a `CacheScopes {
-repository_id | read | write … }` literal in a server crate (the runner's local `exec`
-and fixtures may build one); and a `&str` constant equal to `"w"` or `"h"`. Baseline
-`4868231e`: eleven violations; this tree: none.
-`scripts/tests/actions-runner-retirement.test.mjs` covers every rule, the allowed cases
-and the current tree.
+`scripts/rewrite/actions-artifacts-caches-retirement.mjs`, run by `check.mjs`, over
+production `src` (comments and closing test modules stripped); `rbit-actions` and the
+three adapter files are exempt:
+
+- an `actions_artifacts()` `record`/`delete`/`expired` call, or an `actions_caches()`
+  `record`/`delete`/`least_used`/`unused_since`/`touch`/`exact`/`newest_with_prefix`
+  call, in `rbit-services`, `rbit-web` or `rbit-server`;
+- a redefined `evict_caches`, `remove_cache`, `latest_per_name` or `receive`, or an
+  `EVICT_ENTRIES`/`SWEEP_ARTIFACTS`/`ORPHAN_AGE` constant, in services Actions;
+- the artifact quota or retention computed outside `rbit-actions`;
+- `to_zip`, `to_tar_gz`, `entry_name`, `ZipWriter` or `ZIP64_ENTRY` defined outside it;
+- `tokio::fs` rename, removal or open-for-write in services `artifacts.rs`/`caches.rs`.
+
+Against `fdc7f41f` (slice 1) it reports nine violations; against this tree, none.
+`scripts/tests/actions-artifacts-caches-retirement.test.mjs` covers each rule, the
+allowed cases and the current tree. `actions-runner-retirement.mjs` keeps guarding slice 1.
 
 ## Gates
 
 | Gate | Evidence |
 | --- | --- |
-| Behaviour parity | Existing suites pass unchanged: `rbit-web` `actions_caches`, `actions_artifacts`, `actions_runner_tasks` (scope strings incl. `untrusted/<run>`), `rbit-services` `actions_settings`, `actions_sweeper`, runner cache/artifact unit tests. The scheduler's scope unit test still passes through the adapter. New: `protocol::caches::tests` (limits, probe order, digest, ref mapping) and `spec::cache_scopes::tests` (trust matrix, digest naming). |
-| Security | Untrusted runs still write only `pull/<n>` or `untrusted/<run>`; the server still takes scopes from the run, never the runner. Archive extraction, link checks and size/quotas are untouched. |
-| Migration and rollback | No schema, migration, stored path, protocol byte or route change; latest migration 0073. Rollback is the previous binary. |
-| Performance | Same store queries in the same order (one per probe until a hit); the probe iterator allocates nothing. No release measurement claimed. |
+| Behaviour parity | Same checks in the same order, same texts, same store calls in the same order (one per probe until a hit; touch after open; replaced file before placement; eviction after placement). Existing suites run unchanged: `rbit-web` `actions_artifacts`, `actions_caches`, `actions_api`, `actions_fork_runs` (uploads, leases), `actions_runner_tasks`; `rbit-services` `actions_settings`, `actions_sweeper`; the moved download tests. New: `rbit-actions` `tests/artifact_store.rs` (7) and `tests/cache_store.rs` (7), `archives` and `artifacts` unit tests. |
+| Security | Untrusted runs keep the same quota, scopes and lease checks; a task still reads only its repository's read scopes; downloads still drop links, special files, `..`, absolute and drive names, and set-ID bits. |
+| Migration and rollback | No schema, migration, stored path, route, protocol byte or error text change; latest migration 0073. Rollback is the previous binary. |
+| Performance | One borrowed port per request; the same queries and file operations. Each port call opens the store handle afresh (a pool clone) where the old code reused one per request. No release measurement claimed. |
 
 ## Results
 
-Checked on the Linux CI nodes at the final tip (format, clippy `-D warnings`, full
-Linux test suite, rewrite contracts, front-end build, cargo-deny); the commit and
-outcome are given in the slice report. Locally: `node scripts/rewrite/check.mjs` 0
-violations, `node --test scripts/tests/actions-runner-retirement.test.mjs` 3 passed,
-`cargo fmt --all --check` clean.
+Linux quick check at the code tip: format, workspace-wide clippy `-D warnings`, rewrite
+contracts (including the type checks), licenses, front-end build and nextest for the
+changed packages (`rbit-actions`, `rbit-services`, `rbit-storage`: 1,260 tests) all
+passed. The `rbit-web` HTTP suites (`actions_artifacts`, `actions_caches`, `actions_api`,
+`actions_fork_runs`) are not in the quick scope; they run in the integrated full check. Locally: compile and clippy of `rbit-actions`,
+`rbit-services` and `rbit-web` (all targets), `node scripts/rewrite/check.mjs` 0
+violations, the new script test 3 of 3.
 
-## What remains for this row
+## Not covered
 
-- Move the server cache and artifact store applications (upload acceptance, quotas,
-  LRU eviction, retention expiry, orphan sweep, download conversion) out of
-  `rbit-services/src/actions/{caches,artifacts,downloads,sweeper}.rs` behind ports with
-  `rbit-storage` adapters. The plan names `rbit-actions` as their owner, not
-  `rbit-runner`; the ledger target should be revisited (or the row split) when that
-  slice starts.
-- Splitting `rbit-runner/src/steps/cache.rs` (929 lines) by responsibility.
+- The runner files stay over 400 lines under their ceilings (`steps/cache.rs` 929).
+- Lease checks (`leased_task`, `cache_task`) stay in services: they belong to
+  `actions.scheduling`.
 
 ## Cost
 
-Both rows, three code commits:
+| Slice | Code commits | Files | Lines added / removed |
+| --- | --- | --- | --- |
+| 1 (shared rules, with backends) | 3 | 20 | 434 / 184 |
+| 2 (server store) | 2 (plus this record and a formatting commit) | 22 | 1,971 / 624 |
 
-| Measure | Value |
-| --- | --- |
-| Files changed by code commits | 20 |
-| Lines added / removed | 434 / 184 |
-| `rbit-workflow` (production and tests, two new modules) | 10 files, +275 / −8 |
-| `rbit-services`, `rbit-web`, `rbit-runner` | 8 files, +61 / −176 |
-| Checker and policy scripts | 48-line guard, 48-line test, 2 lines in `check.mjs` |
+Slice 2 by area: `rbit-actions` production +1,150 (of which about 500 lines are the
+moved download conversion and its tests, so roughly 650 new); `rbit-actions` tests +444;
+`rbit-services` +526 / −880 (three new adapter files, 458 lines); checker and policy
+scripts: a 48-line guard, a 44-line test and two lines in `check.mjs`.
 
-Tricky parts: finding the target was the work. The ledger names the runner, but the
-duplicated decisions sat on the server side and the runner binary cannot be a
-dependency, so the shared contract crate had to take them. The runner accepted an empty
-key input that the server refuses, so the key rule split into `cache_key_fits` and
-`valid_cache_key` to keep both behaviours. A rustfmt-expanded import pushed
-`steps/cache.rs` one line past its ceiling.
-
-Estimate for the remaining server store move: ports plus adapters for two stores and
-the sweeper, about 6–10 commits and 1,000–1,500 changed lines (several sessions), the
-size of the identity rows.
+Tricky parts: choosing the owner (the ledger named the runner, the plan the server crate);
+an upload body type that only the adapter knows, handled as an associated `Body` type of a
+per-request port; refusal text that must reach the runner byte for byte; keeping the
+store-handle order while the application owns the sequence; and a private `zip` module
+shadowing the `zip` test crate after the move.
