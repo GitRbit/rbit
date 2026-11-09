@@ -35,6 +35,7 @@
 pub mod api;
 pub mod client;
 mod job;
+mod ports;
 mod startup;
 
 use std::{
@@ -48,29 +49,20 @@ use std::{
 
 use rbit_core::{
     Config, RepoId, Timestamp, User, Visibility,
-    import::{ImportOptions, ImportSource, RepoImport, SourceKind, truncate_chars},
+    import::{ImportOptions, RepoImport, SourceKind},
     repository::OwnedRepository,
 };
-use rbit_storage::sqlite::imports::{ImportStore, NewImport};
+use rbit_storage::sqlite::imports::ImportStore;
 use tokio::sync::{Mutex, Semaphore};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use self::{
-    client::SourceClient,
-    job::{Job, JobServices},
-};
-use crate::{CreateRepository, LfsService, ReleaseService, RepositoryService, ServiceContext, ServiceError, outbound::check_public_host};
+use self::client::SourceClient;
+use crate::{LfsService, ReleaseService, RepositoryService, ServiceContext, ServiceError, outbound::check_public_host};
 
 /// How long [`ImportService::shutdown`] waits for running imports to record their end.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
-/// Longest token accepted.
-const MAX_TOKEN_BYTES: usize = 1024;
-/// Longest repository description (as [`RepositoryService`] accepts).
-const MAX_DESCRIPTION_CHARS: usize = 350;
-/// Recorded for imports a restart interrupted.
-pub const INTERRUPTED: &str = "the import was interrupted when the server restarted; the token is not kept, so start a new import";
-/// Recorded for imports the server stopped.
-pub const STOPPED: &str = "the import was stopped because the server shut down";
+use rbit_repositories::imports::{AdmissionError, admit, may_view_status};
+pub use rbit_repositories::imports::{INTERRUPTED, STOPPED};
 
 /// Raw "import a repository" input.
 #[derive(Clone, Default)]
@@ -155,47 +147,11 @@ impl ImportService {
     /// (unknown repository, refused token, internal address) are [`ServiceError::Invalid`]
     /// and nothing is created.
     pub async fn start(&self, actor: &User, input: ImportInput) -> Result<OwnedRepository, ServiceError> {
-        if !self.is_enabled() {
-            return Err(ServiceError::Invalid("importing is disabled on this instance".to_owned()));
-        }
-        let config = &self.inner.ctx.config;
-        let source = ImportSource::parse(input.kind, &input.host, &input.repository).map_err(|e| ServiceError::Invalid(e.to_string()))?;
-        let token = input.token.trim();
-        if token.len() > MAX_TOKEN_BYTES || token.chars().any(|c| c.is_control() || c.is_whitespace()) {
-            return Err(ServiceError::Invalid("the token is not valid".to_owned()));
-        }
-        check_source_host(config, &source.api_host, source.api_port).await.map_err(ServiceError::Invalid)?;
-        let client = SourceClient::new(
-            source.clone(),
-            (!token.is_empty()).then(|| token.to_owned()),
-            config.imports.allow_private_addresses,
-            Duration::from_secs(config.imports.api_timeout_seconds.max(1)),
-            Duration::from_secs(config.imports.rate_limit_max_wait_seconds),
-            self.inner.shutdown.child_token(),
-            config.updates.report_version,
-        )
-        .map_err(|e| ServiceError::Invalid(e.to_string()))?;
-        let metadata = client.repository().await.map_err(|e| ServiceError::Invalid(format!("{}: {e}", source.full_name())))?;
-
-        let name = match input.name.trim() {
-            "" => source.name.clone(),
-            name => name.to_owned(),
-        };
-        let description =
-            metadata.description.as_deref().map(|d| truncate_chars(d.trim(), MAX_DESCRIPTION_CHARS).to_owned()).unwrap_or_default();
-        let repository = CreateRepository { name, description, visibility: input.visibility };
-        let created = self.inner.repositories.create_in(actor, &input.owner, repository).await?;
-        let repo_id = created.repo.id;
-
-        let source_url = source.web_url();
-        let record = NewImport { repo: repo_id, importer: actor.id(), kind: source.kind, source_url: &source_url, options: input.options };
-        if let Err(error) = self.create_record(&record).await {
-            tracing::error!(%error, "cannot record an import; the repository stays empty");
-            return Err(error.into());
-        }
-        tracing::info!(repo = %created.full_name(), source = %source_url, "import queued");
-        self.spawn(created.clone(), actor.clone(), client, metadata, input.options);
-        Ok(created)
+        let admission = ports::Admission { service: self, actor, input: &input };
+        admit(&admission, &input.token, &input.name).await.map_err(|error| match error {
+            AdmissionError::Invalid(message) => ServiceError::Invalid(message),
+            AdmissionError::Failure(error) => error,
+        })
     }
 
     /// The import of `repo` for `viewer`: its importer or an administrator of the
@@ -203,7 +159,11 @@ impl ImportService {
     /// not imported.
     pub async fn status(&self, viewer: &User, repo: &crate::RepoContext) -> Result<RepoImport, ServiceError> {
         let import = self.store().find(repo.repo.repo.id).await?.ok_or(ServiceError::NotFound)?;
-        if repo.access.can_admin() || import.importer == Some(viewer.id()) { Ok(import) } else { Err(ServiceError::NotFound) }
+        if may_view_status(repo.access.can_admin(), import.importer == Some(viewer.id())) {
+            Ok(import)
+        } else {
+            Err(ServiceError::NotFound)
+        }
     }
 
     fn spawn(&self, repo: OwnedRepository, importer: User, client: SourceClient, metadata: api::Repo, options: ImportOptions) {
@@ -233,27 +193,8 @@ impl ImportService {
         metadata: api::Repo,
         options: ImportOptions,
     ) -> Option<String> {
-        let full_name = repo.full_name();
-        if let Err(error) = self.store().start(repo.repo.id, Timestamp::now()).await {
-            tracing::warn!(%error, repo = %full_name, "cannot mark an import as running");
-        }
-        let context = match self.inner.repositories.open(Some(&importer), repo.owner.name.as_str(), repo.repo.name.as_str()).await {
-            Ok(context) if context.access.can_write() => context,
-            _ => return Some("the repository is no longer available to the importing user".to_owned()),
-        };
-        tracing::info!(repo = %full_name, "import started");
-        let services = JobServices { ctx: self.inner.ctx.clone(), lfs: self.inner.lfs.clone(), releases: self.inner.releases.clone() };
-        let mut job = Job::new(services, client, metadata, context, importer, options);
-        let outcome = tokio::select! {
-            () = self.inner.shutdown.cancelled() => Err(STOPPED.to_owned()),
-            outcome = job.run() => outcome,
-        };
-        match &outcome {
-            Ok(()) => tracing::info!(repo = %full_name, "import finished"),
-            Err(error) => tracing::warn!(repo = %full_name, %error, "import failed"),
-        }
-        metrics::counter!("rbit_imports_total", "outcome" => if outcome.is_ok() { "ok" } else { "error" }).increment(1);
-        outcome.err().map(|error| rbit_core::import::clean_message(&error))
+        let run = ports::Run { service: self, repo, importer, job: std::sync::Mutex::new(Some((client, metadata, options))) };
+        rbit_repositories::imports::run(&run).await
     }
 
     // ------------------------------------------------------------------ background
