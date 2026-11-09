@@ -69,10 +69,10 @@ entries! { Ko:
         }
         ActionsRunnersMessage::Enable => text.literal("활성화"),
         ActionsRunnersMessage::Disable => text.literal("비활성화"),
-        ActionsRunnersMessage::Remove => text.literal("삭제"),
+        ActionsRunnersMessage::Remove => text.literal("제거"),
         ActionsRunnersMessage::RemoveRunner { name, .. } => {
             text.argument(name);
-            text.literal(" 삭제");
+            text.literal(" 제거");
         }
         ActionsRunnersMessage::TokensTitle => text.literal("등록 토큰"),
         ActionsRunnersMessage::TokensIntro => text.literal("러너는 등록 토큰을 한 번 사용하여 자체 자격 증명을 받습니다. 따로 선택하지 않으면 토큰은 일회용이며 만료됩니다."),
@@ -91,7 +91,7 @@ entries! { Ko:
             text.argument(when);
         }
         ActionsRunnersMessage::NoLongerUsable => text.literal("더 이상 사용할 수 없음"),
-        ActionsRunnersMessage::Revoked => text.literal("취소됨"),
+        ActionsRunnersMessage::Revoked => text.literal("폐기됨"),
         ActionsRunnersMessage::Expired => text.literal("만료됨"),
         ActionsRunnersMessage::UnlimitedUses => text.literal("무제한 사용"),
         ActionsRunnersMessage::UsedUp => text.literal("모두 사용됨"),
@@ -99,7 +99,7 @@ entries! { Ko:
             text.number(count);
             text.literal("회 남음");
         }
-        ActionsRunnersMessage::Revoke => text.literal("취소"),
+        ActionsRunnersMessage::Revoke => text.literal("폐기"),
         ActionsRunnersMessage::Hours { count, .. } => {
             text.number(count);
             text.literal("시간");

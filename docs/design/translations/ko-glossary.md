@@ -124,3 +124,85 @@ mainstream developer tools (GitHub in particular).
 | webhook | 웹훅 |
 | wiki | 위키 |
 | workflow | 워크플로 |
+
+## Further terms
+
+| English | Korean |
+| --- | --- |
+| ahead / behind | 앞섬 / 뒤처짐 |
+| assigned | 할당됨 |
+| audit log | 감사 로그 |
+| authenticator app / authentication code | 인증 앱 / 인증 코드 |
+| bio / website / location | 소개 / 웹사이트 / 위치 |
+| bot | 봇 |
+| branding / favicon / footer | 브랜딩 / 파비콘 / 바닥글 |
+| breadcrumb | 이동 경로 |
+| built in (themes) | 기본 제공 |
+| bypass | 우회 |
+| colour | 색상 |
+| commit message / extended description | 커밋 메시지 / 자세한 설명 |
+| committer | 커미터 |
+| configuration (instance) | 구성 |
+| credentials / client secret / issuer | 자격 증명 / 클라이언트 시크릿 / 발급자 |
+| danger zone | 위험 구역 |
+| delivery (webhook) / redeliver | 전송 / 다시 전송 |
+| digest (email) | 요약 |
+| display name | 표시 이름 |
+| due date | 마감일 |
+| enable / disable | 활성화 / 비활성화 |
+| ephemeral (runner) | 일회용 |
+| expiration / expires | 만료 |
+| fetch | 페치 (always; “가져오기” is reserved for import) |
+| files changed | 변경된 파일 |
+| generate (token, codes) | 생성 |
+| identity provider / sign-in provider | ID 공급자 / 로그인 공급자 |
+| import | 가져오기 |
+| instance | 인스턴스 |
+| leave (organization, repository) | 나가기 |
+| link / unlink (account) | 연결 / 연결 해제 |
+| lock / unlock conversation | 대화 잠그기 / 대화 잠금 해제 |
+| maintenance / metrics | 유지 관리 / 메트릭 |
+| mark as read / unread | 읽음으로 표시 / 읽지 않음 |
+| mention | 멘션 (in timeline sentences: 언급했습니다) |
+| merge base | 병합 베이스 |
+| not planned | 계획 없음 |
+| online / offline | 온라인 / 오프라인 |
+| optional | 선택 사항 |
+| override (configuration) | 재정의 |
+| parent (commit) | 부모 |
+| payload / ping | 페이로드 / 핑 |
+| pattern (branch) | 패턴 |
+| pre-release | 사전 릴리스 |
+| preview | 미리 보기 |
+| rate limiting / timeout | 속도 제한 / 시간 제한 |
+| raw | 원본 |
+| read / read and write (permission) | 읽기 / 읽기 및 쓰기 |
+| ready for review | 리뷰 준비 완료 |
+| ref | 참조 |
+| registration token / setup token | 등록 토큰 / 설정 토큰 |
+| reject | 거부 |
+| remove | 제거 (delete stays 삭제) |
+| restart (server) | 다시 시작 |
+| restore | 복원 |
+| revoke / revoked | 폐기 / 폐기됨 (cancel stays 취소) |
+| role | 역할 |
+| second factor | 두 번째 인증 수단 |
+| self-hosting | 셀프 호스팅 |
+| session | 세션 |
+| sort | 정렬 (최신순, 오래된순, …) |
+| squash and merge / rebase and merge | 스쿼시 후 병합 / 리베이스 후 병합 |
+| submodule / binary file | 서브모듈 / 바이너리 파일 |
+| suspend / suspended / lift suspension | 정지 / 정지됨 / 정지 해제 |
+| thread (notification) | 스레드 |
+| trusted authors / stop trusting | 신뢰할 수 있는 작성자 / 신뢰 해제 |
+| unarchive | 보관 해제 |
+| upstream / remote | 업스트림 / 원격 저장소 |
+| wait timer / required reviewers | 대기 타이머 / 필수 리뷰어 |
+
+## Split sentences
+
+Lead/Tail fragments are written so that the markup between them reads naturally in
+Korean. A tail that cannot follow a name without a particle uses 을(를); a
+“Type … to confirm” pair becomes “확인하려면 다음을 입력하세요:” followed by the name, or
+“확인하려면 {name} 입력”, depending on how the template splits it. Fragments never start
+or end with a space unless the English one does.

@@ -72,7 +72,7 @@ entries! { Ko:
         }
         ReleaseMessage::Removed { name, .. } => {
             text.argument(name);
-            text.literal(" 제거 완료.");
+            text.literal(" 파일을 제거했습니다.");
         }
         ReleaseMessage::EditTitle { tag, .. } => {
             text.argument(tag);

@@ -52,7 +52,7 @@ entries! { Ko:
             text.argument(name);
             text.literal(" 신뢰 해제");
         }
-        ActionsSettingsMessage::Remove => text.literal("삭제"),
+        ActionsSettingsMessage::Remove => text.literal("제거"),
         ActionsSettingsMessage::Saved => text.literal("설정을 저장했습니다."),
         ActionsSettingsMessage::SecretSaved => text.literal("시크릿을 저장했습니다."),
         ActionsSettingsMessage::SecretDeleted => text.literal("시크릿을 삭제했습니다."),

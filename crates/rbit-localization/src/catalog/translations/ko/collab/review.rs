@@ -69,9 +69,9 @@ entries! { Ko:
         ReviewMessage::NoReviews => text.literal("아직 리뷰가 없습니다"),
         ReviewMessage::RemoveRequestFor { name, .. } => {
             text.argument(name);
-            text.literal(" 님에 대한 리뷰 요청 삭제");
+            text.literal(" 님에 대한 리뷰 요청 제거");
         }
-        ReviewMessage::RemoveRequest => text.literal("요청 삭제"),
+        ReviewMessage::RemoveRequest => text.literal("요청 제거"),
         ReviewMessage::RequestReviewFrom => text.literal("리뷰 요청 대상"),
         ReviewMessage::Username => text.literal("사용자 이름"),
         ReviewMessage::RequestReview => text.literal("리뷰 요청"),

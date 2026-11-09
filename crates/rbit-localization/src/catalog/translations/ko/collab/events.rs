@@ -176,7 +176,7 @@ entries! { Ko:
             text.slot(0);
             text.literal(" 님이 ");
             text.slot(1);
-            text.literal(" 님에 대한 리뷰 요청을 삭제했습니다");
+            text.literal(" 님에 대한 리뷰 요청을 제거했습니다");
         }
         TimelineEventMessage::ReviewDismissedOf => {
             text.slot(0);
