@@ -30,8 +30,15 @@ impl MessageWriter {
         self.catalog.argument(&mut self.output, value);
     }
 
-    /// An integer, written with ASCII digits.
+    /// A count or other quantity, with the digit grouping of the language being written
+    /// (`1,234`, `1.234`, `1 234`; see [`crate::number`]).
     pub fn number(&mut self, value: u64) {
+        crate::number::write_integer(&mut self.output, self.catalog.locale, value);
+    }
+
+    /// An integer read as a label rather than a quantity (a year, a day of the month):
+    /// plain ASCII digits, never grouped.
+    pub fn digits(&mut self, value: i64) {
         let _ = write!(self.output, "{value}");
     }
 

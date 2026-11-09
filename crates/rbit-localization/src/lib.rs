@@ -8,6 +8,7 @@
 mod catalog;
 mod locale;
 mod negotiation;
+pub mod number;
 mod plural;
 mod pseudo;
 
@@ -18,6 +19,7 @@ pub use catalog::collab::{
 };
 pub use catalog::settings;
 pub use catalog::shell;
+pub use catalog::time;
 pub use catalog::{
     ActionsDisplay, ActionsEnvironmentMessage, ActionsJobMessage, ActionsMessage, ActionsOverviewMessage, ActionsRunnersMessage,
     ActionsSecretsMessage, ActionsSettingsMessage, Catalog, ChromeDisplay, ChromeMessage, JobDisplay, LanguageMessage, Localized,

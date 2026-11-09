@@ -5,8 +5,6 @@
 //! so a translation may move or reorder the pieces without splitting a sentence into
 //! fragments. Fallback follows [`super::super::fallback`]: a locale without a translation
 //! gets the English sentence, marked as such.
-use std::fmt::Write;
-
 use crate::{catalog::Catalog, locale::Locale, plural::Plural};
 
 /// Writes one rich message: wording, plain arguments, numbers and slots.
@@ -33,9 +31,10 @@ impl RichWriter {
         catalog.argument(self.text(), value);
     }
 
-    /// An integer, written with ASCII digits.
+    /// A count, with the digit grouping of the language being written.
     pub fn number(&mut self, value: u64) {
-        let _ = write!(self.text(), "{value}");
+        let locale = self.catalog.locale();
+        crate::number::write_integer(self.text(), locale, value);
     }
 
     /// The CLDR plural category of `count` in the language being written.

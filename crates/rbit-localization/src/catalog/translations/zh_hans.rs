@@ -10,4 +10,5 @@ mod settings;
 mod settings_nav;
 mod shell;
 mod theme_preview;
+mod time;
 mod wiki;

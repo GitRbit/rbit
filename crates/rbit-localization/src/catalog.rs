@@ -31,6 +31,7 @@ mod actions_ui;
 pub(crate) mod collab;
 pub mod shell;
 mod theme_preview;
+pub mod time;
 pub use actions_ui::{
     environments::ActionsEnvironmentMessage, runners::ActionsRunnersMessage, secrets::ActionsSecretsMessage,
     settings::ActionsSettingsMessage,
