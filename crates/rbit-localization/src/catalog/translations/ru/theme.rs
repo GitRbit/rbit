@@ -29,8 +29,6 @@ entries! { Ru:
         ThemeMessage::Applied => text.literal("Применена"),
         ThemeMessage::By => text.literal("Автор:"),
         ThemeMessage::Credit => text.literal("Встроена в rbit"),
-        ThemeMessage::ThemeSingular => text.literal("тема"),
-        ThemeMessage::ThemePlural => text.literal("тем"),
         ThemeMessage::OrApply => text.literal("или нажмите «Применить»"),
     }
     ThemeSentence => RichWriter |text| {

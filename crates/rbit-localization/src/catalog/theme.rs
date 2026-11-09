@@ -25,8 +25,6 @@ pub enum ThemeMessage {
     Applied,
     By,
     Credit,
-    ThemeSingular,
-    ThemePlural,
     OrApply,
 }
 impl ThemeMessage {
@@ -54,8 +52,6 @@ impl ThemeMessage {
             Self::Applied => "themes.picker.applied",
             Self::By => "themes.picker.by",
             Self::Credit => "themes.picker.credit",
-            Self::ThemeSingular => "themes.picker.theme-singular",
-            Self::ThemePlural => "themes.picker.theme-plural",
             Self::OrApply => "themes.picker.or-apply",
         }
     }
@@ -86,8 +82,6 @@ impl ThemeMessage {
             Self::Applied => "Applied",
             Self::By => "By",
             Self::Credit => "Built into rbit",
-            Self::ThemeSingular => "theme",
-            Self::ThemePlural => "themes",
             Self::OrApply => "or click Apply",
         }
     }

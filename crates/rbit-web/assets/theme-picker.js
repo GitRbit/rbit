@@ -1,4 +1,4 @@
-import { pickerCount, pickerCredit, pickerApply } from "./theme-picker-labels.js";
+import { countLabel, pickerCount, pickerCredit, pickerApply } from "./theme-picker-labels.js";
 import { syncIndex, watchIndexScroll } from "./theme-picker-index.js";
 
 // Instant theme switching and the theme gallery. Every control here is a plain form or
@@ -264,7 +264,7 @@ function filter(gallery) {
     family.hidden = !family.querySelector("[data-theme-item]:not([hidden])");
   }
   const count = gallery.querySelector("[data-theme-count]");
-  if (count) count.textContent = `${shown} ${shown === 1 ? "theme" : "themes"}`;
+  if (count) count.textContent = countLabel(count, shown);
   const empty = gallery.querySelector("[data-theme-empty]");
   if (empty) empty.hidden = anyVisible;
 

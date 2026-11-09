@@ -28,8 +28,6 @@ entries! { Ja:
         ThemeMessage::Applied => text.literal("適用済み"),
         ThemeMessage::By => text.literal("作成者"),
         ThemeMessage::Credit => text.literal("rbit に組み込み"),
-        ThemeMessage::ThemeSingular => text.literal("テーマ"),
-        ThemeMessage::ThemePlural => text.literal("テーマ"),
         ThemeMessage::OrApply => text.literal("または「適用」をクリック"),
     }
     ThemeSentence => RichWriter |text| {

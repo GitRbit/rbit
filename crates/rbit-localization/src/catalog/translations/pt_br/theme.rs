@@ -29,8 +29,6 @@ entries! { PtBr:
         ThemeMessage::Applied => text.literal("Aplicado"),
         ThemeMessage::By => text.literal("Por"),
         ThemeMessage::Credit => text.literal("Integrado ao rbit"),
-        ThemeMessage::ThemeSingular => text.literal("tema"),
-        ThemeMessage::ThemePlural => text.literal("temas"),
         ThemeMessage::OrApply => text.literal("ou clique em Aplicar"),
     }
     ThemeSentence => RichWriter |text| {

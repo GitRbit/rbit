@@ -29,8 +29,6 @@ entries! { De:
         ThemeMessage::Applied => text.literal("Übernommen"),
         ThemeMessage::By => text.literal("Von"),
         ThemeMessage::Credit => text.literal("In rbit integriert"),
-        ThemeMessage::ThemeSingular => text.literal("Design"),
-        ThemeMessage::ThemePlural => text.literal("Designs"),
         ThemeMessage::OrApply => text.literal("oder auf Übernehmen klicken"),
     }
     ThemeSentence => RichWriter |text| {

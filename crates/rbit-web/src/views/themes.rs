@@ -147,6 +147,8 @@ pub struct Gallery {
     /// Lets scripts build cache-busting URLs for single-theme stylesheets.
     pub asset_version: &'static str,
     pub signed_in: bool,
+    /// The shown count's sentence and its live forms ([`PickerLabels::count_forms`]).
+    pub count_labels: PickerLabels,
 }
 
 impl Gallery {
@@ -226,6 +228,7 @@ impl Gallery {
             stylesheet: assets::url("themes/all.css"),
             asset_version: assets::build_version(),
             signed_in: page.is_signed_in(),
+            count_labels: PickerLabels::new(page.locale),
         }
     }
 
@@ -233,10 +236,6 @@ impl Gallery {
     #[allow(clippy::trivially_copy_pass_by_ref, reason = "Askama passes the page locale by reference")]
     pub fn search_placeholder(&self, locale: &Locale) -> Localized {
         GalleryText::SearchCount(u64::try_from(self.total).unwrap_or(u64::MAX)).text(locale)
-    }
-
-    pub fn shown_label(&self) -> String {
-        format!("{} {}", self.shown, if self.shown == 1 { "theme" } else { "themes" })
     }
 }
 

@@ -29,8 +29,6 @@ entries! { Es:
         ThemeMessage::Applied => text.literal("Aplicado"),
         ThemeMessage::By => text.literal("Por"),
         ThemeMessage::Credit => text.literal("Integrado en rbit"),
-        ThemeMessage::ThemeSingular => text.literal("tema"),
-        ThemeMessage::ThemePlural => text.literal("temas"),
         ThemeMessage::OrApply => text.literal("o pulsa Aplicar"),
     }
     ThemeSentence => RichWriter |text| {

@@ -16,7 +16,8 @@
       {% call ui::icon("search", "pointer-events-none absolute inset-s-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint") %}{% endcall %}
       <input class="input ps-9" type="search" name="q" value="{{ gallery.query }}" maxlength="100" placeholder="{{ gallery.search_placeholder(page.locale) }}" aria-label="{{ GalleryMessage::Search.text(page.locale) }}" autocapitalize="none" autocomplete="off" spellcheck="false" data-theme-search>
     </div>
-    <p class="ms-auto text-xs text-ink-faint" data-theme-count aria-live="polite">{{ gallery.shown_label() }}</p>
+    {% let count_labels = gallery.count_labels %}{% let count = count_labels.count(gallery.shown) %}
+    <p class="ms-auto text-xs text-ink-faint" data-theme-count aria-live="polite" data-plural="{{ count_labels.count_plural() }}"{% for (category, form) in count_labels.count_forms() %} data-count-{{ category }}="{{ form }}"{% endfor %}{% if count.fallback() %} lang="en"{% endif %}>{% for part in count.parts() %}{% if part.is_slot(0) %}{{ gallery.shown }}{% else %}{{ part.text() }}{% endif %}{% endfor %}</p>
   </form>
 
   <form method="post" action="/themes" hx-boost="false" data-theme-form>

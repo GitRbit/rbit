@@ -28,8 +28,6 @@ entries! { ZhHans:
         ThemeMessage::Applied => text.literal("已应用"),
         ThemeMessage::By => text.literal("作者"),
         ThemeMessage::Credit => text.literal("rbit 内置"),
-        ThemeMessage::ThemeSingular => text.literal("个主题"),
-        ThemeMessage::ThemePlural => text.literal("个主题"),
         ThemeMessage::OrApply => text.literal("或点击“应用”"),
     }
     ThemeSentence => RichWriter |text| {

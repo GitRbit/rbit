@@ -6,7 +6,7 @@ import vm from 'node:vm';
 const pickerModule = (await readFile(new URL('../../crates/rbit-web/assets/theme-picker.js', import.meta.url), 'utf8')).replaceAll('\r\n', '\n');
 const indexModule = await readFile(new URL('../../crates/rbit-web/assets/theme-picker-index.js', import.meta.url), 'utf8');
 const indexImport = 'import { syncIndex, watchIndexScroll } from "./theme-picker-index.js";';
-const labelImport = 'import { pickerCount, pickerCredit, pickerApply } from "./theme-picker-labels.js";';
+const labelImport = 'import { countLabel, pickerCount, pickerCredit, pickerApply } from "./theme-picker-labels.js";';
 const labelModule = await readFile(new URL('../../crates/rbit-web/assets/theme-picker-labels.js', import.meta.url), 'utf8');
 assert.ok(pickerModule.startsWith(labelImport + "\n" + indexImport));
 const pickerSource = indexModule.replace(/^export /gm, '') + labelModule.replace(/^export /gm, '')

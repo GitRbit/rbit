@@ -28,8 +28,6 @@ entries! { Ko:
         ThemeMessage::Applied => text.literal("적용됨"),
         ThemeMessage::By => text.literal("제작:"),
         ThemeMessage::Credit => text.literal("rbit 기본 제공"),
-        ThemeMessage::ThemeSingular => text.literal("테마"),
-        ThemeMessage::ThemePlural => text.literal("테마"),
         ThemeMessage::OrApply => text.literal("또는 적용 클릭"),
     }
     ThemeSentence => RichWriter |text| {
