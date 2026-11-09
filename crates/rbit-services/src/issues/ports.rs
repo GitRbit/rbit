@@ -1,8 +1,8 @@
 //! Static adapters for the participant and thread activity applications: store
 //! lookups, repository access of other people, mentions and cross-references.
 
-use rbit_core::access::repo_access;
 use rbit_collaboration::issues::{AccountNamePort, ParticipantError, ParticipantPort, ReviewText, ThreadActivityPort};
+use rbit_core::access::repo_access;
 use rbit_core::{
     Account, AccountId, CommentId, Issue, IssueId, IssueNumber, LabelId, RepoId, User, issue::ReviewId, issue::ReviewState,
     repository::OwnedRepository,

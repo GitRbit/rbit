@@ -38,8 +38,8 @@ use std::{
     sync::{Arc, Mutex, PoisonError, atomic::AtomicBool},
 };
 
-use rbit_core::access::repo_access;
 use rbit_collaboration::pulls::{PullCreation, PullCreationAccess, PullInput, branch_ref, select_head};
+use rbit_core::access::repo_access;
 use rbit_core::{
     Account, AccountId, Issue, IssueNumber, RepoAccess, RepoId, Timestamp, User,
     issue::IssueAction,
