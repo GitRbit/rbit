@@ -2,6 +2,7 @@
 mod authorization;
 pub mod full;
 pub mod ownership;
+pub mod page_effects;
 pub(crate) mod protocol;
 pub mod publish;
 mod rows;

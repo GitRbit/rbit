@@ -100,9 +100,6 @@ entries! { De:
             text.argument(title);
             text.literal(" löschen?");
         }
-        WikiMessage::DeleteWarning => text.literal(
-            "Die Seite und ihr Verlauf werden aus dem Wiki entfernt. Dies kann hier nicht rückgängig gemacht werden.",
-        ),
         WikiMessage::DeletePage => text.literal("Seite löschen"),
         WikiMessage::Disabled => text.literal("Das Wiki ist für dieses Repository deaktiviert."),
         WikiMessage::About => text.literal(

@@ -65,6 +65,8 @@ pub struct WikiHistoryEntry {
     /// Display name recorded at publication; not an account reference or ACL fact.
     pub author: Option<String>,
     pub change: Option<crate::change::WikiChange>,
+    /// The page's path before this change, when this change moved it.
+    pub renamed_from: Option<WikiPath>,
 }
 
 #[derive(Debug)]

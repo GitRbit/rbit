@@ -92,7 +92,6 @@ entries! { ZhHans:
             text.argument(title);
             text.literal("”？");
         }
-        WikiMessage::DeleteWarning => text.literal("页面及其历史记录将从 Wiki 中移除。此操作无法在此撤销。"),
         WikiMessage::DeletePage => text.literal("删除页面"),
         WikiMessage::Disabled => text.literal("此仓库的 Wiki 已关闭。"),
         WikiMessage::About => text.literal("Wiki 用于存放文档页面，这些页面拥有独立于代码的历史记录。"),

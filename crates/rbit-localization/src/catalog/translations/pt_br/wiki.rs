@@ -100,9 +100,6 @@ entries! { PtBr:
             text.argument(title);
             text.literal("?");
         }
-        WikiMessage::DeleteWarning => {
-            text.literal("A página e seu histórico serão removidos da wiki. Isso não pode ser desfeito aqui.");
-        }
         WikiMessage::DeletePage => text.literal("Excluir página"),
         WikiMessage::Disabled => text.literal("A wiki está desativada neste repositório."),
         WikiMessage::About => {

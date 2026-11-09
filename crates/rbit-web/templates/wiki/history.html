@@ -6,6 +6,9 @@
   <h1 class="min-w-0 flex-1 truncate text-base font-semibold tracking-tight" dir="auto">{% call ui::localized(heading) %}{% endcall %}</h1>
   <a href="{{ page_url }}" class="btn btn-ghost">{% call ui::icon("file-text", "size-3.5") %}{% endcall %}{% call ui::localized(wiki.t.text(WikiMessage::ViewCurrent)) %}{% endcall %}</a>
 </div>
+{% if let Some(notice) = deleted_notice %}
+<p class="notice mb-4" role="note">{% call ui::icon("trash", "mt-0.5 size-3.5 shrink-0") %}{% endcall %}<span>{% call ui::localized(notice) %}{% endcall %}</span></p>
+{% endif %}
 <div class="box overflow-x-auto">
   <table class="w-full text-[13px]">
     <thead class="bg-subtle text-xs text-ink-muted">
@@ -20,9 +23,10 @@
       {% for entry in entries %}
       <tr class="border-b border-line last:border-b-0">
         <td class="px-4 py-2.5">
-          <a href="{{ entry.url }}" class="font-medium hover:underline hover:underline-offset-4">{% call ui::localized(entry.label) %}{% endcall %}</a>
+          {% if let Some(url) = entry.url %}<a href="{{ url }}" class="font-medium hover:underline hover:underline-offset-4">{% call ui::localized(entry.label) %}{% endcall %}</a>{% else %}<span class="font-medium">{% call ui::localized(entry.label) %}{% endcall %}</span>{% endif %}
           <span class="badge ms-1.5">{% call ui::localized(entry.change) %}{% endcall %}</span>
           <span class="mt-0.5 block truncate text-xs text-ink-faint" dir="auto">{{ entry.title }}</span>
+          {% if let Some(renamed_from) = entry.renamed_from %}<span class="mt-0.5 block truncate text-xs text-ink-muted" dir="auto">{% call ui::localized(renamed_from) %}{% endcall %}</span>{% endif %}
         </td>
         <td class="px-4 py-2.5 text-ink-muted">{% if let Some(author) = entry.author %}<a href="/{{ author }}" class="hover:text-ink">{{ author }}</a>{% else %}{% call ui::localized(wiki.t.text(WikiMessage::UnknownAuthor)) %}{% endcall %}{% endif %}</td>
         <td class="whitespace-nowrap px-4 py-2.5 text-ink-muted"><time datetime="{{ entry.iso }}">{{ entry.date }}</time></td>

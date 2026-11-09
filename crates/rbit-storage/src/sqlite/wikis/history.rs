@@ -24,11 +24,15 @@ impl WikiCatalogStore {
         let Some(meta) = Self::authorized(&mut tx, request.repository, request.viewer).await? else { return Ok(None) };
         let (_, _, head) = meta.decode()?;
         let Some(head) = head else { return Ok(None) };
-        let exists: Option<i64> = sqlx::query_scalar("SELECT 1 FROM wiki_pages WHERE repo_id=?1 AND id=?2")
-            .bind(request.repository.0)
-            .bind(request.page.get())
-            .fetch_optional(&mut *tx)
-            .await?;
+        // Deleted pages keep their history.
+        let exists: Option<i64> = sqlx::query_scalar(
+            "SELECT 1 FROM wiki_pages WHERE repo_id=?1 AND id=?2 \
+             UNION ALL SELECT 1 FROM wiki_page_tombstones WHERE repo_id=?1 AND page_id=?2",
+        )
+        .bind(request.repository.0)
+        .bind(request.page.get())
+        .fetch_optional(&mut *tx)
+        .await?;
         if exists.is_none() {
             return Ok(None);
         }
@@ -47,10 +51,18 @@ impl WikiCatalogStore {
         .bind(i64::from(request.limit.get()) + 1)
         .fetch_all(&mut *tx)
         .await?;
-        let mut entries = Vec::with_capacity(selected.len().min(usize::from(request.limit.get())));
-        let has_more = selected.len() > usize::from(request.limit.get());
-        for row in selected.into_iter().take(usize::from(request.limit.get())) {
+        let limit = usize::from(request.limit.get());
+        let has_more = selected.len() > limit;
+        let mut entries: Vec<WikiHistoryEntry> = Vec::with_capacity(selected.len().min(limit));
+        // The extra row past the limit only tells whether the last entry moved the page.
+        for (index, row) in selected.into_iter().enumerate() {
             let (path, title) = rows::names(row.path, row.title)?;
+            if let Some(newer) = entries.last_mut().filter(|newer| newer.path != path) {
+                newer.renamed_from = Some(path.clone());
+            }
+            if index == limit {
+                break;
+            }
             let change = row.change.as_deref().map(|code| WikiChange::from_code(code).ok_or_else(rows::corrupt)).transpose()?;
             entries.push(WikiHistoryEntry {
                 head: rows::head(row.generation, &row.revision)?,
@@ -59,6 +71,7 @@ impl WikiCatalogStore {
                 at: Timestamp(row.at),
                 author: row.author,
                 change,
+                renamed_from: None,
             });
         }
         let next = if has_more { entries.last().map(|entry| entry.head.generation) } else { None };

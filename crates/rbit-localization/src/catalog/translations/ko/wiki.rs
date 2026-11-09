@@ -83,7 +83,6 @@ entries! { Ko:
             text.argument(title);
             text.literal(" 페이지를 삭제할까요?");
         }
-        WikiMessage::DeleteWarning => text.literal("페이지와 그 기록이 위키에서 제거됩니다. 여기에서는 되돌릴 수 없습니다."),
         WikiMessage::DeletePage => text.literal("페이지 삭제"),
         WikiMessage::Disabled => text.literal("이 저장소의 위키가 꺼져 있습니다."),
         WikiMessage::About => text.literal("위키는 코드와 별도로 자체 기록을 가진 문서 페이지를 보관합니다."),

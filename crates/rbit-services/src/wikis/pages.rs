@@ -23,7 +23,8 @@ use rbit_storage::{
 };
 use rbit_wikis::{
     WikiContent, WikiGeneration, WikiPage, WikiPageId, WikiPath,
-    listing::{WikiPageEntry, WikiPageList},
+    change::WikiChange,
+    listing::{WikiDeletedList, WikiDeletedPage, WikiPageEntry, WikiPageList},
     reading::{
         WikiCatalog, WikiCatalogPage, WikiHistory, WikiHistoryLimit, WikiHistoryRequest, WikiPageRequest, WikiRevisionRequest,
         WikiRevisionStore,
@@ -31,7 +32,7 @@ use rbit_wikis::{
 };
 use tokio::sync::{Mutex, OnceCell};
 
-use super::errors::WikiError;
+use super::{errors::WikiError, lifecycle::WikiBackground};
 use crate::RepoContext;
 
 /// Revisions per history page.
@@ -52,10 +53,19 @@ pub struct WikiPageView {
 #[derive(Debug)]
 pub enum WikiLookup {
     Page(WikiPageView),
+    /// A page had this path before it was renamed; it is now at this path.
+    Moved(WikiPath),
     /// No current page has this path; `empty` when the wiki has no pages at all.
     Missing {
         empty: bool,
     },
+}
+
+/// A page addressed by its stable ID: current, or deleted with its history kept.
+#[derive(Debug)]
+pub enum WikiPageState {
+    Current(Box<WikiPageView>),
+    Deleted(WikiDeletedPage),
 }
 
 /// Two revisions of one page and their line differences.
@@ -78,12 +88,13 @@ pub enum WikiStatus {
 pub struct WikiService {
     pub(super) catalog: WikiCatalogStore,
     pub(super) mutations: WikiMutationStore,
-    root: Arc<PathBuf>,
+    pub(super) root: Arc<PathBuf>,
     objects: Arc<OnceCell<WikiObjects>>,
     work: BlockingBudget,
     /// One change at a time per process: preparation and publication of one change
     /// never interleave with another, so a head moved underneath is rare.
     pub(super) writes: Arc<Mutex<()>>,
+    pub(super) background: Arc<WikiBackground>,
 }
 
 fn viewer_id(viewer: Option<&User>) -> Option<rbit_core::AccountId> {
@@ -101,6 +112,7 @@ impl WikiService {
             objects: Arc::new(OnceCell::new()),
             work: BlockingBudget::new(OBJECT_WORK),
             writes: Arc::new(Mutex::new(())),
+            background: Arc::default(),
         }
     }
 
@@ -130,10 +142,13 @@ impl WikiService {
         let request = WikiPageRequest { repository: repo.repo.repo.id, viewer: viewer_id(viewer), path };
         let selection = self.catalog.page(request).await?.ok_or(WikiError::NotFound)?;
         let empty = selection.head.is_none();
-        Ok(match self.content(selection).await? {
-            Some(view) => WikiLookup::Page(view),
-            None => WikiLookup::Missing { empty },
-        })
+        if let Some(view) = self.content(selection).await? {
+            return Ok(WikiLookup::Page(view));
+        }
+        if !empty && let Some(moved) = self.catalog.alias(repo.repo.repo.id, viewer_id(viewer), path).await? {
+            return Ok(WikiLookup::Moved(moved));
+        }
+        Ok(WikiLookup::Missing { empty })
     }
 
     /// The current page with the stable `id`, or `NotFound`.
@@ -189,7 +204,8 @@ impl WikiService {
         self.content(selection).await?.ok_or(WikiError::NotFound)
     }
 
-    /// The page's revision before `generation`, if any.
+    /// The page's last revision with content before `generation`, if any. A deletion
+    /// has no content, and two deletions are never adjacent, so two entries suffice.
     pub async fn previous(
         &self,
         repo: &RepoContext,
@@ -197,8 +213,32 @@ impl WikiService {
         page: WikiPageId,
         generation: WikiGeneration,
     ) -> Result<Option<WikiGeneration>, WikiError> {
-        let history = self.history_limited(repo.repo.repo.id, viewer, page, Some(generation), 1).await?;
-        Ok(history.entries.first().map(|entry| entry.head.generation))
+        let history = self.history_limited(repo.repo.repo.id, viewer, page, Some(generation), 2).await?;
+        Ok(history.entries.iter().find(|entry| entry.change != Some(WikiChange::Delete)).map(|entry| entry.head.generation))
+    }
+
+    /// Deleted pages, most recently deleted first, deleted before `before` when given.
+    pub async fn deleted(
+        &self,
+        repo: &RepoContext,
+        viewer: Option<&User>,
+        before: Option<WikiGeneration>,
+    ) -> Result<WikiDeletedList, WikiError> {
+        self.catalog.deleted_pages(repo.repo.repo.id, viewer_id(viewer), before, WIKI_INDEX_PAGE).await?.ok_or(WikiError::NotFound)
+    }
+
+    /// The deleted page with the stable `id`, or `NotFound` (also when it is current).
+    pub async fn deleted_page(&self, repo: &RepoContext, viewer: Option<&User>, id: WikiPageId) -> Result<WikiDeletedPage, WikiError> {
+        self.catalog.deleted_page(repo.repo.repo.id, viewer_id(viewer), id).await?.ok_or(WikiError::NotFound)
+    }
+
+    /// The page with the stable `id`, current or deleted.
+    pub async fn page_state(&self, repo: &RepoContext, viewer: Option<&User>, id: WikiPageId) -> Result<WikiPageState, WikiError> {
+        match self.page_by_id(repo, viewer, id).await {
+            Ok(view) => Ok(WikiPageState::Current(Box::new(view))),
+            Err(WikiError::NotFound) => Ok(WikiPageState::Deleted(self.deleted_page(repo, viewer, id).await?)),
+            Err(error) => Err(error),
+        }
     }
 
     /// Line differences between two revisions of one page (`base` is usually older).

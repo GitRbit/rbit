@@ -32,7 +32,13 @@ use crate::{
 
 /// Opens the repository for a signed-in writer: 404 when unreadable or the wiki is
 /// off, 403 without write access, refused when archived.
-async fn writer(state: &AppState, user: &SignedIn, owner: &str, repo: &str, locale: RequestLocale) -> WebResult<(Opened, Viewer)> {
+pub(super) async fn writer(
+    state: &AppState,
+    user: &SignedIn,
+    owner: &str,
+    repo: &str,
+    locale: RequestLocale,
+) -> WebResult<(Opened, Viewer)> {
     let viewer = Viewer(Some(user.0.clone()));
     let opened = Opened::load(state, &viewer, owner, repo, locale).await?;
     if opened.status(state).await? == rbit_services::wikis::pages::WikiStatus::Off {
@@ -45,7 +51,7 @@ async fn writer(state: &AppState, user: &SignedIn, owner: &str, repo: &str, loca
     Ok((opened, viewer))
 }
 
-fn base(value: &str) -> WebResult<WikiGeneration> {
+pub(super) fn base(value: &str) -> WebResult<WikiGeneration> {
     value.parse::<i64>().ok().and_then(WikiGeneration::new).ok_or_else(|| WebError::BadRequest("invalid form".into()))
 }
 
@@ -165,8 +171,8 @@ async fn conflict_links(
     let wikis = &state.services.wikis;
     let current = match wikis.page_by_id(&opened.loaded.ctx, viewer.user(), id).await {
         Ok(current) => current,
-        // Deleted meanwhile: the history is gone with it; offer the wiki home.
-        Err(WikiError::NotFound) => return Ok(WikiConflictLinks { current_url: opened.urls.home.clone(), compare_url: None }),
+        // Deleted meanwhile: its history and restore are with the deleted pages.
+        Err(WikiError::NotFound) => return Ok(WikiConflictLinks { current_url: opened.urls.deleted(), compare_url: None }),
         Err(error) => return Err(web_error(error)),
     };
     let edited = match form.base.parse::<i64>().ok().and_then(|value| value.checked_add(1)).and_then(WikiGeneration::new) {
@@ -257,7 +263,7 @@ pub(super) async fn update(
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct BaseForm {
-    base: String,
+    pub(super) base: String,
 }
 
 /// `GET W/-/page/{id}/delete`: the confirmation.
@@ -284,7 +290,7 @@ pub(super) async fn delete_form(
     Ok(opened.respond(template))
 }
 
-/// `POST W/-/page/{id}/delete`: back to the wiki home (the page's history is gone).
+/// `POST W/-/page/{id}/delete`: back to the wiki home (the page's history is kept).
 pub(super) async fn delete(
     State(state): State<AppState>,
     user: SignedIn,

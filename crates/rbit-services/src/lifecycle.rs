@@ -10,6 +10,7 @@ impl Services {
         self.recovery.spawn_background();
         self.webhooks.spawn_background();
         self.releases.spawn_background();
+        self.wikis.spawn_background(&self.events);
         self.mirrors.spawn_background();
         self.issues.spawn_background();
         self.notifications.spawn_background();
@@ -47,6 +48,7 @@ impl Services {
             self.jobs.shutdown(),
             self.webhooks.shutdown(),
             self.releases.shutdown(),
+            self.wikis.shutdown(),
             self.mirrors.shutdown(),
             self.issues.shutdown(),
             self.notifications.shutdown(),

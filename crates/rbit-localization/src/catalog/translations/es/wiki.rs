@@ -96,9 +96,6 @@ entries! { Es:
             text.argument(title);
             text.literal("?");
         }
-        WikiMessage::DeleteWarning => text.literal(
-            "La página y su historial se quitan de la wiki. Esto no se puede deshacer aquí.",
-        ),
         WikiMessage::DeletePage => text.literal("Eliminar página"),
         WikiMessage::Disabled => text.literal("La wiki está desactivada en este repositorio."),
         WikiMessage::About => text.literal(

@@ -12,12 +12,12 @@
       {% if let Some(compare_url) = old.compare_url %}<a class="link" href="{{ compare_url }}">{% call ui::localized(wiki.t.text(WikiMessage::CompareWithPrevious)) %}{% endcall %}</a>{% endif %}
     </p>
   </div>
-  {% if wiki.can_write %}
-  <form method="post" action="{{ old.restore_url }}" class="shrink-0">
+  {% if let Some(restore_url) = old.restore_url %}{% if wiki.can_write %}
+  <form method="post" action="{{ restore_url }}" class="shrink-0">
     <input type="hidden" name="base" value="{{ old.base }}">
     <button type="submit" class="btn">{% call ui::localized(wiki.t.text(WikiMessage::Restore)) %}{% endcall %}</button>
   </form>
-  {% endif %}
+  {% endif %}{% endif %}
 </div>
 {% endif %}
 <div class="flex flex-wrap items-start gap-3">

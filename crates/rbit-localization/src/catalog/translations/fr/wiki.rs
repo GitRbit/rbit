@@ -97,9 +97,6 @@ entries! { Fr:
             text.argument(title);
             text.literal("\u{202f}?");
         }
-        WikiMessage::DeleteWarning => text.literal(
-            "La page et son historique sont retirés du wiki. Cette action ne peut pas être annulée ici.",
-        ),
         WikiMessage::DeletePage => text.literal("Supprimer la page"),
         WikiMessage::Disabled => text.literal("Le wiki est désactivé pour ce dépôt."),
         WikiMessage::About => text.literal(

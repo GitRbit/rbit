@@ -1,0 +1,39 @@
+{% extends "wiki/layout.html" %}
+{% import "macros.html" as ui %}
+{#- Deleted pages, most recently deleted first; expects `WikiDeletedTemplate`. -#}
+{% block wiki %}
+<div class="mb-3 flex min-h-8 flex-wrap items-center gap-3">
+  <h1 class="text-base font-semibold tracking-tight">{% call ui::localized(wiki.t.text(WikiMessage::DeletedPages)) %}{% endcall %}</h1>
+  <a href="{{ wiki.urls.pages() }}" class="btn btn-ghost ms-auto">{% call ui::icon("file-text", "size-3.5") %}{% endcall %}{% call ui::localized(wiki.t.text(WikiMessage::AllPages)) %}{% endcall %}</a>
+</div>
+{% if let Some(error) = error %}
+<p class="notice mb-4" role="alert">{% call ui::localized(error) %}{% endcall %}</p>
+{% endif %}
+{% if entries.is_empty() %}
+<div class="box px-6 py-10 text-center text-[13px] text-ink-muted">{% call ui::localized(wiki.t.text(WikiMessage::NoDeletedPages)) %}{% endcall %}</div>
+{% else %}
+<ul class="box">
+  {% for entry in entries %}
+  <li class="row flex-wrap gap-y-2 py-2">
+    {% call ui::icon("trash", "size-3.5 shrink-0 text-ink-faint") %}{% endcall %}
+    <a href="{{ entry.history_url }}" class="min-w-0 flex-1">
+      <span class="block truncate text-[13px] font-medium" dir="auto">{{ entry.title }}</span>
+      <span class="block truncate font-mono text-[11px] text-ink-faint" dir="auto">{{ entry.path }}</span>
+    </a>
+    <span class="text-xs text-ink-muted">{% if let Some(author) = entry.deleted_by %}<a href="/{{ author }}" class="hover:text-ink">{{ author }}</a>{% else %}{% call ui::localized(wiki.t.text(WikiMessage::UnknownAuthor)) %}{% endcall %}{% endif %} · <time datetime="{{ entry.iso }}">{{ entry.date }}</time></span>
+    {% if wiki.can_write %}
+    <form method="post" action="{{ entry.restore_url }}" class="shrink-0">
+      <input type="hidden" name="base" value="{{ entry.base }}">
+      <button type="submit" class="btn h-7 px-2 text-xs sm:h-7">{% call ui::icon("history", "size-3.5") %}{% endcall %}{% call ui::localized(wiki.t.text(WikiMessage::RestorePage)) %}{% endcall %}</button>
+    </form>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% if let Some(older_url) = older_url %}
+<nav class="mt-4 flex justify-end" aria-label="{{ wiki.t.text(WikiMessage::DeletedPages) }}">
+  <a href="{{ older_url }}" class="btn">{% call ui::localized(wiki.t.text(WikiMessage::MoreDeletedPages)) %}{% endcall %}{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</a>
+</nav>
+{% endif %}
+{% endblock %}

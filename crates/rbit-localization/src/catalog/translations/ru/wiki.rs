@@ -94,7 +94,6 @@ entries! { Ru:
             text.argument(title);
             text.literal("»?");
         }
-        WikiMessage::DeleteWarning => text.literal("Страница и её история будут удалены из вики. Здесь это действие нельзя отменить."),
         WikiMessage::DeletePage => text.literal("Удалить страницу"),
         WikiMessage::Disabled => text.literal("Вики для этого репозитория отключена."),
         WikiMessage::About => text.literal("Вики содержит страницы документации со своей историей, отдельно от кода."),

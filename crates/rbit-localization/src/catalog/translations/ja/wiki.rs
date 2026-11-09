@@ -93,9 +93,6 @@ entries! { Ja:
             text.argument(title);
             text.literal(" を削除しますか？");
         }
-        WikiMessage::DeleteWarning => text.literal(
-            "ページとその履歴が Wiki から削除されます。この操作はここでは元に戻せません。",
-        ),
         WikiMessage::DeletePage => text.literal("ページを削除"),
         WikiMessage::Disabled => text.literal("このリポジトリでは Wiki が無効になっています。"),
         WikiMessage::About => text.literal(

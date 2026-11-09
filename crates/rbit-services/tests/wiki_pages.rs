@@ -1,6 +1,7 @@
 //! Wiki pages through the production service: publication, history, conflicts, access.
 mod access;
 mod fixture;
+mod lifecycle;
 
 use fixture::{Fixture, input};
 use rbit_core::Visibility;
@@ -17,6 +18,7 @@ fn path(value: &str) -> WikiPath {
 fn page(lookup: WikiLookup) -> WikiPageView {
     match lookup {
         WikiLookup::Page(view) => view,
+        WikiLookup::Moved(path) => panic!("moved to {path}"),
         WikiLookup::Missing { empty } => panic!("missing page (empty wiki: {empty})"),
     }
 }
@@ -44,13 +46,16 @@ async fn pages_are_created_edited_renamed_and_keep_their_history() {
     let renamed =
         wikis.edit(&repo, &fixture.writer, home.page.id, base, &input("Start here", "Guide/Start", "# Welcome\n\nSecond\n")).await.unwrap();
     assert_eq!(renamed.as_str(), "Guide/Start");
-    assert!(matches!(wikis.page(&repo, Some(&fixture.writer), &path("Home")).await.unwrap(), WikiLookup::Missing { empty: false }));
+    let old = wikis.page(&repo, Some(&fixture.writer), &path("Home")).await.unwrap();
+    assert!(matches!(&old, WikiLookup::Moved(to) if to.as_str() == "Guide/Start"), "{old:?}");
     let moved = page(wikis.page(&repo, Some(&fixture.writer), &renamed).await.unwrap());
     assert_eq!((moved.page.id, moved.page.title.as_str()), (home.page.id, "Start here"), "the stable ID survives a rename");
 
     let history = wikis.history(&repo, Some(&fixture.reader), home.page.id, None).await.unwrap();
     let kinds: Vec<_> = history.entries.iter().map(|entry| entry.change).collect();
     assert_eq!(kinds, [Some(WikiChange::Rename), Some(WikiChange::Edit), Some(WikiChange::Create)]);
+    let previous_paths: Vec<_> = history.entries.iter().map(|entry| entry.renamed_from.as_ref().map(WikiPath::as_str)).collect();
+    assert_eq!(previous_paths, [Some("Home"), None, None]);
     let authors: Vec<_> = history.entries.iter().map(|entry| entry.author.as_deref()).collect();
     assert_eq!(authors, [Some("writer"), Some("owner"), Some("writer")]);
 

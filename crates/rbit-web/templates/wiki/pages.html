@@ -21,9 +21,10 @@
   {% endfor %}
 </ul>
 {% endif %}
-{% if let Some(next_url) = next_url %}
-<nav class="mt-4 flex justify-end" aria-label="{{ wiki.t.text(WikiMessage::AllPages) }}">
-  <a href="{{ next_url }}" class="btn">{% call ui::localized(wiki.t.text(WikiMessage::MorePages)) %}{% endcall %}{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</a>
+{% if next_url.is_some() || show_settings %}
+<nav class="mt-4 flex flex-wrap items-center gap-3" aria-label="{{ wiki.t.text(WikiMessage::AllPages) }}">
+  {% if show_settings %}<a href="{{ wiki.urls.deleted() }}" class="btn btn-ghost">{% call ui::icon("trash", "size-3.5") %}{% endcall %}{% call ui::localized(wiki.t.text(WikiMessage::DeletedPages)) %}{% endcall %}</a>{% endif %}
+  {% if let Some(next_url) = next_url %}<a href="{{ next_url }}" class="btn ms-auto">{% call ui::localized(wiki.t.text(WikiMessage::MorePages)) %}{% endcall %}{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</a>{% endif %}
 </nav>
 {% endif %}
 {% if wiki.can_admin && show_settings %}

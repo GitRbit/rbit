@@ -84,5 +84,47 @@ async fn history_compare_restore_and_delete_work_through_forms() {
     let deleted = fixture.post(&format!("{W}/-/page/1/delete"), Some(&fixture.writer), &[("base", &base(&confirm.body))]).await;
     assert_eq!(deleted.location.as_deref(), Some(W));
     assert_eq!(fixture.get(&format!("{W}/Notes"), None).await.status, StatusCode::NOT_FOUND);
-    assert_eq!(fixture.get(&format!("{W}/-/page/1/history"), None).await.status, StatusCode::NOT_FOUND);
+
+    // The history is kept; the deletion is listed, without a revision to view.
+    let kept = fixture.get(&format!("{W}/-/page/1/history"), None).await;
+    assert_eq!(kept.status, StatusCode::OK);
+    assert!(kept.body.contains("This page was deleted. Its history is kept.") && kept.body.contains("Deleted"));
+    assert!(!kept.body.contains("/-/page/1/revisions/4\""), "a deletion has no content to view");
+    let listed = fixture.get(&format!("{W}/-/deleted"), None).await;
+    assert!(listed.body.contains("Notes") && !listed.body.contains("/-/page/1/undelete"), "readers see no restore form");
+    let listed = fixture.get(&format!("{W}/-/deleted"), Some(&fixture.writer)).await;
+    let undelete = format!("{W}/-/page/1/undelete");
+    assert!(listed.body.contains(&undelete));
+    assert_eq!(fixture.post(&undelete, Some(&fixture.reader), &[("base", "4")]).await.status, StatusCode::FORBIDDEN);
+    let stale = fixture.post(&undelete, Some(&fixture.writer), &[("base", "3")]).await;
+    assert_eq!(stale.location.as_deref(), Some("/owner/handbook/wiki/-/deleted"), "a stale restore changes nothing");
+    let undeleted = fixture.post(&undelete, Some(&fixture.writer), &[("base", &base(&listed.body))]).await;
+    assert_eq!(undeleted.location.as_deref(), Some("/owner/handbook/wiki/Notes"));
+    assert!(fixture.get(&format!("{W}/Notes"), None).await.body.contains("line one"));
+    assert!(!fixture.get(&format!("{W}/-/deleted"), None).await.body.contains("/-/page/1/history"));
+}
+
+#[tokio::test]
+async fn an_old_path_redirects_to_the_renamed_page_until_a_new_page_takes_it() {
+    let fixture = Fixture::new(Visibility::Public).await;
+    fixture.page("Notes", "first\n").await;
+    let renamed = fixture
+        .post(
+            &format!("{W}/-/page/1/edit"),
+            Some(&fixture.writer),
+            &[("title", "Notes"), ("path", "Guide/Notes"), ("content", "first\n"), ("base", "1")],
+        )
+        .await;
+    assert_eq!(renamed.location.as_deref(), Some("/owner/handbook/wiki/Guide/Notes"));
+    let old = fixture.get(&format!("{W}/Notes"), None).await;
+    assert_eq!(old.status, StatusCode::PERMANENT_REDIRECT);
+    assert_eq!(old.location.as_deref(), Some("/owner/handbook/wiki/Guide/Notes"));
+    let history = fixture.get(&format!("{W}/-/page/1/history"), None).await;
+    assert!(history.body.contains("Renamed from \u{2068}Notes\u{2069}") || history.body.contains("Renamed from Notes"));
+
+    // A new page at the old path wins over the alias.
+    fixture.page("Notes", "second\n").await;
+    let taken = fixture.get(&format!("{W}/Notes"), None).await;
+    assert_eq!(taken.status, StatusCode::OK);
+    assert!(taken.body.contains("second"));
 }

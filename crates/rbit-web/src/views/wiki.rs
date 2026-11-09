@@ -91,7 +91,12 @@ impl WikiUrls {
         format!("{}/-/settings", self.home)
     }
 
-    /// `W/-/page/{id}/{action}`: `edit`, `history`, `delete` or `compare`.
+    /// `W/-/deleted`: deleted pages, with their restore forms.
+    pub fn deleted(&self) -> String {
+        format!("{}/-/deleted", self.home)
+    }
+
+    /// `W/-/page/{id}/{action}`: `edit`, `history`, `delete`, `undelete` or `compare`.
     pub fn action(&self, page: WikiPageId, action: &str) -> String {
         format!("{}/-/page/{}/{action}", self.home, page.get())
     }

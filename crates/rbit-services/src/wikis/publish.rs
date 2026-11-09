@@ -9,7 +9,10 @@
 use rbit_core::Timestamp;
 use rbit_git::wikis::changes::{PrepareWikiChange, WikiTreeChange};
 use rbit_identity_models::account::User;
-use rbit_storage::sqlite::wiki_mutations::publish::{WikiPublication, WikiPublishError};
+use rbit_storage::sqlite::wiki_mutations::{
+    page_effects::WikiPageEffect,
+    publish::{WikiPublication, WikiPublishError},
+};
 use rbit_wikis::{WikiContent, WikiGeneration, WikiPageId, WikiPath, WikiTitle, change::WikiChange};
 
 use super::{errors::WikiError, pages::WikiService};
@@ -71,7 +74,7 @@ enum Tree<'a> {
 struct Change<'a> {
     page: WikiPageId,
     base: Option<WikiGeneration>,
-    names: Option<(&'a WikiPath, &'a WikiTitle)>,
+    effect: WikiPageEffect<'a>,
     tree: Tree<'a>,
     kind: WikiChange,
 }
@@ -121,7 +124,7 @@ impl WikiService {
                     target,
                     page: change.page,
                     base: change.base,
-                    names: change.names,
+                    effect: change.effect,
                     change: change.kind,
                     at,
                 })
@@ -143,7 +146,7 @@ impl WikiService {
         let change = Change {
             page,
             base: None,
-            names: Some((&fields.path, &fields.title)),
+            effect: WikiPageEffect::Write { path: &fields.path, title: &fields.title },
             tree: Tree::Upsert(fields.content.as_str()),
             kind: WikiChange::Create,
         };
@@ -169,7 +172,8 @@ impl WikiService {
         }
         let (tree, kind) =
             if same_content { (Tree::Keep, WikiChange::Rename) } else { (Tree::Upsert(fields.content.as_str()), WikiChange::Edit) };
-        let change = Change { page, base: Some(base), names: Some((&fields.path, &fields.title)), tree, kind };
+        let effect = WikiPageEffect::Write { path: &fields.path, title: &fields.title };
+        let change = Change { page, base: Some(base), effect, tree, kind };
         self.apply(repo, user, change).await?;
         Ok(fields.path)
     }
@@ -194,7 +198,7 @@ impl WikiService {
         let change = Change {
             page,
             base: Some(base),
-            names: Some((&path, &title)),
+            effect: WikiPageEffect::Write { path: &path, title: &title },
             tree: Tree::Upsert(old.content.as_str()),
             kind: WikiChange::Restore,
         };
@@ -202,9 +206,30 @@ impl WikiService {
         Ok(path)
     }
 
-    /// Deletes the page as read at `base`. Its per-page history goes with it.
+    /// Deletes the page as read at `base`. Its history stays readable and the page can
+    /// be restored with [`Self::undelete`].
     pub async fn delete(&self, repo: &RepoContext, user: &User, page: WikiPageId, base: WikiGeneration) -> Result<(), WikiError> {
-        self.apply(repo, user, Change { page, base: Some(base), names: None, tree: Tree::Remove, kind: WikiChange::Delete }).await
+        let change = Change { page, base: Some(base), effect: WikiPageEffect::Delete, tree: Tree::Remove, kind: WikiChange::Delete };
+        self.apply(repo, user, change).await
+    }
+
+    /// Restores a deleted page, as listed at `base`, with the content and names it had
+    /// when it was deleted. Refused with `PathTaken` while another page uses its path.
+    pub async fn undelete(&self, repo: &RepoContext, user: &User, page: WikiPageId, base: WikiGeneration) -> Result<WikiPath, WikiError> {
+        Self::ensure_writer(repo)?;
+        let deleted = self.deleted_page(repo, Some(user), page).await?;
+        let last = self.previous(repo, Some(user), page, deleted.deleted).await?.ok_or(WikiError::NotFound)?;
+        let content = self.revision(repo, Some(user), page, last).await?.content;
+        let (path, title) = (deleted.path, deleted.title);
+        let change = Change {
+            page,
+            base: Some(base),
+            effect: WikiPageEffect::Undelete { path: &path, title: &title },
+            tree: Tree::Upsert(content.as_str()),
+            kind: WikiChange::Restore,
+        };
+        self.apply(repo, user, change).await?;
+        Ok(path)
     }
 
     /// Switches the wiki on or off. Repository administrators only; never while archived.

@@ -8,10 +8,16 @@
 //! everyone but administrators, who are offered to turn it on. Every check is repeated
 //! by the service and, for changes, in the publishing SQL transaction itself.
 //!
+//! A path a page had before a rename answers `308 Permanent Redirect` to the page's
+//! current path, marked `no-store`: a new page may take the old path later, and then
+//! that page is shown instead. The target is always a current page's own path, which
+//! never redirects, so there are no redirect chains or loops.
+//!
 //! Merged into the page router with a body limit sized for the largest page.
 use axum::{
     Router,
     extract::{DefaultBodyLimit, Path, Query, State},
+    http::{StatusCode, header},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
@@ -40,6 +46,8 @@ use crate::{
     },
 };
 
+#[path = "wiki_deleted.rs"]
+mod deleted;
 #[path = "wiki_edit.rs"]
 mod edit;
 #[path = "wiki_history.rs"]
@@ -55,6 +63,8 @@ pub fn routes() -> Router<AppState> {
         .route("/{owner}/{repo}/wiki", get(home))
         .route("/{owner}/{repo}/wiki/-/pages", get(index))
         .route("/{owner}/{repo}/wiki/-/search", get(search))
+        .route("/{owner}/{repo}/wiki/-/deleted", get(deleted::list))
+        .route("/{owner}/{repo}/wiki/-/page/{id}/undelete", post(deleted::undelete))
         .route("/{owner}/{repo}/wiki/-/settings", post(edit::settings))
         .route("/{owner}/{repo}/wiki/-/new", get(edit::new_form).post(edit::create))
         .route("/{owner}/{repo}/wiki/-/page/{id}/edit", get(edit::edit_form).post(edit::update))
@@ -187,6 +197,7 @@ async fn home(
             let chrome = opened.chrome(&state, &viewer, Some(view.page.id)).await?;
             Ok(opened.respond(opened.page_view(page, chrome, &view, None, &state)))
         }
+        WikiLookup::Moved(moved) => Ok(moved_to(&opened, &moved)),
         WikiLookup::Missing { empty: true } => missing(&state, &viewer, page, &opened, None).await,
         WikiLookup::Missing { empty: false } => index_page(&state, &viewer, page, &opened, None).await,
     }
@@ -210,8 +221,17 @@ async fn page(
             let chrome = opened.chrome(&state, &viewer, Some(view.page.id)).await?;
             Ok(opened.respond(opened.page_view(page, chrome, &view, None, &state)))
         }
+        WikiLookup::Moved(moved) => Ok(moved_to(&opened, &moved)),
         WikiLookup::Missing { .. } => missing(&state, &viewer, page, &opened, Some(&path)).await,
     }
+}
+
+/// An old path of a renamed page: a permanent redirect that is never cached, because
+/// a new page may take the path later.
+fn moved_to(opened: &Opened, path: &WikiPath) -> Response {
+    let location = opened.urls.page(path);
+    let headers = [(header::LOCATION, location.as_str()), (header::CACHE_CONTROL, "no-store")];
+    (StatusCode::PERMANENT_REDIRECT, headers).into_response()
 }
 
 /// An empty wiki, or a path without a page (404), with a create link for writers.
@@ -234,7 +254,7 @@ async fn missing(state: &AppState, viewer: &Viewer, page: Page, opened: &Opened,
         create,
         enable_url: None,
     };
-    let status = if path.is_some() { axum::http::StatusCode::NOT_FOUND } else { axum::http::StatusCode::OK };
+    let status = if path.is_some() { StatusCode::NOT_FOUND } else { StatusCode::OK };
     Ok(opened.respond((status, template)))
 }
 

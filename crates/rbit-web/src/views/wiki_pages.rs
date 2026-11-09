@@ -14,8 +14,10 @@ use crate::views::{
 #[derive(Debug, Clone)]
 pub struct WikiRevisionNote {
     pub label: Localized,
+    /// The current page, or the deleted pages when the page is deleted.
     pub current_url: String,
-    pub restore_url: String,
+    /// `None` for a deleted page: it is restored as a whole from the deleted pages.
+    pub restore_url: Option<String>,
     /// The whole-wiki generation the restore form was read at.
     pub base: i64,
     pub compare_url: Option<String>,
@@ -79,7 +81,10 @@ pub struct WikiIndexTemplate {
 #[derive(Debug, Clone)]
 pub struct WikiHistoryRow {
     pub label: Localized,
-    pub url: String,
+    /// `None` for a deletion, which has no content to show.
+    pub url: Option<String>,
+    /// "Renamed from …" when this revision moved the page.
+    pub renamed_from: Option<Localized>,
     pub title: String,
     pub change: Localized,
     pub author: Option<String>,
@@ -96,7 +101,10 @@ pub struct WikiHistoryTemplate {
     pub header: RepoHeader,
     pub wiki: WikiChrome,
     pub heading: Localized,
+    /// The current page, or the deleted pages when the page is deleted.
     pub page_url: String,
+    /// Shown for a deleted page.
+    pub deleted_notice: Option<Localized>,
     pub entries: Vec<WikiHistoryRow>,
     pub older_url: Option<String>,
 }
@@ -154,4 +162,31 @@ pub struct WikiDeleteTemplate {
     pub action_url: String,
     pub cancel_url: String,
     pub base: i64,
+}
+
+/// One deleted page with its restore form.
+#[derive(Debug, Clone)]
+pub struct WikiDeletedRow {
+    pub title: String,
+    pub path: String,
+    pub history_url: String,
+    pub restore_url: String,
+    /// The generation that deleted the page: restoring after another change conflicts.
+    pub base: i64,
+    pub deleted_by: Option<String>,
+    pub date: String,
+    pub iso: String,
+}
+
+/// `W/-/deleted`: deleted pages, most recently deleted first.
+#[derive(Debug, Template, WebTemplate)]
+#[template(path = "wiki/deleted.html")]
+pub struct WikiDeletedTemplate {
+    pub page: Page,
+    pub header: RepoHeader,
+    pub wiki: WikiChrome,
+    pub entries: Vec<WikiDeletedRow>,
+    /// Why a restore was refused.
+    pub error: Option<Localized>,
+    pub older_url: Option<String>,
 }

@@ -62,7 +62,7 @@ pub enum WikiMessage<'a> {
     PathTaken,
     Unchanged,
     DeleteTitle { title: &'a str },
-    DeleteWarning,
+    DeleteKeepsHistory,
     DeletePage,
     Disabled,
     About,
@@ -75,6 +75,13 @@ pub enum WikiMessage<'a> {
     SearchCount { count: u64, query: &'a str },
     NoResults { query: &'a str },
     MorePages,
+    DeletedPages,
+    NoDeletedPages,
+    DeletedNotice,
+    RestorePage,
+    MoreDeletedPages,
+    RestoreBlocked,
+    RenamedFrom { path: &'a str },
 }
 
 impl WikiMessage<'_> {
@@ -137,7 +144,7 @@ impl WikiMessage<'_> {
             Self::PathTaken => "wiki.conflict.path-taken",
             Self::Unchanged => "wiki.validation.unchanged",
             Self::DeleteTitle { .. } => "wiki.delete.title",
-            Self::DeleteWarning => "wiki.delete.warning",
+            Self::DeleteKeepsHistory => "wiki.delete.warning-kept",
             Self::DeletePage => "wiki.delete.confirm",
             Self::Disabled => "wiki.settings.disabled",
             Self::About => "wiki.settings.about",
@@ -150,6 +157,13 @@ impl WikiMessage<'_> {
             Self::SearchCount { .. } => "wiki.search.count",
             Self::NoResults { .. } => "wiki.search.none",
             Self::MorePages => "wiki.tree.more",
+            Self::DeletedPages => "wiki.deleted.title",
+            Self::NoDeletedPages => "wiki.deleted.empty",
+            Self::DeletedNotice => "wiki.deleted.notice",
+            Self::RestorePage => "wiki.deleted.restore",
+            Self::MoreDeletedPages => "wiki.deleted.more",
+            Self::RestoreBlocked => "wiki.deleted.path-taken",
+            Self::RenamedFrom { .. } => "wiki.history.renamed-from",
         }
     }
 
@@ -207,7 +221,9 @@ impl WikiMessage<'_> {
             Self::CompareChanges => "Compare the changes",
             Self::PathTaken => "Another page already uses this path.",
             Self::Unchanged => "Nothing changed.",
-            Self::DeleteWarning => "The page and its history are removed from the wiki. This cannot be undone here.",
+            Self::DeleteKeepsHistory => {
+                "The page is removed from the wiki. Its history is kept, and writers can restore it from the deleted pages."
+            }
             Self::DeletePage => "Delete page",
             Self::Disabled => "The wiki is turned off for this repository.",
             Self::About => "A wiki holds documentation pages with their own history, separate from the code.",
@@ -217,6 +233,12 @@ impl WikiMessage<'_> {
             Self::CreateFirst => "Create the first page",
             Self::Missing => "No page has this path.",
             Self::MorePages => "More pages",
+            Self::DeletedPages => "Deleted pages",
+            Self::NoDeletedPages => "No pages have been deleted.",
+            Self::DeletedNotice => "This page was deleted. Its history is kept.",
+            Self::RestorePage => "Restore page",
+            Self::MoreDeletedPages => "Earlier deletions",
+            Self::RestoreBlocked => "Another page now uses this path. Rename that page first, then restore this one.",
             Self::Revision { .. }
             | Self::HistoryOf { .. }
             | Self::Comparing { .. }
@@ -224,7 +246,8 @@ impl WikiMessage<'_> {
             | Self::DeleteTitle { .. }
             | Self::CreatePath { .. }
             | Self::SearchCount { .. }
-            | Self::NoResults { .. } => return None,
+            | Self::NoResults { .. }
+            | Self::RenamedFrom { .. } => return None,
         })
     }
 }
@@ -275,6 +298,10 @@ impl MessageFamily for WikiMessage<'_> {
                 text.literal(if count == 1 { " page matches “" } else { " pages match “" });
                 text.argument(query);
                 text.literal("”");
+            }
+            Self::RenamedFrom { path } => {
+                text.literal("Renamed from ");
+                text.argument(path);
             }
             Self::NoResults { query } => {
                 text.literal("No pages match “");

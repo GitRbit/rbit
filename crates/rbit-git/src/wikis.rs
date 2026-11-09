@@ -3,6 +3,7 @@ mod catalog_bound;
 pub mod changes;
 mod exact_object;
 mod layout;
+pub mod lifecycle;
 mod managed_writer;
 pub use catalog_bound::{CatalogBoundWikiObjects, CatalogPreparedWikiObjects};
 mod objects;
@@ -24,6 +25,9 @@ pub enum WikiObjectError {
     Binding,
     #[error("wiki object format or resource limit refused")]
     Format,
+    /// A finalized revision, or an object it reaches, is not in the store.
+    #[error("wiki object missing")]
+    Missing,
     #[error(transparent)]
     Admission(#[from] AdmissionError),
     #[error("wiki object worker did not complete: {0}")]

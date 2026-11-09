@@ -5,14 +5,17 @@
 //! transaction commits its `wiki_revisions` row and moves `wiki_repositories.generation`.
 //! Objects prepared for a refused or crashed publication stay unreferenced. Inside the
 //! transaction the actor's CURRENT repository access, archive state, the absence of an
-//! accepted intent, the exact parent head and the page's own last change are rechecked,
-//! so a stale form or a revoked grant can never publish. It runs on the general pool and
-//! therefore only while the writer protocol is in its legacy mode; managed modes refuse
-//! these writes in SQLite itself.
-use super::{WikiMutationError, WikiMutationStore, authorization};
+//! accepted intent, the exact parent head and the page's own last change and state are
+//! rechecked ([`page_effects`]), so a stale form or a revoked grant can never publish.
+//! It runs on the general pool and therefore only while the writer protocol is in its
+//! legacy mode; managed modes refuse these writes in SQLite itself.
+use super::{
+    WikiMutationError, WikiMutationStore, authorization,
+    page_effects::{self, WikiPageEffect},
+};
 use rbit_core::{AccountId, RepoId, Timestamp};
 use rbit_wikis::{
-    WikiGeneration, WikiPageId, WikiPath, WikiRevisionId, WikiTitle,
+    WikiGeneration, WikiPageId, WikiRevisionId,
     change::WikiChange,
     policy::{WikiExpected, WikiHead, WikiMutationState, WikiPolicyError, check_write},
 };
@@ -31,8 +34,8 @@ pub struct WikiPublication<'a> {
     /// For an existing page, the whole-wiki generation its form was read at. A change
     /// of this page after that generation is a conflict; other pages' changes are not.
     pub base: Option<WikiGeneration>,
-    /// The page's names after the change; `None` deletes the page.
-    pub names: Option<(&'a WikiPath, &'a WikiTitle)>,
+    /// The page after the change.
+    pub effect: WikiPageEffect<'a>,
     pub change: WikiChange,
     pub at: Timestamp,
 }
@@ -95,7 +98,7 @@ impl WikiMutationStore {
 
     /// Publishes `publication` as the next generation, or refuses with nothing visible.
     pub async fn publish(&self, publication: WikiPublication<'_>) -> Result<WikiGeneration, WikiPublishError> {
-        let WikiPublication { repository, actor, author, parent, target, page, base, names, change, at } = publication;
+        let WikiPublication { repository, actor, author, parent, target, page, base, effect, change, at } = publication;
         let mut tx = self.pool.begin_immediate().await?;
         let authorized = authorization::load(&mut tx, repository, actor).await?.decode(repository, actor)?;
         // Permission and archive first: the probe matches itself, so only access decides.
@@ -121,33 +124,7 @@ impl WikiMutationStore {
         if authorized.head != parent {
             return Err(WikiPublishError::Moved);
         }
-        if let Some(base) = base {
-            let changed: Option<Option<i64>> = sqlx::query_scalar(
-                "SELECT (SELECT MAX(generation) FROM wiki_page_revisions h WHERE h.repo_id=p.repo_id AND h.page_id=p.id) \
-                 FROM wiki_pages p WHERE p.repo_id=?1 AND p.id=?2",
-            )
-            .bind(repository.0)
-            .bind(page.get())
-            .fetch_optional(&mut *tx)
-            .await?;
-            match changed {
-                Some(Some(changed)) if changed <= base.get() => {}
-                Some(_) => return Err(WikiPublishError::Policy(WikiPolicyError::Conflict)),
-                None => return Err(WikiPublishError::Policy(WikiPolicyError::NotFound)),
-            }
-        }
-        if let Some((path, _)) = names {
-            let taken: bool =
-                sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM wiki_pages WHERE repo_id=?1 AND path=?2 COLLATE BINARY AND id<>?3)")
-                    .bind(repository.0)
-                    .bind(path.as_str())
-                    .bind(page.get())
-                    .fetch_one(&mut *tx)
-                    .await?;
-            if taken {
-                return Err(WikiPublishError::PathTaken);
-            }
-        }
+        page_effects::check(&mut tx, repository, page, base, effect).await?;
         sqlx::query("INSERT INTO wiki_revisions(repo_id,generation,revision,created_at,author,change) VALUES(?,?,?,?,?,?)")
             .bind(repository.0)
             .bind(generation.get())
@@ -157,38 +134,7 @@ impl WikiMutationStore {
             .bind(change.code())
             .execute(&mut *tx)
             .await?;
-        match names {
-            Some((path, title)) => {
-                sqlx::query(
-                    "INSERT INTO wiki_pages(id,repo_id,path,title,created_at,updated_at) VALUES(?1,?2,?3,?4,?5,?5) \
-                     ON CONFLICT(id) DO UPDATE SET path=excluded.path,title=excluded.title,updated_at=excluded.updated_at",
-                )
-                .bind(page.get())
-                .bind(repository.0)
-                .bind(path.as_str())
-                .bind(title.as_str())
-                .bind(at.seconds())
-                .execute(&mut *tx)
-                .await?;
-                sqlx::query("INSERT INTO wiki_page_revisions(repo_id,page_id,generation,path,title) VALUES(?,?,?,?,?)")
-                    .bind(repository.0)
-                    .bind(page.get())
-                    .bind(generation.get())
-                    .bind(path.as_str())
-                    .bind(title.as_str())
-                    .execute(&mut *tx)
-                    .await?;
-            }
-            // Deletion removes the catalog page and its per-page history rows; the
-            // whole-wiki revisions and their Git objects remain.
-            None => {
-                sqlx::query("DELETE FROM wiki_pages WHERE repo_id=? AND id=?")
-                    .bind(repository.0)
-                    .bind(page.get())
-                    .execute(&mut *tx)
-                    .await?;
-            }
-        }
+        page_effects::apply(&mut tx, repository, page, generation, effect, at).await?;
         sqlx::query("UPDATE wiki_repositories SET generation=? WHERE repo_id=?")
             .bind(generation.get())
             .bind(repository.0)

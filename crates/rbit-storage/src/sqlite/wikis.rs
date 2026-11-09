@@ -1,5 +1,6 @@
 //! Finalized wiki catalog reads. There is deliberately no arbitrary-OID publisher.
 mod history;
+mod lifecycle;
 pub mod listing;
 mod rows;
 
@@ -99,11 +100,15 @@ impl WikiCatalogStore {
                 if generation > head.generation {
                     return Ok(None);
                 }
+                // Revisions of deleted pages stay readable; a deletion itself has no content.
                 let selected: Option<RevisionPageRow> = sqlx::query_as(
-                    "SELECT p.id,h.path,h.title,p.created_at,v.created_at AS updated_at,v.generation,v.revision \
-                     FROM wiki_page_revisions h JOIN wiki_pages p ON p.repo_id=h.repo_id AND p.id=h.page_id \
+                    "SELECT h.page_id AS id,h.path,h.title,COALESCE(p.created_at,t.created_at) AS created_at, \
+                     v.created_at AS updated_at,v.generation,v.revision FROM wiki_page_revisions h \
                      JOIN wiki_revisions v ON v.repo_id=h.repo_id AND v.generation=h.generation \
-                     WHERE h.repo_id=?1 AND h.page_id=?2 AND h.generation=?3",
+                     LEFT JOIN wiki_pages p ON p.repo_id=h.repo_id AND p.id=h.page_id \
+                     LEFT JOIN wiki_page_tombstones t ON t.repo_id=h.repo_id AND t.page_id=h.page_id \
+                     WHERE h.repo_id=?1 AND h.page_id=?2 AND h.generation=?3 AND v.change IS NOT 'delete' \
+                     AND (p.id IS NOT NULL OR t.page_id IS NOT NULL)",
                 )
                 .bind(repository.0)
                 .bind(page.get())
