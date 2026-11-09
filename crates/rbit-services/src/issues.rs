@@ -82,10 +82,6 @@ pub use rbit_collaboration::{
 
 // ------------------------------------------------------------------ validation
 
-fn invalid(message: impl Into<String>) -> ServiceError {
-    ServiceError::Invalid(message.into())
-}
-
 /// `#rrggbb` (lower case) from `#RRGGBB` or `rrggbb`.
 pub fn normalise_color(color: &str) -> Result<String, ServiceError> {
     rbit_collaboration::labels::normalise_color(color).map_err(ServiceError::Invalid)
