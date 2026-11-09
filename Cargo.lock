@@ -4215,11 +4215,16 @@ dependencies = [
 name = "rbit-actions"
 version = "0.2.0"
 dependencies = [
+ "aes-gcm",
  "aho-corasick",
+ "base64 0.23.1",
  "flate2",
+ "getrandom 0.4.3",
  "rbit-access",
  "rbit-workflow",
+ "sha2 0.11.1",
  "tar",
+ "zeroize",
  "zip",
 ]
 

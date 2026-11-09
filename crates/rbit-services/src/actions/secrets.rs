@@ -1,36 +1,27 @@
-//! Secrets and variables: the key file (`<data_dir>/actions/secrets.key`, never in SQLite),
-//! sealing and opening with AES-256-GCM bound to the secret's scope and id, owner and
-//! repository CRUD, and what a task receives (§6.3 and §11.10 of `docs/design/actions.md`).
+//! Secrets and variables: the storage, file and audit adapter of `rbit_actions::secrets`,
+//! which decides the key file, sealing, value and scope rules and what a task opens
+//! (§6.3 and §11.10 of `docs/design/actions.md`).
 //!
-//! * The key file holds `rbit-actions-key-v1:` and the base64 of 32 random bytes. It is
-//!   created with mode `0600` on the first start with Actions enabled, but never while
-//!   sealed secrets exist: a missing key then stays missing, and every secret operation fails
-//!   closed with the reason. On Unix a key readable by group or others is refused; on Windows
-//!   the data directory's ACLs are the operator's job, and a warning says so once.
-//! * Each secret stores the first 8 bytes of SHA-256 of the key that sealed it, so a wrong or
-//!   replaced key is detected ("cannot be decrypted — set it again") instead of producing
-//!   garbage. The associated data binds the scope kind, the scope id and the secret id, never
-//!   the name, so a ciphertext copied to another row or scope does not open.
+//! * The key file lives at `<data_dir>/actions/secrets.key`, never in SQLite. This adapter
+//!   reads it, creates it with mode `0600` and, on Unix, refuses a key readable by group or
+//!   others; on Windows the data directory's ACLs are the operator's job, and a warning says
+//!   so once.
+//! * [`SecretsKey`] adapts the sealing key to the stored records: a scope and id become
+//!   the ciphertext's address, and its parts a [`SealedSecret`].
 //! * Values never reach a log, an audit entry or `Debug` output. Settings list names only.
-//! * A task of an untrusted run receives no secrets and no variables. A trusted task
-//!   receives the repository's, then the owner's visible to the repository; a repository
-//!   secret wins over an owner secret of the same name. If any of them cannot be opened, the
-//!   task fails closed rather than run with some secrets missing.
+//! * A task of an untrusted run receives no secrets and no variables (`Grants`). A trusted
+//!   task receives the repository's, then the owner's visible to the repository, opened by
+//!   `rbit_actions::secrets::open_task_secrets`.
 //!
 //! Workstream U (interface and secrets) owns this file.
 
 use std::{collections::BTreeMap, io, path::Path, sync::Arc};
 
-use aes_gcm::{
-    Aes256Gcm, Key, KeyInit, Nonce,
-    aead::{Aead, Payload},
-};
-use base64::{Engine, engine::general_purpose::STANDARD};
+use rbit_actions::secrets::{KeyFile, LoadedKey, SecretAddress};
 use rbit_core::{
     RepoId, Timestamp, User,
     actions::{Run, SealedSecret, SecretId, SecretInfo, SecretName, SecretScope, SecretVisibility, Variable, VariableName},
 };
-use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
 use super::ActionsService;
@@ -40,35 +31,20 @@ use crate::{
     orgs::OrgContext,
 };
 
-/// What a key file starts with; the version names the format and the cipher.
-const KEY_PREFIX: &str = "rbit-actions-key-v1:";
-/// What the associated data of every sealed value starts with.
-const AAD_PREFIX: &[u8] = b"rbit-actions-secret-v1";
-/// Largest secret or variable value, in bytes (`rbit_workflow::spec::MAX_SECRET_BYTES`).
-pub const MAX_VALUE_BYTES: usize = rbit_workflow::spec::MAX_SECRET_BYTES;
-// The limits, scoping and opening rules are `rbit_actions::secrets`; this file is the
-// key file, AES-256-GCM sealing and storage adapter.
-pub use rbit_actions::secrets::{MAX_PER_SCOPE, MAX_VARIABLE_BYTES, UNREADABLE};
+// The key, sealing, value limits, scoping and opening rules are `rbit_actions::secrets`.
+#[cfg(test)]
+use rbit_actions::secrets::KEY_PREFIX;
+pub use rbit_actions::secrets::{KeyUnavailable, MAX_PER_SCOPE, MAX_VALUE_BYTES, MAX_VARIABLE_BYTES, UNREADABLE};
 
-/// The secrets key, held in memory for the life of the process and zeroed on drop.
+/// The secrets key over the stored records (`rbit_actions::secrets::SecretsKey`).
 pub(crate) struct SecretsKey {
-    key: Zeroizing<[u8; 32]>,
+    key: rbit_actions::secrets::SecretsKey,
     id: [u8; 8],
 }
 
 impl std::fmt::Debug for SecretsKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SecretsKey").field("id", &self.id).finish_non_exhaustive()
-    }
-}
-
-/// Why secrets cannot be used now, in words for settings pages and task logs.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct KeyUnavailable(pub String);
-
-impl std::fmt::Display for KeyUnavailable {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
+        self.key.fmt(f)
     }
 }
 
@@ -76,108 +52,87 @@ impl std::fmt::Display for KeyUnavailable {
 pub(crate) type KeyState = Result<Arc<SecretsKey>, KeyUnavailable>;
 
 impl SecretsKey {
+    fn new(key: rbit_actions::secrets::SecretsKey) -> Self {
+        Self { id: key.id(), key }
+    }
+
+    #[cfg(test)]
     fn from_bytes(bytes: [u8; 32]) -> Self {
-        let digest = Sha256::digest(bytes);
-        let mut id = [0; 8];
-        id.copy_from_slice(&digest[..8]);
-        Self { key: Zeroizing::new(bytes), id }
+        Self::new(rbit_actions::secrets::SecretsKey::from_bytes(bytes))
     }
 
-    /// A key from fresh randomness.
-    fn generate() -> io::Result<Self> {
-        let mut bytes = Zeroizing::new([0u8; 32]);
-        getrandom::fill(&mut bytes[..]).map_err(|error| io::Error::other(error.to_string()))?;
-        Ok(Self::from_bytes(*bytes))
-    }
-
-    /// A key file's contents; surrounding whitespace is ignored.
+    #[cfg(test)]
     fn parse(text: &str) -> Result<Self, String> {
-        let body = text.trim().strip_prefix(KEY_PREFIX).ok_or_else(|| format!("it does not start with `{KEY_PREFIX}`"))?;
-        let decoded = Zeroizing::new(STANDARD.decode(body).map_err(|_| "its key is not valid base64".to_owned())?);
-        let bytes: [u8; 32] = decoded.as_slice().try_into().map_err(|_| "its key is not 32 bytes long".to_owned())?;
-        Ok(Self::from_bytes(bytes))
+        rbit_actions::secrets::SecretsKey::parse(text).map(Self::new)
     }
 
-    /// The contents of a key file for this key.
+    #[cfg(test)]
     fn encode(&self) -> Zeroizing<String> {
-        Zeroizing::new(format!("{KEY_PREFIX}{}\n", STANDARD.encode(&self.key[..])))
-    }
-
-    fn cipher(&self) -> Aes256Gcm {
-        Aes256Gcm::new(&Key::<Aes256Gcm>::from(*self.key))
+        self.key.encode()
     }
 
     /// Seals `value` as secret `id` of `scope`.
     pub(crate) fn seal(&self, scope: SecretScope, id: SecretId, value: &str) -> Result<SealedSecret, ServiceError> {
-        let mut nonce = [0u8; 12];
-        getrandom::fill(&mut nonce).map_err(|error| ServiceError::internal(io::Error::other(error.to_string())))?;
-        let aad = associated_data(scope, id);
-        let ciphertext = self
-            .cipher()
-            .encrypt(&Nonce::from(nonce), Payload { msg: value.as_bytes(), aad: &aad })
-            .map_err(|_| ServiceError::internal(io::Error::other("sealing a secret failed")))?;
+        let (nonce, ciphertext) = self.key.seal(address(scope, id), value).map_err(ServiceError::internal)?;
         Ok(SealedSecret { key_id: self.id, nonce, ciphertext })
     }
 
     /// Opens secret `id` of `scope`, or `None` when another key sealed it or the
     /// ciphertext does not belong to this scope and id.
     pub(crate) fn open(&self, scope: SecretScope, id: SecretId, sealed: &SealedSecret) -> Option<Zeroizing<String>> {
-        if sealed.key_id != self.id {
-            return None;
-        }
-        let aad = associated_data(scope, id);
-        let plain = Zeroizing::new(self.cipher().decrypt(&Nonce::from(sealed.nonce), Payload { msg: &sealed.ciphertext, aad: &aad }).ok()?);
-        String::from_utf8(plain.to_vec()).ok().map(Zeroizing::new)
+        self.key.open(address(scope, id), sealed.key_id, sealed.nonce, &sealed.ciphertext)
     }
 
     /// Whether this key sealed a secret with `key_id`.
     pub(crate) fn sealed(&self, key_id: [u8; 8]) -> bool {
-        self.id == key_id
+        self.key.sealed(key_id)
     }
 }
 
-/// `rbit-actions-secret-v1 \0 <scope kind> \0 <scope id> \0 <secret id>`: binds a ciphertext
-/// to its row, so a value copied elsewhere does not open.
-fn associated_data(scope: SecretScope, id: SecretId) -> Vec<u8> {
-    let mut aad = AAD_PREFIX.to_vec();
-    for part in [scope.kind().as_bytes(), scope.id().to_string().as_bytes(), id.0.to_string().as_bytes()] {
-        aad.push(0);
-        aad.extend_from_slice(part);
-    }
-    aad
+/// Where secret `id` of `scope` is stored: the associated data of its ciphertext.
+fn address(scope: SecretScope, id: SecretId) -> SecretAddress<'static> {
+    SecretAddress { scope_kind: scope.kind(), scope_id: scope.id(), secret_id: id.0 }
 }
 
 /// Loads the key at `path`, or creates it when there is none and `sealed_exist` says no
-/// secret was sealed yet.
+/// secret was sealed yet (`rbit_actions::secrets::load_key`).
 pub(crate) async fn load_key(path: &Path, sealed_exist: impl Future<Output = Result<bool, ServiceError>>) -> KeyState {
-    let shown = path.display();
-    match tokio::fs::read_to_string(path).await {
-        Ok(text) => {
-            check_mode(path)?;
-            let text = Zeroizing::new(text);
-            SecretsKey::parse(&text)
-                .map(Arc::new)
-                .map_err(|reason| KeyUnavailable(format!("the secrets key file {shown} is unusable: {reason}")))
+    match rbit_actions::secrets::load_key(&DiskKeyFile(path), sealed_exist).await? {
+        LoadedKey::Existing(key) => Ok(Arc::new(SecretsKey::new(key))),
+        LoadedKey::Created(key) => {
+            tracing::info!(path = %path.display(), "created the Actions secrets key; back it up separately from the data directory");
+            Ok(Arc::new(SecretsKey::new(key)))
         }
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            if sealed_exist.await.map_err(|error| KeyUnavailable(format!("checking for stored secrets failed: {error}")))? {
-                return Err(KeyUnavailable(format!(
-                    "the secrets key file {shown} is missing while secrets are stored; restore it, or delete the secrets and set them again"
-                )));
-            }
-            let key = SecretsKey::generate().map_err(|error| KeyUnavailable(format!("generating a secrets key failed: {error}")))?;
-            write_key(path, &key)
-                .await
-                .map_err(|error| KeyUnavailable(format!("creating the secrets key file {shown} failed: {error}")))?;
-            tracing::info!(path = %shown, "created the Actions secrets key; back it up separately from the data directory");
-            Ok(Arc::new(key))
+    }
+}
+
+/// The key file on disk.
+struct DiskKeyFile<'a>(&'a Path);
+
+impl KeyFile for DiskKeyFile<'_> {
+    fn shown(&self) -> String {
+        self.0.display().to_string()
+    }
+
+    async fn read(&self) -> io::Result<Option<Zeroizing<String>>> {
+        match tokio::fs::read_to_string(self.0).await {
+            Ok(text) => Ok(Some(Zeroizing::new(text))),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error),
         }
-        Err(error) => Err(KeyUnavailable(format!("reading the secrets key file {shown} failed: {error}"))),
+    }
+
+    fn check_private(&self) -> Result<(), KeyUnavailable> {
+        check_mode(self.0)
+    }
+
+    async fn create(&self, contents: &str) -> io::Result<()> {
+        write_key(self.0, contents).await
     }
 }
 
 /// Writes a new key file, failing if one appeared meanwhile; `0600` on Unix.
-async fn write_key(path: &Path, key: &SecretsKey) -> io::Result<()> {
+async fn write_key(path: &Path, contents: &str) -> io::Result<()> {
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
@@ -186,7 +141,7 @@ async fn write_key(path: &Path, key: &SecretsKey) -> io::Result<()> {
     #[cfg(unix)]
     options.mode(0o600);
     let mut file = options.open(path).await?;
-    tokio::io::AsyncWriteExt::write_all(&mut file, key.encode().as_bytes()).await?;
+    tokio::io::AsyncWriteExt::write_all(&mut file, contents.as_bytes()).await?;
     file.sync_all().await
 }
 
