@@ -81,12 +81,11 @@ the database. No release measurement was taken and none is claimed.
 
 ## Not covered
 
-- Which events feed the mention index (opened/edited bodies, comments, the previous body
-  of an edit, deleted comment snapshots, submitted reviews and their comments) is chosen
-  by the shared issue event subscriber in `rbit-services/src/issues.rs`, which also routes
-  cross-references and commit references. That dispatch belongs with the subscriber's
-  owners (`collaboration.issues`, `collaboration.timeline`); each branch now calls the
-  application.
+- The shared issue event subscriber (`IssueService::handle_event`) only routes events:
+  which texts are indexed (current bodies, the previous body of an edit, deleted
+  comment snapshots, submitted reviews and their comments) is decided by
+  `rbit_collaboration::issues::ThreadActivity`, which records them through
+  `DashboardMentions`. See the [timeline and issue retirement](collaboration-issues-acceptance.md).
 - Event-bus overflow can still skip activity, as documented for users.
 
 ## Cost
