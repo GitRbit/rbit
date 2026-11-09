@@ -134,6 +134,13 @@ add it here in the same change. See "Translating a locale" in
 | trigger | 触发 |
 | queued / in progress | 排队中 / 进行中 |
 | succeeded / failed / cancelled / skipped | 成功 / 失败 / 已取消 / 已跳过 |
+| waiting / awaiting approval | 等待中 / 等待批准 |
+| actor (who triggered a run) | 执行者 |
+| triggered by | 触发者 |
+| duration | 耗时 |
+| raw log | 原始日志 |
+| summary (job) | 概要 |
+| manual / schedule / dispatch (event) | 手动 / 定时 / 调度 |
 
 ## Accounts, security and administration
 
@@ -143,6 +150,8 @@ add it here in the same change. See "Translating a locale" in
 | profile | 个人资料 |
 | settings | 设置 |
 | appearance / theme | 外观 / 主题 |
+| light / dark (mode) | 浅色 / 深色 |
+| display language / preferred language | 显示语言 / 首选语言 |
 | sign in / sign out / sign up | 登录 / 退出登录 / 注册 |
 | username / password | 用户名 / 密码 |
 | email address / email (message) | 邮箱地址 / 邮件 |

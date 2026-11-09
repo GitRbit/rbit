@@ -116,5 +116,20 @@ entries! { ZhHans:
             text.literal("”。");
         }
         WikiMessage::MorePages => text.literal("更多页面"),
+        WikiMessage::DeleteKeepsHistory => {
+            text.literal("此页面将从 Wiki 中移除。其历史记录会保留，具有写入权限的用户可以从已删除的页面中恢复它。");
+        }
+        WikiMessage::DeletedPages => text.literal("已删除的页面"),
+        WikiMessage::NoDeletedPages => text.literal("没有已删除的页面。"),
+        WikiMessage::DeletedNotice => text.literal("此页面已被删除。其历史记录已保留。"),
+        WikiMessage::RestorePage => text.literal("恢复页面"),
+        WikiMessage::MoreDeletedPages => text.literal("更早的删除"),
+        WikiMessage::RestoreBlocked => {
+            text.literal("其他页面现在正在使用此路径。请先重命名该页面，再恢复此页面。");
+        }
+        WikiMessage::RenamedFrom { path } => {
+            text.literal("重命名自 ");
+            text.argument(path);
+        }
     }
 }
