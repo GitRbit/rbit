@@ -14,6 +14,7 @@ import { checkRepositoryEditsRetirement } from "./repository-edits-retirement.mj
 import { checkRepositoryLifecycleRetirement } from "./repository-lifecycle-retirement.mjs";
 import { checkRepositoryReleasesRetirement } from "./repository-releases-retirement.mjs";
 import { checkRepositoryLfsRetirement } from "./repository-lfs-retirement.mjs";
+import { checkRepositoryBrowseRetirement } from "./repository-browse-retirement.mjs";
 import { checkActionsDiscoveryRetirement } from "./actions-discovery-retirement.mjs";
 import { checkNotificationsRetirement } from "./notifications-retirement.mjs";
 import { checkActionsRunnerRetirement } from "./actions-runner-retirement.mjs";
@@ -226,6 +227,7 @@ export function check(root) {
     ...checkRepositoryLifecycleRetirement(files),
     ...checkRepositoryReleasesRetirement(files),
     ...checkRepositoryLfsRetirement(files),
+    ...checkRepositoryBrowseRetirement(files),
     ...checkUnifiedModelBoundary(root, metadata), ...checkInventoryCompileIsolation(root),
     ...checkActionsDiscoveryRetirement(files),
     ...checkNotificationsRetirement(files),
