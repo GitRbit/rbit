@@ -11,7 +11,7 @@
 //   crates/rbit-web/assets/themes/<slug>.css  one theme, loaded only while it is active
 //   crates/rbit-web/assets/themes/all.css     every theme, loaded only by the gallery
 //   crates/rbit-web/assets/themes/LICENSE.txt scheme authors and the MIT licence
-//   crates/rbit-web/src/themes/catalog.rs     the compile-time catalog
+//   crates/rbit-presentation/src/themes/catalog.rs  the compile-time catalog
 //
 // Each scheme's palette is mapped onto rbit's semantic tokens following the base16
 // styling guidelines, then checked for contrast: body text (ink, ink-muted, status and
@@ -27,7 +27,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const THEMES_DIR = join(ROOT, "crates/rbit-web/assets/themes");
-const CATALOG_RS = join(ROOT, "crates/rbit-web/src/themes/catalog.rs");
+const CATALOG_RS = join(ROOT, "crates/rbit-presentation/src/themes/catalog.rs");
 
 const SYSTEMS = ["base24", "base16"]; // base24 first: it wins when a scheme exists in both.
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;

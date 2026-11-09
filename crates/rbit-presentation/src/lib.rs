@@ -35,3 +35,5 @@
 pub mod documents;
 pub mod markdown;
 pub mod navigation;
+pub mod pwa;
+pub mod themes;

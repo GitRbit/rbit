@@ -11,7 +11,7 @@ use crate::{
     AppState,
     error::ErrorInfo,
     extract::Viewer,
-    themes::Theme,
+    themes::{Theme, ThemeHttp},
     views::{errors::ErrorPage, layout::Page},
 };
 

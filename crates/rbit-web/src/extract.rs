@@ -16,7 +16,13 @@ use axum::{
 use rbit_auth::SessionToken;
 use rbit_core::User;
 
-use crate::{AppState, error::WebError, themes::Theme, urls::encode_path, views::layout::Page};
+use crate::{
+    AppState,
+    error::WebError,
+    themes::{Theme, ThemeHttp},
+    urls::encode_path,
+    views::layout::Page,
+};
 
 /// The user making the request, if signed in.
 #[derive(Debug, Clone, Default)]

@@ -44,7 +44,7 @@ export function strictCrateNames(metadata, baseline) {
     && (!legacy.has(pkg.name) || PROMOTED_CRATES.includes(pkg.name))).map(pkg => pkg.name);
 }
 const GENERATED = new Set([
-  "crates/rbit-web/assets/app.bundle.js", "crates/rbit-web/src/themes/catalog.rs",
+  "crates/rbit-web/assets/app.bundle.js", "crates/rbit-presentation/src/themes/catalog.rs",
 ]);
 const FEATURE_EDGES = {
   "rbit-credential-inventory": ["rbit-identity"],

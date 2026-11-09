@@ -1,15 +1,18 @@
-//! Progressive-web-app plumbing: manifest, service worker, offline page.
+//! Progressive-web-app routes: manifest, service worker, offline page and branding sheet.
+//!
+//! What they contain is decided by [`rbit_presentation::pwa`]; these handlers read the
+//! instance settings and request, and set content types and cache headers.
 
 use axum::{
     extract::{Query, State},
     http::{HeaderMap, header},
     response::{IntoResponse, Response},
 };
-use serde_json::json;
-use sha2::{Digest, Sha256};
+use rbit_presentation::pwa::{self, BrandingColors, InstallableApp};
 
 use crate::{
     AppState, assets,
+    themes::{Theme, ThemeHttp},
     views::{layout::Page, pwa::OfflinePage},
 };
 
@@ -20,47 +23,22 @@ pub struct ManifestQuery {
 }
 
 fn launch_color(slug: &str, headers: &HeaderMap) -> &'static str {
-    crate::themes::Theme::parse(slug)
-        .unwrap_or_else(|| crate::themes::Theme::from_headers(headers))
-        .theme_color()
-        .unwrap_or(crate::themes::DNA_DAY_CANVAS)
+    pwa::launch_color(slug, || Theme::from_headers(headers))
 }
 
 pub async fn manifest(State(state): State<AppState>, Query(query): Query<ManifestQuery>, headers: HeaderMap) -> Response {
     let color = launch_color(&query.theme, &headers);
     let settings = state.services.instance.current();
-    let site = settings.site_name;
-    let icons = if settings.branding.app_icon_url.is_empty() {
-        json!([
-            {"src": assets::url("icon-192.png"), "sizes": "192x192", "type": "image/png", "purpose": "any"},
-            {"src": assets::url("icon-512.png"), "sizes": "512x512", "type": "image/png", "purpose": "any"},
-            {"src": assets::url("icon-maskable-512.png"), "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
-        ])
-    } else {
-        json!([{"src": settings.branding.app_icon_url, "sizes": "any", "purpose": "any"}])
+    let app = InstallableApp {
+        name: &settings.site_name,
+        description: &settings.branding.description,
+        app_icon_url: &settings.branding.app_icon_url,
+        color,
     };
-    let manifest = json!({
-        "name": site,
-        "short_name": site,
-        "description": settings.branding.description,
-        "id": "/",
-        "start_url": "/",
-        "scope": "/",
-        "display": "standalone",
-        // Match the selected theme before the first page paints. The id stays stable.
-        "background_color": color,
-        "theme_color": color,
-        // PNGs generated from scripts/icons/logo.png by `npm run icons`; the maskable icon keeps
-        // the entire mascot inside the safe zone.
-        "icons": icons,
-        "shortcuts": [
-            { "name": "New repository", "url": "/new" },
-            { "name": "Explore", "url": "/explore" }
-        ]
-    });
+    let manifest = pwa::manifest(&app, assets::url);
     (
         [(header::CONTENT_TYPE, "application/manifest+json"), (header::CACHE_CONTROL, "private, no-cache"), (header::VARY, "Cookie")],
-        manifest.to_string(),
+        manifest,
     )
         .into_response()
 }
@@ -70,13 +48,12 @@ pub async fn manifest(State(state): State<AppState>, Query(query): Query<Manifes
 pub async fn service_worker(State(state): State<AppState>) -> Response {
     let settings = state.services.instance.current();
     let identity = format!("{}{:?}", settings.site_name, settings.branding);
-    let digest = assets::hex_prefix(&Sha256::digest(identity.as_bytes()));
     // Refresh the anonymous offline fallback after identity changes, even without a deploy.
-    worker_response(&format!("{}-{digest}", assets::build_version()))
+    worker_response(&pwa::worker_version(assets::build_version(), &identity))
 }
 
 fn worker_response(version: &str) -> Response {
-    let source = assets::read("sw.js").map(|bytes| String::from_utf8_lossy(&bytes).replace("__VERSION__", version)).unwrap_or_default();
+    let source = assets::read("sw.js").map(|bytes| pwa::worker_source(&String::from_utf8_lossy(&bytes), version)).unwrap_or_default();
     (
         [
             (header::CONTENT_TYPE, "text/javascript; charset=utf-8"),
@@ -114,17 +91,9 @@ pub struct BrandingQuery {
 pub async fn branding_styles(State(state): State<AppState>, Query(query): Query<BrandingQuery>) -> Response {
     let branding = state.services.instance.current().branding;
     let valid = !branding.primary_color.is_empty() && branding.validate().is_ok();
-    let css = if valid {
-        format!(
-            ".btn-primary{{background-color:{};border-color:{};color:{}}}.btn-primary:hover{{background-color:{};border-color:{};filter:brightness(.9)}}",
-            branding.primary_color, branding.primary_color, branding.primary_text_color, branding.primary_color, branding.primary_color
-        )
-    } else {
-        String::new()
-    };
-    let current = valid && query.color == branding.primary_color && query.text == branding.primary_text_color;
-    let cache_control = if current { "public, max-age=31536000, immutable" } else { "no-cache" };
-    ([(header::CONTENT_TYPE, "text/css; charset=utf-8"), (header::CACHE_CONTROL, cache_control)], css).into_response()
+    let current = valid.then_some(BrandingColors { primary: &branding.primary_color, text: &branding.primary_text_color });
+    let sheet = pwa::branding_sheet(current, BrandingColors { primary: &query.color, text: &query.text });
+    ([(header::CONTENT_TYPE, "text/css; charset=utf-8"), (header::CACHE_CONTROL, sheet.cache_control)], sheet.css).into_response()
 }
 
 #[cfg(test)]

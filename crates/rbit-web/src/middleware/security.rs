@@ -12,7 +12,7 @@ use crate::{
     AppState,
     client_ip::ClientIp,
     error::{ErrorInfo, WebError},
-    themes::Theme,
+    themes::{Theme, ThemeHttp},
     views::{errors::ErrorPage, layout::Page},
 };
 

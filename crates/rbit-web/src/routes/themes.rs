@@ -19,7 +19,7 @@ use crate::{
     client_ip::Https,
     error::{WebError, WebResult},
     extract::Viewer,
-    themes::Theme,
+    themes::{Theme, ThemeHttp},
     urls::safe_redirect_target,
     views::{
         layout::Page,

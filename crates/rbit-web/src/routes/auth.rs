@@ -33,7 +33,7 @@ use crate::{
     error::{WebError, WebResult},
     extract::Viewer,
     middleware::{self, SESSION_COOKIE},
-    themes::Theme,
+    themes::{Theme, ThemeHttp},
     urls::safe_redirect_target,
     views::{
         auth::{LoginPage, SignupPage},
