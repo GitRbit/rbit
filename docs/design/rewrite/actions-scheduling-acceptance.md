@@ -177,3 +177,79 @@ edited files (+42 / −126); checker: a 41-line guard, a 38-line test and two li
 The dependency and `if:` decisions after each settle (`conditions.rs`), the `task_state`
 and log lease answers, cancel, rerun and approval request validation, and the review gate
 and wait timer (in progress by the actions agent).
+
+## Third slice: job decisions, requests, lease answers and the review gate
+
+Built on `f043a2df`, alongside the poll-loop slice above, which owns the poll loop and the
+sweeper's zombie and timeout passes; this slice owns the rest of what the first slice left.
+
+| Decision | Legacy place | Now |
+| --- | --- | --- |
+| A job's own `if:`: true runs, false skips, unevaluable fails | `conditions::evaluate_condition` | `scheduling::jobs::condition_verdict` |
+| The contexts an `if:` reads (`github` without any token, `inputs`, `vars`, `matrix`, `strategy`, `needs` and the needs-derived status) | `conditions::condition_contexts` | `jobs::condition_contexts` (services read the parts in the same order) |
+| The calls' own `if:`, outermost first, each level with its outer inputs, and the failure message naming the call | `calls::call_conditions` | `jobs::calls_allow`; `jobs::calls_verdict` maps it to skip or fail |
+| A job planned from its needs: an empty matrix skips, a failed plan fails | `conditions::expand_deferred` | `jobs::deferred_verdict` |
+| Fail-fast: failed keys in key order, only with unfinished siblings, only for a real matrix with `fail-fast` on | `conditions::fail_fast` | `jobs::{fail_fast_candidates, fail_fast_applies}` |
+| `needs.<id>.result` names | `conditions::result_name`, `calls::result_name` (two copies) | `jobs::result_name` |
+| Cancel, rerun and approval rules and messages | `runs.rs` | `scheduling::requests::{check_rerun, check_approval, ALREADY_FINISHED, NO_MATCHING_JOB, NOT_AWAITING_APPROVAL}` |
+| Deployment review requests: comment length, selection of the named environments in order (case-insensitive), the reviewer's right per environment, the messages | `environments::review_deployments` | `requests::{check_review_comment, review_selection, NO_LONGER_REVIEWING}` |
+| A state report on a task that ended: cancel unless it is a resent final report of a task that was not cancelled; another runner's task is forbidden | `tasks::task_state` | `scheduling::leases::{owned, ended_task_cancels}` |
+| A log append after the task ended or its log closed | `logs::append_log` | `leases::{owned, log_open}` (`Refusal::LogClosed`) |
+
+### The review gate and the wait timer
+
+Both are SQL predicates evaluated inside the store's transactions, and they are the race
+authority:
+
+- In `settle`, a job about to wait for a runner whose environment has reviewers, and whose
+  attempt none approved, waits for review instead, in the same transaction.
+- `review_jobs` and `release_reviews` move reviewed jobs.
+- The claim query skips a job whose environment's wait timer has not passed since it was
+  queued.
+
+No decision about either is made outside those transactions. Moving any of them out would
+open the window the transaction closes. What surrounds them is decided in `rbit-actions`:
+
+- who may review, the environment bounds, and the ref gate (`environments`, from the
+  secrets row);
+- what a review request selects and answers (`requests`, above).
+
+The SQL is kept, as the coordinator's brief asked.
+
+### Boundary
+
+`actions-scheduling-retirement.mjs` additionally rejects these in the services, web and
+server adapters:
+
+- `Condition::parse`, a `result_name` function, `.fail_fast &&`;
+- the run and review request messages (the REST API's per-id wording is allowed);
+- the lease answers for another runner and a closed log.
+
+Against the files at `f043a2df` it reports 6 more violations; against this tree, none. The
+discovery boundary now skips unit-test modules, which build fixtures by parsing workflows.
+
+### Third-slice results
+
+A quick run at `3ec43bcc` (base `f043a2df`) passed rewrite contracts (with the type
+check), workspace-wide formatting and all-target Clippy with `-D warnings`, licenses and
+advisories, and the front-end build. Nextest ran the changed packages, `rbit-actions` and
+`rbit-services`: 827 tests, 827 passed, none skipped. That set includes, unchanged:
+
+- the condition, call, needs-plan and fail-fast suites (`actions_conditions`, `actions_calls`, `actions_needs_plans`);
+- `actions_runs` (cancel, rerun, approval) and the environment review tests;
+- `actions_tokens`, and the task state and log append suites.
+
+The five new `rbit-actions` `scheduling::decision_tests` passed. An earlier run (249)
+caught a Clippy pedantic lint and a test expectation: an `if:` without a status function
+implies `success()`. Both were fixed in one pass. Storage's race tests (SQL unchanged),
+`rbit-web` and Windows were not run.
+
+### Third-slice cost
+
+| Measure | Value |
+| --- | --- |
+| Code commits | 3 |
+| `rbit-actions` production | 5 files, +269 / −3 (`scheduling/jobs`, `scheduling/requests`, `scheduling/leases`, wiring) |
+| `rbit-services` production | 7 files, +90 / −152 |
+| Tests | 1 new file, +115 |
+| Checker and policy scripts | +18 / −2 |
