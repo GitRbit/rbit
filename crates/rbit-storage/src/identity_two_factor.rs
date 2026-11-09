@@ -1,9 +1,13 @@
-//! Authenticator port: the existing sealed-secret statements and their guarded writes.
+//! Authenticator and passkey ports: the existing sealed-secret and passkey statements and
+//! their guarded writes.
 
 use std::future::Future;
 
 use rbit_core::AccountId;
-use rbit_identity_models::two_factor::{RecoveryDigest, TwoFactorRecord, TwoFactorRepository};
+use rbit_identity_models::{
+    passkeys::{NewPasskey, PasskeyAdded, PasskeyRecord, PasskeyRepository},
+    two_factor::{RecoveryDigest, TwoFactorRecord, TwoFactorRepository},
+};
 
 use crate::StorageError;
 use crate::sqlite::two_factor::TwoFactorStore;
@@ -35,5 +39,28 @@ impl TwoFactorRepository for TwoFactorStore {
         digests: &[RecoveryDigest],
     ) -> impl Future<Output = Result<bool, Self::Error>> + Send {
         TwoFactorStore::replace_recovery_codes(self, account, digests)
+    }
+}
+
+impl PasskeyRepository for TwoFactorStore {
+    type Error = StorageError;
+
+    fn passkeys(&self, account: AccountId) -> impl Future<Output = Result<Vec<PasskeyRecord>, Self::Error>> + Send {
+        TwoFactorStore::passkeys(self, account)
+    }
+    fn find_passkey(
+        &self,
+        account: AccountId,
+        credential_id: &[u8],
+    ) -> impl Future<Output = Result<Option<PasskeyRecord>, Self::Error>> + Send {
+        TwoFactorStore::find_passkey(self, account, credential_id)
+    }
+    fn add_passkey(
+        &self,
+        account: AccountId,
+        passkey: &NewPasskey<'_>,
+        recovery: &[RecoveryDigest],
+    ) -> impl Future<Output = Result<PasskeyAdded, Self::Error>> + Send {
+        TwoFactorStore::add_passkey(self, account, passkey, recovery)
     }
 }

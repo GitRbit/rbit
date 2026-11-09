@@ -11,6 +11,7 @@ sessions = ["session-tokens", "dep:tokio", "dep:tokio-util"]
 session-tokens = ["dep:base64", "dep:sha2", "dep:getrandom"]
 access-tokens = ["session-tokens"]
 two-factor = ["session-tokens", "dep:hmac", "dep:sha1", "dep:subtle"]
+passkeys = ["two-factor", "dep:thiserror", "dep:p256", "dep:ed25519-dalek", "dep:rsa", "dep:serde_json"]
 default = ["password-work"]
 credentials = ["dep:argon2", "dep:thiserror", "dep:tokio", "dep:zeroize"]
 password-work = ["credentials", "dep:rbit-kernel", "dep:subtle", "dep:getrandom"]
@@ -30,6 +31,10 @@ zeroize = { workspace = true, optional = true }
 subtle = { workspace = true, optional = true }
 hmac = { workspace = true, optional = true }
 sha1 = { workspace = true, optional = true }
+p256 = { workspace = true, optional = true }
+ed25519-dalek = { workspace = true, optional = true }
+rsa = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
 getrandom = { workspace = true, optional = true }
 
 [dev-dependencies]
@@ -58,6 +63,11 @@ required-features = ["password-work"]
 [[test]]
 name = "password_work"
 required-features = ["password-work"]
+
+[[test]]
+name = "passkey_application"
+# Sessions supply the async test runtime; the application itself needs no runtime.
+required-features = ["passkeys", "sessions"]
 
 [[test]]
 name = "two_factor_application"

@@ -41,42 +41,8 @@ impl From<TwoFactorRow> for TwoFactorRecord {
     }
 }
 
-/// A registered passkey or security key.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PasskeyRecord {
-    pub id: i64,
-    pub credential_id: Vec<u8>,
-    /// The COSE key as registered.
-    pub public_key: Vec<u8>,
-    pub algorithm: i64,
-    pub sign_count: u32,
-    pub transports: Vec<String>,
-    pub name: String,
-    pub created_at: Timestamp,
-    pub last_used_at: Option<Timestamp>,
-}
-
-/// A passkey to register.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NewPasskey<'a> {
-    pub credential_id: &'a [u8],
-    pub public_key: &'a [u8],
-    pub algorithm: i64,
-    pub sign_count: u32,
-    pub transports: &'a [String],
-    pub name: &'a str,
-}
-
-/// What [`TwoFactorStore::add_passkey`] did.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PasskeyAdded {
-    /// Added to an account that already had two-factor authentication.
-    Added,
-    /// Added as the account's first factor: the recovery codes given were stored.
-    FirstFactor,
-    /// This credential is already registered (to this or another account).
-    Duplicate,
-}
+/// Passkey records are identity-owned; these paths stay compatible.
+pub use rbit_identity_models::passkeys::{NewPasskey, PasskeyAdded, PasskeyRecord};
 
 #[derive(Debug, sqlx::FromRow)]
 struct PasskeyRow {

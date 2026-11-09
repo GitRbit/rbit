@@ -32,11 +32,12 @@ use std::{
 use rbit_auth::{Challenge, RelyingParty, SessionToken, TokenDigest};
 use rbit_core::{AccountId, Timestamp, User};
 use rbit_identity::PasswordWork;
-use rbit_identity::two_factor::{TwoFactorApplication, TwoFactorError, formatted, new_recovery_codes, recovery_digests as digests};
+use rbit_identity::passkeys::{ChallengeBook, PasskeyApplication, PasskeyError, PasskeyRejection};
+use rbit_identity::two_factor::{TwoFactorApplication, TwoFactorError, formatted};
 use rbit_identity_models::sessions::ClientInfo;
 use rbit_storage::{
     AccountStore, StorageError,
-    sqlite::two_factor::{NewPasskey, PasskeyAdded, PasskeyRecord, TwoFactorStore},
+    sqlite::two_factor::{PasskeyRecord, TwoFactorStore},
 };
 
 use crate::{
@@ -61,18 +62,8 @@ pub const PENDING_SIGN_IN_TTL: Duration = Duration::from_mins(5);
 const PENDING_SIGN_IN_ATTEMPTS: u8 = 5;
 /// Pending sign-ins kept at most (oldest beyond this are dropped).
 const MAX_PENDING_SIGN_INS: usize = 10_000;
-/// How long a passkey challenge issued on a settings page stays valid.
-const CHALLENGE_TTL: Duration = Duration::from_mins(10);
-/// Accounts with outstanding settings challenges kept at most (oldest beyond this are dropped).
-const MAX_CHALLENGES: usize = 10_000;
-/// Outstanding challenges per account and ceremony.
-const CHALLENGES_PER_ACCOUNT: usize = 4;
-/// Passkeys per account.
-pub const MAX_PASSKEYS: usize = 20;
-/// Longest passkey name, in characters.
-pub const MAX_PASSKEY_NAME: usize = 64;
-/// Size limit of a browser's `WebAuthn` answer (they are a few hundred bytes to a few KiB).
-const MAX_RESPONSE_LEN: usize = 16 * 1024;
+/// Passkey limits, ceremonies and registration outcomes are identity-owned; these paths stay compatible.
+pub use rbit_identity::passkeys::{Ceremony, MAX_PASSKEY_NAME, MAX_PASSKEYS, PasskeyRegistered};
 
 /// A user's second factors, for the settings page.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -155,27 +146,6 @@ pub enum GitPasswordOutcome {
     TokenRequired,
 }
 
-/// The result of registering a passkey.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PasskeyRegistered {
-    /// Added next to the account's other factors.
-    Added,
-    /// The account's first factor: these fresh recovery codes must be shown once.
-    FirstFactor(Vec<String>),
-}
-
-/// What a settings-page challenge is for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum Ceremony {
-    /// Registering a new passkey.
-    Register,
-    /// Confirming a sensitive change with an existing passkey.
-    Confirm,
-}
-
-/// Outstanding settings-page challenges, newest last.
-type Challenges = HashMap<(AccountId, Ceremony), Vec<(Challenge, Instant)>>;
-
 #[derive(Debug, Clone)]
 pub struct TwoFactorService {
     passwords: PasswordWork,
@@ -185,7 +155,7 @@ pub struct TwoFactorService {
     instance: InstanceService,
     public_url: String,
     pending: Arc<Mutex<HashMap<TokenDigest, PendingSignIn>>>,
-    challenges: Arc<Mutex<Challenges>>,
+    challenges: Arc<ChallengeBook>,
 }
 
 impl TwoFactorService {
@@ -246,78 +216,27 @@ impl TwoFactorService {
 
     // ------------------------------------------------------------------ passkeys
 
-    /// The relying party for this site. Passkeys are bound to `server.public_url`, so
-    /// they only work when the site is opened at that address.
-    fn relying_party(&self) -> Result<RelyingParty, ServiceError> {
-        RelyingParty::from_public_url(&self.public_url, &self.instance.current().site_name)
-            .ok_or_else(|| ServiceError::Invalid("passkeys need `server.public_url` to be set to this site's address".to_owned()))
+    /// The passkey application, bound to `server.public_url`: passkeys only work when the
+    /// site is opened at that address.
+    pub(super) fn passkeys(&self) -> PasskeyApplication<'_, TwoFactorStore> {
+        let relying_party = RelyingParty::from_public_url(&self.public_url, &self.instance.current().site_name);
+        PasskeyApplication::new(&self.store, &self.challenges, relying_party)
     }
 
-    fn lock_challenges(&self) -> std::sync::MutexGuard<'_, Challenges> {
-        self.challenges.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-
-    /// A fresh challenge for `ceremony`. The account's few most recent ones stay valid, so
-    /// a second tab (or a page fetched again) doesn't break the one already open.
-    fn issue_challenge(&self, account: AccountId, ceremony: Ceremony) -> Challenge {
-        let challenge = Challenge::generate();
-        let now = Instant::now();
-        let mut challenges = self.lock_challenges();
-        challenges.retain(|_, issued| {
-            issued.retain(|(_, at)| now.duration_since(*at) < CHALLENGE_TTL);
-            !issued.is_empty()
-        });
-        if challenges.len() >= MAX_CHALLENGES
-            && let Some(oldest) = challenges.iter().min_by_key(|(_, issued)| issued.first().map(|(_, at)| *at)).map(|(key, _)| *key)
-        {
-            challenges.remove(&oldest);
-        }
-        let issued = challenges.entry((account, ceremony)).or_default();
-        if issued.len() >= CHALLENGES_PER_ACCOUNT {
-            issued.remove(0);
-        }
-        issued.push((challenge.clone(), now));
-        challenge
-    }
-
-    /// Takes (so it can't be used twice) the account's outstanding challenge for
-    /// `ceremony` that `response` answers.
-    fn take_challenge(&self, account: AccountId, ceremony: Ceremony, response: &str) -> Option<Challenge> {
-        let answered = Challenge::answered_by(response).ok()?;
-        let mut challenges = self.lock_challenges();
-        let issued = challenges.get_mut(&(account, ceremony))?;
-        let index = issued.iter().position(|(challenge, _)| *challenge == answered)?;
-        let (challenge, at) = issued.remove(index);
-        (at.elapsed() < CHALLENGE_TTL).then_some(challenge)
-    }
-
-    /// The options for `navigator.credentials.get` limited to the account's passkeys, or
-    /// `None` if it has none.
-    fn request_options(&self, passkeys: &[PasskeyRecord], challenge: &Challenge) -> Result<Option<String>, ServiceError> {
-        if passkeys.is_empty() {
-            return Ok(None);
-        }
-        let ids: Vec<Vec<u8>> = passkeys.iter().map(|passkey| passkey.credential_id.clone()).collect();
-        Ok(Some(self.relying_party()?.request_options(challenge, &ids)))
+    /// Takes the account's outstanding settings challenge for `ceremony` that `response` answers.
+    pub(super) fn take_challenge(&self, account: AccountId, ceremony: Ceremony, response: &str) -> Option<Challenge> {
+        self.challenges.take(account, ceremony, response)
     }
 
     /// Options for `navigator.credentials.create` to register a new passkey.
     pub async fn creation_options(&self, user: &User) -> Result<String, ServiceError> {
-        let rp = self.relying_party()?;
-        let existing: Vec<Vec<u8>> = self.store.passkeys(user.id()).await?.into_iter().map(|passkey| passkey.credential_id).collect();
-        let challenge = self.issue_challenge(user.id(), Ceremony::Register);
-        Ok(rp.creation_options(&challenge, &user.id().0.to_be_bytes(), user.name().as_str(), &existing))
+        self.passkeys().creation_options(user).await.map_err(|error| map_passkey(error, user, |never| match never {}))
     }
 
     /// Options for `navigator.credentials.get` to confirm a sensitive change with a
     /// passkey, or `None` if the account has none.
     pub async fn confirmation_options(&self, user: &User) -> Result<Option<String>, ServiceError> {
-        let passkeys = self.store.passkeys(user.id()).await?;
-        if passkeys.is_empty() {
-            return Ok(None);
-        }
-        let challenge = self.issue_challenge(user.id(), Ceremony::Confirm);
-        self.request_options(&passkeys, &challenge)
+        self.passkeys().confirmation_options(user).await.map_err(|error| map_passkey(error, user, |never| match never {}))
     }
 
     /// Options for `navigator.credentials.get` on the second sign-in step, or `None` if
@@ -334,7 +253,11 @@ impl TwoFactorService {
         if let Some(entry) = self.lock_pending().get_mut(&pending.digest()) {
             entry.challenge = Some(challenge.clone());
         }
-        self.request_options(&passkeys, &challenge)
+        self.passkeys().request_options(&passkeys, &challenge).map_err(|error| match error {
+            PasskeyError::Rejected(rejection) => ServiceError::Invalid(rejection.to_string()),
+            PasskeyError::Store(error) => error.into(),
+            _ => ServiceError::InvalidCredentials,
+        })
     }
 }
 
@@ -368,16 +291,22 @@ fn account_key(account: AccountId) -> String {
     format!("account:{}", account.0)
 }
 
-/// A trimmed passkey name, `Passkey` when left empty.
-fn passkey_name(name: &str) -> Result<String, ServiceError> {
-    let name = name.trim();
-    if name.chars().count() > MAX_PASSKEY_NAME {
-        return Err(ServiceError::Invalid(format!("the name can be at most {MAX_PASSKEY_NAME} characters")));
+/// Maps passkey outcomes; refusal reasons are logged and never shown.
+fn map_passkey<C>(error: PasskeyError<StorageError, C>, user: &User, claim: impl FnOnce(C) -> ServiceError) -> ServiceError {
+    match error {
+        PasskeyError::Store(error) => error.into(),
+        PasskeyError::Claim(error) => claim(error),
+        PasskeyError::Rejected(rejection) => ServiceError::Invalid(rejection.to_string()),
+        PasskeyError::RegistrationRefused(error) => {
+            tracing::info!(user = %user.name(), %error, "passkey registration refused");
+            ServiceError::Invalid(PasskeyRejection::NotVerified.to_string())
+        }
+        PasskeyError::AssertionRefused(error) => {
+            tracing::info!(user = %user.name(), %error, "passkey sign-in refused");
+            ServiceError::InvalidCredentials
+        }
+        PasskeyError::InvalidCredentials => ServiceError::InvalidCredentials,
     }
-    if name.chars().any(char::is_control) {
-        return Err(ServiceError::Invalid("the name can't contain control characters".to_owned()));
-    }
-    Ok(if name.is_empty() { "Passkey".to_owned() } else { name.to_owned() })
 }
 
 // ---------------------------------------------------------------------- flows across services
@@ -412,49 +341,13 @@ impl Services {
         response: &str,
         client: &ClientInfo,
     ) -> Result<PasskeyRegistered, ServiceError> {
-        let name = passkey_name(name)?;
-        let challenge = self
+        let (name, registered) = self
             .two_factor
-            .take_challenge(user.id(), Ceremony::Register, response)
-            .ok_or_else(|| ServiceError::Invalid("the passkey request expired; try again".to_owned()))?;
-        if self.two_factor.store.passkeys(user.id()).await?.len() >= MAX_PASSKEYS {
-            return Err(ServiceError::Invalid(format!("you can register at most {MAX_PASSKEYS} passkeys")));
-        }
-        if response.len() > MAX_RESPONSE_LEN {
-            return Err(ServiceError::Invalid("the passkey response is too large".to_owned()));
-        }
-        let credential = self.two_factor.relying_party()?.verify_registration(&challenge, response).map_err(|error| {
-            tracing::info!(user = %user.name(), %error, "passkey registration refused");
-            ServiceError::Invalid("the passkey couldn't be verified; try again".to_owned())
-        })?;
-        let codes = new_recovery_codes();
-        let passkey = NewPasskey {
-            credential_id: &credential.id,
-            public_key: &credential.public_key,
-            algorithm: credential.algorithm,
-            sign_count: credential.sign_count,
-            transports: &credential.transports,
-            name: &name,
-        };
-        let registered = match self.two_factor.store.add_passkey(user.id(), &passkey, &digests(user, &codes)).await? {
-            PasskeyAdded::Duplicate => return Err(ServiceError::Invalid("that passkey is already registered".to_owned())),
-            PasskeyAdded::Added => PasskeyRegistered::Added,
-            PasskeyAdded::FirstFactor => PasskeyRegistered::FirstFactor(formatted(&codes)),
-        };
+            .passkeys()
+            .register(user, name, response)
+            .await
+            .map_err(|error| map_passkey(error, user, |never| match never {}))?;
         self.audit.record(AuditEntry::new(AuditAction::PasskeyAdded).by(user).from_ip(client.ip).detail(&name)).await;
         Ok(registered)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn passkey_names_are_trimmed_and_bounded() {
-        assert_eq!(passkey_name("  YubiKey 5 ").unwrap(), "YubiKey 5");
-        assert_eq!(passkey_name("").unwrap(), "Passkey");
-        assert!(passkey_name(&"x".repeat(MAX_PASSKEY_NAME + 1)).is_err());
-        assert!(passkey_name("a\u{0}b").is_err());
     }
 }

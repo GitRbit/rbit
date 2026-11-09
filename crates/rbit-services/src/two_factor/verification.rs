@@ -1,9 +1,9 @@
 //! One cryptographic verifier with static legacy/original proof-write adapters.
 use super::{
-    AccountId, Challenge, MAX_RESPONSE_LEN, RelyingParty, SecondFactor, SecondFactorProof, ServiceError, TwoFactorService, TwoFactorStore,
-    User, convert,
+    AccountId, Challenge, SecondFactor, SecondFactorProof, ServiceError, TwoFactorService, TwoFactorStore, User, convert, map_passkey,
 };
 use crate::accounts::OriginalProofReceipt;
+use rbit_identity::passkeys::PasskeyClaims;
 use rbit_identity::two_factor::{CodeFactor, RecoveryDigest, SecondFactorClaims};
 use rbit_storage::sqlite::two_factor::CredentialProofWrite;
 use std::future::Future;
@@ -60,24 +60,8 @@ impl TwoFactorService {
         response: &str,
         mode: M,
     ) -> Result<(), ServiceError> {
-        if response.len() > MAX_RESPONSE_LEN {
-            return Err(ServiceError::InvalidCredentials);
-        }
-        let rp = self.relying_party()?;
-        let refused = |error: rbit_auth::WebauthnError| {
-            tracing::info!(user = %user.name(), %error, "passkey sign-in refused");
-            ServiceError::InvalidCredentials
-        };
-        let credential_id = RelyingParty::assertion_credential_id(response).map_err(refused)?;
-        let Some(passkey) = self.store.find_passkey(user.id(), &credential_id).await? else {
-            return Err(ServiceError::InvalidCredentials);
-        };
-        let count = rp.verify_assertion(challenge, response, &passkey.public_key, passkey.sign_count).map_err(refused)?;
-        if mode.passkey(&self.store, user.id(), passkey.id, passkey.sign_count, count).await? {
-            Ok(())
-        } else {
-            Err(ServiceError::InvalidCredentials)
-        }
+        let claims = Claims { store: &self.store, mode };
+        self.passkeys().verify_assertion(user, challenge, response, &claims).await.map_err(|error| map_passkey(error, user, |error| error))
     }
 }
 
@@ -87,13 +71,20 @@ struct Claims<'a, M> {
     mode: M,
 }
 
-impl<M: ClaimMode + Sync> SecondFactorClaims for Claims<'_, M> {
+impl<M: ClaimMode> SecondFactorClaims for Claims<'_, M> {
     type Error = ServiceError;
     fn spend_recovery_code(&self, account: AccountId, digest: &RecoveryDigest) -> impl Future<Output = Result<bool, ServiceError>> + Send {
         self.mode.recovery(self.store, account, digest)
     }
     fn claim_step(&self, account: AccountId, secret: &[u8], step: u64) -> impl Future<Output = Result<bool, ServiceError>> + Send {
         self.mode.totp(self.store, account, secret, step)
+    }
+}
+
+impl<M: ClaimMode> PasskeyClaims for Claims<'_, M> {
+    type Error = ServiceError;
+    fn use_passkey(&self, account: AccountId, id: i64, seen: u32, next: u32) -> impl Future<Output = Result<bool, ServiceError>> + Send {
+        self.mode.passkey(self.store, account, id, seen, next)
     }
 }
 
