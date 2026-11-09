@@ -87,18 +87,18 @@ fn parse_id(id: &str) -> Result<i64, WebError> {
 /// `GET /admin`
 pub async fn dashboard(State(state): State<AppState>, SiteAdmin(admin): SiteAdmin, page: Page) -> WebResult<DashboardPage> {
     let dashboard = state.services.admin.dashboard(&admin).await?;
-    Ok(DashboardPage::new(page, &dashboard, &state.monitoring.snapshot(), state.restart.receiver_count() > 0))
+    Ok(DashboardPage::new(page, &dashboard, &state.runtime.monitoring(), state.runtime.restart_supported()))
 }
 
 /// A lightweight, administrator-only fragment; never invokes the dashboard's disk scan.
 pub async fn monitoring(State(state): State<AppState>, SiteAdmin(_): SiteAdmin, locale: RequestLocale) -> impl IntoResponse {
-    let panel = crate::views::admin::monitoring::MonitoringPanel::new(&state.monitoring.snapshot(), locale.document_locale());
+    let panel = crate::views::admin::monitoring::MonitoringPanel::new(&state.runtime.monitoring(), locale.document_locale());
     ([(axum::http::header::CACHE_CONTROL, "no-store")], panel)
 }
 
 /// Restart is always a confirmed POST, under the same administrator and Origin guards.
 pub async fn restart_form(State(state): State<AppState>, SiteAdmin(_): SiteAdmin, page: Page) -> impl IntoResponse {
-    let page = crate::views::admin::restart::RestartPage::new(page, false, state.restart.receiver_count() > 0);
+    let page = crate::views::admin::restart::RestartPage::new(page, false, state.runtime.restart_supported());
     ([(axum::http::header::CACHE_CONTROL, "no-store")], page)
 }
 
@@ -116,7 +116,7 @@ pub async fn restart(
     if form.confirmation != "restart" {
         return Err(WebError::BadRequest("Confirm the server restart first.".to_owned()));
     }
-    if state.restart.receiver_count() == 0 {
+    if !state.runtime.restart_supported() {
         return Ok((
             StatusCode::SERVICE_UNAVAILABLE,
             [(axum::http::header::CACHE_CONTROL, "no-store")],
@@ -129,12 +129,7 @@ pub async fn restart(
         .audit
         .record(rbit_services::audit::AuditEntry::new(rbit_services::audit::AuditAction::ServerRestartRequested).by(&admin))
         .await;
-    // Coalesce repeat clicks into the same shutdown, rather than queueing restarts.
-    state.restart.send_if_modified(|pending| {
-        let changed = !*pending;
-        *pending = true;
-        changed
-    });
+    state.runtime.request_restart();
     Ok((
         StatusCode::ACCEPTED,
         [(axum::http::header::CACHE_CONTROL, "no-store")],
@@ -146,7 +141,7 @@ pub async fn restart(
 pub async fn restart_status(State(state): State<AppState>, SiteAdmin(_): SiteAdmin) -> impl IntoResponse {
     (
         [(axum::http::header::CACHE_CONTROL, "no-store")],
-        axum::Json(serde_json::json!({ "restarting": *state.restart.borrow(), "pid": std::process::id() })),
+        axum::Json(serde_json::json!({ "restarting": state.runtime.restarting(), "pid": std::process::id() })),
     )
 }
 

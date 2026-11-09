@@ -7,9 +7,9 @@ use axum::serve::{ListenerExt, TapIo};
 use rbit_core::Config;
 use rbit_services::Services;
 use rbit_storage::{Database, KvStore};
-use rbit_web::AppState;
 use tokio::net::{TcpListener, TcpStream};
 
+mod runtime;
 mod session_purger;
 use session_purger::spawn_session_purger;
 
@@ -51,7 +51,7 @@ pub async fn run(config: Config) -> anyhow::Result<bool> {
     services.spawn_background();
     let release_checks = crate::updates::start(&config.updates, services.updates.clone());
     let background = services.clone();
-    let state = AppState::new(Arc::clone(&config), services);
+    let state = runtime::state(Arc::clone(&config), services);
     let mut restart = state.restart.subscribe();
     let ssh = crate::ssh::start(&config, &background, restart.clone(), purger.stop_signal());
     let app = rbit_web::router(state);
