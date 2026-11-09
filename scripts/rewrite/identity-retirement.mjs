@@ -1,4 +1,5 @@
 /** Retired identity paths must not return; see docs/design/rewrite/identity-retirement.md. */
+import { checkTokenRetirement } from "./token-retirement.mjs";
 
 // Session contracts are imported from their defining module, not the legacy service crate.
 const SERVICE_ALIAS = /\baccounts::(?:\{[^}]*\b(?:ClientInfo|ActiveSession|SessionUser)\b|(?:ClientInfo|ActiveSession|SessionUser)\b)/u;
@@ -31,5 +32,5 @@ export function checkIdentityRetirement(sources) {
       violations.push(`${path}: direct session purge bypasses the identity session application`);
     }
   }
-  return violations;
+  return [...violations, ...checkTokenRetirement(sources)];
 }
