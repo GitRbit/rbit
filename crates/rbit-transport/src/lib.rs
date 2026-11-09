@@ -18,6 +18,10 @@
 //! git does, so branch protection can refuse it, and decides the [`ReceiveOptions`] git
 //! runs with.
 //!
+//! Over HTTP, [`smart_http`] decides credential parsing, the repository access order and
+//! its refusals; the web routes only render them. [`refused_push`] answers refused pushes
+//! on both transports.
+//!
 //! Data is streamed in all modes; pack data is never buffered in memory. The
 //! client-controlled `GIT_PROTOCOL` value is filtered by [`is_safe_protocol_header`] in
 //! both.
@@ -25,7 +29,9 @@
 pub mod pkt_line;
 pub mod process;
 pub mod receive;
+pub mod refused_push;
 pub mod service;
+pub mod smart_http;
 
 pub use process::{ProcessControl, ProcessIo, ProcessTransport, ReceiveOptions, ServiceSession, TransportError, is_safe_protocol_header};
 pub use service::Service;

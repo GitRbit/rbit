@@ -19,6 +19,13 @@ pub fn encode(payload: &str) -> Vec<u8> {
     line
 }
 
+/// A single `ERR` packet. As a ref advertisement (or in place of one, over SSH) Git aborts
+/// and prints `fatal: remote error: <message>`, which plain HTTP bodies and SSH stderr
+/// never achieve.
+pub fn error(message: &str) -> Vec<u8> {
+    encode(&format!("ERR {message}\n"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -26,5 +33,10 @@ mod tests {
     #[test]
     fn encodes_service_header() {
         assert_eq!(encode("# service=git-upload-pack\n"), b"001e# service=git-upload-pack\n");
+    }
+
+    #[test]
+    fn errors_are_single_err_packets() {
+        assert_eq!(error("use a token"), b"0014ERR use a token\n");
     }
 }
