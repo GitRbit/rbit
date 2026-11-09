@@ -1,12 +1,11 @@
-# Identity passkeys retirement progress
+# Identity passkeys retirement acceptance
 
-Progress on the `identity.passkeys` ledger row (WebAuthn ceremonies, credential
-management and origin checks). This slice moves the ceremonies and the registration and
-assertion decisions into `rbit-identity`. The row stays `baseline-retained` because
-removing a passkey and the passkey step of the pending sign-in still run in services.
-It builds on the [MFA progress](identity-mfa-progress.md).
+Acceptance evidence for the `identity.passkeys` ledger row (WebAuthn ceremonies,
+credential management and origin checks), retired in two slices. The first moved the
+ceremonies, registration and assertions. The second moved passkey removal and the passkey
+step of the pending sign-in, together with the [MFA second step](identity-mfa-acceptance.md).
 
-## Retired in this slice
+## First slice: ceremonies, registration and assertions
 
 | Decision | Before | Now |
 | --- | --- | --- |
@@ -26,12 +25,15 @@ and `rbit-services` request it, and `scripts/rewrite/identity-features.mjs` enfo
 both lists. Refusal reasons stay out of responses: services logs them exactly as before
 (`passkey registration refused`, `passkey sign-in refused`).
 
-## Still in `rbit-services` (next slice)
+## Second slice: removal and the sign-in passkey step
 
-- Removing a passkey: password plus proof, lookup, removal, audit (`password_operations.rs`).
-- The passkey step of the pending sign-in: its challenge slot and `sign_in_options`. This
-  moves with the pending sign-in owner listed in the MFA progress.
-- The factor listing in `TwoFactorService::status`.
+- Removing a passkey (lookup, password-plus-proof confirmation, removal) is
+  `SecondFactorStep::remove_passkey`. Services keeps the audit entry and its detail.
+- The second-step page's challenge is offered and taken once through
+  `PendingSignIns::{offer_challenge, take_challenge}`. The assertion runs inside
+  `SecondFactorStep::complete` with the same claim modes.
+- The passkey claim port reports `Claimed`, `Rejected` or `Invalidated`.
+- The settings factor listing remains services composition.
 
 ## Boundaries
 
@@ -62,6 +64,18 @@ options only with passkeys, and oversized or malformed assertions never reaching
 claim. The WebAuthn unit tests (ES256, EdDSA, RS256, origin, RP ID hash, counters) moved
 with the code. `scripts/tests/passkey-retirement.test.mjs` has 3 cases. The service
 `passkeys` and `two_factor` suites ran unchanged.
+
+
+Second slice: see the [MFA acceptance](identity-mfa-acceptance.md) for the step and race tests, which cover the passkey step and removal too.
+
+Second slice, Linux, the repository's quick check at the code tip: rewrite contracts
+including the structural type check, workspace-wide formatting and Clippy with
+`-D warnings`, licenses and advisories, and the front-end build, all passed. The suites of
+the changed packages (`rbit-identity`, `rbit-identity-models`, `rbit-services`,
+`rbit-storage`) passed too: 1,391 tests, none skipped. This includes the existing
+`identity_races`, `sessions`, `two_factor`, `passkeys`, `password_admission`, pending
+and post-lookup barrier suites, unchanged, plus the new `second_factor_step` race tests.
+The full workspace suite and Windows were not run.
 
 ## Parity
 

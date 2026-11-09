@@ -1,4 +1,4 @@
-/** Retired passkey paths must not return; see docs/design/rewrite/identity-passkeys-progress.md. */
+/** Retired passkey paths must not return; see docs/design/rewrite/identity-passkeys-acceptance.md. */
 
 // The WebAuthn relying party and its error are defined once, by identity.
 const DEFINITION = /\b(?:struct|enum|type)\s+(?:RelyingParty|WebauthnError)\b/u;
