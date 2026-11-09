@@ -72,12 +72,12 @@ impl Fixture {
         std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
         let kv = KvStore::open(&config.storage.kv_path()).unwrap();
-        let services = Services::new(Arc::new(config), &database, &kv).await.unwrap();
+        let services = Box::pin(Services::new(Arc::new(config), &database, &kv)).await.unwrap();
         let alice = user(&database, "alice").await;
         let bob = user(&database, "bob").await;
         let carol = user(&database, "carol").await;
         let input = CreateRepository { name: "demo".into(), description: String::new(), visibility: Visibility::Public };
-        services.repositories.create(&alice, input).await.unwrap();
+        Box::pin(services.repositories.create(&alice, input)).await.unwrap();
         let repo = services.repositories.open(Some(&alice), "alice", "demo").await.unwrap();
         services.collaborators.add(&alice, &repo, "carol", Permission::Write).await.unwrap();
 
@@ -93,7 +93,7 @@ impl Fixture {
 
         let fixture = Self { _dir: dir, database, services, kv, alice, bob, carol, work };
         let parent = fixture.repo(&fixture.bob, "alice").await;
-        fixture.services.forks.fork(&fixture.bob, &parent, ForkInput::default()).await.unwrap();
+        Box::pin(fixture.services.forks.fork(&fixture.bob, &parent, ForkInput::default())).await.unwrap();
         fixture
     }
 
