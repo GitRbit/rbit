@@ -5,9 +5,9 @@ const OWNER = "crates/rbit-collaboration/src/";
 const ROUTE = "crates/rbit-web/src/routes/pulls.rs";
 const ROUTE_POLICY = /replies\.entry\(|ReviewState::Commented\s*&&|can_write\(\)\s*\|\|\s*author\s*==|is_open\(\)\s*\|\|\s*pending_comments/u;
 const REVIEWS = "crates/rbit-services/src/pulls/reviews.rs";
-const SERVICE_POLICY = /root\.author\s*!=\s*Some\(|in_reply_to\.unwrap_or\(|review\.reviewer\s*==\s*Some\(actor/u;
+const SERVICE_POLICY = /root\.author\s*!=\s*Some\(|in_reply_to\.unwrap_or\(|review\.reviewer\s*==\s*Some\(actor|start_review\s*\|\||find_account_by_name|AccountKind::User|can_triage\s*\|\||saturating_sub\(DIFF_HUNK_LINES/u;
 const POLICY_TEXT = /cannot be asked to review this pull request|the author cannot review their own pull request|reviewers can be requested/u;
-const LIMIT = /\bconst\s+MAX_REQUESTED_REVIEWERS\b/u;
+const LIMIT = /\bconst\s+(?:MAX_REQUESTED_REVIEWERS|DIFF_HUNK_LINES)\b|\bReviewSide\s*\{\s*Left\s*=>/u;
 
 /** Comments are not code; strip line and block comments before matching. */
 function code(source) {

@@ -23,12 +23,19 @@ test("the review service delegates thread rules and request limits", () => {
     "if !ctx.repo().access.can_write() && root.author != Some(actor.id()) {}\n",
     "in_reply_to: Some(parent.in_reply_to.unwrap_or(parent.id)),\n",
     "Some(review) => review.state != ReviewState::Pending || review.reviewer == Some(actor.id()),\n",
+    "if input.start_review || store.pending(pull, actor).await?.is_some() {}\n",
+    "let account = self.ctx().database.accounts().find_account_by_name(name).await?;\n",
+    "Some(account) if account.kind == rbit_core::AccountKind::User => {}\n",
+    "if !(permissions.can_triage || (is_author && permissions.can_comment)) {}\n",
+    "let start = (end + 1).saturating_sub(DIFF_HUNK_LINES);\n",
   ]) {
     assert.match(check([["crates/rbit-services/src/pulls/reviews.rs", source]])[0], /returned to the service/u, source);
   }
   const text = "format!(\"at most {MAX_REQUESTED_REVIEWERS} reviewers can be requested\")\n";
   assert.match(check([["crates/rbit-services/src/pulls/reviews.rs", text]]).at(-1), /belong to rbit_collaboration/u);
   assert.match(check([["crates/rbit-core/src/pull.rs", "pub const MAX_REQUESTED_REVIEWERS: usize = 15;\n"]])[0], /belong to/u);
+  assert.match(check([["crates/rbit-services/src/pulls/reviews.rs", "pub const DIFF_HUNK_LINES: usize = 4;\n"]]).at(-1), /belong to/u);
+  assert.match(check([["crates/rbit-core/src/pull.rs", "stored_enum!(ReviewSide { Left => \"left\", Right => \"right\" });\n"]])[0], /belong to/u);
   assert.deepEqual(check([["crates/rbit-collaboration/src/pulls/review_threads.rs", text]]), []);
   assert.deepEqual(check([["crates/rbit-services/tests/pulls.rs", text]]), [], "tests assert the text");
 });
