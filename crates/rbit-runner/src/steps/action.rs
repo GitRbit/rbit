@@ -336,7 +336,7 @@ fn condition(job: &Job, text: Option<&str>) -> Result<bool, Outcome> {
 }
 
 /// The pattern of `[actions] allow` that refuses `source`, or `None` when it may run.
-fn refused(allow: &[String], source: &ActionSource) -> Option<&'static str> {
+pub(crate) fn refused(allow: &[String], source: &ActionSource) -> Option<&'static str> {
     let name = match source {
         ActionSource::Local { .. } => return None,
         ActionSource::Repository { owner, repo, .. } => format!("{owner}/{repo}"),
@@ -365,7 +365,7 @@ async fn repository(job: &Job, owner: &str, repo: &str, path: &str, reference: &
     let url = format!("{}/{owner}/{repo}", job.actions.url.trim_end_matches('/'));
     let git = process::find_program("git").ok_or("fetching actions needs `git` on the runner host")?;
     let env = git_env(&url, job.private_dir().ok().as_deref());
-    let sha = if is_commit(reference) { reference.to_ascii_lowercase() } else { resolve(&git, &env, &url, reference).await? };
+    let sha = crate::setup::sha(job, &git, &env, &url, &format!("{owner}/{repo}"), reference).await?;
     let actions = job.work_dir.join("actions");
     let cache = actions.join(owner.to_ascii_lowercase()).join(repo.to_ascii_lowercase()).join(&sha);
     // Used only as this runner process fetched it (`crate::integrity`): a host job can
@@ -433,13 +433,13 @@ async fn cached(cache: &Path) -> bool {
         && tokio::task::spawn_blocking(move || crate::integrity::intact(&cache, crate::integrity::Kind::Tree)).await.unwrap_or(false)
 }
 
-fn is_commit(reference: &str) -> bool {
+pub(crate) fn is_commit(reference: &str) -> bool {
     reference.len() == 40 && reference.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 /// `git` with no prompt, no credential (not even a helper's), only the action source's own
 /// scheme, and no hook or `fsmonitor` command.
-fn git_env(url: &str, hooks: Option<&Path>) -> BTreeMap<String, String> {
+pub(crate) fn git_env(url: &str, hooks: Option<&Path>) -> BTreeMap<String, String> {
     let scheme = url.split_once("://").map_or("https", |(scheme, _)| scheme);
     let mut config = vec![
         ("credential.helper".to_owned(), String::new()),
@@ -480,7 +480,7 @@ async fn git(git: &Path, env: &BTreeMap<String, String>, dir: Option<&Path>, arg
 }
 
 /// The commit `reference` names at `url`: a tag (peeled) before a branch.
-async fn resolve(program: &Path, env: &BTreeMap<String, String>, url: &str, reference: &str) -> Result<String, String> {
+pub(crate) async fn resolve(program: &Path, env: &BTreeMap<String, String>, url: &str, reference: &str) -> Result<String, String> {
     let tag = format!("refs/tags/{reference}");
     let peeled = format!("{tag}^{{}}");
     let branch = format!("refs/heads/{reference}");

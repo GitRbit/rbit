@@ -30,6 +30,8 @@ entries! { De:
             "Der Job hat mehr ausgegeben, als die Instanz aufbewahrt; spätere Zeilen wurden verworfen.",
         ),
         ActionsJobMessage::StepNotStarted => text.literal("Dieser Schritt wurde noch nicht gestartet."),
+        ActionsJobMessage::SetUpJob => text.literal("Job einrichten"),
+        ActionsJobMessage::CompleteJob => text.literal("Job abschließen"),
         ActionsJobMessage::Success => text.literal("Erfolgreich"),
         ActionsJobMessage::Failure => text.literal("Fehlgeschlagen"),
         ActionsJobMessage::Cancelled => text.literal("Abgebrochen"),

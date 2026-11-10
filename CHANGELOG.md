@@ -17,6 +17,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A running Actions job's log follows along: new lines of the running step appear as the
   runner sends them, the page keeps the newest line in view until you scroll up, running
   durations tick, and the page reloads its steps only when one starts or ends.
+- Actions jobs start with a "Set up job" section and end with "Complete job", as on
+  GitHub: the runner logs its version, name and labels, the operating system and backend,
+  the container images, the job's timeout and token permissions, and the actions the
+  steps use with the commit each reference resolved to (the steps then use exactly those
+  commits), and at the end the job's result. A skipped step says why ("This step was
+  skipped because an earlier step failed"), and every log line now starts with the time
+  the runner wrote it, as GitHub's raw logs do.
 
 ### Fixed
 

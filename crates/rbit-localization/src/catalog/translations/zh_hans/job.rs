@@ -24,6 +24,8 @@ entries! { ZhHans:
         ActionsJobMessage::DownloadAll => text.literal("下载原始日志以查看全部内容。"),
         ActionsJobMessage::Truncated => text.literal("作业写入的内容超出了实例的保留上限；之后的行已被丢弃。"),
         ActionsJobMessage::StepNotStarted => text.literal("此步骤尚未开始。"),
+        ActionsJobMessage::SetUpJob => text.literal("设置作业"),
+        ActionsJobMessage::CompleteJob => text.literal("完成作业"),
         ActionsJobMessage::Success => text.literal("成功"),
         ActionsJobMessage::Failure => text.literal("失败"),
         ActionsJobMessage::Cancelled => text.literal("已取消"),

@@ -23,6 +23,8 @@ entries! { PtBr:
         ActionsJobMessage::DownloadAll => text.literal("baixe o log bruto para ver tudo."),
         ActionsJobMessage::Truncated => text.literal("O job escreveu mais do que a instância guarda; as linhas posteriores foram descartadas."),
         ActionsJobMessage::StepNotStarted => text.literal("Esta etapa não foi iniciada."),
+        ActionsJobMessage::SetUpJob => text.literal("Preparar o trabalho"),
+        ActionsJobMessage::CompleteJob => text.literal("Concluir o trabalho"),
         ActionsJobMessage::Success => text.literal("Sucesso"),
         ActionsJobMessage::Failure => text.literal("Falha"),
         ActionsJobMessage::Cancelled => text.literal("Cancelado"),

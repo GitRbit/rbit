@@ -141,7 +141,7 @@ pub struct StepLogPage {
 
 impl JobPage {
     pub fn labels(&self) -> super::JobText {
-        super::JobText::new(self.page.locale, self.steps.len())
+        super::JobText::new(self.page.locale, self.steps.iter().filter(|step| step.number >= 0).count())
     }
 }
 

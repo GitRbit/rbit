@@ -22,6 +22,8 @@ entries! { Ko:
         ActionsJobMessage::DownloadAll => text.literal("전체 내용은 원본 로그를 다운로드하세요."),
         ActionsJobMessage::Truncated => text.literal("작업 출력이 인스턴스의 보관 한도를 넘어 이후 줄은 버려졌습니다."),
         ActionsJobMessage::StepNotStarted => text.literal("이 단계는 아직 시작되지 않았습니다."),
+        ActionsJobMessage::SetUpJob => text.literal("작업 설정"),
+        ActionsJobMessage::CompleteJob => text.literal("작업 완료"),
         ActionsJobMessage::Success => text.literal("성공"),
         ActionsJobMessage::Failure => text.literal("실패"),
         ActionsJobMessage::Cancelled => text.literal("취소됨"),

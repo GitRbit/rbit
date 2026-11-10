@@ -31,7 +31,9 @@ mod poller;
 mod process;
 mod register;
 mod service;
+mod setup;
 mod shutdown;
+mod stamp;
 mod steps;
 mod task;
 #[cfg(test)]

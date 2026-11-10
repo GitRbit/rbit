@@ -28,6 +28,8 @@ entries! { Ja:
             text.literal("ジョブの出力がインスタンスの保持上限を超えたため、以降の行は破棄されました。");
         }
         ActionsJobMessage::StepNotStarted => text.literal("このステップはまだ開始されていません。"),
+        ActionsJobMessage::SetUpJob => text.literal("ジョブを準備"),
+        ActionsJobMessage::CompleteJob => text.literal("ジョブを完了"),
         ActionsJobMessage::Success => text.literal("成功"),
         ActionsJobMessage::Failure => text.literal("失敗"),
         ActionsJobMessage::Cancelled => text.literal("キャンセル済み"),

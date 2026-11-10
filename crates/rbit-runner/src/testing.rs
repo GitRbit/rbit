@@ -250,7 +250,7 @@ impl FakeServer {
     }
 
     pub fn log(&self, task: TaskId) -> Vec<String> {
-        self.lock().logs.get(&task).cloned().unwrap_or_default()
+        self.lock().logs.get(&task).map(|lines| lines.iter().map(|line| crate::stamp::strip(line).to_owned()).collect()).unwrap_or_default()
     }
 
     /// `(from, status)` of every log append.

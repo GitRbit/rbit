@@ -162,7 +162,7 @@ impl Reporter {
     /// The task log so far, for tests.
     #[cfg(test)]
     pub fn lines(&self) -> Vec<String> {
-        self.log.lines()
+        self.log.lines().iter().map(|line| crate::stamp::strip(line).to_owned()).collect()
     }
 
     /// The step states and outputs so far, for tests.
@@ -222,7 +222,7 @@ impl Reporter {
                 sink(line.strip_suffix('\r').unwrap_or(line));
             }
         }
-        let kept = self.log.push(&masked);
+        let kept = self.log.push(&crate::stamp::lines(&masked));
         let mut progress = self.lock();
         if let Some(index) = progress.current {
             progress.steps[index].log_length += kept;
@@ -268,8 +268,7 @@ impl Reporter {
         self.changed.notify_one();
     }
 
-    /// Step `index` ended with `status`. A step that never started gets an empty log at
-    /// the current line.
+    /// Step `index` ended with `status`; one that never started gets an empty log here.
     pub fn finish_step(&self, index: usize, status: StepStatus) {
         let line = self.log.len();
         let mut progress = self.lock();
@@ -445,6 +444,7 @@ impl Reporter {
     }
 }
 
+mod notes;
 fn now() -> i64 {
     SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |elapsed| i64::try_from(elapsed.as_secs()).unwrap_or(i64::MAX))
 }

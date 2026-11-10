@@ -19,9 +19,11 @@ use rbit_core::{
 
 mod ansi;
 mod job;
+mod job_sections;
 mod job_text;
 pub mod log_lines;
 pub use job::{JOB_PAGE_STEP_BYTES, JOB_PAGE_STEP_LINES, JobPage, StepLog, StepLogPage, StepView, open_one};
+pub use job_sections::{Section, growing, section_view};
 pub use job_text::JobText;
 
 mod overview_text;
