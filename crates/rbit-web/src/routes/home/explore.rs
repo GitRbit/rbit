@@ -11,7 +11,7 @@ use serde::Deserialize;
 
 use crate::{
     AppState,
-    error::WebResult,
+    error::{WebError, WebResult},
     localization::RequestLocale,
     views::{
         components::Pagination,
@@ -39,6 +39,10 @@ pub async fn explore(
     shape: ExploreRequestShape,
     Query(params): Query<ExploreQuery>,
 ) -> WebResult<Response> {
+    // Turned off by an administrator: gone for everyone, administrators included.
+    if !state.services.instance.current().explore_enabled {
+        return Err(WebError::NotFound);
+    }
     let search = RepoSearch::from_query(params.q.as_deref(), params.sort.as_deref(), params.archived.as_deref(), params.page.as_deref());
     let (query, sort, archived) = (search.text.clone(), search.sort, search.archived);
     // This public-only service remains the sole authority for result visibility.

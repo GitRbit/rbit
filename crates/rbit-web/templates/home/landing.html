@@ -6,6 +6,7 @@
   <h1 class="mt-6 text-3xl font-semibold tracking-tight text-balance sm:text-4xl">{{ page.welcome_title() }}</h1>
   <p class="mt-3 max-w-md text-[15px] text-ink-muted text-balance">{{ page.branding.welcome_message }}</p>
 
+  {% if page.show_explore %}
   <form method="get" action="/explore" role="search" class="mt-8 flex w-full max-w-md gap-2">
     <div class="relative min-w-0 flex-1">
       {% call ui::icon("search", "pointer-events-none absolute inset-s-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint") %}{% endcall %}
@@ -16,6 +17,7 @@
   <a href="/explore" class="mt-4 inline-flex items-center gap-1 text-[13px] text-ink-muted hover:text-ink">
     {% call ui::icon("compass", "size-3.5") %}{% endcall %}{% call ui::text(page, rbit_localization::shell::home::HomeMessage::ExploreAll) %}{% endcall %}{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}
   </a>
+  {% endif %}
 </section>
 
 <dl class="grid grid-cols-3 gap-px overflow-hidden rounded-(--radius-ui) border border-line bg-line" aria-label="{{ page.text(rbit_localization::shell::home::HomeMessage::ThisInstance) }}">
@@ -31,7 +33,7 @@
   <section class="box self-start" aria-labelledby="recent-title">
     <div class="box-header justify-between">
       <h2 id="recent-title" class="box-title">{% call ui::text(page, rbit_localization::shell::home::HomeMessage::RecentlyUpdated) %}{% endcall %}</h2>
-      <a href="/explore" class="text-[13px] text-ink-muted hover:text-ink">{% call ui::text(page, rbit_localization::shell::home::HomeMessage::ViewAll) %}{% endcall %}</a>
+      {% if page.show_explore %}<a href="/explore" class="text-[13px] text-ink-muted hover:text-ink">{% call ui::text(page, rbit_localization::shell::home::HomeMessage::ViewAll) %}{% endcall %}</a>{% endif %}
     </div>
     {% if recent.is_empty() %}
     {% call ui::localized_empty_state("repo", page.text(rbit_localization::shell::home::HomeMessage::NoPublicRepositories), page.text(rbit_localization::shell::home::HomeMessage::NoPublicRepositoriesText)) %}{% endcall %}

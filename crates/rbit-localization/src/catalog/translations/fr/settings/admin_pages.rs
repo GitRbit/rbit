@@ -116,6 +116,11 @@ entries! { Fr:
         InstanceSettingsMessage::ShowFeatures => text.literal(
             "Afficher les fonctionnalités d’auto-hébergement sur la page d’accueil",
         ),
+        InstanceSettingsMessage::Explore => text.literal("Page Explorer"),
+        InstanceSettingsMessage::ExploreEnabled => text.literal("Activée"),
+        InstanceSettingsMessage::ExploreEnabledText => text.literal("Toute personne pouvant naviguer sur le site peut rechercher et lister tous les dépôts publics."),
+        InstanceSettingsMessage::ExploreDisabled => text.literal("Désactivée"),
+        InstanceSettingsMessage::ExploreDisabledText => text.literal("La page Explorer est introuvable et ses liens sont masqués, y compris pour les administrateurs. Les dépôts publics restent publics."),
         InstanceSettingsMessage::Registration => text.literal("Inscriptions"),
         InstanceSettingsMessage::Open => text.literal("Ouvertes"),
         InstanceSettingsMessage::OpenText => text.literal("Tout le monde peut créer un compte depuis la page d’inscription."),

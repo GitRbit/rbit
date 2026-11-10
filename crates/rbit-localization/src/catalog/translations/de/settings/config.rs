@@ -121,6 +121,8 @@ entries! { De:
         ConfigText::Help { section: "server", key: "public_url" } => text.literal("Öffentliche Basis-URL für Klon-URLs und die CSRF-Origin-Prüfung."),
         ConfigText::Label { section: "server", key: "site_name" } => text.literal("Standardname der Website"),
         ConfigText::Help { section: "server", key: "site_name" } => text.literal("Standardname, solange kein Live-Branding ihn überschreibt. Den aktiven Namen ändern Sie unter „Branding und Richtlinien“."),
+        ConfigText::Label { section: "server", key: "explore_enabled" } => text.literal("Entdecken-Seite standardmäßig anbieten"),
+        ConfigText::Help { section: "server", key: "explore_enabled" } => text.literal("Standard für die Entdecken-Seite, die alle öffentlichen Repositorys auflistet. Die Live-Einstellung unter „Branding und Richtlinien“ hat Vorrang."),
         ConfigText::Label { section: "server", key: "open_registration" } => text.literal("Registrierung standardmäßig offen"),
         ConfigText::Help { section: "server", key: "open_registration" } => text.literal("Standardrichtlinie für Registrierungen. Die Live-Richtlinie unter „Branding und Richtlinien“ hat Vorrang."),
         ConfigText::Label { section: "storage", key: "data_dir" } => text.literal("Datenverzeichnis"),

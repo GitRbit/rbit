@@ -2,7 +2,7 @@ use super::*;
 use crate::themes::{DNA_DARK_CANVAS, LIGHT_CANVAS};
 
 fn app(app_icon_url: &str) -> InstallableApp<'_> {
-    InstallableApp { name: "Forge", description: "Code", app_icon_url, color: LIGHT_CANVAS }
+    InstallableApp { name: "Forge", description: "Code", app_icon_url, color: LIGHT_CANVAS, explore: true }
 }
 
 #[test]
@@ -23,6 +23,17 @@ fn manifest_uses_bundled_icons_unless_the_site_has_its_own() {
     assert_eq!(bundled["icons"][2]["purpose"], "maskable");
     let own: serde_json::Value = serde_json::from_str(&manifest(&app("https://cdn.example/icon.png"), |_| unreachable!())).unwrap();
     assert_eq!(own["icons"], json!([{"src": "https://cdn.example/icon.png", "sizes": "any", "purpose": "any"}]));
+}
+
+#[test]
+fn the_explore_shortcut_follows_the_instance_setting() {
+    let shortcuts = |explore: bool| {
+        let manifest: serde_json::Value =
+            serde_json::from_str(&manifest(&InstallableApp { explore, ..app("") }, ToOwned::to_owned)).unwrap();
+        manifest["shortcuts"].as_array().unwrap().iter().map(|shortcut| shortcut["url"].as_str().unwrap().to_owned()).collect::<Vec<_>>()
+    };
+    assert_eq!(shortcuts(true), ["/new", "/explore"]);
+    assert_eq!(shortcuts(false), ["/new"]);
 }
 
 #[test]

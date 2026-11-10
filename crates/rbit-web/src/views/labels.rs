@@ -112,6 +112,7 @@ mod tests {
                 viewer: None,
                 path: "/alice/demo/labels".into(),
                 has_unread_notifications: false,
+                show_explore: true,
                 theme: crate::themes::Theme::System,
             },
             header: RepoHeader::default(),

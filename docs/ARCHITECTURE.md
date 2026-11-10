@@ -549,8 +549,10 @@ Users and organisations share one namespace (`accounts`), exactly like GitHub UR
 ### 3.5 Runtime instance settings
 
 The TOML/env configuration supplies *defaults*. Site administrators override the site
-name, registration (open/closed), who may create organisations and the default repository
-visibility at runtime from `/admin/settings`. Overrides are stored in `instance_settings`
+name, registration (open/closed), the Explore page (on/off; off answers `/explore` with
+`404` for everyone, administrators included, and drops its links and app shortcut), who
+may create organisations and the default repository visibility at runtime from
+`/admin/settings`. Overrides are stored in `instance_settings`
 and served from memory by `InstanceService` (a synchronous snapshot per request). The
 default email digest hour (`[notifications] digest_hour`) is one of these settings too.
 

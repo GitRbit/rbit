@@ -74,6 +74,26 @@
     </fieldset>
 
     <fieldset class="mt-6">
+      <legend class="label">{% call ui::localized(InstanceSettingsMessage::Explore.text(page.locale)) %}{% endcall %}</legend>
+      <div class="box overflow-hidden">
+        <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
+          <input type="radio" name="explore" value="enabled" class="mt-1 accent-(--ink)" {% if form.explore_enabled %}checked{% endif %}>
+          <span>
+            <span class="block font-medium">{% call ui::localized(InstanceSettingsMessage::ExploreEnabled.text(page.locale)) %}{% endcall %}</span>
+            <span class="block text-[13px] text-ink-muted">{% call ui::localized(InstanceSettingsMessage::ExploreEnabledText.text(page.locale)) %}{% endcall %}</span>
+          </span>
+        </label>
+        <label class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
+          <input type="radio" name="explore" value="disabled" class="mt-1 accent-(--ink)" {% if !form.explore_enabled %}checked{% endif %}>
+          <span>
+            <span class="block font-medium">{% call ui::localized(InstanceSettingsMessage::ExploreDisabled.text(page.locale)) %}{% endcall %}</span>
+            <span class="block text-[13px] text-ink-muted">{% call ui::localized(InstanceSettingsMessage::ExploreDisabledText.text(page.locale)) %}{% endcall %}</span>
+          </span>
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset class="mt-6">
       <legend class="label">{% call ui::localized(InstanceSettingsMessage::OrgCreation.text(page.locale)) %}{% endcall %}</legend>
       <div class="box overflow-hidden">
         <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 hover:bg-subtle has-checked:bg-subtle">

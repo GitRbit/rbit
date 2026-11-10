@@ -125,6 +125,11 @@ entries! { Es:
         InstanceSettingsMessage::ShowFeatures => {
             text.literal("Mostrar las funciones de autoalojamiento en la página de bienvenida");
         }
+        InstanceSettingsMessage::Explore => text.literal("Página Explorar"),
+        InstanceSettingsMessage::ExploreEnabled => text.literal("Activada"),
+        InstanceSettingsMessage::ExploreEnabledText => text.literal("Cualquiera que pueda navegar por el sitio puede buscar y listar todos los repositorios públicos."),
+        InstanceSettingsMessage::ExploreDisabled => text.literal("Desactivada"),
+        InstanceSettingsMessage::ExploreDisabledText => text.literal("La página Explorar no se encuentra y sus enlaces se ocultan, también para los administradores. Los repositorios públicos siguen siendo públicos."),
         InstanceSettingsMessage::Registration => text.literal("Registro"),
         InstanceSettingsMessage::Open => text.literal("Abierto"),
         InstanceSettingsMessage::OpenText => {

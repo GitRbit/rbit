@@ -22,6 +22,8 @@ config_table! {
         ConfigText::Help { section: "server", key: "site_name" } => {
             text.literal("实时品牌覆盖前使用的默认名称。请在“品牌与策略”中修改当前名称。");
         }
+        ConfigText::Label { section: "server", key: "explore_enabled" } => text.literal("默认提供探索页面"),
+        ConfigText::Help { section: "server", key: "explore_enabled" } => text.literal("列出全部公开仓库的探索页面的默认设置。“品牌与策略”中的实时设置优先。"),
         ConfigText::Label { section: "server", key: "open_registration" } => text.literal("默认开放注册"),
         ConfigText::Help { section: "server", key: "open_registration" } => {
             text.literal("默认注册策略。“品牌与策略”中的实时策略优先。");

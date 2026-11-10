@@ -16,6 +16,8 @@ config_entries! {
         ConfigText::Help { section: "server", key: "public_url" } => text.literal("클론 URL과 CSRF 출처 확인에 사용하는 공개 기본 URL입니다."),
         ConfigText::Label { section: "server", key: "site_name" } => text.literal("기본 사이트 이름"),
         ConfigText::Help { section: "server", key: "site_name" } => text.literal("실시간 브랜딩으로 덮어쓰기 전의 기본 이름입니다. 현재 이름은 브랜딩 및 정책에서 변경하세요."),
+        ConfigText::Label { section: "server", key: "explore_enabled" } => text.literal("기본적으로 탐색 페이지 제공"),
+        ConfigText::Help { section: "server", key: "explore_enabled" } => text.literal("모든 공개 저장소를 나열하는 탐색 페이지의 기본값입니다. 브랜딩 및 정책의 실시간 설정이 우선합니다."),
         ConfigText::Label { section: "server", key: "open_registration" } => text.literal("기본적으로 가입 허용"),
         ConfigText::Help { section: "server", key: "open_registration" } => text.literal("기본 가입 정책입니다. 브랜딩 및 정책의 실시간 정책이 우선합니다."),
         ConfigText::Label { section: "storage", key: "data_dir" } => text.literal("데이터 디렉터리"),

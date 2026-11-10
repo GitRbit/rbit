@@ -11,6 +11,8 @@ config_entries! {
         ConfigText::Label { section: "server", key: "bind" } => text.literal("待ち受けアドレス"),
         ConfigText::Label { section: "server", key: "public_url" } => text.literal("公開 URL"),
         ConfigText::Label { section: "server", key: "site_name" } => text.literal("デフォルトのサイト名"),
+        ConfigText::Label { section: "server", key: "explore_enabled" } => text.literal("デフォルトで探索ページを提供"),
+        ConfigText::Help { section: "server", key: "explore_enabled" } => text.literal("すべてのパブリックリポジトリを一覧表示する探索ページのデフォルトです。「ブランディングとポリシー」で設定した値が優先されます。"),
         ConfigText::Label { section: "server", key: "open_registration" } => text.literal("デフォルトでアカウント登録を許可"),
         ConfigText::Label { section: "storage", key: "data_dir" } => text.literal("データディレクトリ"),
         ConfigText::Label { section: "storage", key: "secret_key_file" } => text.literal("秘密鍵ファイル"),

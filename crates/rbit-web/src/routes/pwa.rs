@@ -34,6 +34,7 @@ pub async fn manifest(State(state): State<AppState>, Query(query): Query<Manifes
         description: &settings.branding.description,
         app_icon_url: &settings.branding.app_icon_url,
         color,
+        explore: settings.explore_enabled,
     };
     let manifest = pwa::manifest(&app, assets::url);
     (

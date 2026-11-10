@@ -29,6 +29,8 @@ config_entries! {
         ConfigText::Help { section: "server", key: "site_name" } => text.literal(
             "Nome padrão antes das substituições de marca em vigor. Altere o nome ativo em Marca e políticas.",
         ),
+        ConfigText::Label { section: "server", key: "explore_enabled" } => text.literal("Oferecer a página Explorar por padrão"),
+        ConfigText::Help { section: "server", key: "explore_enabled" } => text.literal("Padrão da página Explorar, que lista todos os repositórios públicos. A configuração em vigor em Marca e políticas tem precedência."),
         ConfigText::Label { section: "server", key: "open_registration" } => {
             text.literal("Cadastro aberto por padrão");
         }

@@ -14,6 +14,8 @@ public_url = "https://git.example.com"
 site_name = "rbit"
 # Default for the runtime "registration" setting (administrators can change it in /admin).
 open_registration = false
+# Default for the runtime "Explore page" setting: the page listing every public repository.
+# explore_enabled = true
 
 [storage]
 # SQLite database, redb store and bare repositories all live here. Back it up with

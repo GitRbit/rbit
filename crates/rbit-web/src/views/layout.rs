@@ -25,6 +25,8 @@ pub struct Page {
     pub path: String,
     /// A signed-in viewer has an unread notification: the header's bell shows a dot.
     pub has_unread_notifications: bool,
+    /// Whether to link the Explore page: the instance offers it to this viewer.
+    pub show_explore: bool,
     /// The visitor's colour theme (from the `rbit-theme` cookie), rendered into `<html>`.
     pub theme: Theme,
 }
@@ -68,6 +70,7 @@ impl Page {
             }),
             path: path.to_owned(),
             has_unread_notifications: false,
+            show_explore: settings.explore_enabled,
             theme: Theme::default(),
         }
     }
@@ -186,6 +189,7 @@ mod tests {
                 viewer: None,
                 path: "/".into(),
                 has_unread_notifications: false,
+                show_explore: true,
                 theme: Theme::parse(slug).unwrap(),
             };
             let html = Fixture { page }.render().unwrap();
@@ -227,6 +231,7 @@ mod tests {
             viewer: None,
             path: "/".into(),
             has_unread_notifications: false,
+            show_explore: true,
             theme: Theme::default(),
         };
         let html = Fixture { page }.render().unwrap();

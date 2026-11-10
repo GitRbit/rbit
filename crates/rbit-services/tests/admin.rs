@@ -139,6 +139,8 @@ fn settings(site_name: &str, registration: RegistrationMode) -> InstanceSettings
         site_name: site_name.to_owned(),
         branding: rbit_core::config::BrandingConfig::default(),
         registration,
+        // Not the default, so the round trip below covers it.
+        explore_enabled: false,
         org_creation: OrgCreationPolicy::AdminsOnly,
         default_visibility: Visibility::Private,
         digest_hour: 21,

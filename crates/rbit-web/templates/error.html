@@ -11,7 +11,7 @@
     <p class="mt-1.5 max-w-xs text-[13px] text-ink-muted text-balance">{% call ui::localized(self.message()) %}{% endcall %}</p>
     <div class="mt-6 flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
       <a href="/" class="btn btn-primary">{% call ui::text(page, rbit_localization::shell::pages::PageMessage::GoHome) %}{% endcall %}</a>
-      <a href="/explore" class="btn">{% call ui::icon("compass", "size-3.5") %}{% endcall %}{% call ui::text(page, rbit_localization::shell::pages::PageMessage::Explore) %}{% endcall %}</a>
+      {% if page.show_explore %}<a href="/explore" class="btn">{% call ui::icon("compass", "size-3.5") %}{% endcall %}{% call ui::text(page, rbit_localization::shell::pages::PageMessage::Explore) %}{% endcall %}</a>{% endif %}
     </div>
   </div>
 </section>

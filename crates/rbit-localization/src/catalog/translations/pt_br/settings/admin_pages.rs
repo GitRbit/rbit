@@ -135,6 +135,11 @@ entries! { PtBr:
         InstanceSettingsMessage::ShowFeatures => {
             text.literal("Mostrar os recursos de auto-hospedagem na página de boas-vindas");
         }
+        InstanceSettingsMessage::Explore => text.literal("Página Explorar"),
+        InstanceSettingsMessage::ExploreEnabled => text.literal("Ativada"),
+        InstanceSettingsMessage::ExploreEnabledText => text.literal("Qualquer pessoa que possa navegar no site pode pesquisar e listar todos os repositórios públicos."),
+        InstanceSettingsMessage::ExploreDisabled => text.literal("Desativada"),
+        InstanceSettingsMessage::ExploreDisabledText => text.literal("A página Explorar não é encontrada e seus links ficam ocultos, inclusive para administradores. Repositórios públicos continuam públicos."),
         InstanceSettingsMessage::Registration => text.literal("Cadastro"),
         InstanceSettingsMessage::Open => text.literal("Aberto"),
         InstanceSettingsMessage::OpenText => {

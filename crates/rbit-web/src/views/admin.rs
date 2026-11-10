@@ -528,10 +528,12 @@ impl DeleteRepositoryPage {
 
 /// The settings form's values (current settings, or as submitted when re-rendered).
 #[derive(Debug, Clone)]
+#[allow(clippy::struct_excessive_bools, reason = "one per on/off choice of the form")]
 pub struct SettingsForm {
     pub site_name: String,
     pub branding: rbit_core::config::BrandingConfig,
     pub registration_open: bool,
+    pub explore_enabled: bool,
     pub admins_only_orgs: bool,
     pub private_by_default: bool,
     /// `None` when the submitted value was not an hour (nothing is preselected).
@@ -551,6 +553,7 @@ impl From<&InstanceSettings> for SettingsForm {
             site_name: settings.site_name.clone(),
             branding: settings.branding.clone(),
             registration_open: settings.registration == RegistrationMode::Open,
+            explore_enabled: settings.explore_enabled,
             admins_only_orgs: settings.org_creation == OrgCreationPolicy::AdminsOnly,
             private_by_default: settings.default_visibility == Visibility::Private,
             digest_hour: Some(settings.digest_hour),

@@ -195,11 +195,16 @@ fn describe_changes(before: &InstanceSettings, after: &InstanceSettings) -> Stri
     let fields = [
         ("site name", before.site_name.as_str(), after.site_name.as_str()),
         ("registration", before.registration.as_str(), after.registration.as_str()),
+        ("explore page", enabled(before.explore_enabled), enabled(after.explore_enabled)),
         ("organization creation", before.org_creation.as_str(), after.org_creation.as_str()),
         ("default visibility", before.default_visibility.as_str(), after.default_visibility.as_str()),
         ("email digest hour", hour_before.as_str(), hour_after.as_str()),
     ];
     describe_fields(before.branding != after.branding, &fields)
+}
+
+const fn enabled(on: bool) -> &'static str {
+    if on { "enabled" } else { "disabled" }
 }
 
 /// The identity layer's facts about the acting user, for the administration rules.
