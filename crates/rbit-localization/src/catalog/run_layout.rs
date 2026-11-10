@@ -13,6 +13,10 @@ pub enum RunLayoutMessage {
     WorkflowFile,
     /// How many jobs a matrix made.
     JobCount { count: u64 },
+    /// The accessible name of the run's job graph.
+    Graph,
+    /// "+4 more": the jobs of a matrix its box does not list.
+    MoreJobs { count: u64 },
 }
 
 impl MessageFamily for RunLayoutMessage {
@@ -23,6 +27,8 @@ impl MessageFamily for RunLayoutMessage {
             Self::Usage => "actions.run.layout.usage",
             Self::WorkflowFile => "actions.run.layout.workflow-file",
             Self::JobCount { .. } => "actions.run.layout.job-count",
+            Self::Graph => "actions.run.layout.graph",
+            Self::MoreJobs { .. } => "actions.run.layout.more-jobs",
         }
     }
 
@@ -35,6 +41,12 @@ impl MessageFamily for RunLayoutMessage {
             Self::JobCount { count } => {
                 text.number(count);
                 text.literal(if count == 1 { " job" } else { " jobs" });
+            }
+            Self::Graph => text.literal("Job graph"),
+            Self::MoreJobs { count } => {
+                text.literal("+");
+                text.number(count);
+                text.literal(" more");
             }
         }
     }

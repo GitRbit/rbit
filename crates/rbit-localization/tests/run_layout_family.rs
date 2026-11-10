@@ -18,14 +18,23 @@ const TRANSLATED: [Locale; 8] = [
 
 fn messages() -> Vec<RunLayoutMessage> {
     use RunLayoutMessage as M;
-    vec![M::Summary, M::Navigation, M::Usage, M::WorkflowFile, M::JobCount { count: 1 }, M::JobCount { count: 5 }]
+    vec![
+        M::Summary,
+        M::Navigation,
+        M::Usage,
+        M::WorkflowFile,
+        M::JobCount { count: 1 },
+        M::JobCount { count: 5 },
+        M::Graph,
+        M::MoreJobs { count: 4 },
+    ]
 }
 
 #[test]
 fn run_layout_keys_render_and_translate() {
     let messages = messages();
     let ids: BTreeSet<_> = messages.iter().map(|message| message.id()).collect();
-    assert_eq!(ids.len(), 5, "ids are unique and every variant is listed");
+    assert_eq!(ids.len(), 7, "ids are unique and every variant is listed");
     for &message in &messages {
         for locale in DERIVED {
             let text = Catalog::new(locale).localized(message);
@@ -46,4 +55,5 @@ fn counts_choose_their_plural_forms() {
     assert_eq!(count(Locale::Spanish, 2), "2 trabajos");
     assert_eq!(count(Locale::Russian, 3), "3 задания");
     assert_eq!(count(Locale::Russian, 5), "5 заданий");
+    assert_eq!(Catalog::new(Locale::English).localized(RunLayoutMessage::MoreJobs { count: 4 }).as_str(), "+4 more");
 }

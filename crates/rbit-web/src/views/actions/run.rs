@@ -115,6 +115,8 @@ pub struct RunPage {
     pub jobs: Vec<JobRow>,
     /// The run's navigation beside the page.
     pub sidebar: super::RunSidebar,
+    /// The jobs and their `needs` as a graph; `None` without jobs.
+    pub graph: Option<super::JobGraph>,
     /// Not finished: the job list refreshes itself.
     pub active: bool,
     pub self_url: String,

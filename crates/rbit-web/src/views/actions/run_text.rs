@@ -1,7 +1,9 @@
 //! Labels prepared once for the run's document locale; templates escape all text.
 //! Review and approval text may be untranslated: it is [`Localized`], and templates
 //! mark it English through `ui::localized` only when it fell back.
-use rbit_localization::{ActionsMessage, Catalog, Locale, Localized, OverviewControlDisplay, OverviewControlMessage, RunPageMessage};
+use rbit_localization::{
+    ActionsMessage, Catalog, Locale, Localized, OverviewControlDisplay, OverviewControlMessage, RunLayoutMessage, RunPageMessage,
+};
 
 use super::{
     DeploymentView, StateLook,
@@ -34,6 +36,7 @@ pub struct RunText {
     pub optional: Localized,
     pub approve_and_deploy: Localized,
     pub reject: Localized,
+    pub graph: Localized,
 }
 
 impl RunText {
@@ -64,6 +67,7 @@ impl RunText {
             optional: catalog.localized(RunPageMessage::Optional),
             approve_and_deploy: catalog.localized(RunPageMessage::ApproveAndDeploy),
             reject: catalog.localized(RunPageMessage::Reject),
+            graph: catalog.localized(RunLayoutMessage::Graph),
         }
     }
 
@@ -103,6 +107,16 @@ impl RunText {
     /// The jobs a job waits for.
     pub fn needs(&self, jobs: &str) -> Localized {
         self.catalog.localized(RunPageMessage::Needs { jobs })
+    }
+
+    /// "3 jobs": the size of a matrix.
+    pub fn job_count(&self, count: &u64) -> Localized {
+        self.catalog.localized(RunLayoutMessage::JobCount { count: *count })
+    }
+
+    /// "+4 more": the jobs of a matrix its box does not list.
+    pub fn more_jobs(&self, count: &u64) -> Localized {
+        self.catalog.localized(RunLayoutMessage::MoreJobs { count: *count })
     }
 
     /// Text that only exists in English, such as a relative timestamp.

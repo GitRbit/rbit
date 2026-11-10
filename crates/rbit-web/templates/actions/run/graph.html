@@ -1,0 +1,54 @@
+{#- The run's job graph: a column per `needs` depth, a box per workflow job (a matrix lists
+    its jobs), lines from each job to the jobs that need it; expects `graph: JobGraph`. The
+    SVG behind the boxes is laid out in views::actions::run_graph from the sizes used here
+    (w-52, gap-12, gap-4, h-8, h-7), stretched over them; right to left the server mirrors
+    it like the columns. Wider than the page, the graph scrolls inside its box. -#}
+<section class="box mt-6 overflow-hidden" aria-label="{{ text.graph }}">
+  <div class="overflow-x-auto p-4 sm:p-5">
+    <div class="relative flex w-max items-stretch gap-12">
+      <svg class="pointer-events-none absolute inset-0 size-full text-line-strong" viewBox="0 0 {{ graph.width }} {{ graph.height }}"
+           preserveAspectRatio="none" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+        {%- for edge in graph.edges %}<path d="{{ edge }}" vector-effect="non-scaling-stroke"/>{% endfor -%}
+      </svg>
+      {% for column in graph.columns %}
+      <ul class="relative flex w-52 flex-col justify-center gap-4">
+        {% for node in column.nodes %}
+        <li class="box overflow-hidden">
+          {% if let Some(url) = node.url %}
+          <a class="flex h-8 items-center gap-2 px-2 text-[13px] hover:bg-subtle" href="{{ url }}" title="{{ node.title }}">
+            {% let look = text.look(node.look) %}{% include "actions/state.html" %}
+            <bdi class="min-w-0 flex-1 truncate font-medium">{{ node.title }}</bdi>
+            {% if let Some(duration) = node.duration %}
+            <span class="shrink-0 whitespace-nowrap text-xs tabular-nums text-ink-faint" {% if let Some(since) = node.since %}data-since="{{ since }}"{% endif %}>{% call ui::localized(duration.text(page.locale)) %}{% endcall %}</span>
+            {% endif %}
+          </a>
+          {% else %}
+          <p class="flex h-8 items-center gap-2 border-b border-line bg-subtle px-2 text-[13px]" title="{{ node.title }}">
+            {% let look = text.look(node.look) %}{% include "actions/state.html" %}
+            <bdi class="min-w-0 flex-1 truncate font-medium">{{ node.title }}</bdi>
+            <span class="shrink-0 text-xs tabular-nums text-ink-faint">{% call ui::localized(text.job_count(node.count)) %}{% endcall %}</span>
+          </p>
+          <ul>
+            {% for job in node.jobs %}
+            <li>
+              <a class="flex h-7 items-center gap-2 px-2 text-xs text-ink-muted hover:bg-subtle hover:text-ink" href="{{ job.url }}" title="{{ job.name }}">
+                {% let look = text.look(job.look) %}{% include "actions/state.html" %}
+                <bdi class="min-w-0 flex-1 truncate">{{ job.name }}</bdi>
+                {% if let Some(duration) = job.duration %}
+                <span class="shrink-0 whitespace-nowrap tabular-nums text-ink-faint" {% if let Some(since) = job.since %}data-since="{{ since }}"{% endif %}>{% call ui::localized(duration.text(page.locale)) %}{% endcall %}</span>
+                {% endif %}
+              </a>
+            </li>
+            {% endfor %}
+            {% if node.hidden > 0 %}
+            <li class="flex h-7 items-center px-2 text-xs text-ink-faint">{% call ui::localized(text.more_jobs(node.hidden)) %}{% endcall %}</li>
+            {% endif %}
+          </ul>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% endfor %}
+    </div>
+  </div>
+</section>

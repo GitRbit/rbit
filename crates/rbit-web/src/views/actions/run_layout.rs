@@ -227,4 +227,4 @@ pub struct RunSidebarJobs {
 
 #[cfg(test)]
 #[path = "run_layout_tests.rs"]
-mod tests;
+pub(super) mod tests;

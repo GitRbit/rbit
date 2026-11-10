@@ -61,3 +61,24 @@ async fn the_run_and_its_jobs_share_a_navigation_that_refreshes_while_the_run_ru
     let (_, fragment) = get_with(&fixture, &poll, &fixture.reader, &[]).await;
     assert!(!fragment.contains("hx-trigger"), "{fragment}");
 }
+
+#[tokio::test]
+async fn the_run_page_draws_its_jobs_as_a_graph_of_their_needs() {
+    let fixture = Fixture::new().await;
+    fixture.database.actions_settings().set_enabled(fixture.repo_id().await, true, Timestamp::now()).await.unwrap();
+    let run = fixture.run(".rbit/workflows/ci.yml", "Graph", RunEvent::Push).await;
+    let jobs = fixture.database.actions_runs().jobs(run.id).await.unwrap();
+    let url = format!("/alice/rocket/actions/runs/{}", run.number);
+    let page = fixture.page(&url, &fixture.reader).await;
+    let graph = &page[page.find(r#"aria-label="Job graph""#).expect("a graph")..];
+    let graph = &graph[..graph.find("</section>").unwrap()];
+    // build in the first column, test (needing build) in the second, one line between them.
+    assert!(graph.contains(r#"viewBox="0 0 464 34""#), "{graph}");
+    assert_eq!(graph.matches("<path ").count(), 1);
+    assert!(graph.contains(r#"<path d="M208 17 C232 17 232 17 256 17""#), "{graph}");
+    let build = graph.find(&format!(r#"href="{url}/jobs/{}""#, jobs[0].id.0)).unwrap();
+    let test = graph.find(&format!(r#"href="{url}/jobs/{}""#, jobs[1].id.0)).unwrap();
+    assert!(build < test, "columns follow needs");
+    let (_, spanish) = get_with(&fixture, &url, &fixture.reader, &[("accept-language", "es")]).await;
+    assert!(spanish.contains(r#"aria-label="Gráfico de trabajos""#));
+}
