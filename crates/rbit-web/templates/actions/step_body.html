@@ -6,7 +6,7 @@
   {% else %}
   {% if log.more_before %}<p class="border-b border-line px-4 py-2 text-xs text-ink-muted">{% call ui::localized(text.earlier_lines) %}{% endcall %}{% if !step.log_url.is_empty() %} <a class="link" href="{{ step.log_url }}">{% call ui::localized(text.show_more) %}{% endcall %}</a>{% call ui::localized(text.or) %}{% endcall %}{% endif %} {% call ui::localized(text.download_all) %}{% endcall %}</p>{% endif %}
   {% if log.empty %}<p class="px-4 py-3 text-[13px] text-ink-muted" data-log-empty>{% call ui::localized(text.no_output) %}{% endcall %}</p>{% endif %}
-  <div class="log-console" dir="ltr" data-log="{{ step.key }}" data-first="{{ log.first }}">{{ log.html|safe }}</div>
+  <div class="log-console" dir="ltr" data-log="{{ step.key }}" data-first="{{ log.first }}"{% if step.tail %} data-next="{{ log.next_line }}"{% endif %}>{{ log.html|safe }}</div>
   {% if log.truncated %}<p class="border-t border-line px-4 py-2 text-xs text-warning">{% call ui::localized(text.truncated) %}{% endcall %}</p>{% endif %}
   {% endif %}
 {% else %}

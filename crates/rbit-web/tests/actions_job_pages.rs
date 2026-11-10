@@ -13,6 +13,8 @@ use crate::{
     actions_runner_tasks::{logs, payload, poll, seed, spec, state, template},
 };
 
+#[path = "actions_job_pages/live.rs"]
+mod live;
 #[path = "actions_job_pages/presentation.rs"]
 mod presentation;
 
@@ -57,7 +59,7 @@ async fn a_job_shows_its_steps_and_logs_and_serves_the_raw_log() {
 
     let (status, _, page) = get(&fixture, &job_url, false).await;
     assert_eq!(status, StatusCode::OK);
-    assert!(page.contains("Not started yet") && page.contains(r#"hx-trigger="every 3s""#));
+    assert!(page.contains("Not started yet") && page.contains(&format!(r#"data-live-url="{job_url}/logs/live""#)));
     let (status, ..) = get(&fixture, &format!("{job_url}/logs/raw"), false).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "no log before a runner took the job");
 
@@ -98,7 +100,7 @@ async fn a_job_shows_its_steps_and_logs_and_serves_the_raw_log() {
     assert_eq!(gzipped, plain);
     assert!(plain.ends_with("second step\n"));
     let (_, _, page) = get(&fixture, &job_url, false).await;
-    assert!(!page.contains(r#"hx-trigger="every 3s""#), "a finished job stays still");
+    assert!(!page.contains("data-live-url"), "a finished job stays still");
     assert!(page.contains("<details open"), "the failed step is open");
 
     let (status, ..) = get(&fixture, &format!("/alice/rocket/actions/runs/{}/jobs/{}", run.number + 1, job.id.0), false).await;

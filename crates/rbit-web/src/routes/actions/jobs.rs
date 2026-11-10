@@ -35,11 +35,11 @@ use crate::{
     },
 };
 
-fn actions(state: &AppState) -> WebResult<&ActionsService> {
+pub(super) fn actions(state: &AppState) -> WebResult<&ActionsService> {
     state.services.actions.as_ref().ok_or(WebError::NotFound)
 }
 
-fn ids(run: &str, job: &str) -> WebResult<(i64, JobId)> {
+pub(super) fn ids(run: &str, job: &str) -> WebResult<(i64, JobId)> {
     let run = run.parse().ok().filter(|number: &i64| *number > 0).ok_or(WebError::NotFound)?;
     let job = job.parse().map(JobId).map_err(|_| WebError::NotFound)?;
     Ok((run, job))
@@ -110,6 +110,8 @@ pub async fn show(
         labels: detail.job.runs_on.join(", "),
         active: !finished,
         self_url: job_url.clone(),
+        live_state: super::job_live::live_state(detail.job.status, &detail.steps),
+        now: rbit_core::Timestamp::now().seconds(),
         steps,
         raw_url: detail.job.task_id.map(|_| format!("{job_url}/logs/raw")),
         rerun_url: can_rerun.then(|| format!("{job_url}/rerun")),

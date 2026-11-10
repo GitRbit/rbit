@@ -5,7 +5,7 @@ use crate::views::when::Took;
 use crate::views::{layout::Page, repo::RepoHeader};
 use askama::Template;
 use askama_web::WebTemplate;
-use rbit_core::actions::Step;
+use rbit_core::actions::{Status, Step};
 use rbit_services::actions::logs::LogWindow;
 
 // ------------------------------------------------------------------ the job page
@@ -70,6 +70,10 @@ pub struct StepView {
     pub log: Option<StepLog>,
     /// The step's own log page.
     pub log_url: String,
+    /// When a running step started (seconds since the epoch): its duration ticks.
+    pub started: Option<i64>,
+    /// The step whose log grows: the page appends its new lines (`…/logs/live`).
+    pub tail: bool,
 }
 
 impl StepView {
@@ -81,6 +85,8 @@ impl StepView {
             look: StateLook::of(step.status),
             duration: elapsed(step.started_at, step.stopped_at),
             open: false,
+            started: (step.status == Status::Running).then(|| step.started_at.map(rbit_core::Timestamp::seconds)).flatten(),
+            tail: step.status == Status::Running && log.is_some(),
             log,
             log_url,
         }
@@ -107,9 +113,13 @@ pub struct JobPage {
     pub look: StateLook,
     pub duration: Option<Took>,
     pub labels: String,
-    /// Not finished: the page refreshes itself.
+    /// Not finished: the page tails the log and reloads the job when a step changes.
     pub active: bool,
     pub self_url: String,
+    /// The job's and steps' states (`routes::actions::job_live::live_state`).
+    pub live_state: String,
+    /// The server's clock, so running durations tick from the right start.
+    pub now: i64,
     pub steps: Vec<StepView>,
     /// `None` until a runner took the job.
     pub raw_url: Option<String>,

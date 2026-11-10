@@ -141,7 +141,8 @@ async fn selected_job_and_step_roots_keep_locale_privacy_and_the_same_storage_wo
                 assert!(root.contains(&format!("lang=\"{language}\"")));
                 let direction = if language == "ar-XB" { "rtl" } else { "ltr" };
                 assert!(root.contains(&format!("dir=\"{direction}\"")));
-                assert!(root.contains("hx-trigger=\"every 3s\""));
+                let polls = if selected == "job" { "data-live-url=" } else { "hx-trigger=\"every 3s\"" };
+                assert!(root.contains(polls), "{root}");
                 assert!(body.contains("unchanged &lt;log&gt;") && !body.contains("unchanged <log>"));
             }
         }
@@ -161,7 +162,7 @@ async fn finished_job_rerun_remains_a_writer_only_native_post() {
     state(&fixture, &credential, task, &json!({"steps": [step(0, "success", 0, 0)], "outputs": {}, "result": "success"})).await;
     let (_, _, owner) = get(&fixture, &path, false).await;
     assert!(owner.contains(&format!("method=\"post\" action=\"{path}/rerun\"")));
-    assert!(!owner.contains("hx-trigger=\"every 3s\""));
+    assert!(!owner.contains("data-live-url"), "a finished job is not tailed");
     let reader = fixture
         .services
         .accounts

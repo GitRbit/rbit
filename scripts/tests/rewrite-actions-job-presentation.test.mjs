@@ -34,7 +34,7 @@ test("presentation keeps bounded service reads, native links and stable step ide
   assert.match(route, /detail\.steps\.iter\(\)\.zip\(read\.logs\)/);
   assert.match(route, /loaded\.ctx\.can_write_content\(\) && finished && detail\.run\.status\.is_done\(\)/);
   const html = await expand("actions/job.html");
-  for (const contract of ['hx-trigger="every 3s"', 'hx-select="#job"', 'hx-swap="outerHTML"',
+  for (const contract of ['data-live-url="{{ self_url }}/logs/live"', 'data-live-state="{{ live_state }}"',
     'data-step="{{ step.key }}"', 'data-state="{{ step.look.key }}"', 'method="post" action="{{ rerun_url }}"',
     'href="{{ raw_url }}" hx-boost="false"']) assert.ok(html.includes(contract), contract);
   const body = await read("templates/actions/step_body.html");

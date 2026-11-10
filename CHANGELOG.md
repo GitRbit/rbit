@@ -14,6 +14,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Actions job logs read like a terminal: ANSI colours are drawn in the theme's colours,
   `::group::` sections fold, `::error`, `::warning` and `::notice` lines stand out with
   an icon, long lines wrap, and every line links to itself (`#step-<n>-line-<m>`).
+- A running Actions job's log follows along: new lines of the running step appear as the
+  runner sends them, the page keeps the newest line in view until you scroll up, running
+  durations tick, and the page reloads its steps only when one starts or ends.
 
 ### Fixed
 

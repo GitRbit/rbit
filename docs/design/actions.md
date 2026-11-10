@@ -299,10 +299,12 @@ existing `macros.html` set plus `play`, `stop`, `rerun`, `clock`, `skip` if miss
   finished, as `import_status.html` does.
 - **Job** `/{o}/{r}/actions/runs/{n}/jobs/{job}` (`?attempt=`): steps as `<details>`
   elements (no JS needed to expand), step duration and state; the running step is open.
-  Log lines in `.code-lines` (virtualised `.vblock` for long logs), escaped, ANSI stripped,
-  timestamps toggle via a GET parameter. Live tail (§5.5). "Raw log" link
-  (`…/logs/raw`, `text/plain; charset=utf-8`, `Content-Disposition: inline`, served
-  pre-gzipped when accepted).
+  The log console (`views/actions/log_lines.rs`): every line a row
+  `#step-<n>-line-<m>` (`m` from 1 within the step) linking to itself, ANSI colours as
+  theme classes, `##[group]` sections folded as details, `##[error]`/`##[warning]`/
+  `##[notice]` rows highlighted with an icon, long lines wrapped, everything escaped.
+  Live tail (§5.5). "Raw log" link (`…/logs/raw`, `text/plain; charset=utf-8`,
+  `Content-Disposition: inline`, served pre-gzipped when accepted).
 - **Dispatch form** on the workflow's page for writers when the workflow has
   `workflow_dispatch`: ref picker (existing `ref_picker`), inputs rendered by type.
 - **Repository settings → Actions card** (admins; card only when the instance has Actions
@@ -386,9 +388,13 @@ empty, and their CHECKs and cascades.
   `already_exists`.
 - Reads: live — plain file from a byte offset; final — streaming gunzip. A step view renders
   at most the last 10,000 lines / 2 MiB and links to the raw log for the rest.
-- Live tail: the job page's open step polls `…/jobs/{job}/logs?step=N&after=<byte offset>`
-  every 2 s with `hx-swap="beforeend"`; the fragment carries the next cursor as an
-  out-of-band swap of the poller element and drops `hx-trigger` once the step finished.
+- Live tail: while the job runs, `assets/actions-log.js` asks
+  `…/jobs/{job}/logs/live?from=<task-log line>` about every 1.5 s (at once again after
+  new lines). The JSON answer has the job's and steps' states, the running step's new
+  lines rendered as rows (a group's end without its start is a marker, so the page ends
+  the group it has open) and the next line. The page appends the rows, follows them while
+  the end of the step is in view, and reloads the job section when the states change.
+  Same reader check as the page; one answer holds at most the page's step budget.
 - Retention: `[actions] log_retention_days` (90); the sweeper deletes files and sets
   `log_state = expired` (run and job rows stay; `run_retention_days` (365) deletes old runs).
 - Backups: `<data_dir>/actions/` is **not** copied (logs are derived build output, the key
