@@ -152,6 +152,7 @@ mod tests {
                 viewer: None,
                 path: "/notifications".into(),
                 has_unread_notifications: true,
+                show_explore: true,
                 theme: crate::themes::Theme::System,
             },
             groups,

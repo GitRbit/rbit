@@ -26,6 +26,8 @@ config_arms! {
         ConfigText::Help { section: "server", key: "site_name" } => text.literal(
             "Nombre predeterminado mientras no lo sustituya la marca en vivo. Cambia el nombre activo en Marca y políticas.",
         ),
+        ConfigText::Label { section: "server", key: "explore_enabled" } => text.literal("Ofrecer la página Explorar por defecto"),
+        ConfigText::Help { section: "server", key: "explore_enabled" } => text.literal("Valor predeterminado de la página Explorar, que lista todos los repositorios públicos. Prevalece el ajuste en vivo de Marca y políticas."),
         ConfigText::Label { section: "server", key: "open_registration" } => text.literal("Registro abierto por defecto"),
         ConfigText::Help { section: "server", key: "open_registration" } => text.literal(
             "Política de registro predeterminada. Prevalece la política en vivo de Marca y políticas.",

@@ -18,6 +18,8 @@ config_table! {
         ConfigText::Help { section: "server", key: "public_url" } => text.literal("URL de base publique, utilisée pour les URL de clonage et la vérification d’origine CSRF."),
         ConfigText::Label { section: "server", key: "site_name" } => text.literal("Nom du site par défaut"),
         ConfigText::Help { section: "server", key: "site_name" } => text.literal("Nom par défaut avant toute personnalisation en direct. Modifiez le nom actif dans Image de marque et règles."),
+        ConfigText::Label { section: "server", key: "explore_enabled" } => text.literal("Proposer la page Explorer par défaut"),
+        ConfigText::Help { section: "server", key: "explore_enabled" } => text.literal("Valeur par défaut de la page Explorer, qui liste tous les dépôts publics. Le réglage en direct dans Image de marque et règles a la priorité."),
         ConfigText::Label { section: "server", key: "open_registration" } => text.literal("Inscriptions ouvertes par défaut"),
         ConfigText::Help { section: "server", key: "open_registration" } => text.literal("Règle d’inscription par défaut. La règle en direct dans Image de marque et règles a la priorité."),
         ConfigText::Label { section: "storage", key: "data_dir" } => text.literal("Répertoire de données"),

@@ -203,6 +203,7 @@ mod tests {
                 viewer: None,
                 path: "/a/b/milestones".into(),
                 has_unread_notifications: false,
+                show_explore: true,
                 theme: crate::themes::Theme::System,
             },
             header: RepoHeader::default(),

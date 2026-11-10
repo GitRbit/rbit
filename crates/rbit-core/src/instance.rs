@@ -40,6 +40,8 @@ pub struct InstanceSettings {
     pub site_name: String,
     pub branding: crate::config::BrandingConfig,
     pub registration: RegistrationMode,
+    /// Whether `/explore` (and the links to it) are offered. When off, it is `404` for everyone.
+    pub explore_enabled: bool,
     pub org_creation: OrgCreationPolicy,
     pub default_visibility: Visibility,
     /// The hour (0–23, UTC) email digests are sent at for users who did not choose one.
@@ -53,6 +55,7 @@ impl InstanceSettings {
             site_name: config.server.site_name.clone(),
             branding: config.branding.clone(),
             registration: if config.server.open_registration { RegistrationMode::Open } else { RegistrationMode::Closed },
+            explore_enabled: config.server.explore_enabled,
             org_creation: OrgCreationPolicy::AnyUser,
             default_visibility: Visibility::Public,
             digest_hour: config.notifications.digest_hour,

@@ -287,6 +287,7 @@ mod tests {
             path: "/alice/proj/stargazers".to_owned(),
             theme: crate::themes::Theme::System,
             has_unread_notifications: false,
+            show_explore: true,
         }
     }
 

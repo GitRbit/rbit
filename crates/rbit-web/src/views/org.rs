@@ -344,6 +344,7 @@ mod tests {
                 path: "/acme/settings".into(),
                 theme: crate::themes::Theme::System,
                 has_unread_notifications: false,
+                show_explore: true,
             },
             header,
             form: OrgProfileForm::default(),

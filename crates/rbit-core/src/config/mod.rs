@@ -96,6 +96,8 @@ pub struct ServerConfig {
     pub site_name: String,
     /// Allow anyone to create an account from the sign-up page.
     pub open_registration: bool,
+    /// Offer the Explore page (`/explore`), which lists every public repository.
+    pub explore_enabled: bool,
 }
 
 impl Default for ServerConfig {
@@ -105,6 +107,7 @@ impl Default for ServerConfig {
             public_url: "http://localhost:3000".to_owned(),
             site_name: "rbit".to_owned(),
             open_registration: true,
+            explore_enabled: true,
         }
     }
 }

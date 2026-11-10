@@ -321,6 +321,7 @@ mod tests {
                 path: "/o/r/blame/main/a.rs".to_owned(),
                 theme: crate::themes::Theme::System,
                 has_unread_notifications: false,
+                show_explore: true,
             },
             header: RepoHeader::default(),
             switcher: RefSwitcher::deferred(

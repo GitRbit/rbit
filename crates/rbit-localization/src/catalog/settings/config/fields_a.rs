@@ -16,6 +16,8 @@ config_fields! {
             "Default name before live branding overrides. Change the active name in Branding and policies.";
         "open_registration" => "Open registration by default",
             "Default registration policy. The live policy in Branding and policies takes precedence.";
+        "explore_enabled" => "Offer the Explore page by default",
+            "Default for the Explore page, which lists every public repository. The live setting in Branding and policies takes precedence.";
     }
     "storage" {
         "data_dir" => "Data directory",

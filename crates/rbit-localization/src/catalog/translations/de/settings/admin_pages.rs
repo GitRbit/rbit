@@ -142,6 +142,11 @@ entries! { De:
         InstanceSettingsMessage::ShowFeatures => {
             text.literal("Self-Hosting-Funktionen auf der Startseite anzeigen");
         }
+        InstanceSettingsMessage::Explore => text.literal("Entdecken-Seite"),
+        InstanceSettingsMessage::ExploreEnabled => text.literal("An"),
+        InstanceSettingsMessage::ExploreEnabledText => text.literal("Alle, die die Seite durchsuchen dürfen, können alle öffentlichen Repositorys suchen und auflisten."),
+        InstanceSettingsMessage::ExploreDisabled => text.literal("Aus"),
+        InstanceSettingsMessage::ExploreDisabledText => text.literal("Die Entdecken-Seite ist nicht erreichbar und ihre Links sind ausgeblendet, auch für Administratoren. Öffentliche Repositorys bleiben öffentlich."),
         InstanceSettingsMessage::Registration => text.literal("Registrierung"),
         InstanceSettingsMessage::Open => text.literal("Offen"),
         InstanceSettingsMessage::OpenText => {

@@ -88,7 +88,7 @@
     <section class="box" aria-labelledby="recent-title">
       <div class="box-header justify-between">
         <h2 id="recent-title" class="box-title">{% call ui::text(page, rbit_localization::shell::home::HomeMessage::RecentlyUpdated) %}{% endcall %}</h2>
-        <a href="/explore" class="text-[13px] text-ink-muted hover:text-ink">{% call ui::text(page, rbit_localization::shell::home::HomeMessage::Explore) %}{% endcall %}</a>
+        {% if page.show_explore %}<a href="/explore" class="text-[13px] text-ink-muted hover:text-ink">{% call ui::text(page, rbit_localization::shell::home::HomeMessage::Explore) %}{% endcall %}</a>{% endif %}
       </div>
       {% if recent.is_empty() %}
       <p class="px-4 py-6 text-center text-[13px] text-ink-muted">{% call ui::text(page, rbit_localization::shell::home::HomeMessage::NothingPublic) %}{% endcall %}</p>

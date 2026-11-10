@@ -128,6 +128,10 @@ pub(super) fn settings_summary(settings: &InstanceSettings, locale: Locale) -> V
             },
         ),
         row(
+            DashboardMessage::Explore,
+            if settings.explore_enabled { DashboardMessage::ExploreEnabled } else { DashboardMessage::ExploreDisabled },
+        ),
+        row(
             DashboardMessage::OrgPolicy,
             match settings.org_creation {
                 OrgCreationPolicy::AnyUser => DashboardMessage::AnyUserCreates,

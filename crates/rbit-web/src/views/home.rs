@@ -151,6 +151,7 @@ mod tests {
             path: "/".to_owned(),
             theme: crate::themes::Theme::System,
             has_unread_notifications: false,
+            show_explore: true,
         }
     }
 

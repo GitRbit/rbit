@@ -26,6 +26,8 @@ pub struct InstallableApp<'a> {
     pub app_icon_url: &'a str,
     /// The launch background and theme colour ([`launch_color`]).
     pub color: &'a str,
+    /// The instance offers the Explore page, so the app gets a shortcut to it.
+    pub explore: bool,
 }
 
 /// The colour the installed app launches with: the theme named in the manifest URL, else
@@ -45,6 +47,10 @@ pub fn manifest(app: &InstallableApp<'_>, asset_url: impl Fn(&str) -> String) ->
     } else {
         json!([{"src": app.app_icon_url, "sizes": "any", "purpose": "any"}])
     };
+    let mut shortcuts = vec![json!({ "name": "New repository", "url": "/new" })];
+    if app.explore {
+        shortcuts.push(json!({ "name": "Explore", "url": "/explore" }));
+    }
     let manifest = json!({
         "name": app.name,
         "short_name": app.name,
@@ -59,10 +65,7 @@ pub fn manifest(app: &InstallableApp<'_>, asset_url: impl Fn(&str) -> String) ->
         // PNGs generated from scripts/icons/logo.png by `npm run icons`; the maskable icon keeps
         // the entire mascot inside the safe zone.
         "icons": icons,
-        "shortcuts": [
-            { "name": "New repository", "url": "/new" },
-            { "name": "Explore", "url": "/explore" }
-        ]
+        "shortcuts": shortcuts
     });
     manifest.to_string()
 }
