@@ -307,7 +307,9 @@ existing `macros.html` set plus `play`, `stop`, `rerun`, `clock`, `skip` if miss
   "Complete job" (`#step-setup-line-n`, `#step-complete-line-n`); the runner writes its
   version, name, labels, OS, backend, images, timeout, token permissions and resolved
   actions there, and each line starts with its RFC 3339 UTC time, which the page shows
-  on request. Live tail (§5.5). "Raw log" link (`…/logs/raw`, `text/plain; charset=utf-8`,
+  on request. A toolbar (scripts only) searches every step's log with next/previous,
+  toggles line times, expands or collapses everything; clicking a line number copies
+  its link. Live tail (§5.5). "Raw log" and "Download log" (`?download=1`) links (`…/logs/raw`, `text/plain; charset=utf-8`,
   `Content-Disposition: inline`, served pre-gzipped when accepted).
 - **Dispatch form** on the workflow's page for writers when the workflow has
   `workflow_dispatch`: ref picker (existing `ref_picker`), inputs rendered by type.

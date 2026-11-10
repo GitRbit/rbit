@@ -24,6 +24,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   commits), and at the end the job's result. A skipped step says why ("This step was
   skipped because an earlier step failed"), and every log line now starts with the time
   the runner wrote it, as GitHub's raw logs do.
+- The Actions job page has a log toolbar: search every step's log with next and previous
+  match, show each line's time, expand or collapse all steps and groups, and download the
+  raw log. Clicking a line number links to the line and copies the link.
 
 ### Fixed
 

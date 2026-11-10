@@ -91,6 +91,11 @@ async fn a_job_shows_its_steps_and_logs_and_serves_the_raw_log() {
     assert_eq!(headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
     assert!(headers[header::CONTENT_DISPOSITION].to_str().unwrap().starts_with("inline;"));
     assert!(raw.starts_with("\u{1b}[32mcompiling"), "the raw log is the log as written");
+    let (_, headers, download) = get(&fixture, &format!("{job_url}/logs/raw?download=1"), false).await;
+    assert!(headers[header::CONTENT_DISPOSITION].to_str().unwrap().starts_with("attachment; filename=\"rocket-run-"));
+    assert_eq!(download, raw, "the download is the raw log");
+    assert!(page.contains(r#"data-log-tools data-no-matches="No matches" hidden>"#), "the toolbar waits for scripts");
+    assert!(page.contains(&format!(r#"href="{job_url}/logs/raw?download=1""#)));
 
     // Once finished, the log is stored gzipped and served as is to clients that take it.
     let body = json!({"steps": [step(0, "failure", 0, 2), step(1, "success", 2, 1)], "outputs": {}, "result": "failure"});

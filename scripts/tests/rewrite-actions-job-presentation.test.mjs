@@ -70,3 +70,15 @@ test("both refreshed roots carry locale direction and plain localized labels", a
   assert.match(presentation, /return Ok\(axum::response::Redirect::to\(&job_url\)\.into_response\(\)\)/);
   assert.doesNotMatch(route.slice(route.indexOf("pub async fn raw(")), /RequestLocale|locale\.response|with_locale/);
 });
+
+test("the log toolbar is hidden until its script runs and speaks only catalog text", async () => {
+  const toolbar = await read("templates/actions/job/toolbar.html");
+  assert.match(toolbar, /data-log-tools [^>]*hidden>/);
+  for (const hook of ["data-log-search", 'data-log-match="previous"', 'data-log-match="next"', "data-log-times",
+    'data-log-expand="open"', 'data-log-expand="close"', "data-log-status", "data-log-count"]) assert.ok(toolbar.includes(hook), hook);
+  const visible = toolbar.replace(/{[%#{][\s\S]*?[%#}]}/g, "").replace(/<[^>]*>/g, "").trim();
+  assert.equal(visible, "", "every label comes from the catalog");
+  const script = await readFile(new URL("assets/actions-log-tools.js", root), "utf8");
+  assert.doesNotMatch(script, /innerHTML/, "matches are marked as text nodes, never parsed");
+  assert.match(await read("templates/actions/job/steps.html"), /{% include "actions\/job\/toolbar.html" %}/);
+});

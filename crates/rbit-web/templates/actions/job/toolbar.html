@@ -1,0 +1,21 @@
+{#- The log toolbar above the steps. Search, times and expanding everything need scripts
+    (assets/actions-log-tools.js shows it); the raw log and its download are in the job's
+    header and work without. -#}
+<div class="mb-3 flex flex-wrap items-center gap-2" role="toolbar" aria-label="{{ text.log_tools }}" data-log-tools data-no-matches="{{ text.no_matches }}" hidden>
+  <label class="relative min-w-0 flex-[1_1_12rem] sm:max-w-xs">
+    <span class="sr-only">{% call ui::localized(text.search_logs) %}{% endcall %}</span>
+    <span class="pointer-events-none absolute inset-y-0 start-2.5 flex items-center text-ink-faint">{% call ui::icon("search", "size-3.5") %}{% endcall %}</span>
+    <input class="input h-8 w-full ps-8 text-xs" type="search" autocomplete="off" spellcheck="false" placeholder="{{ text.search_logs }}" data-log-search>
+  </label>
+  <span class="min-w-8 text-xs tabular-nums text-ink-faint" aria-live="polite" data-log-count></span>
+  <span class="flex gap-1">
+    <button class="btn h-8 px-2" type="button" title="{{ text.previous_match }}" aria-label="{{ text.previous_match }}" data-log-match="previous">{% call ui::icon("chevron-down", "size-3.5 rotate-180") %}{% endcall %}</button>
+    <button class="btn h-8 px-2" type="button" title="{{ text.next_match }}" aria-label="{{ text.next_match }}" data-log-match="next">{% call ui::icon("chevron-down", "size-3.5") %}{% endcall %}</button>
+  </span>
+  <span class="ms-auto flex flex-wrap gap-2">
+    <label class="btn h-8 cursor-pointer text-xs"><input class="size-3.5 accent-current" type="checkbox" data-log-times>{% call ui::localized(text.show_timestamps) %}{% endcall %}</label>
+    <button class="btn h-8 text-xs" type="button" data-log-expand="open">{% call ui::icon("chevrons-up-down", "size-3.5") %}{% endcall %}{% call ui::localized(text.expand_all) %}{% endcall %}</button>
+    <button class="btn h-8 text-xs" type="button" data-log-expand="close">{% call ui::icon("chevrons-down-up", "size-3.5") %}{% endcall %}{% call ui::localized(text.collapse_all) %}{% endcall %}</button>
+  </span>
+  <span class="sr-only" role="status" data-log-status data-copied="{{ text.link_copied }}"></span>
+</div>

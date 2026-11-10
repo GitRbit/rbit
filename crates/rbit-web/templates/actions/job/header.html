@@ -14,6 +14,9 @@
       <a class="btn h-10 sm:h-8" href="{{ raw_url }}" hx-boost="false">
         {% call ui::icon("file-text", "size-3.5") %}{% endcall %}{% call ui::localized(text.raw_log) %}{% endcall %}
       </a>
+      <a class="btn h-10 sm:h-8" href="{{ raw_url }}?download=1" hx-boost="false" download>
+        {% call ui::icon("download", "size-3.5") %}{% endcall %}{% call ui::localized(text.download_log) %}{% endcall %}
+      </a>
       {% endif %}
       {% if let Some(rerun_url) = rerun_url %}
       <form method="post" action="{{ rerun_url }}">

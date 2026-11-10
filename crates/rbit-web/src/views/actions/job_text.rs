@@ -25,6 +25,16 @@ pub struct JobText {
     pub step_not_started: Localized,
     pub set_up_job: Localized,
     pub complete_job: Localized,
+    pub log_tools: Localized,
+    pub search_logs: Localized,
+    pub previous_match: Localized,
+    pub next_match: Localized,
+    pub show_timestamps: Localized,
+    pub expand_all: Localized,
+    pub collapse_all: Localized,
+    pub download_log: Localized,
+    pub link_copied: Localized,
+    pub no_matches: Localized,
 }
 
 /// A state's label in the catalog's locale, for job rows and the run heading alike.
@@ -88,6 +98,16 @@ impl JobText {
             step_not_started: catalog.localized(Message::StepNotStarted),
             set_up_job: catalog.localized(Message::SetUpJob),
             complete_job: catalog.localized(Message::CompleteJob),
+            log_tools: catalog.localized(Message::LogTools),
+            search_logs: catalog.localized(Message::SearchLogs),
+            previous_match: catalog.localized(Message::PreviousMatch),
+            next_match: catalog.localized(Message::NextMatch),
+            show_timestamps: catalog.localized(Message::ShowTimestamps),
+            expand_all: catalog.localized(Message::ExpandAll),
+            collapse_all: catalog.localized(Message::CollapseAll),
+            download_log: catalog.localized(Message::DownloadLog),
+            link_copied: catalog.localized(Message::LinkCopied),
+            no_matches: catalog.localized(Message::NoMatches),
         }
     }
 

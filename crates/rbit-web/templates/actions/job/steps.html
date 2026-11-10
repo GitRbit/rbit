@@ -8,6 +8,7 @@
     <span class="text-xs tabular-nums text-ink-faint">{% call ui::localized(text.count) %}{% endcall %}</span>
   </div>
   <p class="mb-3 text-xs leading-relaxed text-ink-muted">{% call ui::localized(text.retained_window) %}{% endcall %}</p>
+  {% include "actions/job/toolbar.html" %}
   <ol class="box divide-y divide-line overflow-hidden">
     {% for step in steps %}
     <li>
