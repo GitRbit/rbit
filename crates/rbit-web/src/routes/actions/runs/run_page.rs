@@ -7,12 +7,13 @@ use crate::{
     localization::RequestLocale,
     routes::repo::RepoPage,
     views::{
-        actions::{ActionsUrls, ArtifactRow, DeploymentView, RunPage, RunSummary, SummaryView, job_rows},
+        actions::{ActionsUrls, ArtifactRow, DeploymentView, RunPage, RunPageLive, RunSidebar, RunSummary, SummaryView, job_rows},
         layout::Page,
     },
 };
 use axum::{
     extract::{Path, State},
+    http::HeaderMap,
     response::{IntoResponse, Response},
 };
 use rbit_core::actions::Status;
@@ -23,6 +24,7 @@ pub async fn show(
     viewer: Viewer,
     page: Page,
     locale: RequestLocale,
+    headers: HeaderMap,
     Path((owner, repo, run)): Path<(String, String, String)>,
 ) -> WebResult<Response> {
     let actions = actions(&state)?;
@@ -68,6 +70,7 @@ pub async fn show(
         header: loaded.header(&state, "actions"),
         run: RunSummary::new(run, &detail.people, &urls, loaded.urls.commit(&run.sha)),
         jobs: job_rows(&detail.jobs, run.number, &urls, can_write && finished && has_jobs),
+        sidebar: RunSidebar::new(run, &detail.jobs, &urls, loaded.urls.blob(&run.sha, &run.workflow_path), None, locale.0.locale),
         active: !finished,
         self_url: urls.run(run.number),
         runs_url: urls.runs(),
@@ -82,5 +85,15 @@ pub async fn show(
         deployments,
         review_url: urls.run_action(run.number, "review"),
     };
+    // The run section's own poll gets that section and the job list, not the whole page.
+    if polling(&headers) {
+        return Ok(locale.response(RunPageLive(view).into_response()));
+    }
     Ok(locale.response(view.into_response()))
+}
+
+/// A request from the run section's poll: htmx targets `#run` and it is no navigation.
+fn polling(headers: &HeaderMap) -> bool {
+    let header = |name: &str| headers.get(name).and_then(|value| value.to_str().ok());
+    header("hx-request") == Some("true") && header("hx-target") == Some("run") && header("hx-boosted").is_none()
 }

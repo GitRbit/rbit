@@ -29,8 +29,8 @@ use crate::{
     routes::repo::RepoPage,
     views::{
         actions::{
-            ActionsUrls, Failure, JOB_PAGE_STEP_BYTES, JOB_PAGE_STEP_LINES, JobPage, RunSummary, Section, StateLook, StepLog, StepLogPage,
-            StepView, open_one, section_view,
+            ActionsUrls, Failure, JOB_PAGE_STEP_BYTES, JOB_PAGE_STEP_LINES, JobPage, RunSidebar, RunSummary, Section, StateLook, StepLog,
+            StepLogPage, StepView, open_one, section_view,
         },
         layout::Page,
         when::When,
@@ -104,6 +104,11 @@ pub async fn show(
         None => None,
     };
     let can_rerun = loaded.ctx.can_write_content() && finished && detail.run.status.is_done();
+    // The run's navigation beside the job: every job of the run, refreshing while it runs.
+    let jobs = actions.run_detail(&loaded.ctx, number).await?.jobs;
+    let workflow_file = loaded.urls.blob(&detail.run.sha, &detail.run.workflow_path);
+    let sidebar = RunSidebar::new(&detail.run, &jobs, &urls, workflow_file, Some(detail.job.id), locale.0.locale)
+        .polling(&detail.run, format!("{}/sidebar?job={}", urls.run(number), detail.job.id.0));
     let view = JobPage {
         page: page.with_locale(locale.0.locale).titled(format!(
             "{} · {} #{} · {}",
@@ -115,6 +120,7 @@ pub async fn show(
         header: loaded.header(&state, "actions"),
         run: RunSummary::new(&detail.run, &people, &urls, loaded.urls.commit(&detail.run.sha)),
         run_url: urls.run(number),
+        sidebar,
         name: detail.job.name.clone(),
         look: StateLook::of(detail.job.status),
         duration: crate::views::actions::job_duration(&detail.job),

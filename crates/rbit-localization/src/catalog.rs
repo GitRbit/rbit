@@ -21,6 +21,8 @@ pub use chrome::{ChromeDisplay, ChromeMessage, ChromeSentence};
 mod fallback;
 mod translations;
 pub use fallback::{Localized, MessageFamily, MessageWriter};
+mod run_layout;
+pub use run_layout::RunLayoutMessage;
 mod run_page;
 pub use run_page::RunPageMessage;
 pub mod settings;

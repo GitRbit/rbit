@@ -9,7 +9,7 @@ use rbit_core::{
     Account, AccountId,
     actions::{Job, Run},
 };
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 /// One job on the run page, indented by how deep in `needs` it is.
 #[derive(Debug, Clone)]
@@ -36,27 +36,9 @@ pub struct JobRow {
 /// The jobs of a run in `needs` order: each after everything it needs, otherwise in the
 /// workflow's order.
 pub fn job_rows(jobs: &[Job], number: i64, urls: &ActionsUrls, can_write: bool) -> Vec<JobRow> {
-    let mut depth: HashMap<&str, usize> = HashMap::new();
-    // Jobs need only jobs of the same run, which never form a cycle, so a pass per level
-    // settles every depth; anything left after as many passes as jobs is cut off at the end.
-    for _ in 0..=jobs.len() {
-        let mut changed = false;
-        for job in jobs {
-            let level = job.needs.iter().map(|need| depth.get(need.as_str()).map_or(0, |level| level + 1)).max().unwrap_or(0);
-            if depth.insert(job.key.as_str(), level) != Some(level) {
-                changed = true;
-            }
-        }
-        if !changed {
-            break;
-        }
-    }
-    let mut ordered: Vec<(usize, usize, &Job)> =
-        jobs.iter().enumerate().map(|(index, job)| (depth[job.key.as_str()], index, job)).collect();
-    ordered.sort_by_key(|(level, index, _)| (*level, *index));
-    ordered
+    super::run_layout::needs_order(jobs)
         .into_iter()
-        .map(|(level, _, job)| JobRow {
+        .map(|(level, job)| JobRow {
             name: job.name.clone(),
             url: urls.job(number, job.id.0),
             look: StateLook::of(job.status),
@@ -131,6 +113,8 @@ pub struct RunPage {
     pub header: RepoHeader,
     pub run: RunSummary,
     pub jobs: Vec<JobRow>,
+    /// The run's navigation beside the page.
+    pub sidebar: super::RunSidebar,
     /// Not finished: the job list refreshes itself.
     pub active: bool,
     pub self_url: String,
@@ -151,6 +135,20 @@ pub struct RunPage {
     pub deployments: Vec<DeploymentView>,
     /// Where reviews post.
     pub review_url: String,
+}
+
+/// The run section and the run's job list alone, as the run section's poll gets them; the
+/// page without its frame.
+#[derive(Debug, Template, WebTemplate)]
+#[template(path = "actions/run/live.html")]
+pub struct RunPageLive(pub RunPage);
+
+impl std::ops::Deref for RunPageLive {
+    type Target = RunPage;
+
+    fn deref(&self) -> &RunPage {
+        &self.0
+    }
 }
 
 // Actions: environments.

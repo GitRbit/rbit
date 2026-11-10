@@ -1,0 +1,33 @@
+{#- The run's jobs in its navigation, matrix jobs under their key; expects `sidebar`. While
+    the run is not finished on a job page it refreshes itself (`poll_url`); on the run page
+    the run section's poll replaces it. -#}
+{% import "macros.html" as ui %}
+{% let nav = sidebar.text() %}
+<ul id="run-sidebar-jobs" class="box divide-y divide-line"
+    {% if let Some(url) = sidebar.poll_url %}hx-get="{{ url }}" hx-trigger="every 3s" hx-swap="outerHTML"{% endif %}>
+  {% for group in sidebar.groups %}
+  <li>
+    {% if let Some(name) = group.name %}
+    <p class="flex min-h-9 items-center gap-2 px-3 text-xs text-ink-muted">
+      {% let look = nav.look(group.look) %}{% include "actions/state.html" %}
+      <bdi class="min-w-0 flex-1 truncate font-medium">{{ name }}</bdi>
+      <span class="shrink-0 tabular-nums text-ink-faint">{% call ui::localized(nav.job_count(group.count)) %}{% endcall %}</span>
+    </p>
+    {% endif %}
+    <ul class="{% if group.name.is_some() %}pb-1 ps-5{% endif %}">
+      {% for job in group.jobs %}
+      <li>
+        <a class="flex min-h-10 min-w-0 items-center gap-2 px-3 text-[13px] hover:bg-subtle {% if job.current %}bg-subtle font-medium text-ink{% else %}text-ink-muted{% endif %}"
+           href="{{ job.url }}" title="{{ job.name }}" {% if job.current %}aria-current="page"{% endif %}>
+          {% let look = nav.look(job.look) %}{% include "actions/state.html" %}
+          <bdi class="min-w-0 flex-1 truncate">{{ job.name }}</bdi>
+          {% if let Some(duration) = job.duration %}
+          <span class="shrink-0 whitespace-nowrap text-xs tabular-nums text-ink-faint" {% if let Some(since) = job.since %}data-since="{{ since }}"{% endif %}>{% call ui::localized(duration.text(sidebar.locale)) %}{% endcall %}</span>
+          {% endif %}
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+  </li>
+  {% endfor %}
+</ul>

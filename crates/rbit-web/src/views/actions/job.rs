@@ -109,6 +109,8 @@ pub struct JobPage {
     pub header: RepoHeader,
     pub run: RunSummary,
     pub run_url: String,
+    /// The run's navigation beside the page.
+    pub sidebar: super::RunSidebar,
     pub name: String,
     pub look: StateLook,
     pub duration: Option<Took>,
