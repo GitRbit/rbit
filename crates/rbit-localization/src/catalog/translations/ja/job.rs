@@ -28,6 +28,16 @@ entries! { Ja:
             text.literal("ジョブの出力がインスタンスの保持上限を超えたため、以降の行は破棄されました。");
         }
         ActionsJobMessage::StepNotStarted => text.literal("このステップはまだ開始されていません。"),
+        ActionsJobMessage::LogTools => text.literal("ログツール"),
+        ActionsJobMessage::SearchLogs => text.literal("ログを検索"),
+        ActionsJobMessage::PreviousMatch => text.literal("前の一致"),
+        ActionsJobMessage::NextMatch => text.literal("次の一致"),
+        ActionsJobMessage::ShowTimestamps => text.literal("タイムスタンプを表示"),
+        ActionsJobMessage::ExpandAll => text.literal("すべて展開"),
+        ActionsJobMessage::CollapseAll => text.literal("すべて折りたたむ"),
+        ActionsJobMessage::DownloadLog => text.literal("ログをダウンロード"),
+        ActionsJobMessage::LinkCopied => text.literal("行へのリンクをコピーしました"),
+        ActionsJobMessage::NoMatches => text.literal("一致なし"),
         ActionsJobMessage::SetUpJob => text.literal("ジョブを準備"),
         ActionsJobMessage::CompleteJob => text.literal("ジョブを完了"),
         ActionsJobMessage::Success => text.literal("成功"),

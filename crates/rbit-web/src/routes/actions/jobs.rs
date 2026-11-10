@@ -169,12 +169,20 @@ pub async fn logs(
     Ok(locale.response(view.into_response()))
 }
 
-/// `GET /{owner}/{repo}/actions/runs/{run}/jobs/{job}/logs/raw`
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct RawQuery {
+    /// Saved as a file rather than shown (`Content-Disposition: attachment`).
+    download: Option<String>,
+}
+
+/// `GET /{owner}/{repo}/actions/runs/{run}/jobs/{job}/logs/raw[?download=1]`
 pub async fn raw(
     State(state): State<AppState>,
     viewer: Viewer,
     headers: HeaderMap,
     Path((owner, repo, run, job)): Path<(String, String, String, String)>,
+    Query(query): Query<RawQuery>,
 ) -> WebResult<Response> {
     let actions = actions(&state)?;
     let (number, job) = ids(&run, &job)?;
@@ -188,7 +196,14 @@ pub async fn raw(
         return Err(WebError::NotFound);
     };
     let file_name = format!("{}-run-{number}-{}.log", loaded.ctx.repo.repo.name, detail.job.key);
-    Ok(raw_log_response(log, &headers, &file_name))
+    let mut response = raw_log_response(log, &headers, &file_name);
+    if query.download.is_some()
+        && let Some(inline) = response.headers().get(header::CONTENT_DISPOSITION).and_then(|value| value.to_str().ok())
+        && let Ok(value) = HeaderValue::from_str(&inline.replacen("inline", "attachment", 1))
+    {
+        response.headers_mut().insert(header::CONTENT_DISPOSITION, value);
+    }
+    Ok(response)
 }
 
 // Actions: REST API.

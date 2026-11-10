@@ -30,6 +30,8 @@ import "./relative-time.js";
 import "./mirror-progress.js";
 // Actions job pages: steps keep the viewer's open or closed choice across refreshes.
 import "./actions-log.js";
+// Their log toolbar: search, line times, expand or collapse everything, copy line links.
+import "./actions-log-tools.js";
 import "./actions-run.js";
 import "./repo-create.js";
 import "./markdown.js";
