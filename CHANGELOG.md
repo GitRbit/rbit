@@ -39,6 +39,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - An Actions run's summary draws its jobs as a graph of their `needs`, as on GitHub: a
   column per stage, a box per job (a matrix lists its jobs) with its state and live
   duration, and lines from each job to the jobs that wait for it.
+- An Actions run's summary lists its annotations, as on GitHub: the errors, warnings and
+  notices its jobs reported (`::error::`, `::warning::`, `::notice::` and problem
+  matchers) with their file and line, and every failed step without an error of its own,
+  each linking to the job at the log line. The server keeps the first 50 of each job as
+  the runner sends its log, so the page reads no logs.
 
 ### Fixed
 

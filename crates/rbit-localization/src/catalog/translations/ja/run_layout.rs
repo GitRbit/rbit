@@ -4,7 +4,7 @@ use crate::catalog::fallback::MessageWriter;
 use crate::catalog::run_layout::RunLayoutMessage;
 
 entries! { Ja:
-    RunLayoutMessage => MessageWriter |text| {
+    RunLayoutMessage<'a> => MessageWriter |text| {
         RunLayoutMessage::Summary => text.literal("概要"),
         RunLayoutMessage::Navigation => text.literal("実行のナビゲーション"),
         RunLayoutMessage::Usage => text.literal("使用時間"),
@@ -18,6 +18,35 @@ entries! { Ja:
             text.literal("他 ");
             text.number(count);
             text.literal(" 件");
+        }
+        RunLayoutMessage::Annotations => text.literal("アノテーション"),
+        RunLayoutMessage::Errors { count } => {
+            text.literal("エラー ");
+            text.number(count);
+            text.literal(" 件");
+        }
+        RunLayoutMessage::Warnings { count } => {
+            text.literal("警告 ");
+            text.number(count);
+            text.literal(" 件");
+        }
+        RunLayoutMessage::Notices { count } => {
+            text.literal("通知 ");
+            text.number(count);
+            text.literal(" 件");
+        }
+        RunLayoutMessage::ErrorLevel => text.literal("エラー"),
+        RunLayoutMessage::WarningLevel => text.literal("警告"),
+        RunLayoutMessage::NoticeLevel => text.literal("通知"),
+        RunLayoutMessage::StepFailed { step } => {
+            text.literal("ステップ ");
+            text.argument(step);
+            text.literal(" が失敗しました。");
+        }
+        RunLayoutMessage::MoreAnnotations { count } => {
+            text.literal("ほか ");
+            text.number(count);
+            text.literal(" 件はジョブのログにあります。");
         }
     }
 }

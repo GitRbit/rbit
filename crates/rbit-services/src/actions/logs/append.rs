@@ -53,7 +53,10 @@ impl ActionsService {
         let job = store.job(task.job_id).await?.ok_or_else(|| RunnerError::not_found("there is no such task"))?;
         let masker = self.masker(&task, &job).await?;
         let fresh: Vec<String> = lines[skip..].iter().map(|line| clean_line(&masker, line)).collect();
+        // Actions: annotations. The fresh lines start at the log's current end.
+        let annotations = super::super::annotations::found(&fresh, current);
         let progress = self.write_lines(&task, &job, fresh, &mut checked).await?;
+        self.keep_annotations(task.id, annotations).await;
         Ok(LogsResponse { next_line: progress.lines })
     }
 

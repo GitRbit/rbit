@@ -38,6 +38,8 @@
 //! fields and start-up lines in marked blocks.
 
 // Actions: artifacts (A).
+// Actions: annotations.
+pub mod annotations;
 mod archive_files;
 mod artifact_ports;
 pub mod artifacts;

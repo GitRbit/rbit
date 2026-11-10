@@ -754,6 +754,8 @@ async fn actions_tables_start_empty_with_their_checks_and_cascades() {
     assert_eq!(
         tables,
         [
+            // Actions: annotations.
+            "actions_annotations",
             "actions_artifacts",
             // Actions: shared cache.
             "actions_caches",

@@ -37,6 +37,8 @@ mod run;
 mod run_text;
 pub use run::{ArtifactRow, DeploymentView, JobRow, RunPage, RunPageLive, RunSummary, SummaryView, job_rows};
 pub use run_text::RunText;
+mod run_annotations;
+pub use run_annotations::AnnotationsView;
 mod run_graph;
 pub use run_graph::JobGraph;
 mod run_layout;

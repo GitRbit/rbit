@@ -5,7 +5,7 @@ use crate::catalog::run_layout::RunLayoutMessage;
 use crate::plural::Plural;
 
 entries! { Es:
-    RunLayoutMessage => MessageWriter |text| {
+    RunLayoutMessage<'a> => MessageWriter |text| {
         RunLayoutMessage::Summary => text.literal("Resumen"),
         RunLayoutMessage::Navigation => text.literal("Navegación de la ejecución"),
         RunLayoutMessage::Usage => text.literal("Uso"),
@@ -22,6 +22,41 @@ entries! { Es:
             text.literal("+");
             text.number(count);
             text.literal(" más");
+        }
+        RunLayoutMessage::Annotations => text.literal("Anotaciones"),
+        RunLayoutMessage::Errors { count } => {
+            text.number(count);
+            text.literal(match text.plural(count) {
+                Plural::One => " error",
+                _ => " errores",
+            });
+        }
+        RunLayoutMessage::Warnings { count } => {
+            text.number(count);
+            text.literal(match text.plural(count) {
+                Plural::One => " advertencia",
+                _ => " advertencias",
+            });
+        }
+        RunLayoutMessage::Notices { count } => {
+            text.number(count);
+            text.literal(match text.plural(count) {
+                Plural::One => " aviso",
+                _ => " avisos",
+            });
+        }
+        RunLayoutMessage::ErrorLevel => text.literal("Error"),
+        RunLayoutMessage::WarningLevel => text.literal("Advertencia"),
+        RunLayoutMessage::NoticeLevel => text.literal("Aviso"),
+        RunLayoutMessage::StepFailed { step } => {
+            text.literal("Falló el paso ");
+            text.argument(step);
+            text.literal(".");
+        }
+        RunLayoutMessage::MoreAnnotations { count } => {
+            text.literal("Y ");
+            text.number(count);
+            text.literal(" más en los registros de los trabajos.");
         }
     }
 }
