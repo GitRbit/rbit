@@ -67,9 +67,9 @@ async fn a_job_shows_its_steps_and_logs_and_serves_the_raw_log() {
     state(&fixture, &credential, task, &body).await;
 
     let (_, _, page) = get(&fixture, &job_url, false).await;
-    assert!(page.contains("compiling &lt;crate&gt;"), "escaped, without ANSI colours");
     assert!(!page.contains('\u{1b}'));
-    assert!(page.contains(r#"<span class="text-danger">Error: it broke</span>"#));
+    assert!(page.contains(r#"data-kind="error""#) && page.contains(r#"<span class="log-label">Error: </span>it broke"#));
+    assert!(page.contains(r#"<span class="ansi-f2">compiling</span> &lt;crate&gt;"#), "colours as theme classes");
     assert!(page.contains("second step"), "the running step reaches to the end of the log");
     assert_eq!(page.matches("<details open").count(), 1, "only the running step is open");
     assert!(page.contains(r#"<details open data-step="1" data-state="running">"#), "steps are known across refreshes");
@@ -77,7 +77,7 @@ async fn a_job_shows_its_steps_and_logs_and_serves_the_raw_log() {
 
     let (status, _, step_page) = get(&fixture, &format!("{job_url}/logs?step=0"), false).await;
     assert_eq!(status, StatusCode::OK);
-    assert!(step_page.contains("compiling &lt;crate&gt;") && !step_page.contains("second step"));
+    assert!(step_page.contains("compiling</span> &lt;crate&gt;") && !step_page.contains("second step"));
     let (status, ..) = get(&fixture, &format!("{job_url}/logs?step=7"), false).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 

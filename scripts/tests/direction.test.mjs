@@ -169,7 +169,7 @@ test("code, diffs and their line numbers stay left-to-right as a whole", async (
   assert.equal(files_.split(page).length - 1, 2, "both review boxes follow the page direction");
   // The single machine-log boundary of the Actions step body is unchanged.
   const step = await read("templates/actions/step_body.html");
-  assert.equal(step.split('<div class="code-lines {{ log.columns() }}" dir="ltr">').length - 1, 1);
+  assert.equal(step.split('<div class="log-console" dir="ltr"').length - 1, 1);
 });
 
 test("direction tokens follow every explicit dir, so LTR islands stay LTR", async () => {

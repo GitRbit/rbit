@@ -11,6 +11,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - The file table on the repository home and folder pages has column headers (Name, Last
   commit message, Last commit date) and is announced as a table to assistive technology.
+- Actions job logs read like a terminal: ANSI colours are drawn in the theme's colours,
+  `::group::` sections fold, `::error`, `::warning` and `::notice` lines stand out with
+  an icon, long lines wrap, and every line links to itself (`#step-<n>-line-<m>`).
 
 ### Fixed
 

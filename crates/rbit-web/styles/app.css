@@ -1473,6 +1473,163 @@
   }
 }
 
+/* ---------------------------------------------------------------- Actions log console */
+
+/* templates/actions/step_body.html, rows from src/views/actions/log_lines.rs. A row is a
+   number link (drawn from `data-line`, so copying the log copies no numbers), the time
+   when the toolbar shows times, and the text, which wraps (any long word too) beside the
+   number column. Groups are native details. Annotation rows and ANSI colours use the
+   status and syntax tokens only, so every theme recolours them; logs never carry a
+   literal colour. Rows off screen skip layout and paint; their height is remembered. */
+.log-console {
+  @apply py-2 font-mono text-xs leading-5;
+  tab-size: 4;
+}
+
+.log-line {
+  display: flex;
+  align-items: flex-start;
+  min-height: 1.25rem;
+  padding-inline-end: 1rem;
+  scroll-margin-top: calc(var(--sticky-top, 6.25rem) + 3rem);
+}
+
+div.log-line {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 1.25rem;
+}
+
+.log-line:hover {
+  @apply bg-subtle;
+}
+
+.log-line:target,
+.log-line[data-target] {
+  @apply bg-hover;
+  box-shadow: inset 2px 0 0 var(--ink-muted);
+}
+
+.log-num {
+  @apply w-12 shrink-0 cursor-pointer select-none pe-3 text-end text-ink-faint tabular-nums sm:w-14;
+}
+
+.log-num::before {
+  content: attr(data-line);
+}
+
+.log-num:hover {
+  @apply text-ink;
+}
+
+.log-time {
+  @apply hidden shrink-0 select-none pe-3 text-ink-faint tabular-nums;
+}
+
+[data-times] .log-time {
+  display: inline;
+}
+
+.log-text {
+  @apply min-w-0 flex-1 whitespace-pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.log-icon,
+.log-chevron {
+  display: inline-block;
+  width: 0.875rem;
+  height: 0.875rem;
+  margin-inline-end: 0.375rem;
+  vertical-align: -0.125rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.log-label {
+  font-weight: 600;
+}
+
+.log-line[data-kind="error"] {
+  background: var(--danger-subtle);
+}
+
+.log-line[data-kind="error"] .log-text {
+  color: var(--danger);
+}
+
+.log-line[data-kind="warning"] {
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+}
+
+.log-line[data-kind="warning"] .log-text {
+  color: var(--warning);
+}
+
+.log-line[data-kind="notice"] .log-icon,
+.log-line[data-kind="debug"] .log-text,
+.log-line[data-kind="command"] .log-text {
+  color: var(--ink-muted);
+}
+
+.log-group > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.log-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.log-group-head .log-text {
+  font-weight: 600;
+}
+
+.log-chevron {
+  color: var(--ink-faint);
+  transition: rotate 120ms;
+}
+
+.log-group[open] > summary .log-chevron {
+  rotate: 90deg;
+}
+
+mark.log-match {
+  @apply rounded-sm bg-hover text-ink;
+  outline: 1px solid var(--line-strong);
+}
+
+mark.log-match[data-current] {
+  @apply bg-inverted text-inverted-ink;
+}
+
+/* ANSI colours: the eight hues and their bright forms share a token. */
+.ansi-f0 { color: var(--ink); }
+.ansi-f1, .ansi-f9 { color: var(--danger); }
+.ansi-f2, .ansi-f10 { color: var(--success); }
+.ansi-f3, .ansi-f11 { color: var(--warning); }
+.ansi-f4, .ansi-f12 { color: var(--syntax-number); }
+.ansi-f5, .ansi-f13 { color: var(--syntax-keyword); }
+.ansi-f6, .ansi-f14 { color: var(--syntax-attribute); }
+.ansi-f7 { color: var(--ink-muted); }
+.ansi-f8 { color: var(--ink-faint); }
+.ansi-f15 { color: var(--ink); }
+.ansi-b0, .ansi-b8 { background: color-mix(in srgb, var(--ink) 18%, transparent); }
+.ansi-b1, .ansi-b9 { background: color-mix(in srgb, var(--danger) 22%, transparent); }
+.ansi-b2, .ansi-b10 { background: color-mix(in srgb, var(--success) 22%, transparent); }
+.ansi-b3, .ansi-b11 { background: color-mix(in srgb, var(--warning) 22%, transparent); }
+.ansi-b4, .ansi-b12 { background: color-mix(in srgb, var(--syntax-number) 22%, transparent); }
+.ansi-b5, .ansi-b13 { background: color-mix(in srgb, var(--syntax-keyword) 22%, transparent); }
+.ansi-b6, .ansi-b14 { background: color-mix(in srgb, var(--syntax-attribute) 22%, transparent); }
+.ansi-b7, .ansi-b15 { background: var(--hover); }
+.ansi-inverse { background: var(--ink); color: var(--canvas); }
+.ansi-bold { font-weight: 600; }
+.ansi-dim { opacity: 0.7; }
+.ansi-italic { font-style: italic; }
+.ansi-underline { text-decoration: underline; }
+
 /* ---------------------------------------------------------------- Themes */
 
 /* Theme previews cross-fade instead of cutting, so sweeping the pointer, scrolling or

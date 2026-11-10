@@ -17,9 +17,11 @@ use rbit_core::{
     actions::{Job, Run, RunEvent, Status},
 };
 
+mod ansi;
 mod job;
 mod job_text;
-pub use job::{JOB_PAGE_STEP_BYTES, JOB_PAGE_STEP_LINES, JobPage, StepLog, StepLogPage, StepView, log_line_html, open_one, strip_ansi};
+pub mod log_lines;
+pub use job::{JOB_PAGE_STEP_BYTES, JOB_PAGE_STEP_LINES, JobPage, StepLog, StepLogPage, StepView, open_one};
 pub use job_text::JobText;
 
 mod overview_text;
@@ -284,16 +286,6 @@ mod tests {
         assert_eq!(short_ref("refs/tags/v1.0"), "v1.0");
         assert_eq!(workflow_file(".rbit/workflows/ci.yml"), "ci.yml");
         assert_eq!(ActionsUrls::new("/a/b").workflow(".github/workflows/release.yaml"), "/a/b/actions/workflows/release.yaml");
-    }
-
-    #[test]
-    fn logs_are_text_with_their_markers_shown() {
-        assert_eq!(strip_ansi("\u{1b}[1;31mred\u{1b}[0m and \u{1b}]8;;https://x\u{7}link\u{1b}]8;;\u{1b}\\ done"), "red and link done");
-        assert_eq!(strip_ansi("plain \u{1b}"), "plain ");
-        assert_eq!(log_line_html("<b>\u{1b}[32mok</b>"), "&lt;b&gt;ok&lt;/b&gt;");
-        assert_eq!(log_line_html("##[error]it <broke>"), r#"<span class="text-danger">Error: it &lt;broke&gt;</span>"#);
-        assert_eq!(log_line_html("##[group]Install"), r#"<span class="font-semibold text-ink">Install</span>"#);
-        assert_eq!(log_line_html("not ##[error] a marker"), "not ##[error] a marker");
     }
 
     #[test]
