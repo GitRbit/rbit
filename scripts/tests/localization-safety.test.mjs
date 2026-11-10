@@ -27,6 +27,7 @@ const SAFE = [
   ["base.html", "crate::assets::inline_css(\"app.css\")", "the embedded stylesheet, allowed by its CSP hash"],
   ["base.html", "crate::assets::inline_css(path)", "the theme's embedded stylesheet, allowed by its CSP hash"],
   ["issues/milestone.html", "description_html", "a milestone description rendered by render_markdown"],
+  ["macros.html", "crate::icons::svg(name, class)", "an icon (src/icons.rs): fixed SVG markup, the class escaped as Askama escapes it"],
   ["pulls/review.html", "review.body_html", "a review body rendered by the issue Markdown renderer"],
   ["pulls/review_comment.html", "comment.body_html", "a line comment rendered by the issue Markdown renderer"],
   ["releases/card.html", "release.notes_html", "release notes rendered by render_markdown"],

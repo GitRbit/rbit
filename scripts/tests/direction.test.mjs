@@ -183,11 +183,13 @@ test("direction tokens follow every explicit dir, so LTR islands stay LTR", asyn
 
 test("directional icons, and only those, are marked to mirror", async () => {
   const macros = await read("templates/macros.html");
-  const marker = macros.match(/\{% macro icon\(name, class\) %\}\n<svg class="\{\{ class \}\}(.*?)" viewBox=/)?.[1];
-  assert.ok(marker, "the icon macro marks its svg");
-  const flipped = [...marker.matchAll(/name == "([a-z-]+)"/g)].map((match) => match[1]).sort();
+  assert.match(macros, /\{% macro icon\(name, class\) %\}\n\{\{ crate::icons::svg\(name, class\)\|safe \}\}\n\{% endmacro %\}/, "the icon macro draws through src/icons.rs");
+  const icons = await read("src/icons.rs");
+  const mirrored = icons.match(/const MIRRORED: \[&str; \d+\] = \[([^\]]*)\];/)?.[1];
+  assert.ok(mirrored, "src/icons.rs lists the icons that mirror");
+  const flipped = [...mirrored.matchAll(/"([a-z-]+)"/g)].map((match) => match[1]).sort();
   assert.deepEqual(flipped, ["chevron-left", "chevron-right", "log-out"]);
-  assert.match(marker, /\bdir-icon\b/);
+  assert.match(icons, /if self\.mirrored \{\s*f\.write_str\(" dir-icon"\)/, "mirrored icons get dir-icon");
   // Rotation applies after the mirror: a mirrored chevron turned by a fixed quarter would
   // point up in a right-to-left document.
   for (const path of await files("templates/", ".html")) {
