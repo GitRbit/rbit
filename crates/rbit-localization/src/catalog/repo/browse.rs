@@ -14,6 +14,9 @@ labels! {
         UploadFiles => "repo.browse.upload-files", "Upload files";
         Files => "repo.browse.files", "Files";
         ParentDirectory => "repo.browse.parent-directory", "Parent directory";
+        NameColumn => "repo.browse.column-name", "Name";
+        LastCommitMessageColumn => "repo.browse.column-message", "Last commit message";
+        LastCommitDateColumn => "repo.browse.column-date", "Last commit date";
         Path => "repo.browse.path", "Path";
         Latest => "repo.browse.latest", "Latest";
         YourAccess => "repo.browse.your-access", "Your access";

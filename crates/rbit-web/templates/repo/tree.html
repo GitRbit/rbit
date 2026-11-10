@@ -46,28 +46,41 @@
         {#- Counting walks the whole history, so it arrives after first paint. -#}
         <a href="{{ history_url }}" class="flex shrink-0 items-center gap-1.5 text-xs text-ink-muted hover:text-ink" hx-get="{{ commit_count_url }}" hx-trigger="load" hx-swap="outerHTML">{% call ui::icon("history", "size-3.5") %}{% endcall %}<span class="max-sm:sr-only">{% call ui::localized(rbit_localization::RepoBrowseLabel::History.text(page.locale)) %}{% endcall %}</span></a>
       </div>
-      <ul>
+      {#- A table by role, laid out with flex rows: each row's cells line up under the column
+          headers (name two fifths from md on, message flexible, date at the end), and the
+          message column, like its header, appears from md on. -#}
+      <div role="table" aria-label="{{ rbit_localization::RepoBrowseLabel::Files.text(page.locale) }}">
+        <div role="row" class="row min-h-9 text-xs font-medium text-ink-muted">
+          <span role="columnheader" class="min-w-0 flex-1 truncate md:w-2/5 md:flex-none">{% call ui::localized(rbit_localization::RepoBrowseLabel::NameColumn.text(page.locale)) %}{% endcall %}</span>
+          <span role="columnheader" class="hidden min-w-0 flex-1 truncate md:block">{% call ui::localized(rbit_localization::RepoBrowseLabel::LastCommitMessageColumn.text(page.locale)) %}{% endcall %}</span>
+          <span role="columnheader" class="ms-auto shrink-0 text-end">{% call ui::localized(rbit_localization::RepoBrowseLabel::LastCommitDateColumn.text(page.locale)) %}{% endcall %}</span>
+        </div>
         {% if let Some(parent) = parent_url %}
-        <li><a href="{{ parent }}" class="row row-link font-mono text-[13px] text-ink-muted" dir="ltr" aria-label="{{ rbit_localization::RepoBrowseLabel::ParentDirectory.text(page.locale) }}">..</a></li>
+        <div role="row" class="row row-link relative">
+          <span role="cell" class="min-w-0 flex-1"><a href="{{ parent }}" class="font-mono text-[13px] text-ink-muted after:absolute after:inset-0" dir="ltr" aria-label="{{ rbit_localization::RepoBrowseLabel::ParentDirectory.text(page.locale) }}">..</a></span>
+        </div>
         {% endif %}
         {#- The name link stretches over the whole row (`after:inset-0`); the commit link
-            sits above it (`z-10`) so both are clickable without nesting anchors. -#}
+            sits above it (`z-10`) so both are clickable without nesting anchors. The commit
+            cells arrive out of band (repo/entry_commits.html) into each row's slot. -#}
         {% for entry in entries %}
-        <li class="row row-link relative">
-          <a href="{{ entry.url }}" class="group flex min-w-0 flex-1 items-center gap-3 after:absolute after:inset-0 md:w-2/5 md:flex-none">
-            {% if entry.is_directory %}
-              {% call ui::icon("folder", "size-4 shrink-0 fill-current text-ink-muted") %}{% endcall %}
-            {% else if entry.is_submodule %}
-              {% call ui::icon("link", "size-4 shrink-0 text-ink-faint") %}{% endcall %}
-            {% else %}
-              {% call ui::icon("file", "size-4 shrink-0 text-ink-faint") %}{% endcall %}
-            {% endif %}
-            <span class="truncate text-[13px] group-hover:underline group-hover:underline-offset-4">{{ entry.name }}</span>
-          </a>
+        <div role="row" class="row row-link relative">
+          <span role="cell" class="flex min-w-0 flex-1 md:w-2/5 md:flex-none">
+            <a href="{{ entry.url }}" class="group flex min-w-0 flex-1 items-center gap-3 after:absolute after:inset-0">
+              {% if entry.is_directory %}
+                {% call ui::icon("folder", "size-4 shrink-0 fill-current text-ink-muted") %}{% endcall %}
+              {% else if entry.is_submodule %}
+                {% call ui::icon("link", "size-4 shrink-0 text-ink-faint") %}{% endcall %}
+              {% else %}
+                {% call ui::icon("file", "size-4 shrink-0 text-ink-faint") %}{% endcall %}
+              {% endif %}
+              <span class="truncate text-[13px] group-hover:underline group-hover:underline-offset-4">{{ entry.name }}</span>
+            </a>
+          </span>
           <span id="{{ entry.commit_slot }}" class="contents"></span>
-        </li>
+        </div>
         {% endfor %}
-      </ul>
+      </div>
       {% if !entries.is_empty() %}
       <div hidden hx-get="{{ entry_commits_url }}" hx-trigger="load" hx-swap="outerHTML"></div>
       {% endif %}
