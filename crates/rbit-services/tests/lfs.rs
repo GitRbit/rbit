@@ -363,7 +363,8 @@ async fn a_cancelled_upload_leaves_no_partial_object_or_lock() {
     let (services, upload_repo) = (fixture.services.clone(), repo.clone());
     let upload = tokio::spawn(async move { services.lfs.store(&upload_repo, &oid_of(content), content.len() as u64, body).await });
     client.write_all(&content[..10]).await.unwrap();
-    let partial = |min: u64| std::fs::read_dir(&tmp).is_ok_and(|mut e| e.any(|e| e.unwrap().metadata().unwrap().len() >= min));
+    let partial =
+        |min: u64| std::fs::read_dir(&tmp).is_ok_and(|mut e| e.any(|e| e.unwrap().path().metadata().is_ok_and(|m| m.len() >= min)));
     tokio::time::timeout(Duration::from_secs(10), async {
         while !partial(10) {
             tokio::time::sleep(Duration::from_millis(10)).await;
