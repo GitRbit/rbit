@@ -35,8 +35,10 @@ pub use dispatch::{DispatchFormView, DispatchInputView, DispatchOption};
 
 mod run;
 mod run_text;
-pub use run::{ArtifactRow, DeploymentView, JobRow, RunPage, RunSummary, SummaryView, job_rows};
+pub use run::{ArtifactRow, DeploymentView, JobRow, RunPage, RunPageLive, RunSummary, SummaryView, job_rows};
 pub use run_text::RunText;
+mod run_layout;
+pub use run_layout::{RunLayoutText, RunSidebar, RunSidebarJobs, combined_status, needs_depths, needs_order};
 pub mod environment_text;
 mod runners_text;
 mod settings_text;

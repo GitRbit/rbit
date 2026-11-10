@@ -12,6 +12,7 @@ mod language;
 mod overview;
 mod overview_controls;
 mod repo;
+mod run_layout;
 mod run_page;
 mod settings;
 mod settings_nav;

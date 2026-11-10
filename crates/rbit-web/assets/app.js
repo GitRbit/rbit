@@ -33,6 +33,8 @@ import "./actions-log.js";
 // Their log toolbar: search, line times, expand or collapse everything, copy line links.
 import "./actions-log-tools.js";
 import "./actions-run.js";
+// Actions run and job pages: the run's navigation and ticking durations.
+import "./actions-run-layout.js";
 import "./repo-create.js";
 import "./markdown.js";
 import "./discussion.js";

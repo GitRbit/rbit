@@ -23,6 +23,8 @@ mod control_parity;
 mod overview_presentation;
 #[path = "actions_pages/production_fixture.rs"]
 mod production_fixture;
+#[path = "actions_pages/run_layout.rs"]
+mod run_layout;
 #[path = "actions_pages/run_presentation.rs"]
 mod run_presentation;
 

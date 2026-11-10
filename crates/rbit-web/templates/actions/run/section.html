@@ -1,0 +1,6 @@
+{#- While the run is not finished the section refreshes itself, as the import page does,
+    and replaces the run's job list beside it with the one from the same answer. The poll
+    gets only these two (`RunPageLive`); a reload gets the page. -#}
+<section id="run" class="min-w-0 flex-1" lang="{{ page.locale.tag() }}" dir="{{ page.locale.direction().as_str() }}"
+         aria-label="{{ text.details }}" {% if active %}hx-get="{{ self_url }}" hx-trigger="every 3s" hx-select="#run" hx-select-oob="#run-sidebar-jobs" hx-target="this" hx-swap="outerHTML"{% endif %}>
+{% include "actions/run/header.html" %}{% include "actions/run/review.html" %}{% include "actions/run/results.html" %}</section>

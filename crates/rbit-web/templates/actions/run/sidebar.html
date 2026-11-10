@@ -1,0 +1,40 @@
+{#- The run's navigation beside the run and job pages; expects `sidebar: RunSidebar`. It
+    stacks above the page on phones, folded (assets/actions-run.js closes it there), and
+    sits beside it from `md` up. `data-run-clock` gives ticking durations the server's time
+    and the shapes of a duration in the page's language. -#}
+{% import "macros.html" as ui %}
+{% let nav = sidebar.text() %}
+{% let clock = sidebar.clock_patterns() %}
+<div class="min-w-0 md:sticky md:top-4 md:w-60 md:shrink-0" data-run-clock="{{ sidebar.now }}"
+     data-clock-hm="{{ clock[0] }}" data-clock-ms="{{ clock[1] }}" data-clock-s="{{ clock[2] }}">
+  <details class="group/nav" open data-run-nav>
+    <summary class="box flex min-h-11 cursor-pointer list-none items-center gap-2 px-3 text-[13px] font-medium md:hidden [&::-webkit-details-marker]:hidden">
+      {% call ui::icon("menu", "size-4 shrink-0 text-ink-muted") %}{% endcall %}
+      <span class="min-w-0 flex-1 truncate">{% if let Some(name) = sidebar.current_name %}<bdi>{{ name }}</bdi>{% else %}{% call ui::localized(nav.summary) %}{% endcall %}{% endif %}</span>
+      {% call ui::icon("chevron-down", "size-4 shrink-0 text-ink-faint transition-transform group-open/nav:rotate-180") %}{% endcall %}
+    </summary>
+    <nav class="mt-2 md:mt-0" aria-label="{{ nav.navigation }}">
+      <a class="box flex min-h-10 items-center gap-2 px-3 text-[13px] hover:bg-subtle {% if sidebar.on_summary %}font-medium text-ink{% else %}text-ink-muted{% endif %}"
+         href="{{ sidebar.summary_url }}" {% if sidebar.on_summary %}aria-current="page"{% endif %}>
+        {% call ui::icon("book", "size-3.5 shrink-0 text-ink-muted") %}{% endcall %}{% call ui::localized(nav.summary) %}{% endcall %}
+      </a>
+      <h2 class="mb-2 mt-4 text-[13px] font-medium text-ink-muted">{% call ui::localized(nav.jobs) %}{% endcall %}</h2>
+      {% include "actions/run/sidebar_jobs.html" %}
+      <h2 class="mb-2 mt-4 text-[13px] font-medium text-ink-muted">{% call ui::localized(nav.details) %}{% endcall %}</h2>
+      <ul class="box divide-y divide-line text-[13px]">
+        {% if let Some(usage) = sidebar.usage %}
+        <li class="flex min-h-10 items-center gap-2 px-3 text-ink-muted">
+          {% call ui::icon("clock", "size-3.5 shrink-0") %}{% endcall %}
+          <span class="min-w-0 flex-1">{% call ui::localized(nav.usage) %}{% endcall %}</span>
+          <span class="shrink-0 tabular-nums">{% call ui::localized(usage.text(sidebar.locale)) %}{% endcall %}</span>
+        </li>
+        {% endif %}
+        <li>
+          <a class="flex min-h-10 items-center gap-2 px-3 text-ink-muted hover:bg-subtle hover:text-ink" href="{{ sidebar.workflow_file_url }}" title="{{ sidebar.workflow_path }}">
+            {% call ui::icon("file-code", "size-3.5 shrink-0") %}{% endcall %}{% call ui::localized(nav.workflow_file) %}{% endcall %}
+          </a>
+        </li>
+      </ul>
+    </nav>
+  </details>
+</div>

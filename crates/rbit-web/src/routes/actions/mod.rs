@@ -151,6 +151,7 @@ pub const PATHS: &[(&str, &[Method])] = &[
     ("/{owner}/{repo}/actions/workflows/{workflow}/switch", &[Method::POST]),
     ("/{owner}/{repo}/actions/runs/{run}", &[Method::GET]),
     ("/{owner}/{repo}/actions/runs/{run}/jobs", &[Method::GET]),
+    ("/{owner}/{repo}/actions/runs/{run}/sidebar", &[Method::GET]),
     ("/{owner}/{repo}/actions/runs/{run}/cancel", &[Method::POST]),
     ("/{owner}/{repo}/actions/runs/{run}/rerun", &[Method::POST]),
     ("/{owner}/{repo}/actions/runs/{run}/rerun-failed", &[Method::POST]),
@@ -214,6 +215,7 @@ pub fn routes() -> Router<AppState> {
         .route("/{owner}/{repo}/actions/workflows/{workflow}/switch", post(runs::switch))
         .route("/{owner}/{repo}/actions/runs/{run}", get(runs::show))
         .route("/{owner}/{repo}/actions/runs/{run}/jobs", get(runs::jobs))
+        .route("/{owner}/{repo}/actions/runs/{run}/sidebar", get(runs::sidebar))
         .route("/{owner}/{repo}/actions/runs/{run}/cancel", post(runs::cancel))
         .route("/{owner}/{repo}/actions/runs/{run}/rerun", post(runs::rerun_all))
         .route("/{owner}/{repo}/actions/runs/{run}/rerun-failed", post(runs::rerun_failed))

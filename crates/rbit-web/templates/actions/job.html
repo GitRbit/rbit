@@ -13,10 +13,13 @@
     (`data-live-url`, routes/actions/job_live.rs) and reloads this section when a step
     starts or ends, keeping the steps the viewer opened or closed (`data-step`). Without
     scripts a reload shows the latest log. -#}
-<section id="job" lang="{{ page.locale.tag() }}" dir="{{ page.locale.direction().as_str() }}"
+<div class="flex flex-col gap-6 md:flex-row md:items-start">
+{% include "actions/run/sidebar.html" %}
+<section id="job" class="min-w-0 flex-1" lang="{{ page.locale.tag() }}" dir="{{ page.locale.direction().as_str() }}"
          aria-label="{{ text.details }}" data-self-url="{{ self_url }}" data-now="{{ now }}"{% if active %} data-live-url="{{ self_url }}/logs/live" data-live-state="{{ live_state }}"{% endif %}>
 {% include "actions/job/header.html" %}
 
 {% include "actions/job/steps.html" %}
 </section>
+</div>
 {% endblock %}

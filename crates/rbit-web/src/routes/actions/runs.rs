@@ -18,6 +18,8 @@ mod overview_page;
 pub use overview_page::{list, workflow};
 mod run_page;
 pub use run_page::show;
+mod sidebar;
+pub use sidebar::sidebar;
 
 use rbit_core::actions::{JobId, RunEvent, RunId, Status};
 use rbit_git::RefKind;

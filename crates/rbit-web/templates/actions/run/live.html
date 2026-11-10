@@ -1,0 +1,5 @@
+{#- The run section and the run's job list alone: what the run section's poll gets. -#}
+{% import "macros.html" as ui %}
+{% let text = self.labels() %}
+{% include "actions/run/section.html" %}
+{% include "actions/run/sidebar_jobs.html" %}

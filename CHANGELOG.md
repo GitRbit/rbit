@@ -30,6 +30,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The Actions job header shows the runner that took the job, the attempt, when it was
   queued and started, and a ticking duration while it runs. A failed job links straight to
   its failed step's last error line.
+- Actions run and job pages share a navigation beside the page, as on GitHub: the run's
+  summary, every job with its state and duration (matrix jobs under their key), how long
+  the jobs ran together and a link to the workflow file at the run's commit. It folds
+  above the page on phones. While the run is not finished the job list refreshes itself,
+  the run page's poll fetches only the run section and that list, and running durations
+  tick every second.
 
 ### Fixed
 
