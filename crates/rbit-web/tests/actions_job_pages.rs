@@ -109,6 +109,12 @@ async fn a_job_shows_its_steps_and_logs_and_serves_the_raw_log() {
     let (_, _, page) = get(&fixture, &job_url, false).await;
     assert!(!page.contains("data-live-url"), "a finished job stays still");
     assert!(page.contains("<details open"), "the failed step is open");
+    // The header says who ran it, which attempt this is, and where it failed.
+    let header = page.split("<header class=\"box").nth(1).unwrap().split("</header>").next().unwrap();
+    assert!(header.contains("<bdi>build-1</bdi>") && header.contains("Attempt 1"), "the runner and the attempt: {header}");
+    assert!(page.contains(r##"href="#step-0-line-2" data-failure>"##), "the failure links to its error line");
+    assert!(page.contains(r#"<bdi class="mt-0.5 block font-mono text-danger" dir="ltr">it broke</bdi>"#));
+    assert!(page.contains("<time datetime=") && !page.contains("data-started="), "times, and nothing ticks once finished");
 
     let (status, ..) = get(&fixture, &format!("/alice/rocket/actions/runs/{}/jobs/{}", run.number + 1, job.id.0), false).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "the job of another run number");

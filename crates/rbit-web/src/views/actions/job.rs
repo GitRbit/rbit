@@ -1,7 +1,7 @@
 //! Bounded job and step log presentation; storage windows remain service-owned.
 use super::log_lines::Console;
 use super::{RunSummary, StateLook, elapsed};
-use crate::views::when::Took;
+use crate::views::when::{Took, When};
 use crate::views::{layout::Page, repo::RepoHeader};
 use askama::Template;
 use askama_web::WebTemplate;
@@ -32,8 +32,8 @@ pub struct StepLog {
     pub more_before: bool,
     pub truncated: bool,
     pub expired: bool,
-    /// The last error line's text.
-    pub last_error: Option<String>,
+    /// The last error line's text and step-relative number.
+    pub last_error: Option<(String, usize)>,
 }
 
 impl StepLog {
@@ -50,7 +50,7 @@ impl StepLog {
             more_before: window.more_before,
             truncated: window.truncated,
             expired: window.expired,
-            last_error: rendered.last_error,
+            last_error: rendered.last_error.zip(rendered.last_error_line),
         }
     }
 }
@@ -124,6 +124,47 @@ pub struct JobPage {
     /// `None` until a runner took the job.
     pub raw_url: Option<String>,
     pub rerun_url: Option<String>,
+    /// The name of the runner that took the job, unless it was removed.
+    pub runner: Option<String>,
+    pub attempt: i64,
+    pub queued: Option<When>,
+    pub started: Option<When>,
+    /// When a running job started (seconds since the epoch): its duration ticks.
+    pub ticking: Option<i64>,
+    /// Where a failed job failed: the first failed step and its last error.
+    pub failure: Option<Failure>,
+}
+
+/// The first failed step of a job and its last error line, linked.
+#[derive(Debug, Clone)]
+pub struct Failure {
+    pub step: String,
+    /// Log text, cut to [`Failure::MAX_CHARS`]; escaped like any other text.
+    pub message: Option<String>,
+    /// `#step-<key>-line-<n>`, or the step itself.
+    pub anchor: String,
+}
+
+impl Failure {
+    pub const MAX_CHARS: usize = 300;
+
+    /// The first failed step of `steps`, if any.
+    pub fn of(steps: &[StepView]) -> Option<Self> {
+        let step = steps.iter().find(|step| step.look.key == "failure")?;
+        let error = step.log.as_ref().and_then(|log| log.last_error.clone());
+        let anchor = match &error {
+            Some((_, line)) => format!("step-{}-line-{line}", step.key),
+            None => format!("step-{}", step.key),
+        };
+        let message = error.map(|(text, _)| {
+            let mut cut: String = text.chars().take(Self::MAX_CHARS).collect();
+            if cut.len() < text.len() {
+                cut.push('…');
+            }
+            cut
+        });
+        Some(Self { step: step.name.clone(), message, anchor })
+    }
 }
 
 #[derive(Debug, Template, WebTemplate)]

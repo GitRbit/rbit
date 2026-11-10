@@ -35,6 +35,11 @@ pub struct JobText {
     pub download_log: Localized,
     pub link_copied: Localized,
     pub no_matches: Localized,
+    pub runner: Localized,
+    pub queued_at: Localized,
+    pub started_at: Localized,
+    pub attempt: Localized,
+    pub failed_step: Localized,
 }
 
 /// A state's label in the catalog's locale, for job rows and the run heading alike.
@@ -108,6 +113,11 @@ impl JobText {
             download_log: catalog.localized(Message::DownloadLog),
             link_copied: catalog.localized(Message::LinkCopied),
             no_matches: catalog.localized(Message::NoMatches),
+            runner: catalog.localized(Message::Runner),
+            queued_at: catalog.localized(Message::QueuedAt),
+            started_at: catalog.localized(Message::StartedAt),
+            attempt: catalog.localized(Message::Attempt),
+            failed_step: catalog.localized(Message::FailedStep),
         }
     }
 

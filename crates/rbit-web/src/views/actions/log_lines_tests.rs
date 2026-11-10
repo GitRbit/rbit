@@ -57,7 +57,7 @@ fn groups_fold_and_open_around_errors() {
     );
     assert!(!html.contains("line-4\"") && !html.contains("endgroup"), "a group's end is not a row, but keeps its number");
     assert!(html.contains(r#"id="step-0-line-9""#) && html.ends_with("after</span></div>"));
-    assert_eq!(rendered.last_error.as_deref(), Some("boom"));
+    assert_eq!((rendered.last_error.as_deref(), rendered.last_error_line), (Some("boom"), Some(7)));
 }
 
 #[test]
