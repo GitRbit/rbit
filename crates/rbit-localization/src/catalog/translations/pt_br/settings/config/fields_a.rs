@@ -31,6 +31,8 @@ config_entries! {
         ),
         ConfigText::Label { section: "server", key: "explore_enabled" } => text.literal("Oferecer a página Explorar por padrão"),
         ConfigText::Help { section: "server", key: "explore_enabled" } => text.literal("Padrão da página Explorar, que lista todos os repositórios públicos. A configuração em vigor em Marca e políticas tem precedência."),
+        ConfigText::Label { section: "server", key: "require_sign_in" } => text.literal("Exigir entrada para navegar por padrão"),
+        ConfigText::Help { section: "server", key: "require_sign_in" } => text.literal("Padrão de quem pode navegar. Quando ativado, visitantes são enviados para a página de entrada e Git, LFS e a API recusam leituras anônimas. A configuração em vigor em Marca e políticas tem precedência."),
         ConfigText::Label { section: "server", key: "open_registration" } => {
             text.literal("Cadastro aberto por padrão");
         }

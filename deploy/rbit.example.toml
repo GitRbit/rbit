@@ -16,6 +16,9 @@ site_name = "rbit"
 open_registration = false
 # Default for the runtime "Explore page" setting: the page listing every public repository.
 # explore_enabled = true
+# Default for the runtime "Who can browse" setting. true sends visitors to the sign-in page
+# and makes Git, LFS and the API refuse anonymous reads, public repositories included.
+# require_sign_in = false
 
 [storage]
 # SQLite database, redb store and bare repositories all live here. Back it up with

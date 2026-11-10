@@ -130,6 +130,11 @@ entries! { Es:
         InstanceSettingsMessage::ExploreEnabledText => text.literal("Cualquiera que pueda navegar por el sitio puede buscar y listar todos los repositorios públicos."),
         InstanceSettingsMessage::ExploreDisabled => text.literal("Desactivada"),
         InstanceSettingsMessage::ExploreDisabledText => text.literal("La página Explorar no se encuentra y sus enlaces se ocultan, también para los administradores. Los repositorios públicos siguen siendo públicos."),
+        InstanceSettingsMessage::Browsing => text.literal("Quién puede navegar"),
+        InstanceSettingsMessage::BrowsingOpen => text.literal("Cualquiera"),
+        InstanceSettingsMessage::BrowsingOpenText => text.literal("Los visitantes pueden leer repositorios, perfiles y organizaciones públicos sin una cuenta."),
+        InstanceSettingsMessage::BrowsingSignedIn => text.literal("Solo usuarios con sesión iniciada"),
+        InstanceSettingsMessage::BrowsingSignedInText => text.literal("Los visitantes se envían a la página de inicio de sesión. Git, LFS y la API rechazan las lecturas sin credenciales."),
         InstanceSettingsMessage::Registration => text.literal("Registro"),
         InstanceSettingsMessage::Open => text.literal("Abierto"),
         InstanceSettingsMessage::OpenText => {

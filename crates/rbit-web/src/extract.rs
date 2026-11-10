@@ -10,7 +10,7 @@ use std::{convert::Infallible, sync::Arc};
 
 use axum::{
     extract::FromRequestParts,
-    http::request::Parts,
+    http::{Uri, request::Parts},
     response::{IntoResponse, Redirect, Response},
 };
 use rbit_auth::SessionToken;
@@ -72,9 +72,14 @@ impl<S: Send + Sync> FromRequestParts<S> for SignedIn {
         if let Some(user) = parts.extensions.get::<Viewer>().and_then(|v| v.0.clone()) {
             return Ok(Self(user));
         }
-        let next = parts.uri.path_and_query().map_or("/", |pq| pq.as_str());
-        Err(Redirect::to(&format!("/login?next={}", encode_path(next).replace('&', "%26"))).into_response())
+        Err(sign_in_redirect(&parts.uri))
     }
+}
+
+/// Sends an anonymous visitor to the sign-in page, which returns them to `uri` afterwards.
+pub fn sign_in_redirect(uri: &Uri) -> Response {
+    let next = uri.path_and_query().map_or("/", |pq| pq.as_str());
+    Redirect::to(&format!("/login?next={}", encode_path(next).replace('&', "%26"))).into_response()
 }
 
 /// A signed-in site administrator. Anonymous requests are sent to sign in; everyone else

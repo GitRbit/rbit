@@ -98,6 +98,9 @@ pub struct ServerConfig {
     pub open_registration: bool,
     /// Offer the Explore page (`/explore`), which lists every public repository.
     pub explore_enabled: bool,
+    /// Only signed-in users may browse; anonymous visitors are sent to the sign-in page, and
+    /// Git, LFS and the API refuse anonymous reads.
+    pub require_sign_in: bool,
 }
 
 impl Default for ServerConfig {
@@ -108,6 +111,7 @@ impl Default for ServerConfig {
             site_name: "rbit".to_owned(),
             open_registration: true,
             explore_enabled: true,
+            require_sign_in: false,
         }
     }
 }

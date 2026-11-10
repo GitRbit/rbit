@@ -196,6 +196,7 @@ fn describe_changes(before: &InstanceSettings, after: &InstanceSettings) -> Stri
         ("site name", before.site_name.as_str(), after.site_name.as_str()),
         ("registration", before.registration.as_str(), after.registration.as_str()),
         ("explore page", enabled(before.explore_enabled), enabled(after.explore_enabled)),
+        ("sign-in to browse", required(before.require_sign_in), required(after.require_sign_in)),
         ("organization creation", before.org_creation.as_str(), after.org_creation.as_str()),
         ("default visibility", before.default_visibility.as_str(), after.default_visibility.as_str()),
         ("email digest hour", hour_before.as_str(), hour_after.as_str()),
@@ -205,6 +206,10 @@ fn describe_changes(before: &InstanceSettings, after: &InstanceSettings) -> Stri
 
 const fn enabled(on: bool) -> &'static str {
     if on { "enabled" } else { "disabled" }
+}
+
+const fn required(on: bool) -> &'static str {
+    if on { "required" } else { "optional" }
 }
 
 /// The identity layer's facts about the acting user, for the administration rules.

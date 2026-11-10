@@ -4,7 +4,8 @@
 //! personal access token (`rbit_…`, or the legacy `rit_…`) whose scope caps what the request
 //! may do. Cookies are ignored here.
 //! Suspended users are refused whichever credential they present.
-//! Anonymous users may fetch public repositories. When access is missing the server
+//! Anonymous users may fetch public repositories, unless the instance requires signing in.
+//! When access is missing the server
 //! answers `401` with a `WWW-Authenticate` challenge so Git prompts for credentials.
 //!
 //! Credentials are throttled per client address and per login (`429` + `Retry-After`).
@@ -352,6 +353,10 @@ async fn authorize(
     service: Service,
 ) -> Result<(RepoContext, Option<GitCaller>), Denied> {
     let caller = authenticate(state, client, headers).await?;
+    // An instance that requires signing in serves no anonymous fetches, public or not.
+    if caller.is_none() && state.services.instance.require_sign_in() {
+        return Err(Denied::Challenge);
+    }
     let gate = CallerRepositories { state, caller: caller.as_ref() };
     let ctx = access::authorize(&gate, caller.is_none(), owner, repo, service).await?;
     Ok((ctx, caller))

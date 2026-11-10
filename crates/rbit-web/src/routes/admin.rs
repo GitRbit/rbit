@@ -415,6 +415,8 @@ pub struct SettingsSubmission {
     digest_hour: Option<String>,
     /// `enabled` or `disabled`; missing (an older form) keeps the current choice.
     explore: Option<String>,
+    /// `optional` or `required`; missing (an older form) keeps the current choice.
+    sign_in: Option<String>,
 }
 
 impl SettingsSubmission {
@@ -449,6 +451,12 @@ impl SettingsSubmission {
                 None => current.explore_enabled,
                 Some(value) => switch(value).ok_or_else(|| invalid("Explore"))?,
             },
+            require_sign_in: match self.sign_in.as_deref() {
+                None => current.require_sign_in,
+                Some("optional") => false,
+                Some("required") => true,
+                Some(_) => return Err(invalid("sign-in")),
+            },
             org_creation: OrgCreationPolicy::parse(&self.org_creation).ok_or_else(|| invalid("organization"))?,
             default_visibility: Visibility::parse(&self.default_visibility).ok_or_else(|| invalid("visibility"))?,
             digest_hour: match &self.digest_hour {
@@ -469,6 +477,7 @@ impl SettingsSubmission {
             branding: self.branding(),
             registration_open: self.registration != RegistrationMode::Closed.as_str(),
             explore_enabled: self.explore.as_deref() != Some("disabled"),
+            require_sign_in: self.sign_in.as_deref() == Some("required"),
             admins_only_orgs: self.org_creation == OrgCreationPolicy::AdminsOnly.as_str(),
             private_by_default: self.default_visibility == Visibility::Private.as_str(),
             digest_hour: self.digest_hour(),
@@ -592,6 +601,7 @@ mod tests {
             default_visibility: "private".to_owned(),
             digest_hour: Some("6".to_owned()),
             explore: Some("disabled".to_owned()),
+            sign_in: Some("required".to_owned()),
             ..SettingsSubmission::default()
         };
         let current = InstanceSettings { digest_hour: 8, ..InstanceSettings::defaults(&rbit_core::Config::default()) };
@@ -601,19 +611,24 @@ mod tests {
         assert_eq!(parsed.default_visibility, Visibility::Private);
         assert_eq!(parsed.digest_hour, 6);
         assert!(!parsed.explore_enabled);
+        assert!(parsed.require_sign_in);
         assert!(matches!(submission("maybe").parse(&current), Err(ServiceError::Invalid(_))));
         let unknown = SettingsSubmission { explore: Some("off".to_owned()), ..submission("closed") };
+        assert!(matches!(unknown.parse(&current), Err(ServiceError::Invalid(_))));
+        let unknown = SettingsSubmission { sign_in: Some("maybe".to_owned()), ..submission("closed") };
         assert!(matches!(unknown.parse(&current), Err(ServiceError::Invalid(_))));
         for hour in ["24", "", "noon"] {
             let late = SettingsSubmission { digest_hour: Some(hour.to_owned()), ..submission("closed") };
             assert!(matches!(late.parse(&current), Err(ServiceError::Invalid(_))), "{hour:?}");
         }
-        let older_form = SettingsSubmission { digest_hour: None, explore: None, ..submission("closed") };
+        let older_form = SettingsSubmission { digest_hour: None, explore: None, sign_in: None, ..submission("closed") };
         let kept = older_form.parse(&current).unwrap();
         assert_eq!(kept.digest_hour, 8, "a form without the field keeps the current hour");
-        assert!(kept.explore_enabled, "and the current Explore choice");
+        assert!(kept.explore_enabled && !kept.require_sign_in, "and the current Explore and sign-in choices");
 
         let form = submission("closed").form();
-        assert!(!form.registration_open && form.admins_only_orgs && form.private_by_default && !form.explore_enabled);
+        assert!(
+            !form.registration_open && form.admins_only_orgs && form.private_by_default && !form.explore_enabled && form.require_sign_in
+        );
     }
 }

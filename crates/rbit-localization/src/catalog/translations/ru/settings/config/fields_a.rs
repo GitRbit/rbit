@@ -17,6 +17,8 @@ config_arms! {
         ConfigText::Help { section: "server", key: "site_name" } => text.literal("Название по умолчанию, пока его не переопределяет текущее оформление. Текущее название меняется в разделе «Оформление и политики»."),
         ConfigText::Label { section: "server", key: "explore_enabled" } => text.literal("Показывать страницу «Обзор» по умолчанию"),
         ConfigText::Help { section: "server", key: "explore_enabled" } => text.literal("Значение по умолчанию для страницы «Обзор», где перечислены все публичные репозитории. Текущая настройка в разделе «Оформление и политики» имеет приоритет."),
+        ConfigText::Label { section: "server", key: "require_sign_in" } => text.literal("Требовать вход для просмотра по умолчанию"),
+        ConfigText::Help { section: "server", key: "require_sign_in" } => text.literal("Значение по умолчанию для того, кто может просматривать сайт. Если включено, посетители перенаправляются на страницу входа, а Git, LFS и API отклоняют анонимное чтение. Текущая настройка в разделе «Оформление и политики» имеет приоритет."),
         ConfigText::Label { section: "server", key: "open_registration" } => text.literal("Открытая регистрация по умолчанию"),
         ConfigText::Help { section: "server", key: "open_registration" } => text.literal("Политика регистрации по умолчанию. Текущая политика в разделе «Оформление и политики» имеет приоритет."),
         ConfigText::Label { section: "storage", key: "data_dir" } => text.literal("Каталог данных"),

@@ -147,6 +147,11 @@ entries! { De:
         InstanceSettingsMessage::ExploreEnabledText => text.literal("Alle, die die Seite durchsuchen dürfen, können alle öffentlichen Repositorys suchen und auflisten."),
         InstanceSettingsMessage::ExploreDisabled => text.literal("Aus"),
         InstanceSettingsMessage::ExploreDisabledText => text.literal("Die Entdecken-Seite ist nicht erreichbar und ihre Links sind ausgeblendet, auch für Administratoren. Öffentliche Repositorys bleiben öffentlich."),
+        InstanceSettingsMessage::Browsing => text.literal("Wer die Seite durchsuchen darf"),
+        InstanceSettingsMessage::BrowsingOpen => text.literal("Alle"),
+        InstanceSettingsMessage::BrowsingOpenText => text.literal("Besucher können öffentliche Repositorys, Profile und Organisationen ohne Konto lesen."),
+        InstanceSettingsMessage::BrowsingSignedIn => text.literal("Nur angemeldete Benutzer"),
+        InstanceSettingsMessage::BrowsingSignedInText => text.literal("Besucher werden zur Anmeldeseite weitergeleitet. Git, LFS und die API verweigern Lesezugriffe ohne Anmeldedaten."),
         InstanceSettingsMessage::Registration => text.literal("Registrierung"),
         InstanceSettingsMessage::Open => text.literal("Offen"),
         InstanceSettingsMessage::OpenText => {

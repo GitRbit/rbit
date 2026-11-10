@@ -18,6 +18,8 @@ config_fields! {
             "Default registration policy. The live policy in Branding and policies takes precedence.";
         "explore_enabled" => "Offer the Explore page by default",
             "Default for the Explore page, which lists every public repository. The live setting in Branding and policies takes precedence.";
+        "require_sign_in" => "Require sign-in to browse by default",
+            "Default for who can browse. When on, visitors are sent to the sign-in page and Git, LFS and the API refuse anonymous reads. The live setting in Branding and policies takes precedence.";
     }
     "storage" {
         "data_dir" => "Data directory",

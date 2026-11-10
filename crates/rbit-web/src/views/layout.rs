@@ -70,7 +70,8 @@ impl Page {
             }),
             path: path.to_owned(),
             has_unread_notifications: false,
-            show_explore: settings.explore_enabled,
+            // Signed out on an instance that requires signing in, Explore would only redirect.
+            show_explore: settings.explore_enabled && (viewer.is_some() || !settings.require_sign_in),
             theme: Theme::default(),
         }
     }

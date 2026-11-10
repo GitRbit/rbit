@@ -1,13 +1,14 @@
 //! Instance access settings through the real router, database and templates: turning the
-//! Explore page off.
+//! Explore page off, and requiring sign-in to browse.
 use std::sync::Arc;
 
 use axum::{
     body::Body,
     http::{Request, StatusCode, header},
 };
-use rbit_core::{Config, User, Visibility};
-use rbit_services::{CreateRepository, Services, SignUp};
+use base64::Engine as _;
+use rbit_core::{Config, TokenScope, User, Visibility};
+use rbit_services::{CreateAccessToken, CreateRepository, Services, SignUp};
 use rbit_storage::{Database, KvStore};
 use tower::ServiceExt;
 
@@ -129,4 +130,89 @@ async fn the_settings_form_turns_explore_off() {
     assert!(!fixture.services.instance.current().explore_enabled);
     let (status, _, _) = fixture.get("/explore", Some(&admin)).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+/// `GET path` with an `Authorization` header.
+async fn authorized(fixture: &Fixture, path: &str, authorization: &str) -> (StatusCode, axum::http::HeaderMap, String) {
+    fixture.send(Request::builder().uri(path).header(header::AUTHORIZATION, authorization).body(Body::empty()).unwrap()).await
+}
+
+#[tokio::test]
+async fn requiring_sign_in_sends_visitors_to_sign_in_and_refuses_anonymous_reads() {
+    let fixture = Fixture::new().await;
+    let member = fixture.cookie(&fixture.member).await;
+    let input = CreateAccessToken { name: "reader".into(), scope: TokenScope::Read, expires_in_days: None };
+    let token = fixture.services.tokens.create(&fixture.member, input).await.unwrap().1;
+    let basic = format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(format!("keeper:{token}")));
+    let refs = "/keeper/open/info/refs?service=git-upload-pack";
+
+    // Off by default: anonymous visitors read public repositories.
+    for path in ["/", "/keeper/open", "/keeper"] {
+        assert_eq!(fixture.get(path, None).await.0, StatusCode::OK, "{path}");
+    }
+    assert_eq!(fixture.get("/api/v1/repos/keeper/open", None).await.0, StatusCode::OK);
+    assert_eq!(fixture.get(refs, None).await.0, StatusCode::OK);
+
+    fixture.update(|settings| settings.require_sign_in = true).await;
+
+    // Pages: a redirect to the sign-in page that returns to where the visitor was going.
+    for path in [
+        "/",
+        "/explore",
+        "/keeper",
+        "/keeper/open",
+        "/keeper/open/issues?state=closed",
+        "/keeper/open/raw/main/README.md",
+        "/keeper/open/archive/main.zip",
+        "/no/such/page",
+    ] {
+        let (status, headers, body) = fixture.get(path, None).await;
+        assert_eq!(status, StatusCode::SEE_OTHER, "{path}");
+        let location = headers[header::LOCATION].to_str().unwrap();
+        assert!(location.starts_with("/login?next=/"), "{path}: {location}");
+        assert_eq!(location.contains("state%3Dclosed") || location.contains("state=closed"), path.contains('?'), "{path}: {location}");
+        assert!(!body.contains("keeper/open"), "{path}: nothing leaks in the body");
+    }
+
+    // Signing in, its supporting pages and machine endpoints stay reachable.
+    for path in ["/login", "/signup", "/password/forgot", "/offline", "/settings/language", "/themes/picker"] {
+        let (status, _, html) = fixture.get(path, None).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        assert!(!html.contains("href=\"/explore\""), "{path}: no Explore link for visitors who cannot use it");
+    }
+    for path in ["/password/reset/not-a-token", "/email/verify/not-a-token", "/login/nowhere"] {
+        let (status, headers, _) = fixture.get(path, None).await;
+        let to_login = status.is_redirection() && headers[header::LOCATION].to_str().unwrap().starts_with("/login?next=");
+        assert!(!to_login, "{path} is not sent to sign in ({status})");
+    }
+    for path in ["/healthz", "/readyz", "/manifest.webmanifest", "/sw.js", "/assets/branding.css"] {
+        assert_eq!(fixture.get(path, None).await.0, StatusCode::OK, "{path}");
+    }
+
+    // Git, and the API: a challenge, never a redirect or the repository.
+    let (status, headers, body) = fixture.get(refs, None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert!(headers[header::WWW_AUTHENTICATE].to_str().unwrap().starts_with("Basic"));
+    assert!(!body.contains("refs/heads"));
+    let (status, headers, body) = fixture.get("/api/v1/repos/keeper/open", None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert!(headers.contains_key(header::WWW_AUTHENTICATE));
+    assert!(!body.contains("Out in the open"));
+    assert_eq!(fixture.get("/api/v1/users/keeper/repos", None).await.0, StatusCode::UNAUTHORIZED);
+
+    // Signed-in users browse, fetch and call the API as before.
+    for path in ["/", "/keeper", "/keeper/open", "/keeper/open/issues", "/explore"] {
+        assert_eq!(fixture.get(path, Some(&member)).await.0, StatusCode::OK, "{path}");
+    }
+    let (_, _, home) = fixture.get("/", Some(&member)).await;
+    assert!(home.contains("href=\"/explore\""), "signed-in users still get Explore");
+    assert_eq!(authorized(&fixture, refs, &basic).await.0, StatusCode::OK);
+    let (status, _, body) = authorized(&fixture, "/api/v1/repos/keeper/open", &format!("Bearer {token}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("Out in the open"));
+
+    // Turning it off again restores anonymous reads.
+    fixture.update(|settings| settings.require_sign_in = false).await;
+    assert_eq!(fixture.get("/keeper/open", None).await.0, StatusCode::OK);
+    assert_eq!(fixture.get(refs, None).await.0, StatusCode::OK);
 }

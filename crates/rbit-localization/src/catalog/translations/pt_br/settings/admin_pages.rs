@@ -140,6 +140,11 @@ entries! { PtBr:
         InstanceSettingsMessage::ExploreEnabledText => text.literal("Qualquer pessoa que possa navegar no site pode pesquisar e listar todos os repositórios públicos."),
         InstanceSettingsMessage::ExploreDisabled => text.literal("Desativada"),
         InstanceSettingsMessage::ExploreDisabledText => text.literal("A página Explorar não é encontrada e seus links ficam ocultos, inclusive para administradores. Repositórios públicos continuam públicos."),
+        InstanceSettingsMessage::Browsing => text.literal("Quem pode navegar"),
+        InstanceSettingsMessage::BrowsingOpen => text.literal("Qualquer pessoa"),
+        InstanceSettingsMessage::BrowsingOpenText => text.literal("Visitantes podem ler repositórios, perfis e organizações públicos sem uma conta."),
+        InstanceSettingsMessage::BrowsingSignedIn => text.literal("Somente usuários conectados"),
+        InstanceSettingsMessage::BrowsingSignedInText => text.literal("Visitantes são enviados para a página de entrada. Git, LFS e a API recusam leituras sem credenciais."),
         InstanceSettingsMessage::Registration => text.literal("Cadastro"),
         InstanceSettingsMessage::Open => text.literal("Aberto"),
         InstanceSettingsMessage::OpenText => {

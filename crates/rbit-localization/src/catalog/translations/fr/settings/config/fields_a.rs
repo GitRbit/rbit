@@ -20,6 +20,8 @@ config_table! {
         ConfigText::Help { section: "server", key: "site_name" } => text.literal("Nom par défaut avant toute personnalisation en direct. Modifiez le nom actif dans Image de marque et règles."),
         ConfigText::Label { section: "server", key: "explore_enabled" } => text.literal("Proposer la page Explorer par défaut"),
         ConfigText::Help { section: "server", key: "explore_enabled" } => text.literal("Valeur par défaut de la page Explorer, qui liste tous les dépôts publics. Le réglage en direct dans Image de marque et règles a la priorité."),
+        ConfigText::Label { section: "server", key: "require_sign_in" } => text.literal("Exiger la connexion pour naviguer par défaut"),
+        ConfigText::Help { section: "server", key: "require_sign_in" } => text.literal("Valeur par défaut de qui peut naviguer. Si activé, les visiteurs sont redirigés vers la page de connexion, et Git, LFS et l’API refusent les lectures anonymes. Le réglage en direct dans Image de marque et règles a la priorité."),
         ConfigText::Label { section: "server", key: "open_registration" } => text.literal("Inscriptions ouvertes par défaut"),
         ConfigText::Help { section: "server", key: "open_registration" } => text.literal("Règle d’inscription par défaut. La règle en direct dans Image de marque et règles a la priorité."),
         ConfigText::Label { section: "storage", key: "data_dir" } => text.literal("Répertoire de données"),

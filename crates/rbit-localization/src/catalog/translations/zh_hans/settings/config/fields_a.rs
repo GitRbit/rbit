@@ -24,6 +24,8 @@ config_table! {
         }
         ConfigText::Label { section: "server", key: "explore_enabled" } => text.literal("默认提供探索页面"),
         ConfigText::Help { section: "server", key: "explore_enabled" } => text.literal("列出全部公开仓库的探索页面的默认设置。“品牌与策略”中的实时设置优先。"),
+        ConfigText::Label { section: "server", key: "require_sign_in" } => text.literal("默认要求登录后浏览"),
+        ConfigText::Help { section: "server", key: "require_sign_in" } => text.literal("谁可以浏览的默认设置。开启后，访客会被引导至登录页面，Git、LFS 和 API 会拒绝匿名读取。“品牌与策略”中的实时设置优先。"),
         ConfigText::Label { section: "server", key: "open_registration" } => text.literal("默认开放注册"),
         ConfigText::Help { section: "server", key: "open_registration" } => {
             text.literal("默认注册策略。“品牌与策略”中的实时策略优先。");

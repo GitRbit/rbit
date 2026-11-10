@@ -60,6 +60,15 @@ impl AppState {
     }
 }
 
+impl AppState {
+    /// Whether anonymous visitors may read a repository with `visibility`: it is public and
+    /// the instance does not require signing in. Responses about such a repository may be
+    /// cached beyond the viewer's session (pinned fragments, badges).
+    pub fn readable_anonymously(&self, visibility: rbit_core::Visibility) -> bool {
+        visibility.is_public() && !self.services.instance.require_sign_in()
+    }
+}
+
 impl Deref for AppState {
     type Target = AppStateInner;
 

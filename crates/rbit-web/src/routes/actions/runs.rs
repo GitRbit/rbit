@@ -383,7 +383,11 @@ pub async fn badge(
             })
         )
     };
-    let cache = if ctx.repo.repo.visibility.is_public() { format!("public, {BADGE_MAX_AGE}") } else { format!("private, {BADGE_MAX_AGE}") };
+    let cache = if state.readable_anonymously(ctx.repo.repo.visibility) {
+        format!("public, {BADGE_MAX_AGE}")
+    } else {
+        format!("private, {BADGE_MAX_AGE}")
+    };
     let fresh = headers
         .get(header::IF_NONE_MATCH)
         .and_then(|value| value.to_str().ok())

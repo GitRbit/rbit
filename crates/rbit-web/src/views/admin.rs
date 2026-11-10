@@ -534,6 +534,7 @@ pub struct SettingsForm {
     pub branding: rbit_core::config::BrandingConfig,
     pub registration_open: bool,
     pub explore_enabled: bool,
+    pub require_sign_in: bool,
     pub admins_only_orgs: bool,
     pub private_by_default: bool,
     /// `None` when the submitted value was not an hour (nothing is preselected).
@@ -554,6 +555,7 @@ impl From<&InstanceSettings> for SettingsForm {
             branding: settings.branding.clone(),
             registration_open: settings.registration == RegistrationMode::Open,
             explore_enabled: settings.explore_enabled,
+            require_sign_in: settings.require_sign_in,
             admins_only_orgs: settings.org_creation == OrgCreationPolicy::AdminsOnly,
             private_by_default: settings.default_visibility == Visibility::Private,
             digest_hour: Some(settings.digest_hour),

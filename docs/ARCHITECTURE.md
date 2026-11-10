@@ -549,12 +549,23 @@ Users and organisations share one namespace (`accounts`), exactly like GitHub UR
 ### 3.5 Runtime instance settings
 
 The TOML/env configuration supplies *defaults*. Site administrators override the site
-name, registration (open/closed), the Explore page (on/off; off answers `/explore` with
+name, registration (open/closed), who can browse (anyone, or signed-in users only; see
+below), the Explore page (on/off; off answers `/explore` with
 `404` for everyone, administrators included, and drops its links and app shortcut), who
 may create organisations and the default repository visibility at runtime from
 `/admin/settings`. Overrides are stored in `instance_settings`
 and served from memory by `InstanceService` (a synchronous snapshot per request). The
 default email digest hour (`[notifications] digest_hour`) is one of these settings too.
+
+When only signed-in users may browse, the session layer sends every anonymous page request
+to `/login?next=â€¦`, except signing in and up (external providers and the second step
+included), signing out, password recovery, email verification and unsubscribe links, the
+offline page and the language and theme choices. Static assets, the manifest, the service
+worker and `/healthz`, `/readyz` and `/metrics` never pass through that layer. Git smart
+HTTP and LFS answer anonymous requests `401` with the Basic challenge (LFS transfer tokens
+issued to anonymous callers stop working too), and the API answers them `401`. SSH has no
+anonymous access. Pinned fragments and Actions badges are cached beyond the viewer's
+session only while anonymous visitors could read them.
 
 ### 3.6 Backups
 

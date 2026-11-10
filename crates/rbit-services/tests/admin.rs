@@ -141,6 +141,7 @@ fn settings(site_name: &str, registration: RegistrationMode) -> InstanceSettings
         registration,
         // Not the default, so the round trip below covers it.
         explore_enabled: false,
+        require_sign_in: true,
         org_creation: OrgCreationPolicy::AdminsOnly,
         default_visibility: Visibility::Private,
         digest_hour: 21,
