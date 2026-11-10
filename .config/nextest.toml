@@ -6,3 +6,8 @@
 slow-timeout = { period = "60s", terminate-after = 5 }
 # Report every failing test in one run instead of stopping at the first.
 fail-fast = false
+
+[profile.ci.junit]
+# CI shards read this report (target/nextest/ci/junit.xml) to record which tests failed,
+# so a re-run of a failed shard can run only those tests. See docs/ci-test-shards.md.
+path = "junit.xml"
