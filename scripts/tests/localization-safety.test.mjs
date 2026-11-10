@@ -22,7 +22,7 @@ async function files(directory, extension) {
 // None is catalog text: catalog output is escaped by ordinary interpolation.
 const SAFE = [
   ["actions/run/results.html", "summary.html", "a job summary rendered by render_markdown (sanitised)"],
-  ["actions/step_body.html", "line.html", "a log line escaped before its ANSI colour spans are added"],
+  ["actions/step_body.html", "log.html", "log rows (views/actions/log_lines.rs): every line escaped before its ANSI colour spans are added"],
   ["admin/dashboard.html", "monitoring", "an Askama template (MonitoringPanel) that escapes its own fields"],
   ["base.html", "crate::assets::inline_css(\"app.css\")", "the embedded stylesheet, allowed by its CSP hash"],
   ["base.html", "crate::assets::inline_css(path)", "the theme's embedded stylesheet, allowed by its CSP hash"],

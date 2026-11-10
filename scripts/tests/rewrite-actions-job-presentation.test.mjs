@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
 
 const root = new URL("../../crates/rbit-web/", import.meta.url);
 const read = path => readFile(new URL(path, root), "utf8").then(text => text.replaceAll("\r\n", "\n"));
@@ -13,16 +12,12 @@ async function expand(path) {
   return html;
 }
 
-test("job presentation keeps the exact bounded line-rendering program and exposes real metadata", async () => {
+test("job presentation renders the log console as one LTR machine island and exposes real metadata", async () => {
   const html = await expand("actions/job.html");
   const body = await read("templates/actions/step_body.html");
-  const lines = body.slice(body.indexOf('  <div class="overflow-x-auto">'), body.indexOf("  {% if log.truncated %}"));
-  const grid = '<div class="code-lines {{ log.columns() }}">';
-  const isolated = '<div class="code-lines {{ log.columns() }}" dir="ltr">';
-  assert.equal(lines.split(isolated).length - 1, 1, "only the machine grid has the exact required LTR boundary");
-  const program = lines.replace(isolated, grid);
-  assert.equal(createHash("sha256").update(program).digest("hex"),
-    "6e800d00ecaa15bd0413ca345305f8cca69b76175ebb928c714a9dbe4484106b");
+  assert.equal(body.split('<div class="log-console" dir="ltr" data-log="{{ step.key }}"').length - 1, 1,
+    "only the log console has the exact required LTR boundary");
+  assert.equal(body.match(/\|safe/g)?.length, 1, "the console's escaped rows are the only trusted HTML");
   assert.match(html, /<header class="box overflow-hidden">/);
   assert.match(html, /<dl /);
   assert.match(html, /<bdi>{{ labels }}<\/bdi>/);
@@ -40,11 +35,12 @@ test("presentation keeps bounded service reads, native links and stable step ide
   assert.match(route, /loaded\.ctx\.can_write_content\(\) && finished && detail\.run\.status\.is_done\(\)/);
   const html = await expand("actions/job.html");
   for (const contract of ['hx-trigger="every 3s"', 'hx-select="#job"', 'hx-swap="outerHTML"',
-    'data-step="{{ step.number }}"', 'data-state="{{ step.look.key }}"', 'method="post" action="{{ rerun_url }}"',
+    'data-step="{{ step.key }}"', 'data-state="{{ step.look.key }}"', 'method="post" action="{{ rerun_url }}"',
     'href="{{ raw_url }}" hx-boost="false"']) assert.ok(html.includes(contract), contract);
   const body = await read("templates/actions/step_body.html");
-  assert.match(body, /line\.html\|safe/);
-  assert.match(body, /data-line="{{ line.number }}"/);
+  assert.match(body, /log\.html\|safe/);
+  const rows = await read("src/views/actions/log_lines.rs");
+  assert.match(rows, /step-\{\}-line-\{number\}/, "rows are #step-<key>-line-<n>");
   assert.match(body, /log\.more_before/);
   assert.match(body, /log\.truncated/);
   assert.match(body, /log\.expired/);

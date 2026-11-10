@@ -58,7 +58,8 @@ async fn step_log(
         return Ok(None);
     }
     let window = actions.step_log(repo, task, step.number, LogRange::Tail, lines, bytes).await?;
-    Ok(Some(StepLog::new(&window, u64::try_from(step.log_index).unwrap_or_default())))
+    let running = !step.status.is_done();
+    Ok(Some(StepLog::new(&window, u64::try_from(step.log_index).unwrap_or_default(), &step.number.to_string(), running)))
 }
 
 /// `GET /{owner}/{repo}/actions/runs/{run}/jobs/{job}`
@@ -79,7 +80,8 @@ pub async fn show(
     let job_url = urls.job(number, detail.job.id.0);
     let mut steps = Vec::with_capacity(detail.steps.len());
     for (index, (step, window)) in detail.steps.iter().zip(read.logs).enumerate() {
-        let log = window.map(|window| StepLog::new(&window, u64::try_from(step.log_index).unwrap_or_default()));
+        let (key, running) = (step.number.to_string(), !step.status.is_done());
+        let log = window.map(|window| StepLog::new(&window, u64::try_from(step.log_index).unwrap_or_default(), &key, running));
         steps.push(StepView::new(step, log, format!("{job_url}/logs?step={}", step.number)));
         // Batch I/O removes the old per-step await. Retain cooperative scheduling
         // while constructing large existing view models, without spawning more work.

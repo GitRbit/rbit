@@ -98,7 +98,8 @@ async fn bounded_job_previews_keep_step_anchors_and_the_full_download() {
     assert!(!html.contains("<script>") && !html.contains("<img src=x>"));
     assert!(html.contains("Build / matrix") && html.contains("dependencies"));
     assert!(html.contains("LOG-0206") && html.contains("LOG-1205") && !html.contains("LOG-0001"));
-    assert_eq!(html.matches("class=\"code-line\"").count(), 1000);
+    assert_eq!(html.matches("class=\"log-line\"").count(), 1000);
+    assert!(html.contains("id=\"step-0-line-206\"") && html.contains("href=\"#step-0-line-1205\""), "rows keep their step line anchors");
     assert!(html.contains("data-line=\"206\"") && html.contains("data-line=\"1205\""));
     assert!(html.contains("Earlier lines are left out.") && html.contains(&format!("{path}/logs?step=0")));
     assert!(html.contains("<details open data-step=\"1\" data-state=\"running\">"));
