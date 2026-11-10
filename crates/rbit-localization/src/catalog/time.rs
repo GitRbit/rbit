@@ -66,7 +66,7 @@ pub enum TimeMessage {
     In(Amount),
     /// "in under a minute".
     WithinAMinute,
-    /// "on Nov 8, 2026": a relative time too far away to count, read in a sentence.
+    /// "on Nov 8, 2026": a time ahead too far away to count, read in a sentence.
     OnDate(CivilDate),
     /// "Nov 8, 2026".
     Date(CivilDate),
@@ -79,18 +79,18 @@ pub enum TimeMessage {
 
 impl TimeMessage {
     /// The phrase for a moment `seconds` in the past: [`JustNow`](Self::JustNow), or
-    /// [`Ago`](Self::Ago) in minutes, hours, days or months. `None` from a year on, where a
-    /// page shows [`OnDate`](Self::OnDate) instead.
-    pub const fn past(seconds: u64) -> Option<Self> {
+    /// [`Ago`](Self::Ago) in minutes, hours, days, months or years ("2 years ago", never a
+    /// date: a file last changed long ago still reads as an age).
+    pub const fn past(seconds: u64) -> Self {
         let (count, unit) = match seconds {
-            s if s < MINUTE => return Some(Self::JustNow),
+            s if s < MINUTE => return Self::JustNow,
             s if s < HOUR => (s / MINUTE, TimeUnit::Minute),
             s if s < DAY => (s / HOUR, TimeUnit::Hour),
             s if s < MONTH => (s / DAY, TimeUnit::Day),
             s if s < YEAR => (s / MONTH, TimeUnit::Month),
-            _ => return None,
+            s => (s / YEAR, TimeUnit::Year),
         };
-        Some(Self::Ago(Amount::new(count, unit)))
+        Self::Ago(Amount::new(count, unit))
     }
 
     /// The phrase for a moment `seconds` ahead (an expiry, the next sync), rounded rather

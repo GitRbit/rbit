@@ -1,10 +1,12 @@
 {#- Out-of-band cells for the file table: each replaces the empty slot with the same id in
-    repo/tree.html. The trigger element itself is replaced by nothing. -#}
+    repo/tree.html. The trigger element itself is replaced by nothing. The response is pinned
+    and shared by every language, so the age is a plain day here that relative-time.js turns
+    into "3 hours ago" in the page's language from `datetime`. -#}
 {% for cell in cells %}
 <span id="{{ cell.slot_id }}" class="contents" hx-swap-oob="true">
   {%- if let Some(commit) = cell.commit %}
   <a href="{{ commit.url }}" class="relative z-10 hidden min-w-0 flex-1 truncate text-[13px] text-ink-muted hover:text-ink hover:underline hover:underline-offset-4 md:block" title="{{ commit.summary }}">{{ commit.summary }}</a>
-  <time class="ms-auto shrink-0 text-xs text-ink-faint" datetime="{{ commit.when_iso }}" title="{{ commit.when_iso }}">{{ commit.day }}</time>
+  <time class="ms-auto shrink-0 text-xs text-ink-faint" datetime="{{ commit.when_iso }}" title="{{ commit.when_iso }}" data-relative>{{ commit.day }}</time>
   {%- endif %}
 </span>
 {% endfor %}

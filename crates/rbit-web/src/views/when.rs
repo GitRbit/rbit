@@ -31,7 +31,7 @@ impl When {
         self.0.iso8601()
     }
 
-    /// `3 hours ago`, `vor 3 Stunden`, `3 時間前`; a date from a year on.
+    /// `3 hours ago`, `vor 3 Stunden`, `3 時間前`; `2 years ago` from a year on.
     pub fn relative(self, locale: impl Borrow<Locale>) -> Localized {
         relative(self.0, *locale.borrow())
     }
@@ -55,7 +55,7 @@ fn civil(at: Timestamp) -> CivilDate {
 /// [`When::relative`] measured from `now`.
 pub fn relative_at(at: Timestamp, now: Timestamp, locale: Locale) -> Localized {
     let ago = u64::try_from(now.seconds() - at.seconds()).unwrap_or_default();
-    Catalog::new(locale).localized(TimeMessage::past(ago).unwrap_or_else(|| TimeMessage::OnDate(civil(at))))
+    Catalog::new(locale).localized(TimeMessage::past(ago))
 }
 
 /// `at` relative to now, in `locale`.

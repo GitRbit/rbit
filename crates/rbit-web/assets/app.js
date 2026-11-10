@@ -25,6 +25,8 @@ import "./repo-documents.js";
 import "./sticky-header.js";
 import "./contributions.js";
 import "./branch-graph.js";
+// Ages in pinned, language-neutral fragments ("3 hours ago" in the file table).
+import "./relative-time.js";
 import "./mirror-progress.js";
 // Actions job pages: steps keep the viewer's open or closed choice across refreshes.
 import "./actions-log.js";

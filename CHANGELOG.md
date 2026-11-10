@@ -7,6 +7,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- The file table shows each entry's last commit as an age ("3 hours ago", "2 years ago")
+  in the page's language instead of a date, and times more than a year ago read as
+  "2 years ago" rather than a date everywhere.
+
 ## [0.2.0] - 2026-11-09
 
 rbit 0.2.0 is a ground-up rewrite of the server and runner. Every feature group in the
