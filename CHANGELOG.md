@@ -7,6 +7,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-10
+
 ### Added
 
 - The file table on the repository home and folder pages has column headers (Name, Last
