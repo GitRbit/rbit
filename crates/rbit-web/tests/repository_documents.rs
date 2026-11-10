@@ -305,3 +305,4 @@ async fn document_fragments_keep_whitelist_and_private_access_checks() {
 }
 
 mod commit_navigation;
+mod file_table;

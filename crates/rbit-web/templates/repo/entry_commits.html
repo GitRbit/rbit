@@ -5,8 +5,8 @@
 {% for cell in cells %}
 <span id="{{ cell.slot_id }}" class="contents" hx-swap-oob="true">
   {%- if let Some(commit) = cell.commit %}
-  <a href="{{ commit.url }}" class="relative z-10 hidden min-w-0 flex-1 truncate text-[13px] text-ink-muted hover:text-ink hover:underline hover:underline-offset-4 md:block" title="{{ commit.summary }}">{{ commit.summary }}</a>
-  <time class="ms-auto shrink-0 text-xs text-ink-faint" datetime="{{ commit.when_iso }}" title="{{ commit.when_iso }}" data-relative>{{ commit.day }}</time>
+  <span role="cell" class="hidden min-w-0 flex-1 md:block"><a href="{{ commit.url }}" class="relative z-10 block truncate text-[13px] text-ink-muted hover:text-ink hover:underline hover:underline-offset-4" title="{{ commit.summary }}">{{ commit.summary }}</a></span>
+  <span role="cell" class="ms-auto shrink-0 text-end"><time class="text-xs text-ink-faint" datetime="{{ commit.when_iso }}" title="{{ commit.when_iso }}" data-relative>{{ commit.day }}</time></span>
   {%- endif %}
 </span>
 {% endfor %}

@@ -7,6 +7,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- The file table on the repository home and folder pages has column headers (Name, Last
+  commit message, Last commit date) and is announced as a table to assistive technology.
+
 ### Fixed
 
 - The file table shows each entry's last commit as an age ("3 hours ago", "2 years ago")
