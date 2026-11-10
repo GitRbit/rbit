@@ -50,6 +50,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the labels it asked for, the runner that ran it and how long it waited for one, and
   the artifacts sit in their own box like the rest of the summary.
 
+- Administrators can turn off the Explore page (Admin → Branding and policies, or
+  `[server] explore_enabled` as the default). The page is then not found and its links
+  are hidden for everyone; public repositories stay public.
+- Administrators can require sign-in to browse the instance (Admin → Branding and
+  policies, or `[server] require_sign_in` as the default). Signed-out visitors are sent
+  to the sign-in page, and Git, LFS and the API refuse reads without credentials.
+
+### Changed
+
+- The header no longer offers "Sign up" while registration is closed.
+
 ### Fixed
 
 - The file table shows each entry's last commit as an age ("3 hours ago", "2 years ago")
