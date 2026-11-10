@@ -15,8 +15,8 @@
 // Test names never pass through a shell: the filter is handed to nextest as a single
 // argv entry, and every character outside [A-Za-z0-9_.:-] in it is a \u{…} escape.
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { failureRecord, parseAttempt, parseShard, resumePlan } from "./nextest-failures.mjs";
 
 // The archive is extracted into the workspace root, so test binaries land in ./target
@@ -101,6 +101,8 @@ function record() {
   } catch { /* nextest never finished: the record stays untrusted */ }
   const junit = existsSync(JUNIT) ? readFileSync(JUNIT, "utf8") : null;
   const result = failureRecord({ os, shard, attempt, outcome: process.env.TEST_OUTCOME ?? "", exitCode, junit });
+  // The upload step collects this whole directory, and no earlier step creates it.
+  mkdirSync(dirname(output), { recursive: true });
   writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`);
   console.log(`Shard ${shard}, attempt ${attempt}: ${result.trusted ? "" : "incomplete, "}${result.reason}.`);
 }
