@@ -117,6 +117,8 @@ pub struct RunPage {
     pub sidebar: super::RunSidebar,
     /// The jobs and their `needs` as a graph; `None` without jobs.
     pub graph: Option<super::JobGraph>,
+    /// The errors, warnings and notices of the run's jobs.
+    pub annotations: super::AnnotationsView,
     /// Not finished: the job list refreshes itself.
     pub active: bool,
     pub self_url: String,

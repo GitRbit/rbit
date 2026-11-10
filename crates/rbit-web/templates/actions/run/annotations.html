@@ -1,0 +1,41 @@
+{#- The run's annotations: errors, warnings and notices its steps reported and failed steps
+    without an error, each linking to its job at the line; expects `annotations:
+    AnnotationsView`. Colour marks the level only. -#}
+<section class="box mt-6 overflow-hidden" aria-labelledby="run-annotations">
+  <h2 id="run-annotations" class="box-header box-title flex-wrap gap-y-1 py-2">
+    <span class="me-auto">{% call ui::localized(text.annotations) %}{% endcall %}</span>
+    {% if annotations.errors > 0 %}<span class="badge tabular-nums text-danger">{% call ui::localized(text.errors(annotations.errors)) %}{% endcall %}</span>{% endif %}
+    {% if annotations.warnings > 0 %}<span class="badge tabular-nums text-warning">{% call ui::localized(text.warnings(annotations.warnings)) %}{% endcall %}</span>{% endif %}
+    {% if annotations.notices > 0 %}<span class="badge tabular-nums">{% call ui::localized(text.notices(annotations.notices)) %}{% endcall %}</span>{% endif %}
+  </h2>
+  <ul>
+    {% for item in annotations.items %}
+    <li class="row items-start gap-3 py-3">
+      {%- if item.level == "error" -%}
+      <span class="mt-0.5 shrink-0 text-danger" title="{{ text.error_level }}">{% call ui::icon("x", "size-4") %}{% endcall %}<span class="sr-only">{{ text.error_level }}</span></span>
+      {%- else if item.level == "warning" -%}
+      <span class="mt-0.5 shrink-0 text-warning" title="{{ text.warning_level }}">{% call ui::icon("alert", "size-4") %}{% endcall %}<span class="sr-only">{{ text.warning_level }}</span></span>
+      {%- else -%}
+      <span class="mt-0.5 shrink-0 text-ink-muted" title="{{ text.notice_level }}">{% call ui::icon("circle-dot", "size-4") %}{% endcall %}<span class="sr-only">{{ text.notice_level }}</span></span>
+      {%- endif %}
+      <div class="min-w-0 flex-1">
+        <p class="flex flex-wrap items-baseline gap-x-2 text-[13px]">
+          <a class="min-w-0 break-words font-medium hover:underline hover:underline-offset-4" href="{{ item.url }}"><bdi>{{ item.job }}</bdi></a>
+          {% if let Some(title) = item.title %}<bdi class="min-w-0 break-words text-ink-muted">{{ title }}</bdi>{% endif %}
+        </p>
+        {% if let Some(message) = item.message %}
+        <p class="mt-1 whitespace-pre-wrap break-words font-mono text-xs text-ink-muted" dir="auto">{{ message }}</p>
+        {% else if let Some(step) = item.failed_step %}
+        <p class="mt-1 break-words text-xs text-ink-muted">{% call ui::localized(text.step_failed(step)) %}{% endcall %}</p>
+        {% endif %}
+        {% if let Some(location) = item.location %}
+        <p class="mt-1 break-all font-mono text-xs text-ink-faint" dir="ltr">{{ location }}</p>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+    {% if annotations.more > 0 %}
+    <li class="row py-3 text-xs text-ink-faint">{% call ui::localized(text.more_annotations(annotations.more)) %}{% endcall %}</li>
+    {% endif %}
+  </ul>
+</section>

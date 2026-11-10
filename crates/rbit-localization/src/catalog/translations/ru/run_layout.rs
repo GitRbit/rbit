@@ -5,7 +5,7 @@ use crate::catalog::run_layout::RunLayoutMessage;
 use crate::plural::Plural;
 
 entries! { Ru:
-    RunLayoutMessage => MessageWriter |text| {
+    RunLayoutMessage<'a> => MessageWriter |text| {
         RunLayoutMessage::Summary => text.literal("Сводка"),
         RunLayoutMessage::Navigation => text.literal("Навигация по запуску"),
         RunLayoutMessage::Usage => text.literal("Использование"),
@@ -22,6 +22,44 @@ entries! { Ru:
         RunLayoutMessage::MoreJobs { count } => {
             text.literal("ещё ");
             text.number(count);
+        }
+        RunLayoutMessage::Annotations => text.literal("Аннотации"),
+        RunLayoutMessage::Errors { count } => {
+            text.number(count);
+            text.literal(match text.plural(count) {
+                Plural::One => " ошибка",
+                Plural::Few => " ошибки",
+                _ => " ошибок",
+            });
+        }
+        RunLayoutMessage::Warnings { count } => {
+            text.number(count);
+            text.literal(match text.plural(count) {
+                Plural::One => " предупреждение",
+                Plural::Few => " предупреждения",
+                _ => " предупреждений",
+            });
+        }
+        RunLayoutMessage::Notices { count } => {
+            text.number(count);
+            text.literal(match text.plural(count) {
+                Plural::One => " уведомление",
+                Plural::Few => " уведомления",
+                _ => " уведомлений",
+            });
+        }
+        RunLayoutMessage::ErrorLevel => text.literal("Ошибка"),
+        RunLayoutMessage::WarningLevel => text.literal("Предупреждение"),
+        RunLayoutMessage::NoticeLevel => text.literal("Уведомление"),
+        RunLayoutMessage::StepFailed { step } => {
+            text.literal("Шаг ");
+            text.argument(step);
+            text.literal(" завершился с ошибкой.");
+        }
+        RunLayoutMessage::MoreAnnotations { count } => {
+            text.literal("И ещё ");
+            text.number(count);
+            text.literal(" в журналах заданий.");
         }
     }
 }

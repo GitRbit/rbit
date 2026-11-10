@@ -19,6 +19,8 @@ mod actions_fork_runs;
 // Actions: interface and secrets (U).
 mod actions_job_pages;
 mod actions_pages;
+// Actions: annotations.
+mod actions_run_annotations;
 // Actions: settings API.
 mod actions_permissions;
 mod actions_settings;

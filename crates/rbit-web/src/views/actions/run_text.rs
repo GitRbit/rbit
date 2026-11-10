@@ -37,6 +37,10 @@ pub struct RunText {
     pub approve_and_deploy: Localized,
     pub reject: Localized,
     pub graph: Localized,
+    pub annotations: Localized,
+    pub error_level: Localized,
+    pub warning_level: Localized,
+    pub notice_level: Localized,
 }
 
 impl RunText {
@@ -68,6 +72,10 @@ impl RunText {
             approve_and_deploy: catalog.localized(RunPageMessage::ApproveAndDeploy),
             reject: catalog.localized(RunPageMessage::Reject),
             graph: catalog.localized(RunLayoutMessage::Graph),
+            annotations: catalog.localized(RunLayoutMessage::Annotations),
+            error_level: catalog.localized(RunLayoutMessage::ErrorLevel),
+            warning_level: catalog.localized(RunLayoutMessage::WarningLevel),
+            notice_level: catalog.localized(RunLayoutMessage::NoticeLevel),
         }
     }
 
@@ -117,6 +125,29 @@ impl RunText {
     /// "+4 more": the jobs of a matrix its box does not list.
     pub fn more_jobs(&self, count: &u64) -> Localized {
         self.catalog.localized(RunLayoutMessage::MoreJobs { count: *count })
+    }
+
+    /// "2 errors" and the like: how many annotations of a level the run has.
+    pub fn errors(&self, count: &u64) -> Localized {
+        self.catalog.localized(RunLayoutMessage::Errors { count: *count })
+    }
+
+    pub fn warnings(&self, count: &u64) -> Localized {
+        self.catalog.localized(RunLayoutMessage::Warnings { count: *count })
+    }
+
+    pub fn notices(&self, count: &u64) -> Localized {
+        self.catalog.localized(RunLayoutMessage::Notices { count: *count })
+    }
+
+    /// A failed step that reported no error of its own.
+    pub fn step_failed(&self, step: &str) -> Localized {
+        self.catalog.localized(RunLayoutMessage::StepFailed { step })
+    }
+
+    /// Annotations the page does not list.
+    pub fn more_annotations(&self, count: &u64) -> Localized {
+        self.catalog.localized(RunLayoutMessage::MoreAnnotations { count: *count })
     }
 
     /// Text that only exists in English, such as a relative timestamp.

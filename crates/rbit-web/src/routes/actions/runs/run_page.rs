@@ -8,7 +8,8 @@ use crate::{
     routes::repo::RepoPage,
     views::{
         actions::{
-            ActionsUrls, ArtifactRow, DeploymentView, JobGraph, RunPage, RunPageLive, RunSidebar, RunSummary, SummaryView, job_rows,
+            ActionsUrls, AnnotationsView, ArtifactRow, DeploymentView, JobGraph, RunPage, RunPageLive, RunSidebar, RunSummary, SummaryView,
+            job_rows,
         },
         layout::Page,
     },
@@ -50,6 +51,8 @@ pub async fn show(
         .iter()
         .filter_map(|(id, texts)| detail.jobs.iter().find(|job| job.id == *id).map(|job| SummaryView::new(&job.name, texts)))
         .collect();
+    // Actions: annotations.
+    let annotations = AnnotationsView::new(&actions.run_annotations(&loaded.ctx, &detail.jobs).await?, &detail.jobs, run.number, &urls);
     // Actions: environments.
     let deployments = actions
         .pending_deployments(viewer.user(), &loaded.ctx, run)
@@ -73,6 +76,7 @@ pub async fn show(
         header: loaded.header(&state, "actions"),
         run: RunSummary::new(run, &detail.people, &urls, loaded.urls.commit(&run.sha)),
         jobs: job_rows(&detail.jobs, run.number, &urls, can_write && finished && has_jobs),
+        annotations,
         graph: JobGraph::new(&detail.jobs, run.number, &urls)
             .map(|graph| if locale.0.locale.direction() == Direction::RightToLeft { graph.mirrored() } else { graph }),
         sidebar: RunSidebar::new(run, &detail.jobs, &urls, loaded.urls.blob(&run.sha, &run.workflow_path), None, locale.0.locale),

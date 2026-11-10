@@ -443,6 +443,9 @@ pub enum Rerun {
     Job(JobId),
 }
 
+// Actions: annotations.
+mod annotations;
+pub use annotations::StoredAnnotation;
 mod log_queries;
 
 #[derive(Debug, Clone)]
