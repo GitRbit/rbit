@@ -11,6 +11,7 @@
 //! secrets) owns the handlers.
 
 mod environments;
+mod job_live;
 pub(crate) mod jobs;
 mod runners;
 mod runs;
@@ -165,6 +166,7 @@ pub const PATHS: &[(&str, &[Method])] = &[
     ("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/rerun", &[Method::POST]),
     ("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/logs", &[Method::GET]),
     ("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/logs/raw", &[Method::GET]),
+    ("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/logs/live", &[Method::GET]),
     // Actions: artifacts (A).
     ("/{owner}/{repo}/actions/runs/{run}/artifacts/{artifact}", &[Method::GET]),
     ("/{owner}/{repo}/actions/runs/{run}/artifacts/{artifact}/{format}", &[Method::GET]),
@@ -241,6 +243,7 @@ pub fn routes() -> Router<AppState> {
         .route("/{owner}/{repo}/actions/runs/{run}/jobs/{job}", get(jobs::show))
         .route("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/logs", get(jobs::logs))
         .route("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/logs/raw", get(jobs::raw))
+        .route("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/logs/live", get(job_live::live))
         .route("/{owner}/{repo}/settings/actions", get(settings::repository).post(settings::save_repository))
         .route("/{owner}/{repo}/settings/actions/secrets", get(settings::to_repository).post(settings::repository_secret))
         .route("/{owner}/{repo}/settings/actions/variables", get(settings::to_repository).post(settings::repository_variable))

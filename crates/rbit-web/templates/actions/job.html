@@ -9,10 +9,12 @@
   <span aria-hidden="true">/</span><span class="min-w-0 break-words">{{ run.title }}</span>
 </p>
 
-{#- While the job is not finished the whole section refreshes itself; a reload does the same.
-    assets/actions-log.js keeps the steps the viewer opened or closed, by `data-step`. -#}
+{#- While the job is not finished, assets/actions-log.js tails the running step's log
+    (`data-live-url`, routes/actions/job_live.rs) and reloads this section when a step
+    starts or ends, keeping the steps the viewer opened or closed (`data-step`). Without
+    scripts a reload shows the latest log. -#}
 <section id="job" lang="{{ page.locale.tag() }}" dir="{{ page.locale.direction().as_str() }}"
-         aria-label="{{ text.details }}" {% if active %}hx-get="{{ self_url }}" hx-trigger="every 3s" hx-select="#job" hx-target="this" hx-swap="outerHTML"{% endif %}>
+         aria-label="{{ text.details }}" data-self-url="{{ self_url }}" data-now="{{ now }}"{% if active %} data-live-url="{{ self_url }}/logs/live" data-live-state="{{ live_state }}"{% endif %}>
 {% include "actions/job/header.html" %}
 
 {% include "actions/job/steps.html" %}

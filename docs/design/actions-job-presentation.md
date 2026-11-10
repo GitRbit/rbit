@@ -5,8 +5,8 @@ in the platform's existing box, typography and semantic color tokens. Long matri
 and step names wrap on small screens. Native details summaries remain keyboard
 controls; raw download and writer-authorized native rerun POSTs keep their existing
 URLs. Run navigation keeps cancellation, artifacts and run-level controls at their
-existing destination. No graph, synthetic failure explanation, new artifact query,
-search control or live-follow API is introduced.
+existing destination. No graph or new artifact query is introduced. The log console,
+its live tail and toolbar are described in `actions.md` (§5.5 and the Job page).
 
 Job and step log models live in `views/actions/job.rs`, with small header/steps
 includes. The route opts successful HTML documents into request-scoped locale

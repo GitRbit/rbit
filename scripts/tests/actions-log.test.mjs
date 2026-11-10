@@ -15,7 +15,7 @@ class Step extends Element {
   constructor(number, state, open) { super(); this.dataset = { step: String(number), state }; this.open = open; this.summary = new Summary(this); }
 }
 class Job extends Element {
-  constructor(steps) { super(); this.steps = steps; }
+  constructor(steps) { super(); this.steps = steps; this.dataset = {}; }
   matches(selector) { return selector === "#job"; }
   querySelectorAll() { return this.steps; }
 }
@@ -27,10 +27,17 @@ function page(pathname = "/a/b/actions/runs/1/jobs/2") {
   const listeners = new Map();
   const location = { pathname };
   let job = null;
-  const document = { addEventListener: (type, listener) => listeners.set(type, listener), querySelector: () => job };
-  vm.runInNewContext(source, { document, location, Element });
+  // A finished job: no `data-live-url`, so nothing is tailed.
+  const document = {
+    addEventListener: (type, listener) => listeners.set(type, listener),
+    querySelector: (selector) => (selector === "#job" ? job : null),
+    readyState: "complete",
+  };
+  const context = { document, location, Element, addEventListener() {}, setInterval() {}, setTimeout() {}, clearTimeout() {}, Intl };
+  vm.runInNewContext(source, context);
   const fire = (type, event) => listeners.get(type)(event);
   return {
+    context,
     location,
     show(steps) { job = new Job(steps); },
     // The browser toggles the step after the click's listeners ran.
@@ -83,4 +90,11 @@ test("choices belong to the job page they were made on", () => {
   job.location.pathname = "/a/b/actions/runs/1/jobs/3";
   job.navigate([new Step(0, "success", false)]);
   assert.deepEqual(opened(job.refresh([new Step(0, "success", false)])), []);
+});
+
+test("running durations read like the server's, in the page's language", () => {
+  const { context } = page();
+  assert.equal(context.took(12, "en"), "12s");
+  assert.equal(context.took(63, "en"), "1m 3s");
+  assert.equal(context.took(3720, "en"), "1h 2m");
 });
