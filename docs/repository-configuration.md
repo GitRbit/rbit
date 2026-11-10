@@ -34,7 +34,7 @@ Expected live settings:
 | Secrets | Secret scanning and secret scanning push protection enabled |
 | Dependencies | Dependabot alerts and security updates enabled; weekly Cargo, npm and Actions version updates |
 | Actions | Read-only token default; Actions cannot approve pull requests; external actions pinned to commit SHAs |
-| Release | `v*` tags protected against deletion and force updates; tag matches workspace version, nonempty notes, successful push CI on the exact commit on `main` |
+| Release | `v*` tags protected against deletion and force updates; tag matches workspace version, nonempty notes |
 | Downloads | Five platform archives plus SHA256SUMS available anonymously |
 | Container | `ghcr.io/gitrbit/rbit` publicly pullable for linux/amd64 and linux/arm64; package visibility checked separately |
 

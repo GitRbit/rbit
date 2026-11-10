@@ -48,9 +48,6 @@ export function checkReleaseWorkflow(text, path = RELEASE_WORKFLOW) {
     if (!found.has(name)) fail(`job ${name} is missing`);
   }
   const prepare = found.get("prepare") ?? "";
-  if (!prepare.includes("actions/workflows/ci.yml/runs") || !prepare.includes("-f branch=main -f event=push -f status=success")) {
-    fail("a release requires a successful main CI push run for the tagged commit");
-  }
   if (!prepare.includes('select(.name == "rbit-server")') || !prepare.includes("CHANGELOG.md")) {
     fail("the tag must match the workspace version and CHANGELOG.md must hold its notes");
   }

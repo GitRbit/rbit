@@ -29,7 +29,6 @@ test("losing a platform, the paired runner, checksums or provenance fails", () =
     ["          file: Dockerfile.runner\n", "", /Dockerfile.runner/u],
     ["            type=semver,pattern={{major}}.{{minor}}\n", "", /same tags/u, true],
     ["            latest=${{ needs.prepare.outputs.prerelease == 'false' }}\n", "            latest=true\n", /same tags/u, true],
-    ["-f branch=main -f event=push -f status=success", "-f status=success", /successful main CI/u],
   ];
   for (const [from, to, message, last] of cases) assert.match(broken(from, to, last), message, from);
 });

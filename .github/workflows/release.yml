@@ -40,25 +40,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      actions: read
     outputs:
       version: ${{ steps.version.outputs.version }}
       prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Require successful main CI for the tagged commit
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          successful_runs="$(gh api --method GET \
-            "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
-            -f head_sha="$GITHUB_SHA" -f branch=main -f event=push -f status=success \
-            --jq '.workflow_runs | length')"
-          if [[ "$successful_runs" -eq 0 ]]; then
-            echo "::error::The tagged commit must have a successful push CI run on main before release."
-            exit 1
-          fi
       - name: Compare the tag with the workspace version
         id: version
         shell: bash

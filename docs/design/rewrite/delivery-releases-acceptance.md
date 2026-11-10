@@ -25,7 +25,7 @@ remaining gate below.
 | Checksums: `SHA256SUMS` over every archive, release created for the verified tag | `release` | contract check |
 | Containers: `rbit` and `rbit-runner`, linux/amd64 and linux/arm64, from the released binaries, same tags, `latest` only for final releases | `image`, `runner-image` | contract check; CI `Runner image` builds and starts the runner image on every PR |
 | Provenance: BuildKit provenance `mode=max` and SBOM on both images; exact source by tag | `image`, `runner-image` | contract check |
-| Release only from a commit with a successful push CI run on `main`, tag equal to the workspace version, notes from `CHANGELOG.md` | `prepare` | contract check |
+| Tag equal to the workspace version, notes from `CHANGELOG.md` | `prepare` | contract check |
 | Trust boundary: tag-only trigger, read-only default token, write scopes only in the three publishing jobs, no compiler caches, every action pinned to a commit, never cancelled half-way | whole workflow | contract check; `rewrite-ci-cache.test.mjs` (caches) |
 
 ## Boundary that fails if a guarantee is lost
@@ -36,7 +36,7 @@ reports each lost guarantee by name. `scripts/tests/release-retirement.test.mjs`
 the real workflow and removes or weakens one guarantee at a time: a dropped platform,
 `rbit-runner` missing from the build or the archive, the rehearsal skipped, no
 `SHA256SUMS`, no `--verify-tag`, image provenance off, the runner image built from
-the wrong file or with different tags, the main CI gate loosened, a `pull_request` or
+the wrong file or with different tags, a `pull_request` or
 `workflow_dispatch` trigger, a compiler cache, a write default token or an extra write
 scope, an unpinned action, cancellation. Each must fail; the current file must pass.
 
@@ -99,5 +99,8 @@ When the remaining gate passes, record the run id here and change the ledger row
 
 Tricky parts: finding that the last published release predates the paired runner, so
 "passing evidence" for the whole row cannot exist until the next tag; keeping the check
-free of a YAML dependency while still scoping write permissions to individual jobs; and
-not matching `workflow_runs` in the CI gate's API query as a `workflow_run` trigger.
+free of a YAML dependency while still scoping write permissions to individual jobs.
+
+Release gate change (0.2.0): the workflow no longer requires a successful push CI run on
+`main` for the tagged commit. Releases are gated by the maintainer's pre-tag verification
+instead; the version and release-notes checks remain.
