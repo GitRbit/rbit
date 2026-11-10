@@ -46,7 +46,8 @@ fn relative_times_read_in_the_page_language() {
         assert!(!text.fallback(), "{locale:?}");
     }
     let old = Timestamp(NOW.seconds() - 400 * DAY);
-    assert_eq!(relative_at(old, NOW, Locale::German).as_str(), "am 4. Okt. 2025");
+    assert_eq!(relative_at(old, NOW, Locale::German).as_str(), "vor 1 Jahr", "an age, not a date");
+    assert_eq!(relative_at(old, NOW, Locale::English).as_str(), "1 year ago");
     let soon = Timestamp(NOW.seconds() + 2 * DAY);
     assert_eq!(until_at(soon, NOW, Locale::Russian).as_str(), "через 2 дня");
 }

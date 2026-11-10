@@ -153,9 +153,11 @@ fn durations_and_elapsed_times() {
 
 #[test]
 fn spans_pick_the_same_unit_in_every_language() {
-    assert_eq!(TimeMessage::past(59), Some(TimeMessage::JustNow));
-    assert_eq!(TimeMessage::past(3 * 3_600 + 59), Some(TimeMessage::Ago(Amount::new(3, TimeUnit::Hour))));
-    assert_eq!(TimeMessage::past(400 * 86_400), None);
+    assert_eq!(TimeMessage::past(59), TimeMessage::JustNow);
+    assert_eq!(TimeMessage::past(3 * 3_600 + 59), TimeMessage::Ago(Amount::new(3, TimeUnit::Hour)));
+    assert_eq!(TimeMessage::past(364 * 86_400), TimeMessage::Ago(Amount::new(12, TimeUnit::Month)));
+    assert_eq!(TimeMessage::past(400 * 86_400), TimeMessage::Ago(Amount::new(1, TimeUnit::Year)));
+    assert_eq!(TimeMessage::past(800 * 86_400), TimeMessage::Ago(Amount::new(2, TimeUnit::Year)));
     assert_eq!(TimeMessage::future(30), Some(TimeMessage::WithinAMinute));
     assert_eq!(TimeMessage::future(90 * 86_400 - 3_600), Some(TimeMessage::In(Amount::new(3, TimeUnit::Month))));
     assert_eq!(TimeMessage::future(400 * 86_400), None);

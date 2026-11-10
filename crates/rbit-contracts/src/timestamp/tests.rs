@@ -6,6 +6,16 @@ fn relative_formatting() {
     assert_eq!(Timestamp::relative_between(Timestamp(now.0 - 5), now), "just now");
     assert_eq!(Timestamp::relative_between(Timestamp(now.0 - 60), now), "1 minute ago");
     assert_eq!(Timestamp::relative_between(Timestamp(now.0 - 7200), now), "2 hours ago");
+    assert_eq!(Timestamp::relative_between(Timestamp(now.0 + 30), now), "just now", "a clock ahead is not the future");
+    let ago = |seconds: i64| Timestamp::relative_between(Timestamp(now.0 - seconds), now);
+    assert_eq!(ago(DAY), "1 day ago");
+    assert_eq!(ago(3 * DAY), "3 days ago");
+    assert_eq!(ago(45 * DAY), "1 month ago");
+    assert_eq!(ago(YEAR - 1), "12 months ago");
+    assert_eq!(ago(YEAR), "1 year ago", "a year on is still a time ago, not a date");
+    assert_eq!(ago(400 * DAY), "1 year ago");
+    assert_eq!(ago(2 * YEAR + 30 * DAY), "2 years ago");
+    assert_eq!(ago(25 * YEAR), "25 years ago");
 }
 
 #[test]

@@ -37,7 +37,7 @@ impl Timestamp {
         self.to_datetime().format(format_description!("[month repr:short] [day padding:none], [year]")).unwrap_or_default()
     }
 
-    /// e.g. `3 hours ago`, falling back to an absolute date after a year.
+    /// e.g. `3 hours ago`, `5 months ago`, `2 years ago`.
     pub fn relative(self) -> String {
         Self::relative_between(self, Self::now())
     }
@@ -50,7 +50,7 @@ impl Timestamp {
             d if d < DAY => (d / HOUR, "hour"),
             d if d < MONTH => (d / DAY, "day"),
             d if d < YEAR => (d / MONTH, "month"),
-            _ => return format!("on {}", then.date()),
+            d => (d / YEAR, "year"),
         };
         let plural = if amount == 1 { "" } else { "s" };
         format!("{amount} {unit}{plural} ago")

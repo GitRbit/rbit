@@ -87,7 +87,8 @@ pub struct EntryCommit {
     pub url: String,
     /// The UTC calendar day, `2026-11-08`: the fragment is pinned (cached for a year and
     /// shared by readers of every language), so it shows neither a phrase that would go
-    /// stale nor one in any reader's language.
+    /// stale nor one in any reader's language. `assets/relative-time.js` replaces it with
+    /// the age ("3 hours ago") in the page's language; the day remains without script.
     pub day: String,
     pub when_iso: String,
 }
@@ -155,6 +156,7 @@ mod tests {
         assert!(html.contains(r#"href="/a/b/commit/0123""#));
         assert!(html.contains("Fix &#60;bug&#62;") || html.contains("Fix &lt;bug&gt;"), "{html}");
         assert!(html.contains(">2026-01-01</time>"), "a language-neutral day that does not go stale: {html}");
+        assert!(html.contains(r#"datetime="2026-01-01T00:00:00Z""#) && html.contains("data-relative"), "shown as an age by script: {html}");
     }
 
     #[test]
