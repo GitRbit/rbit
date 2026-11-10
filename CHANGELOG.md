@@ -27,6 +27,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The Actions job page has a log toolbar: search every step's log with next and previous
   match, show each line's time, expand or collapse all steps and groups, and download the
   raw log. Clicking a line number links to the line and copies the link.
+- The Actions job header shows the runner that took the job, the attempt, when it was
+  queued and started, and a ticking duration while it runs. A failed job links straight to
+  its failed step's last error line.
 
 ### Fixed
 

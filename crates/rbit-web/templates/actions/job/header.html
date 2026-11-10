@@ -6,6 +6,8 @@
       <h1 class="break-words text-xl font-semibold tracking-tight sm:text-2xl">{{ name }}</h1>
       <p class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-ink-muted">
         <span class="font-medium {{ look.tone }}">{% call ui::localized(look.label) %}{% endcall %}</span>
+        {% if let Some(duration) = duration %}<span aria-hidden="true">·</span><span class="tabular-nums" title="{{ text.duration }}"{% if let Some(started) = ticking %} data-started="{{ started }}"{% endif %}>{% call ui::localized(duration.text(page.locale)) %}{% endcall %}</span>{% endif %}
+        <span aria-hidden="true">·</span><span class="tabular-nums">{% call ui::localized(text.attempt) %}{% endcall %} {{ attempt }}</span>
         <span aria-hidden="true">·</span><span class="tabular-nums">{% call ui::localized(text.count) %}{% endcall %}</span>
       </p>
     </div>
@@ -27,15 +29,34 @@
       {% endif %}
     </div>
   </div>
-  <dl class="grid gap-4 border-t border-line bg-subtle/40 px-4 py-3 text-xs sm:grid-cols-2 sm:px-5">
+  {% if let Some(failure) = failure %}
+  {#- Where the job failed, as GitHub's annotation: the step and its last error line. -#}
+  <a class="flex min-w-0 items-start gap-2 border-t border-line px-4 py-2.5 text-xs hover:bg-subtle sm:px-5" href="#{{ failure.anchor }}" data-failure>
+    <span class="mt-px shrink-0 text-danger">{% call ui::icon("x", "size-3.5") %}{% endcall %}</span>
+    <span class="min-w-0 break-words"><span class="text-ink-muted">{% call ui::localized(text.failed_step) %}{% endcall %}</span> <span class="font-medium text-ink">{{ failure.step }}</span>{% if let Some(message) = failure.message %}<bdi class="mt-0.5 block font-mono text-danger" dir="ltr">{{ message }}</bdi>{% endif %}</span>
+  </a>
+  {% endif %}
+  <dl class="grid grid-cols-2 gap-4 border-t border-line bg-subtle/40 px-4 py-3 text-xs sm:grid-cols-4 sm:px-5">
     <div class="min-w-0">
       <dt class="text-ink-faint">{% call ui::localized(text.runs_on) %}{% endcall %}</dt>
       <dd class="mt-1 break-words font-mono text-ink-muted"><bdi>{{ labels }}</bdi></dd>
     </div>
-    {% if let Some(duration) = duration %}
+    {% if let Some(runner) = runner %}
+    <div class="min-w-0">
+      <dt class="text-ink-faint">{% call ui::localized(text.runner) %}{% endcall %}</dt>
+      <dd class="mt-1 break-words font-mono text-ink-muted"><bdi>{{ runner }}</bdi></dd>
+    </div>
+    {% endif %}
+    {% if let Some(queued) = queued %}
     <div>
-      <dt class="text-ink-faint">{% call ui::localized(text.duration) %}{% endcall %}</dt>
-      <dd class="mt-1 tabular-nums text-ink-muted">{% call ui::localized(duration.text(page.locale)) %}{% endcall %}</dd>
+      <dt class="text-ink-faint">{% call ui::localized(text.queued_at) %}{% endcall %}</dt>
+      <dd class="mt-1 text-ink-muted"><time datetime="{{ queued.iso() }}" title="{{ queued.iso() }}">{% call ui::localized(queued.relative(page.locale)) %}{% endcall %}</time></dd>
+    </div>
+    {% endif %}
+    {% if let Some(started) = started %}
+    <div>
+      <dt class="text-ink-faint">{% call ui::localized(text.started_at) %}{% endcall %}</dt>
+      <dd class="mt-1 text-ink-muted"><time datetime="{{ started.iso() }}" title="{{ started.iso() }}">{% call ui::localized(started.relative(page.locale)) %}{% endcall %}</time></dd>
     </div>
     {% endif %}
   </dl>

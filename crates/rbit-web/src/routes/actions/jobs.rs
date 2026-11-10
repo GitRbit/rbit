@@ -29,10 +29,11 @@ use crate::{
     routes::repo::RepoPage,
     views::{
         actions::{
-            ActionsUrls, JOB_PAGE_STEP_BYTES, JOB_PAGE_STEP_LINES, JobPage, RunSummary, Section, StateLook, StepLog, StepLogPage, StepView,
-            open_one, section_view,
+            ActionsUrls, Failure, JOB_PAGE_STEP_BYTES, JOB_PAGE_STEP_LINES, JobPage, RunSummary, Section, StateLook, StepLog, StepLogPage,
+            StepView, open_one, section_view,
         },
         layout::Page,
+        when::When,
     },
 };
 
@@ -97,6 +98,11 @@ pub async fn show(
     open_one(&mut steps);
     let people = read.people;
     let finished = detail.job.status.is_done();
+    let failure = Failure::of(&steps);
+    let runner = match detail.job.runner_id {
+        Some(id) => actions.runner_names(std::slice::from_ref(&detail.job)).await?.remove(&id),
+        None => None,
+    };
     let can_rerun = loaded.ctx.can_write_content() && finished && detail.run.status.is_done();
     let view = JobPage {
         page: page.with_locale(locale.0.locale).titled(format!(
@@ -120,6 +126,12 @@ pub async fn show(
         steps,
         raw_url: detail.job.task_id.map(|_| format!("{job_url}/logs/raw")),
         rerun_url: can_rerun.then(|| format!("{job_url}/rerun")),
+        runner,
+        attempt: detail.job.attempt,
+        queued: Some(When(detail.job.queued_at.unwrap_or(detail.job.created_at))),
+        started: detail.job.started_at.map(When),
+        ticking: (!finished).then(|| detail.job.started_at.map(rbit_core::Timestamp::seconds)).flatten(),
+        failure,
     };
     Ok(locale.response(view.into_response()))
 }

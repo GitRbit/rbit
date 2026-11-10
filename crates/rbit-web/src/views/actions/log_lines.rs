@@ -122,6 +122,8 @@ pub struct Rendered {
     pub html: String,
     /// The plain text of the last error line, for the step's failure summary.
     pub last_error: Option<String>,
+    /// Its step-relative number.
+    pub last_error_line: Option<usize>,
 }
 
 /// How a window is rendered.
@@ -209,6 +211,7 @@ impl Console<'_> {
                 kind => {
                     if kind == Kind::Error {
                         rendered.last_error = Some(plain(line.text));
+                        rendered.last_error_line = Some(number);
                     }
                     match &mut group {
                         Some((_, body, failed)) => {
