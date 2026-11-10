@@ -345,6 +345,7 @@ mod tests {
                 theme: crate::themes::Theme::System,
                 has_unread_notifications: false,
                 show_explore: true,
+                show_sign_up: true,
             },
             header,
             form: OrgProfileForm::default(),

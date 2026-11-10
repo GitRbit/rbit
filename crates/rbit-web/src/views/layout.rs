@@ -27,6 +27,8 @@ pub struct Page {
     pub has_unread_notifications: bool,
     /// Whether to link the Explore page: the instance offers it to this viewer.
     pub show_explore: bool,
+    /// Whether a signed-out visitor is offered "Sign up": registration is open.
+    pub show_sign_up: bool,
     /// The visitor's colour theme (from the `rbit-theme` cookie), rendered into `<html>`.
     pub theme: Theme,
 }
@@ -72,6 +74,9 @@ impl Page {
             has_unread_notifications: false,
             // Signed out on an instance that requires signing in, Explore would only redirect.
             show_explore: settings.explore_enabled && (viewer.is_some() || !settings.require_sign_in),
+            // Closed registration only admits the instance's first account, which signs up
+            // through its setup link rather than the header.
+            show_sign_up: settings.registration == rbit_core::RegistrationMode::Open,
             theme: Theme::default(),
         }
     }
@@ -191,6 +196,7 @@ mod tests {
                 path: "/".into(),
                 has_unread_notifications: false,
                 show_explore: true,
+                show_sign_up: true,
                 theme: Theme::parse(slug).unwrap(),
             };
             let html = Fixture { page }.render().unwrap();
@@ -233,6 +239,7 @@ mod tests {
             path: "/".into(),
             has_unread_notifications: false,
             show_explore: true,
+            show_sign_up: true,
             theme: Theme::default(),
         };
         let html = Fixture { page }.render().unwrap();
