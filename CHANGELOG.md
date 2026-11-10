@@ -36,6 +36,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   above the page on phones. While the run is not finished the job list refreshes itself,
   the run page's poll fetches only the run section and that list, and running durations
   tick every second.
+- An Actions run's summary draws its jobs as a graph of their `needs`, as on GitHub: a
+  column per stage, a box per job (a matrix lists its jobs) with its state and live
+  duration, and lines from each job to the jobs that wait for it.
 
 ### Fixed
 

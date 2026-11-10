@@ -14,5 +14,11 @@ entries! { Ko:
             text.number(count);
             text.literal("개");
         }
+        RunLayoutMessage::Graph => text.literal("작업 그래프"),
+        RunLayoutMessage::MoreJobs { count } => {
+            text.literal("외 ");
+            text.number(count);
+            text.literal("개");
+        }
     }
 }

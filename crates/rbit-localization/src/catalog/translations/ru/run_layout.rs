@@ -18,5 +18,10 @@ entries! { Ru:
                 _ => " заданий",
             });
         }
+        RunLayoutMessage::Graph => text.literal("Граф заданий"),
+        RunLayoutMessage::MoreJobs { count } => {
+            text.literal("ещё ");
+            text.number(count);
+        }
     }
 }

@@ -17,5 +17,11 @@ entries! { PtBr:
                 _ => " jobs",
             });
         }
+        RunLayoutMessage::Graph => text.literal("Grafo de jobs"),
+        RunLayoutMessage::MoreJobs { count } => {
+            text.literal("+");
+            text.number(count);
+            text.literal(" a mais");
+        }
     }
 }

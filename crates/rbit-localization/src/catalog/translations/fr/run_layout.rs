@@ -17,5 +17,11 @@ entries! { Fr:
                 _ => " jobs",
             });
         }
+        RunLayoutMessage::Graph => text.literal("Graphe des jobs"),
+        RunLayoutMessage::MoreJobs { count } => {
+            text.literal("+");
+            text.number(count);
+            text.literal(" de plus");
+        }
     }
 }

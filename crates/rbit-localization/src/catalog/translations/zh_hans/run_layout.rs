@@ -13,5 +13,11 @@ entries! { ZhHans:
             text.number(count);
             text.literal(" 个作业");
         }
+        RunLayoutMessage::Graph => text.literal("作业图"),
+        RunLayoutMessage::MoreJobs { count } => {
+            text.literal("另外 ");
+            text.number(count);
+            text.literal(" 个");
+        }
     }
 }
