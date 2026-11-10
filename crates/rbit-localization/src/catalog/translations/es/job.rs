@@ -23,6 +23,8 @@ entries! { Es:
         ActionsJobMessage::DownloadAll => text.literal("descarga el registro completo para verlo todo."),
         ActionsJobMessage::Truncated => text.literal("El trabajo escribió más de lo que conserva la instancia; se descartaron las líneas posteriores."),
         ActionsJobMessage::StepNotStarted => text.literal("Este paso no ha comenzado."),
+        ActionsJobMessage::SetUpJob => text.literal("Preparar el trabajo"),
+        ActionsJobMessage::CompleteJob => text.literal("Finalizar el trabajo"),
         ActionsJobMessage::Success => text.literal("Correcto"),
         ActionsJobMessage::Failure => text.literal("Fallido"),
         ActionsJobMessage::Cancelled => text.literal("Cancelado"),

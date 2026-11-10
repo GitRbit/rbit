@@ -30,6 +30,8 @@ entries! { Fr:
             "Le job a produit plus que ce que l’instance conserve\u{202f}; les lignes suivantes ont été supprimées.",
         ),
         ActionsJobMessage::StepNotStarted => text.literal("Cette étape n’a pas démarré."),
+        ActionsJobMessage::SetUpJob => text.literal("Préparer le job"),
+        ActionsJobMessage::CompleteJob => text.literal("Terminer le job"),
         ActionsJobMessage::Success => text.literal("Réussite"),
         ActionsJobMessage::Failure => text.literal("Échec"),
         ActionsJobMessage::Cancelled => text.literal("Annulé"),

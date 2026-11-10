@@ -36,12 +36,14 @@ mod masking;
 mod plan;
 mod read;
 mod reader;
+mod sections;
 mod types;
 mod work;
 
 pub use archive::add_raw_log;
 pub use batch::JobLogDetail;
 pub use masking::{MASK, MIN_MASKED_CHARS, Masker};
+pub use sections::{Sections, has_log, sections};
 pub use types::{LogLimits, LogRange, LogWindow, MAX_LINES_PER_CALL, RawLog, STEP_VIEW_BYTES, STEP_VIEW_LINES};
 
 #[cfg(test)]

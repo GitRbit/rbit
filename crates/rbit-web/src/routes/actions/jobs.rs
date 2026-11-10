@@ -29,7 +29,8 @@ use crate::{
     routes::repo::RepoPage,
     views::{
         actions::{
-            ActionsUrls, JOB_PAGE_STEP_BYTES, JOB_PAGE_STEP_LINES, JobPage, RunSummary, StateLook, StepLog, StepLogPage, StepView, open_one,
+            ActionsUrls, JOB_PAGE_STEP_BYTES, JOB_PAGE_STEP_LINES, JobPage, RunSummary, Section, StateLook, StepLog, StepLogPage, StepView,
+            open_one, section_view,
         },
         layout::Page,
     },
@@ -89,6 +90,10 @@ pub async fn show(
             tokio::task::yield_now().await;
         }
     }
+    if let Some(setup) = section_view(Section::Setup, &detail.job, &detail.steps, read.setup) {
+        steps.insert(0, setup);
+    }
+    steps.extend(section_view(Section::Complete, &detail.job, &detail.steps, read.complete));
     open_one(&mut steps);
     let people = read.people;
     let finished = detail.job.status.is_done();

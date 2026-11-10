@@ -23,6 +23,8 @@ pub struct JobText {
     pub download_all: Localized,
     pub truncated: Localized,
     pub step_not_started: Localized,
+    pub set_up_job: Localized,
+    pub complete_job: Localized,
 }
 
 /// A state's label in the catalog's locale, for job rows and the run heading alike.
@@ -84,6 +86,8 @@ impl JobText {
             download_all: catalog.localized(Message::DownloadAll),
             truncated: catalog.localized(Message::Truncated),
             step_not_started: catalog.localized(Message::StepNotStarted),
+            set_up_job: catalog.localized(Message::SetUpJob),
+            complete_job: catalog.localized(Message::CompleteJob),
         }
     }
 

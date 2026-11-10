@@ -88,10 +88,12 @@ impl Executor for JobExecutor {
             match Job::prepare(&loaded, spec, Arc::clone(&reporter)) {
                 Ok(mut job) => {
                     job.server = server;
+                    crate::setup::describe(&mut job, &loaded).await;
                     let result = match job.start().await {
                         Ok(()) => job.run().await,
                         Err(message) => fail(&message),
                     };
+                    crate::setup::complete(&job, result);
                     job.finish().await;
                     result
                 }
@@ -174,6 +176,8 @@ pub struct Job {
     pub step_debug: bool,
     /// Problem matchers added so far, for every later step.
     pub matchers: crate::matchers::Matchers,
+    /// The commits of the actions the steps use, by `owner/repo@ref` ([`crate::setup`]).
+    pub resolved: BTreeMap<String, String>,
 }
 
 /// A container's `options` from the server, checked again here, with their `--env` values
@@ -280,7 +284,6 @@ impl Job {
                 Backend::Container(Box::new(container))
             }
         };
-        reporter.log(&format!("Runner `{}`, label `{}` ({} backend)", loaded.config.name, label.name, backend_name(label.backend)));
 
         let view = backend.view().clone();
         let event_path = dirs.files.join("event.json");
@@ -339,6 +342,7 @@ impl Job {
             post_steps: Vec::new(),
             step_debug,
             matchers: crate::matchers::Matchers::default(),
+            resolved: BTreeMap::new(),
         };
         job.sync_contexts();
         let (workflow_env, job_env) = (job.spec.template.workflow_env.clone(), job.spec.template.env.clone());
@@ -475,7 +479,7 @@ impl Job {
                 }
             };
             if !run {
-                self.reporter.finish_step(index, StepStatus::Skipped);
+                crate::setup::skip(self, index, step);
                 self.record(step, &Outcome { status: StepStatus::Skipped, outputs: BTreeMap::new() }, StepStatus::Skipped);
                 continue;
             }
@@ -778,13 +782,6 @@ impl Phase {
     /// The worse of two: a cancellation stays a cancellation.
     fn max_with(self, other: Self) -> Self {
         if self == Self::Cancelled { self } else { other }
-    }
-}
-
-const fn backend_name(backend: BackendKind) -> &'static str {
-    match backend {
-        BackendKind::Container => "container",
-        BackendKind::Host => "host — no isolation",
     }
 }
 

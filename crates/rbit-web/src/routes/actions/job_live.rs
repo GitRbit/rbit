@@ -22,7 +22,7 @@ use axum::{
     http::header,
     response::{IntoResponse, Response},
 };
-use rbit_core::actions::{Status, Step};
+use rbit_core::actions::{Job, Status, Step};
 use rbit_services::actions::logs::LogRange;
 use serde::{Deserialize, Serialize};
 use std::fmt::Write as _;
@@ -33,7 +33,7 @@ use crate::{
     error::{WebError, WebResult},
     extract::Viewer,
     routes::repo::RepoPage,
-    views::actions::{JOB_PAGE_STEP_BYTES, JOB_PAGE_STEP_LINES, StateLook, log_lines::Console},
+    views::actions::{JOB_PAGE_STEP_BYTES, JOB_PAGE_STEP_LINES, StateLook, growing, log_lines::Console},
 };
 
 #[derive(Debug, Default, Deserialize)]
@@ -62,8 +62,12 @@ pub fn live_state(job: Status, steps: &[Step]) -> String {
     state
 }
 
-/// The step whose log grows now, and where its log starts.
-fn target(steps: &[Step]) -> Option<(String, u64)> {
+/// The step whose log grows now (or "Set up job" and "Complete job" around the steps),
+/// and where its log starts.
+fn target(job: &Job, steps: &[Step]) -> Option<(String, u64)> {
+    if let Some((section, start)) = growing(job, steps) {
+        return Some((section.key().to_owned(), start));
+    }
     let running = steps.iter().find(|step| step.status == Status::Running)?;
     Some((running.number.to_string(), u64::try_from(running.log_index).unwrap_or_default()))
 }
@@ -91,7 +95,7 @@ pub async fn live(
     };
     // A finished job has nothing more to tail: the page reloads it whole.
     let task = detail.job.task_id.filter(|_| live.active);
-    if let (Some(task), Some((key, start))) = (task, target(&detail.steps)) {
+    if let (Some(task), Some((key, start))) = (task, target(&detail.job, &detail.steps)) {
         let from = query.from.max(start);
         let window = actions.task_log(&loaded.ctx, task, LogRange::From(from), JOB_PAGE_STEP_LINES, JOB_PAGE_STEP_BYTES).await?;
         let first = usize::try_from(from - start).unwrap_or(usize::MAX).saturating_add(1);

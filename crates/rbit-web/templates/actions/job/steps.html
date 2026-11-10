@@ -15,7 +15,7 @@
         <summary class="flex min-h-12 cursor-pointer items-center gap-3 px-3 py-2 hover:bg-subtle sm:px-4">
           {% let look = text.look(step.look) %}
           {% include "actions/state.html" %}
-          <span class="min-w-0 flex-1 break-words text-[13px] font-medium">{{ step.name }}</span>
+          <span class="min-w-0 flex-1 break-words text-[13px] font-medium">{{ step.name }}{% if step.key == "setup" %}{% call ui::localized(text.set_up_job) %}{% endcall %}{% else if step.key == "complete" %}{% call ui::localized(text.complete_job) %}{% endcall %}{% endif %}</span>
           {% if let Some(duration) = step.duration %}<span class="shrink-0 whitespace-nowrap text-xs tabular-nums text-ink-faint"{% if let Some(started) = step.started %} data-started="{{ started }}"{% endif %}>{% call ui::localized(duration.text(page.locale)) %}{% endcall %}</span>{% endif %}
         </summary>
         <div class="border-t border-line">

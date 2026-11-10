@@ -17,6 +17,8 @@ use crate::{
 mod live;
 #[path = "actions_job_pages/presentation.rs"]
 mod presentation;
+#[path = "actions_job_pages/sections.rs"]
+mod sections;
 
 /// GET `path` as alice, the owner; returns the status, the headers and the body (gzipped
 /// bodies decoded).

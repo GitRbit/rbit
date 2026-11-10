@@ -2,6 +2,7 @@
 use super::{
     LogLimits, LogRange, LogWindow,
     batch_reader::{LogSnapshot, read_windows, representation},
+    has_log,
     plan::WindowRequest,
     types::LogFiles,
     work::{ReadWork, record},
@@ -18,8 +19,13 @@ use std::collections::BTreeMap;
 pub struct JobLogDetail {
     pub detail: JobDetail,
     pub people: BTreeMap<AccountId, Account>,
-    /// `None` until a step starts; retained/expired windows preserve their flags.
+    /// `None` until a step starts (or says why it was skipped); retained/expired windows
+    /// preserve their flags.
     pub logs: Vec<Option<LogWindow>>,
+    /// The lines before the first step and after the last ([`super::sections`]), once a
+    /// runner took the job.
+    pub setup: Option<LogWindow>,
+    pub complete: Option<LogWindow>,
 }
 
 impl ActionsService {
@@ -38,7 +44,14 @@ impl ActionsService {
             return Err(ServiceError::NotFound);
         }
         let people = self.people([detail.run.actor, detail.run.trigger_actor, detail.run.approved_by]).await?;
-        let requests: Vec<_> = detail.steps.iter().filter(|step| step.started_at.is_some()).map(|step| request(step, limits)).collect();
+        let mut requests: Vec<_> = detail.steps.iter().filter(|step| has_log(step)).map(|step| request(step, limits)).collect();
+        let sections = super::sections(&detail.steps, detail.job.status.is_done());
+        let extra = |start: u64, end: Option<u64>| WindowRequest { start, end, range: LogRange::Tail, limits };
+        let setup = sections.setup.map(|(start, end)| extra(start, end));
+        let complete = sections.complete.map(|start| extra(start, None));
+        if detail.job.task_id.is_some() {
+            requests.extend(setup.iter().chain(complete.iter()).copied());
+        }
         let windows = if let Some(id) = detail.job.task_id {
             let task = self.ctx().database.actions_runs().task(id).await?.ok_or(ServiceError::NotFound)?;
             if task.job_id != detail.job.id {
@@ -63,8 +76,10 @@ impl ActionsService {
             Vec::new()
         };
         let mut windows = windows.into_iter();
-        let logs = detail.steps.iter().map(|step| if step.started_at.is_some() { windows.next() } else { None }).collect();
-        Ok(JobLogDetail { detail, people, logs })
+        let logs = detail.steps.iter().map(|step| if has_log(step) { windows.next() } else { None }).collect();
+        let setup = setup.and_then(|_| windows.next());
+        let complete = complete.and_then(|_| windows.next());
+        Ok(JobLogDetail { detail, people, logs, setup, complete })
     }
 }
 

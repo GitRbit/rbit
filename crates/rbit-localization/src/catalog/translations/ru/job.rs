@@ -23,6 +23,8 @@ entries! { Ru:
         ActionsJobMessage::DownloadAll => text.literal("скачайте полный журнал целиком."),
         ActionsJobMessage::Truncated => text.literal("Задание вывело больше, чем хранит сервер; последующие строки отброшены."),
         ActionsJobMessage::StepNotStarted => text.literal("Этот шаг ещё не начат."),
+        ActionsJobMessage::SetUpJob => text.literal("Подготовка задания"),
+        ActionsJobMessage::CompleteJob => text.literal("Завершение задания"),
         ActionsJobMessage::Success => text.literal("Успешно"),
         ActionsJobMessage::Failure => text.literal("Ошибка"),
         ActionsJobMessage::Cancelled => text.literal("Отменено"),
