@@ -216,3 +216,20 @@ async fn requiring_sign_in_sends_visitors_to_sign_in_and_refuses_anonymous_reads
     assert_eq!(fixture.get("/keeper/open", None).await.0, StatusCode::OK);
     assert_eq!(fixture.get(refs, None).await.0, StatusCode::OK);
 }
+
+#[tokio::test]
+async fn closed_registration_drops_sign_up_from_the_header() {
+    let fixture = Fixture::new().await;
+    for path in ["/", "/login", "/keeper/open"] {
+        let (status, _, html) = fixture.get(path, None).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        assert!(html.contains("href=\"/signup\""), "{path} offers sign-up while registration is open");
+    }
+
+    fixture.update(|settings| settings.registration = rbit_core::RegistrationMode::Closed).await;
+    for path in ["/", "/login", "/keeper/open"] {
+        let (status, _, html) = fixture.get(path, None).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        assert!(!html.contains("href=\"/signup\""), "{path} still offers sign-up");
+    }
+}

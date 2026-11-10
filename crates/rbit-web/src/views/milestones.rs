@@ -204,6 +204,7 @@ mod tests {
                 path: "/a/b/milestones".into(),
                 has_unread_notifications: false,
                 show_explore: true,
+                show_sign_up: true,
                 theme: crate::themes::Theme::System,
             },
             header: RepoHeader::default(),

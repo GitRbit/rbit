@@ -203,6 +203,7 @@ mod tests {
             path: "/".into(),
             has_unread_notifications: false,
             show_explore: true,
+            show_sign_up: true,
             theme: Theme::from_headers(&headers),
         };
         axum::response::Html(Fixture { page }.render().unwrap())

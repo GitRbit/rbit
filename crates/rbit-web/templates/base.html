@@ -136,13 +136,13 @@
         </details>
         {% else %}
         <a href="/login" class="btn btn-ghost hidden sm:inline-flex">{% call ui::localized(chrome.sign_in()) %}{% endcall %}</a>
-        <a href="/signup" class="btn btn-primary hidden sm:inline-flex">{% call ui::localized(chrome.sign_up()) %}{% endcall %}</a>
+        {% if page.show_sign_up %}<a href="/signup" class="btn btn-primary hidden sm:inline-flex">{% call ui::localized(chrome.sign_up()) %}{% endcall %}</a>{% endif %}
         {%- if !page.is_at("/login") %}<a href="/login" class="btn sm:hidden">{% call ui::localized(chrome.sign_in()) %}{% endcall %}</a>{% endif %}
         <details class="relative sm:hidden" data-menu>
           <summary class="btn btn-ghost btn-icon cursor-pointer" aria-label="{{ chrome.menu() }}">{% call ui::icon("menu", "size-4") %}{% endcall %}</summary>
           <div class="menu inset-e-0 w-60">
             {% if page.show_explore %}<a class="menu-item" href="/explore">{% call ui::icon("compass", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.explore()) %}{% endcall %}</a>{% endif %}
-            <a class="menu-item" href="/signup">{% call ui::icon("user-plus", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.create_account()) %}{% endcall %}</a>
+            {% if page.show_sign_up %}<a class="menu-item" href="/signup">{% call ui::icon("user-plus", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.create_account()) %}{% endcall %}</a>{% endif %}
             <div class="menu-divider"></div>
             {% call display_menu_items(page, chrome) %}{% endcall %}
           </div>
