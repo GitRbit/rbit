@@ -105,14 +105,123 @@ jobs:
       # commit: that is the point.
       - run: cargo deny --locked check licenses advisories
 
-  test:
-    name: Tests (${{ matrix.os }})
+  # Workspace tests, per platform: Linux is the supported server platform; Windows keeps
+  # local development honest. Each platform compiles once into a nextest archive, runs
+  # the tests from it in parallel shards, and runs the doc tests (and on Linux the
+  # server build and upgrade rehearsal) alongside. `Tests (<os>)` requires all of them.
+  # A re-run of a failed shard runs only the tests that failed: docs/ci-test-shards.md.
+  tests-linux-build:
+    name: Test build (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/prepare-build
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      # This job only compiles, so it succeeds (and saves) even when a test fails later.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: ". -> .cargo-build"
+          cache-workspace-crates: false
+          cache-all-crates: false
+          cache-bin: false
+          cache-on-failure: false
+          save-if: >-
+            ${{ (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge')) ||
+                (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) }}
+      # Asset tests need the generated (gitignored) stylesheets. Debug builds read them
+      # from disk, so they travel with the archive to the shards.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci && npm run build
+      - uses: taiki-e/install-action@b80e2bb2635f28eb98b9fce1e2f0887e1535c6b2 # v2
+        with:
+          tool: cargo-nextest
+      - run: cargo nextest archive --workspace --locked --archive-file target/nextest-archive.tar.zst
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: nextest-archive-ubuntu-latest
+          path: |
+            target/nextest-archive.tar.zst
+            crates/rbit-web/assets/app.css
+            crates/rbit-web/assets/deferred.css
+          if-no-files-found: error
+          # Already zstd-compressed. Re-running a shard needs this archive: past its
+          # retention, use "Re-run all jobs" instead.
+          compression-level: 0
+          retention-days: 3
+          # "Re-run all jobs" builds again and replaces the archive of the earlier attempt.
+          overwrite: true
+
+  tests-linux-shards:
+    name: Tests (ubuntu-latest, ${{ matrix.shard }}/${{ matrix.total }})
+    needs: tests-linux-build
     strategy:
       fail-fast: false
       matrix:
-        # Linux is the supported server platform; Windows keeps local development honest.
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+        # Linux runs the suite in about three minutes; two shards keep setup overhead low.
+        shard: [1, 2]
+        total: [2]
+    runs-on: ubuntu-latest
+    env:
+      TEST_OS: ubuntu-latest
+      TEST_SHARD: ${{ matrix.shard }}/${{ matrix.total }}
+      RUN_ATTEMPT: ${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/prepare-build
+      # The e2e tests ask cargo for the build's layout, and toolchain paths are compiled in.
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      # Integration tests drive the real git CLI (pushes, gc, backups); the hosted runners
+      # ship git, so only print its version for the log.
+      - run: git --version
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: taiki-e/install-action@b80e2bb2635f28eb98b9fce1e2f0887e1535c6b2 # v2
+        with:
+          tool: cargo-nextest
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: nextest-archive-ubuntu-latest
+      # On a re-run, the failed-test lists that earlier attempts of this shard uploaded.
+      # A pattern that matches nothing downloads nothing; the shard then runs in full.
+      - if: ${{ github.run_attempt != '1' }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: nextest-failed-ubuntu-latest-shard-${{ matrix.shard }}-of-${{ matrix.total }}-attempt-*
+          path: ${{ runner.temp }}/previous-failures
+          merge-multiple: true
+      - id: tests
+        run: node scripts/ci/nextest-shard.mjs run
+        env:
+          NEXTEST_ARCHIVE: target/nextest-archive.tar.zst
+          PREVIOUS_FAILURES: ${{ runner.temp }}/previous-failures
+          SHARD_STATUS: ${{ runner.temp }}/shard-status.json
+          # The archive keeps test binaries in target/, not in the configured build dir.
+          CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/target
+      - if: ${{ always() }}
+        run: node scripts/ci/nextest-shard.mjs record
+        env:
+          TEST_OUTCOME: ${{ steps.tests.outcome }}
+          SHARD_STATUS: ${{ runner.temp }}/shard-status.json
+          FAILURES_OUTPUT: ${{ runner.temp }}/failed-tests/failed-ubuntu-latest-${{ matrix.shard }}-of-${{ matrix.total }}-attempt-${{ github.run_attempt }}.json
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: nextest-failed-ubuntu-latest-shard-${{ matrix.shard }}-of-${{ matrix.total }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/failed-tests/
+          if-no-files-found: warn
+          retention-days: 3
+
+  tests-linux-extras:
+    name: Doc tests and rehearsal (ubuntu-latest)
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -129,31 +238,177 @@ jobs:
           save-if: >-
             ${{ (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge')) ||
                 (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) }}
-      # Integration tests drive the real git CLI (pushes, gc, backups); the hosted runners
-      # ship git, so only print its version for the log.
       - run: git --version
-      # Asset tests need the generated (gitignored) stylesheet embedded.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci && npm run build
-      # nextest runs test binaries in parallel; Rust documentation examples need
-      # their own command because nextest does not execute doctests.
-      - uses: taiki-e/install-action@b80e2bb2635f28eb98b9fce1e2f0887e1535c6b2 # v2
-        with:
-          tool: cargo-nextest
-      - run: cargo nextest run --workspace --locked --profile ci
+      # nextest does not execute doctests, so Rust documentation examples run here.
       - run: cargo test --workspace --doc --locked
       # Upgrade rehearsal (fast mode): the candidate upgrades a store at the previous
       # release's schema, serves, backs up and restores it, refuses a newer database and
       # survives migrations killed part-way. See docs/upgrade-rehearsal.md.
-      - if: runner.os == 'Linux'
-        run: cargo build --locked --package rbit-server
-      - if: runner.os == 'Linux'
-        run: node --test scripts/tests/release-rehearsal.test.mjs
+      - run: cargo build --locked --package rbit-server
+      - run: node --test scripts/tests/release-rehearsal.test.mjs
         env:
           RBIT_REHEARSAL_CANDIDATE: target/debug/rbit
+
+  tests-linux:
+    # Required check: passes only when the build, every shard and the extra checks passed.
+    name: Tests (ubuntu-latest)
+    if: ${{ always() }}
+    needs: [tests-linux-build, tests-linux-shards, tests-linux-extras]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require the build, every shard and the extra checks
+        env:
+          BUILD: ${{ needs.tests-linux-build.result }}
+          SHARDS: ${{ needs.tests-linux-shards.result }}
+          EXTRAS: ${{ needs.tests-linux-extras.result }}
+        run: |
+          echo "Test build: $BUILD; test shards: $SHARDS; doc tests and rehearsal: $EXTRAS"
+          [ "$BUILD" = success ] && [ "$SHARDS" = success ] && [ "$EXTRAS" = success ]
+
+  tests-windows-build:
+    name: Test build (windows-latest)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/prepare-build
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: ". -> .cargo-build"
+          cache-workspace-crates: false
+          cache-all-crates: false
+          cache-bin: false
+          cache-on-failure: false
+          save-if: >-
+            ${{ (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge')) ||
+                (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci && npm run build
+      - uses: taiki-e/install-action@b80e2bb2635f28eb98b9fce1e2f0887e1535c6b2 # v2
+        with:
+          tool: cargo-nextest
+      - run: cargo nextest archive --workspace --locked --archive-file target/nextest-archive.tar.zst
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: nextest-archive-windows-latest
+          path: |
+            target/nextest-archive.tar.zst
+            crates/rbit-web/assets/app.css
+            crates/rbit-web/assets/deferred.css
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
+          overwrite: true
+
+  tests-windows-shards:
+    name: Tests (windows-latest, ${{ matrix.shard }}/${{ matrix.total }})
+    needs: tests-windows-build
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows runs the suite in about fifteen minutes on one runner.
+        shard: [1, 2, 3, 4]
+        total: [4]
+    runs-on: windows-latest
+    env:
+      TEST_OS: windows-latest
+      TEST_SHARD: ${{ matrix.shard }}/${{ matrix.total }}
+      RUN_ATTEMPT: ${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/prepare-build
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - run: git --version
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: taiki-e/install-action@b80e2bb2635f28eb98b9fce1e2f0887e1535c6b2 # v2
+        with:
+          tool: cargo-nextest
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: nextest-archive-windows-latest
+      - if: ${{ github.run_attempt != '1' }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: nextest-failed-windows-latest-shard-${{ matrix.shard }}-of-${{ matrix.total }}-attempt-*
+          path: ${{ runner.temp }}/previous-failures
+          merge-multiple: true
+      - id: tests
+        run: node scripts/ci/nextest-shard.mjs run
+        env:
+          NEXTEST_ARCHIVE: target/nextest-archive.tar.zst
+          PREVIOUS_FAILURES: ${{ runner.temp }}/previous-failures
+          SHARD_STATUS: ${{ runner.temp }}/shard-status.json
+          CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/target
+      - if: ${{ always() }}
+        run: node scripts/ci/nextest-shard.mjs record
+        env:
+          TEST_OUTCOME: ${{ steps.tests.outcome }}
+          SHARD_STATUS: ${{ runner.temp }}/shard-status.json
+          FAILURES_OUTPUT: ${{ runner.temp }}/failed-tests/failed-windows-latest-${{ matrix.shard }}-of-${{ matrix.total }}-attempt-${{ github.run_attempt }}.json
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: nextest-failed-windows-latest-shard-${{ matrix.shard }}-of-${{ matrix.total }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/failed-tests/
+          if-no-files-found: warn
+          retention-days: 3
+
+  tests-windows-extras:
+    name: Doc tests (windows-latest)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/prepare-build
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: ". -> .cargo-build"
+          cache-workspace-crates: false
+          cache-all-crates: false
+          cache-bin: false
+          cache-on-failure: false
+          save-if: >-
+            ${{ (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge')) ||
+                (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci && npm run build
+      - run: cargo test --workspace --doc --locked
+
+  tests-windows:
+    name: Tests (windows-latest)
+    if: ${{ always() }}
+    needs: [tests-windows-build, tests-windows-shards, tests-windows-extras]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require the build, every shard and the doc tests
+        env:
+          BUILD: ${{ needs.tests-windows-build.result }}
+          SHARDS: ${{ needs.tests-windows-shards.result }}
+          EXTRAS: ${{ needs.tests-windows-extras.result }}
+        run: |
+          echo "Test build: $BUILD; test shards: $SHARDS; doc tests: $EXTRAS"
+          [ "$BUILD" = success ] && [ "$SHARDS" = success ] && [ "$EXTRAS" = success ]
 
   assets:
     name: Front-end build
@@ -241,7 +496,7 @@ jobs:
     # image review remains a separate optional check until its acceptance gate passes.
     name: CI required
     if: ${{ always() }}
-    needs: [rewrite-contracts, lint, deny, test, assets, release, runner-image]
+    needs: [rewrite-contracts, lint, deny, tests-linux-build, tests-linux-shards, tests-linux-extras, tests-linux, tests-windows-build, tests-windows-shards, tests-windows-extras, tests-windows, assets, release, runner-image]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

@@ -25,7 +25,7 @@ test("asset failure plus skipped release retains both blocking reasons", () => {
   const summary = summaryMarkdown(report, metadata);
   assert.equal(report.passed, false); assert.equal(annotations(report).length, 2);
   assert.match(summary, /Front-end build and tests.*Failed/); assert.match(summary, /Release binaries and version smoke.*Skipped/);
-  assert.match(summary, /5\/7/); assert.match(summary, /Blocked/);
+  assert.match(summary, /12\/14/); assert.match(summary, /Blocked/);
 });
 
 test("malformed, missing and unexpected dependency metadata fails without reflecting payloads", () => {
@@ -36,9 +36,9 @@ test("malformed, missing and unexpected dependency metadata fails without reflec
 });
 
 test("summary shows validated revision/run/artifact context and discards untrusted fields", () => {
-  const all = success(); all.test.outputs = { markup: "<script>secret</script>\n::error::injection" };
+  const all = success(); all["tests-linux"].outputs = { markup: "<script>secret</script>\n::error::injection" };
   const report = evaluateResults(JSON.stringify(all)); const summary = summaryMarkdown(report, metadata);
-  assert.match(summary, /Ready/); assert.match(summary, /7\/7/); assert.match(summary, /commit\/a{40}/); assert.match(summary, /actions\/runs\/123/);
+  assert.match(summary, /Ready/); assert.match(summary, /14\/14/); assert.match(summary, /commit\/a{40}/); assert.match(summary, /actions\/runs\/123/);
   assert.match(summary, /attempt 2/); assert.match(summary, /app-css/); assert.match(summary, /rbit-linux-x86_64/);
   assert.match(summary, /combined job result/); assert.match(summary, /does not infer unreported measurements/);
   assert.ok(!summary.includes("secret")); assert.deepEqual(annotations(report), []);
@@ -51,7 +51,7 @@ test("actual CLI publishes summaries and returns failure for skipped, invalid or
   const output = join(root, "summary.md"); await writeFile(output, "");
   const cli = fileURLToPath(new URL("../ci/required-check.mjs", import.meta.url));
   const env = { ...process.env, ...metadata, CI_NEEDS: JSON.stringify(success()), GITHUB_STEP_SUMMARY: output };
-  const passed = execFileSync(process.execPath, [cli], { env, encoding: "utf8", windowsHide: true }); assert.match(passed, /passed \(7\/7\)/);
+  const passed = execFileSync(process.execPath, [cli], { env, encoding: "utf8", windowsHide: true }); assert.match(passed, /passed \(14\/14\)/);
   assert.match(await readFile(output, "utf8"), /CI validation/);
   env.CI_NEEDS = JSON.stringify({ ...success(), "runner-image": { result: "skipped" } });
   const skipped = spawnSync(process.execPath, [cli], { env, encoding: "utf8", windowsHide: true });
@@ -79,7 +79,10 @@ test("workflow gate covers every validation, preserves platform/smoke checks and
   assert.ok(!workflow.includes("continue-on-error:")); assert.ok(!workflow.includes("pull_request_target:"));
   assert.ok(!gate.includes("GH_TOKEN")); assert.doesNotMatch(gate, /:\s*(write|write-all)\s*$/m);
   for (const match of workflow.matchAll(/uses: ([^\s#]+)/g)) if (!match[1].startsWith("./")) assert.match(match[1], /@[a-f0-9]{40}$/);
-  assert.equal([...workflow.matchAll(/os: \[ubuntu-latest, windows-latest\]/g)].length, 2);
+  // Contracts keep their two-platform matrix; workspace tests are per-platform job sets
+  // (see rewrite-ci-shards.test.mjs) whose aggregates carry the required-check names.
+  assert.equal([...workflow.matchAll(/os: \[ubuntu-latest, windows-latest\]/g)].length, 1);
+  for (const os of ["ubuntu-latest", "windows-latest"]) assert.match(workflow, new RegExp(`^    name: Tests \\(${os}\\)\\r?$`, "m"));
   // The Windows-only native platform boundary is linted and policy-tested on both matrix platforms.
   const contracts = workflow.slice(workflow.indexOf("\n  rewrite-contracts:"), workflow.indexOf("\n  lint:"));
   assert.match(contracts, /^      - run: node scripts\/workspace\.mjs clippy --package rbit-platform --all-targets --locked -- -D warnings\r?$/m);

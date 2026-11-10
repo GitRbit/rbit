@@ -27,7 +27,9 @@ function saves(expression, event, ref) {
 }
 function dependencyPolicy(source) {
   const steps = cacheSteps(source);
-  assert.equal(steps.length, 3, "lint, matrix tests and release-build keep their existing caches");
+  // Lint, release build, and per platform the test build and the doc-test job. Test
+  // shards compile nothing: they run the test build's nextest archive.
+  assert.equal(steps.length, 6, "lint, per-platform test build and doc tests, and release build keep caches");
   for (const step of steps) {
     assert.equal(step.action, pinnedAction);
     assert.match(step.body, /workspaces: "\. -> \.cargo-build"/);

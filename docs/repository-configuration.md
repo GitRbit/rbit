@@ -41,6 +41,9 @@ Expected live settings:
 Required checks are `Format and clippy`, `Licenses and advisories`,
 `Tests (ubuntu-latest)`, `Tests (windows-latest)`, `Front-end build` and `Release build`.
 If CI job names change, update the live rules and `scripts/audit-repository.mjs` together.
+The two `Tests (<os>)` checks are aggregate jobs over each platform's test build, test
+shards and doc tests; the shards themselves (`Tests (<os>, K/N)`) are not required
+individually. See [CI test shards](ci-test-shards.md).
 No approving-review minimum is imposed while the project has a single maintainer; all
 changes still require a pull request and green checks, with no configured ruleset bypass.
 

@@ -1,10 +1,11 @@
 # Required CI check
 
 `CI required` is the stable aggregate job in `.github/workflows/ci.yml`. It runs
-after every existing validation job, including both Linux/Windows matrices and
-the runner-image build/start/tool smoke. Its summary shows the tested revision,
-run/attempt link, required-check results, platforms and artifact names. Individual
-jobs retain detailed logs, platform results and existing cache behavior.
+after every existing validation job, including every Linux and Windows test job
+(build, shards, doc tests and the `Tests (<os>)` aggregates; see
+[CI test shards](ci-test-shards.md)) and the runner-image build/start/tool smoke.
+Its summary shows the tested revision, run/attempt link, required-check results,
+platforms and artifact names. Individual jobs retain detailed logs, platform results and existing cache behavior.
 
 Every dependency must return `success`. A failure, cancellation, skip, missing
 entry or unknown result blocks the aggregate. For example, if the asset build
