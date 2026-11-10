@@ -58,5 +58,21 @@ entries! { Es:
             text.number(count);
             text.literal(" más en los registros de los trabajos.");
         }
+        RunLayoutMessage::TriggeredVia => text.literal("Iniciada por"),
+        RunLayoutMessage::Status => text.literal("Estado"),
+        RunLayoutMessage::TotalDuration => text.literal("Duración total"),
+        RunLayoutMessage::RerunBy { name } => {
+            text.literal("Repetida por ");
+            text.argument(name);
+        }
+        RunLayoutMessage::Inputs => text.literal("Entradas"),
+        RunLayoutMessage::Waited { time } => {
+            text.literal("esperó ");
+            text.argument(time);
+        }
+        RunLayoutMessage::RanOn { runner } => {
+            text.literal("en ");
+            text.argument(runner);
+        }
     }
 }

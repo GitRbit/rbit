@@ -82,3 +82,62 @@ async fn the_run_page_draws_its_jobs_as_a_graph_of_their_needs() {
     let (_, spanish) = get_with(&fixture, &url, &fixture.reader, &[("accept-language", "es")]).await;
     assert!(spanish.contains(r#"aria-label="Gráfico de trabajos""#));
 }
+
+/// A run of `alice/rocket` with one job, started by `event` with `inputs`, for pull `pull`.
+async fn started_run(fixture: &Fixture, event: RunEvent, pull: Option<i64>, inputs: Option<&str>) -> rbit_core::actions::Run {
+    let labels = vec!["ubuntu-latest".to_owned()];
+    let jobs = [NewJob {
+        key: "build",
+        name: "build",
+        matrix: None,
+        needs: &[],
+        runs_on: &labels,
+        permissions: None,
+        payload: b"{}",
+        condition: false,
+        max_parallel: None,
+        group: None,
+        environment: None,
+    }];
+    let new = NewRun {
+        repo: fixture.repo_id().await,
+        workflow_path: ".rbit/workflows/ci.yml",
+        workflow_name: "CI",
+        title: "Details",
+        event,
+        reference: "refs/heads/main",
+        sha: "0123456789abcdef0123456789abcdef01234567",
+        actor: Some(fixture.alice.id()),
+        trigger_actor: Some(fixture.alice.id()),
+        pull_number: pull,
+        is_fork: false,
+        trusted: true,
+        concurrency_group: None,
+        cancel_in_progress: false,
+        event_payload: "{}",
+        dispatch_inputs: inputs,
+        start: RunStart::Runnable,
+        jobs: &jobs,
+        error: None,
+        now: Timestamp::now(),
+    };
+    fixture.database.actions_runs().create_run(&new).await.unwrap()
+}
+
+#[tokio::test]
+async fn the_summary_says_how_a_run_started_with_its_inputs_and_pull_request() {
+    let fixture = Fixture::new().await;
+    fixture.database.actions_settings().set_enabled(fixture.repo_id().await, true, Timestamp::now()).await.unwrap();
+    let manual = started_run(&fixture, RunEvent::WorkflowDispatch, None, Some(r#"{"level":"<debug>","dry":true}"#)).await;
+    let page = fixture.page(&format!("/alice/rocket/actions/runs/{}", manual.number), &fixture.reader).await;
+    for label in ["Triggered via", "Status", "Total duration", "Artifacts", "Inputs"] {
+        assert!(page.contains(label), "{label}");
+    }
+    assert!(page.contains(">level</dt>") && page.contains(">&#60;debug&#62;</dd>") && page.contains(">true</dd>"), "{page}");
+    assert!(page.contains(r#"<bdi class="font-mono" dir="ltr">ubuntu-latest</bdi>"#), "a job shows the labels it asked for");
+
+    let pull = started_run(&fixture, RunEvent::PullRequest, Some(12), None).await;
+    let page = fixture.page(&format!("/alice/rocket/actions/runs/{}", pull.number), &fixture.reader).await;
+    assert!(page.contains(r#"href="/alice/rocket/pull/12">#12</a>"#));
+    assert!(!page.contains(">Inputs<"));
+}

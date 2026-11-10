@@ -61,5 +61,21 @@ entries! { Ru:
             text.number(count);
             text.literal(" в журналах заданий.");
         }
+        RunLayoutMessage::TriggeredVia => text.literal("Событие"),
+        RunLayoutMessage::Status => text.literal("Статус"),
+        RunLayoutMessage::TotalDuration => text.literal("Общая длительность"),
+        RunLayoutMessage::RerunBy { name } => {
+            text.literal("Перезапустил(а) ");
+            text.argument(name);
+        }
+        RunLayoutMessage::Inputs => text.literal("Входные данные"),
+        RunLayoutMessage::Waited { time } => {
+            text.literal("ожидание ");
+            text.argument(time);
+        }
+        RunLayoutMessage::RanOn { runner } => {
+            text.literal("на ");
+            text.argument(runner);
+        }
     }
 }

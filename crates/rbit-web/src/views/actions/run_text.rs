@@ -41,6 +41,10 @@ pub struct RunText {
     pub error_level: Localized,
     pub warning_level: Localized,
     pub notice_level: Localized,
+    pub triggered_via: Localized,
+    pub status: Localized,
+    pub total_duration: Localized,
+    pub inputs: Localized,
 }
 
 impl RunText {
@@ -76,6 +80,10 @@ impl RunText {
             error_level: catalog.localized(RunLayoutMessage::ErrorLevel),
             warning_level: catalog.localized(RunLayoutMessage::WarningLevel),
             notice_level: catalog.localized(RunLayoutMessage::NoticeLevel),
+            triggered_via: catalog.localized(RunLayoutMessage::TriggeredVia),
+            status: catalog.localized(RunLayoutMessage::Status),
+            total_duration: catalog.localized(RunLayoutMessage::TotalDuration),
+            inputs: catalog.localized(RunLayoutMessage::Inputs),
         }
     }
 
@@ -148,6 +156,27 @@ impl RunText {
     /// Annotations the page does not list.
     pub fn more_annotations(&self, count: &u64) -> Localized {
         self.catalog.localized(RunLayoutMessage::MoreAnnotations { count: *count })
+    }
+
+    /// "Re-run by bob".
+    pub fn rerun_by(&self, name: &str) -> Localized {
+        self.catalog.localized(RunLayoutMessage::RerunBy { name })
+    }
+
+    /// "waited 12s": how long a job waited for a runner.
+    pub fn waited(&self, took: &crate::views::when::Took) -> Localized {
+        let time = took.text(self.catalog.locale());
+        self.catalog.localized(RunLayoutMessage::Waited { time: time.as_str() })
+    }
+
+    /// "on box-1": the runner that ran a job.
+    pub fn ran_on(&self, runner: &str) -> Localized {
+        self.catalog.localized(RunLayoutMessage::RanOn { runner })
+    }
+
+    /// "+3 more": inputs not listed.
+    pub fn more(&self, count: &u64) -> Localized {
+        self.more_jobs(count)
     }
 
     /// Text that only exists in English, such as a relative timestamp.

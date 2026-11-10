@@ -36,6 +36,13 @@ fn messages() -> Vec<RunLayoutMessage<'static>> {
         M::NoticeLevel,
         M::StepFailed { step: "<Test>" },
         M::MoreAnnotations { count: 10 },
+        M::TriggeredVia,
+        M::Status,
+        M::TotalDuration,
+        M::RerunBy { name: "alice" },
+        M::Inputs,
+        M::Waited { time: "12s" },
+        M::RanOn { runner: "box-1" },
     ]
 }
 
@@ -43,7 +50,7 @@ fn messages() -> Vec<RunLayoutMessage<'static>> {
 fn run_layout_keys_render_and_translate() {
     let messages = messages();
     let ids: BTreeSet<_> = messages.iter().map(|message| message.id()).collect();
-    assert_eq!(ids.len(), 16, "ids are unique and every variant is listed");
+    assert_eq!(ids.len(), 23, "ids are unique and every variant is listed");
     for &message in &messages {
         for locale in DERIVED {
             let text = Catalog::new(locale).localized(message);

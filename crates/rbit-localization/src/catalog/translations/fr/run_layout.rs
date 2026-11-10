@@ -58,5 +58,21 @@ entries! { Fr:
             text.number(count);
             text.literal(" de plus dans les journaux des jobs.");
         }
+        RunLayoutMessage::TriggeredVia => text.literal("Déclenchée par"),
+        RunLayoutMessage::Status => text.literal("Statut"),
+        RunLayoutMessage::TotalDuration => text.literal("Durée totale"),
+        RunLayoutMessage::RerunBy { name } => {
+            text.literal("Relancée par ");
+            text.argument(name);
+        }
+        RunLayoutMessage::Inputs => text.literal("Entrées"),
+        RunLayoutMessage::Waited { time } => {
+            text.literal("a attendu ");
+            text.argument(time);
+        }
+        RunLayoutMessage::RanOn { runner } => {
+            text.literal("sur ");
+            text.argument(runner);
+        }
     }
 }

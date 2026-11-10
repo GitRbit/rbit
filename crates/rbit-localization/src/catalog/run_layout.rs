@@ -45,6 +45,26 @@ pub enum RunLayoutMessage<'a> {
     MoreAnnotations {
         count: u64,
     },
+    /// The label of the event that started a run.
+    TriggeredVia,
+    /// The label of a run's state.
+    Status,
+    /// The label of how long a run took from start to end.
+    TotalDuration,
+    /// Who started a run again (a later attempt).
+    RerunBy {
+        name: &'a str,
+    },
+    /// The label of a manual run's inputs.
+    Inputs,
+    /// How long a job waited for a runner; `time` is a duration ("12s").
+    Waited {
+        time: &'a str,
+    },
+    /// The runner that ran a job, by name.
+    RanOn {
+        runner: &'a str,
+    },
 }
 
 impl MessageFamily for RunLayoutMessage<'_> {
@@ -66,6 +86,13 @@ impl MessageFamily for RunLayoutMessage<'_> {
             Self::NoticeLevel => "actions.run.layout.notice-level",
             Self::StepFailed { .. } => "actions.run.layout.step-failed",
             Self::MoreAnnotations { .. } => "actions.run.layout.more-annotations",
+            Self::TriggeredVia => "actions.run.layout.triggered-via",
+            Self::Status => "actions.run.layout.status",
+            Self::TotalDuration => "actions.run.layout.total-duration",
+            Self::RerunBy { .. } => "actions.run.layout.rerun-by",
+            Self::Inputs => "actions.run.layout.inputs",
+            Self::Waited { .. } => "actions.run.layout.waited",
+            Self::RanOn { .. } => "actions.run.layout.ran-on",
         }
     }
 
@@ -101,6 +128,22 @@ impl MessageFamily for RunLayoutMessage<'_> {
                 text.literal("And ");
                 text.number(count);
                 text.literal(" more in the jobs' logs.");
+            }
+            Self::TriggeredVia => text.literal("Triggered via"),
+            Self::Status => text.literal("Status"),
+            Self::TotalDuration => text.literal("Total duration"),
+            Self::RerunBy { name } => {
+                text.literal("Re-run by ");
+                text.argument(name);
+            }
+            Self::Inputs => text.literal("Inputs"),
+            Self::Waited { time } => {
+                text.literal("waited ");
+                text.argument(time);
+            }
+            Self::RanOn { runner } => {
+                text.literal("on ");
+                text.argument(runner);
             }
         }
     }

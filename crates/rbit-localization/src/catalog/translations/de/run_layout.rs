@@ -55,5 +55,21 @@ entries! { De:
             text.number(count);
             text.literal(" weitere in den Protokollen der Jobs.");
         }
+        RunLayoutMessage::TriggeredVia => text.literal("Ausgelöst durch"),
+        RunLayoutMessage::Status => text.literal("Status"),
+        RunLayoutMessage::TotalDuration => text.literal("Gesamtdauer"),
+        RunLayoutMessage::RerunBy { name } => {
+            text.literal("Erneut gestartet von ");
+            text.argument(name);
+        }
+        RunLayoutMessage::Inputs => text.literal("Eingaben"),
+        RunLayoutMessage::Waited { time } => {
+            text.literal("wartete ");
+            text.argument(time);
+        }
+        RunLayoutMessage::RanOn { runner } => {
+            text.literal("auf ");
+            text.argument(runner);
+        }
     }
 }

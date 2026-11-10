@@ -41,7 +41,31 @@
     </div>
     {% endif %}
   </div>
+  {#- The run at a glance, as GitHub's summary strip: how it started, its state, how long
+      it took (ticking while it runs), its artifacts, then the workflow, commit and attempt. -#}
   <dl class="grid grid-cols-2 gap-x-5 gap-y-4 border-t border-line bg-subtle px-4 py-4 text-[13px] sm:grid-cols-4 sm:px-5">
+    <div class="min-w-0">
+      <dt class="text-xs text-ink-muted">{% call ui::localized(text.triggered_via) %}{% endcall %}</dt>
+      <dd class="mt-1 flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-1">
+        <span class="font-medium">{% call ui::localized(text.event(run.event_message)) %}{% endcall %}</span>
+        {% if let Some((number, url)) = trigger.pull %}<a class="tabular-nums hover:underline hover:underline-offset-4" href="{{ url }}">#{{ number }}</a>{% endif %}
+        {% if let Some(schedule) = trigger.schedule %}<code class="kbd" dir="ltr">{{ schedule }}</code>{% endif %}
+        <time class="text-xs text-ink-faint" datetime="{{ run.when_iso }}">{% call ui::localized(run.when.relative(page.locale)) %}{% endcall %}</time>
+      </dd>
+    </div>
+    <div class="min-w-0">
+      <dt class="text-xs text-ink-muted">{% call ui::localized(text.status) %}{% endcall %}</dt>
+      <dd class="mt-1 font-medium {{ look.tone }}">{% call ui::localized(text.state(run.look)) %}{% endcall %}</dd>
+      {% if let Some(name) = trigger.rerun_by %}<dd class="mt-1 break-words text-xs text-ink-faint">{% call ui::localized(text.rerun_by(name)) %}{% endcall %}</dd>{% endif %}
+    </div>
+    <div class="min-w-0">
+      <dt class="text-xs text-ink-muted">{% call ui::localized(text.total_duration) %}{% endcall %}</dt>
+      <dd class="mt-1 tabular-nums" {% if let Some(since) = trigger.since %}data-since="{{ since }}"{% endif %}>{% if let Some(duration) = run.duration %}{% call ui::localized(duration.text(page.locale)) %}{% endcall %}{% else %}–{% endif %}</dd>
+    </div>
+    <div class="min-w-0">
+      <dt class="text-xs text-ink-muted">{% call ui::localized(text.artifacts) %}{% endcall %}</dt>
+      <dd class="mt-1 tabular-nums">{% if trigger.artifacts > 0 %}<a class="hover:underline hover:underline-offset-4" href="#run-artifacts">{{ trigger.artifacts }}</a>{% else %}{{ trigger.artifacts }}{% endif %}</dd>
+    </div>
     <div class="min-w-0">
       <dt class="text-xs text-ink-muted">{% call ui::localized(text.workflow) %}{% endcall %}</dt>
       <dd class="mt-1 break-words font-medium">
@@ -50,7 +74,7 @@
     </div>
     {#- The sha and ref share one wrapping line that follows the cell's direction; a block
         `bdi` would take its own LTR direction and sit alone at the left edge. -#}
-    <div class="min-w-0">
+    <div class="min-w-0 sm:col-span-2">
       <dt class="text-xs text-ink-muted">{% call ui::localized(text.commit) %}{% endcall %}</dt>
       <dd class="mt-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 font-mono text-xs">
         <a class="hover:underline hover:underline-offset-4"
@@ -58,16 +82,21 @@
         {% if !run.reference.is_empty() %}<bdi class="min-w-0 break-all text-ink-muted">{{ run.reference }}</bdi>{% endif %}
       </dd>
     </div>
-    {% if let Some(duration) = run.duration %}
-    <div class="min-w-0">
-      <dt class="text-xs text-ink-muted">{% call ui::localized(text.duration) %}{% endcall %}</dt>
-      <dd class="mt-1 tabular-nums">{% call ui::localized(duration.text(page.locale)) %}{% endcall %}</dd>
-    </div>
-    {% endif %}
     <div class="min-w-0">
       <dt class="text-xs text-ink-muted">{% call ui::localized(text.attempt) %}{% endcall %}</dt>
       <dd class="mt-1 tabular-nums">{{ run.attempt }}</dd>
     </div>
   </dl>
+  {% if !trigger.inputs.is_empty() %}
+  <div class="border-t border-line px-4 py-3 sm:px-5">
+    <h2 class="text-xs text-ink-muted">{% call ui::localized(text.inputs) %}{% endcall %}</h2>
+    <dl class="mt-2 grid gap-x-5 gap-y-1 font-mono text-xs sm:grid-cols-[max-content_minmax(0,1fr)]" dir="ltr">
+      {% for (name, value) in trigger.inputs %}
+      <dt class="text-ink-muted">{{ name }}</dt><dd class="min-w-0 whitespace-pre-wrap break-words">{{ value }}</dd>
+      {% endfor %}
+    </dl>
+    {% if trigger.more_inputs > 0 %}<p class="mt-1 text-xs text-ink-faint">{% call ui::localized(text.more(trigger.more_inputs)) %}{% endcall %}</p>{% endif %}
+  </div>
+  {% endif %}
 </div>
 
