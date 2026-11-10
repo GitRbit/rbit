@@ -49,5 +49,21 @@ entries! { Ko:
             text.number(count);
             text.literal("개가 더 있습니다.");
         }
+        RunLayoutMessage::TriggeredVia => text.literal("트리거"),
+        RunLayoutMessage::Status => text.literal("상태"),
+        RunLayoutMessage::TotalDuration => text.literal("총 소요 시간"),
+        RunLayoutMessage::RerunBy { name } => {
+            text.argument(name);
+            text.literal(" 님이 다시 실행");
+        }
+        RunLayoutMessage::Inputs => text.literal("입력"),
+        RunLayoutMessage::Waited { time } => {
+            text.literal("대기 ");
+            text.argument(time);
+        }
+        RunLayoutMessage::RanOn { runner } => {
+            text.literal("러너 ");
+            text.argument(runner);
+        }
     }
 }

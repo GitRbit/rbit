@@ -41,8 +41,10 @@
 // Actions: annotations.
 pub mod annotations;
 mod archive_files;
+// Actions: run page.
 mod artifact_ports;
 pub mod artifacts;
+pub mod trigger_details;
 // Actions: shared cache.
 pub mod browse;
 mod cache_ports;

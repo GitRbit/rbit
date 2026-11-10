@@ -48,5 +48,21 @@ entries! { Ja:
             text.number(count);
             text.literal(" 件はジョブのログにあります。");
         }
+        RunLayoutMessage::TriggeredVia => text.literal("トリガー"),
+        RunLayoutMessage::Status => text.literal("状態"),
+        RunLayoutMessage::TotalDuration => text.literal("合計時間"),
+        RunLayoutMessage::RerunBy { name } => {
+            text.argument(name);
+            text.literal(" が再実行");
+        }
+        RunLayoutMessage::Inputs => text.literal("入力"),
+        RunLayoutMessage::Waited { time } => {
+            text.literal("待機 ");
+            text.argument(time);
+        }
+        RunLayoutMessage::RanOn { runner } => {
+            text.literal("ランナー ");
+            text.argument(runner);
+        }
     }
 }

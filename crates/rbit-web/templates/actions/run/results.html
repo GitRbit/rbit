@@ -20,9 +20,12 @@
     {% include "actions/state.html" %}
     <div class="min-w-0 flex-1">
       <a class="block break-words text-[13px] font-medium hover:underline hover:underline-offset-4" href="{{ job.url }}">{{ job.name }}</a>
-      {% if !job.needs.is_empty() %}
-      <p class="mt-1 break-words text-xs text-ink-faint">{% call ui::localized(text.needs(job.needs)) %}{% endcall %}</p>
-      {% endif %}
+      <p class="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 break-words text-xs text-ink-faint">
+        {% if !job.labels.is_empty() %}<bdi class="font-mono" dir="ltr">{{ job.labels }}</bdi>{% endif %}
+        {% if let Some(runner) = job.runner %}<span>{% call ui::localized(text.ran_on(runner)) %}{% endcall %}</span>{% endif %}
+        {% if let Some(waited) = job.waited %}<span class="tabular-nums">{% call ui::localized(text.waited(waited)) %}{% endcall %}</span>{% endif %}
+        {% if !job.needs.is_empty() %}<span>{% call ui::localized(text.needs(job.needs)) %}{% endcall %}</span>{% endif %}
+      </p>
       {% if let Some(environment) = job.environment %}
       <p class="mt-1 break-words text-xs text-ink-muted">
         {% call ui::icon("server", "inline size-3 align-[-1px]") %}{% endcall %}
@@ -34,7 +37,7 @@
       {% endif %}
     </div>
     {% if let Some(duration) = job.duration %}
-    <span class="shrink-0 whitespace-nowrap text-xs tabular-nums text-ink-faint">{% call ui::localized(duration.text(page.locale)) %}{% endcall %}</span>
+    <span class="shrink-0 whitespace-nowrap text-xs tabular-nums text-ink-faint" {% if let Some(since) = job.since %}data-since="{{ since }}"{% endif %}>{% call ui::localized(duration.text(page.locale)) %}{% endcall %}</span>
     {% endif %}
     {% if job.can_rerun %}
     {% let rerun_label = self.rerun_label(job.name.as_str()) %}
@@ -49,8 +52,9 @@
   {% endfor %}
 </ul>
 {% if !artifacts.is_empty() %}
-<h2 class="mb-2 mt-6 text-[13px] font-medium text-ink-muted">{% call ui::localized(text.artifacts) %}{% endcall %}</h2>
-<ul class="box">
+<section id="run-artifacts" class="box mt-6 overflow-hidden" aria-labelledby="run-artifacts-title">
+<h2 id="run-artifacts-title" class="box-header box-title">{% call ui::icon("package", "size-4 shrink-0 text-ink-muted") %}{% endcall %}<span class="me-auto">{% call ui::localized(text.artifacts) %}{% endcall %}</span><span class="badge tabular-nums">{{ artifacts.len() }}</span></h2>
+<ul>
   {% for artifact in artifacts %}
   <li class="row flex-wrap gap-3 py-3 sm:flex-nowrap">
     {% call ui::icon("package", "size-4 shrink-0 text-ink-muted") %}{% endcall %}
@@ -64,6 +68,7 @@
   </li>
   {% endfor %}
 </ul>
+</section>
 {% endif %}
 
 {% for summary in summaries %}

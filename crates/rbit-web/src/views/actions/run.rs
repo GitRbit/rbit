@@ -7,7 +7,7 @@ use askama::Template;
 use askama_web::WebTemplate;
 use rbit_core::{
     Account, AccountId,
-    actions::{Job, Run},
+    actions::{Job, Run, RunnerId},
 };
 use std::collections::BTreeMap;
 
@@ -31,6 +31,22 @@ pub struct JobRow {
     pub environment: Option<String>,
     /// The URL the job reported for it (`environment.url`), shown when it is http(s).
     pub environment_url: Option<String>,
+    /// While it runs: when it started, in Unix seconds (the duration ticks).
+    pub since: Option<i64>,
+    /// The labels it asked a runner for: "ubuntu-latest, gpu".
+    pub labels: String,
+    /// How long it waited for a runner, once one took it.
+    pub waited: Option<Took>,
+    /// The runner that took it ([`name_runners`]).
+    pub runner_id: Option<RunnerId>,
+    pub runner: Option<String>,
+}
+
+/// Names the runners of `rows` from `names`; a deleted runner stays unnamed.
+pub fn name_runners(rows: &mut [JobRow], names: &BTreeMap<RunnerId, String>) {
+    for row in rows {
+        row.runner = row.runner_id.and_then(|id| names.get(&id)).cloned();
+    }
 }
 
 /// The jobs of a run in `needs` order: each after everything it needs, otherwise in the
@@ -50,6 +66,11 @@ pub fn job_rows(jobs: &[Job], number: i64, urls: &ActionsUrls, can_write: bool) 
             can_rerun: can_write && job.status.is_done(),
             environment: job.environment.clone(),
             environment_url: job.environment_url.clone().filter(|url| url.starts_with("https://") || url.starts_with("http://")),
+            since: super::run_layout::job_clock(job).1,
+            labels: job.runs_on.join(", "),
+            waited: job.started_at.map(|started| Took((started.seconds() - job.queued_at.unwrap_or(job.created_at).seconds()).max(0))),
+            runner_id: job.runner_id,
+            runner: None,
         })
         .collect()
 }
@@ -119,6 +140,8 @@ pub struct RunPage {
     pub graph: Option<super::JobGraph>,
     /// The errors, warnings and notices of the run's jobs.
     pub annotations: super::AnnotationsView,
+    /// How the run started and how far it is.
+    pub trigger: super::TriggerView,
     /// Not finished: the job list refreshes itself.
     pub active: bool,
     pub self_url: String,

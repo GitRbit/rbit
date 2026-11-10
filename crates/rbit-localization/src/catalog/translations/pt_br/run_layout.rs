@@ -58,5 +58,21 @@ entries! { PtBr:
             text.number(count);
             text.literal(" nos logs dos jobs.");
         }
+        RunLayoutMessage::TriggeredVia => text.literal("Acionada por"),
+        RunLayoutMessage::Status => text.literal("Status"),
+        RunLayoutMessage::TotalDuration => text.literal("Duração total"),
+        RunLayoutMessage::RerunBy { name } => {
+            text.literal("Executada novamente por ");
+            text.argument(name);
+        }
+        RunLayoutMessage::Inputs => text.literal("Entradas"),
+        RunLayoutMessage::Waited { time } => {
+            text.literal("aguardou ");
+            text.argument(time);
+        }
+        RunLayoutMessage::RanOn { runner } => {
+            text.literal("em ");
+            text.argument(runner);
+        }
     }
 }

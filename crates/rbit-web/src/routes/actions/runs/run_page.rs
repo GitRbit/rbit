@@ -9,7 +9,7 @@ use crate::{
     views::{
         actions::{
             ActionsUrls, AnnotationsView, ArtifactRow, DeploymentView, JobGraph, RunPage, RunPageLive, RunSidebar, RunSummary, SummaryView,
-            job_rows,
+            TriggerView, job_rows, name_runners,
         },
         layout::Page,
     },
@@ -42,7 +42,7 @@ pub async fn show(
     let has_jobs = !run.is_workflow_error();
     let any_failed = detail.jobs.iter().any(|job| matches!(job.status, Status::Failure | Status::Cancelled));
     // Actions: artifacts (A).
-    let artifacts =
+    let artifacts: Vec<ArtifactRow> =
         actions.run_artifacts(&loaded.ctx, run.id).await?.iter().map(|artifact| ArtifactRow::new(artifact, &urls, run.number)).collect();
     // Actions: step summaries.
     let summaries = actions
@@ -53,6 +53,10 @@ pub async fn show(
         .collect();
     // Actions: annotations.
     let annotations = AnnotationsView::new(&actions.run_annotations(&loaded.ctx, &detail.jobs).await?, &detail.jobs, run.number, &urls);
+    // Actions: run page. How the run started, and who ran its jobs where.
+    let trigger_details = actions.trigger_details(&loaded.ctx, run).await?;
+    let mut jobs = job_rows(&detail.jobs, run.number, &urls, can_write && finished && has_jobs);
+    name_runners(&mut jobs, &actions.runner_names(&detail.jobs).await?);
     // Actions: environments.
     let deployments = actions
         .pending_deployments(viewer.user(), &loaded.ctx, run)
@@ -75,7 +79,8 @@ pub async fn show(
         )),
         header: loaded.header(&state, "actions"),
         run: RunSummary::new(run, &detail.people, &urls, loaded.urls.commit(&run.sha)),
-        jobs: job_rows(&detail.jobs, run.number, &urls, can_write && finished && has_jobs),
+        trigger: TriggerView::new(run, &detail.people, trigger_details, &loaded.urls.home(), artifacts.len()),
+        jobs,
         annotations,
         graph: JobGraph::new(&detail.jobs, run.number, &urls)
             .map(|graph| if locale.0.locale.direction() == Direction::RightToLeft { graph.mirrored() } else { graph }),

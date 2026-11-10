@@ -45,5 +45,22 @@ entries! { ZhHans:
             text.number(count);
             text.literal(" 条。");
         }
+        RunLayoutMessage::TriggeredVia => text.literal("触发方式"),
+        RunLayoutMessage::Status => text.literal("状态"),
+        RunLayoutMessage::TotalDuration => text.literal("总耗时"),
+        RunLayoutMessage::RerunBy { name } => {
+            text.literal("由 ");
+            text.argument(name);
+            text.literal(" 重新运行");
+        }
+        RunLayoutMessage::Inputs => text.literal("输入"),
+        RunLayoutMessage::Waited { time } => {
+            text.literal("等待 ");
+            text.argument(time);
+        }
+        RunLayoutMessage::RanOn { runner } => {
+            text.literal("运行器 ");
+            text.argument(runner);
+        }
     }
 }

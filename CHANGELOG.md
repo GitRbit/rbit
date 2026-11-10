@@ -44,6 +44,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   matchers) with their file and line, and every failed step without an error of its own,
   each linking to the job at the log line. The server keeps the first 50 of each job as
   the runner sends its log, so the page reads no logs.
+- An Actions run's summary says more about the run: what triggered it (the pull request,
+  the schedule's cron), its state, its total duration (ticking while it runs), how many
+  artifacts it has, who started a later attempt and a manual run's inputs. Each job shows
+  the labels it asked for, the runner that ran it and how long it waited for one, and
+  the artifacts sit in their own box like the rest of the summary.
 
 ### Fixed
 
