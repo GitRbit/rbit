@@ -29,7 +29,7 @@ native-completion requirements are separate and unchanged.
 
 The action remains pinned to
 [`d1527c8f67ef9af357290475d4af4b0fab8f12e0`](https://github.com/Swatinem/rust-cache/tree/d1527c8f67ef9af357290475d4af4b0fab8f12e0).
-All three existing cache steps explicitly disable workspace-crate, all-crate,
+All six cache steps explicitly disable workspace-crate, all-crate,
 Cargo-bin and failure caching. The configured intermediate directory still matches
 the repository's Cargo build directory; final executables, runtime copies, private
 data and the developer shared cache are not added to cache paths.
@@ -51,8 +51,10 @@ against earlier archives even when textual keys match.
 
 ## Cost and validation
 
-There are four existing job/platform combinations with Rust caches: Linux lint,
-Linux tests, Windows tests and Linux release checks. PR-local saves can add entries
+There are six job/platform combinations with Rust caches: Linux lint, the Linux and
+Windows test builds, the Linux and Windows doc-test jobs, and Linux release checks. Test
+shards compile nothing and restore no cache; they run the test build's nextest archive
+(see [CI test shards](ci-test-shards.md)). PR-local saves can add entries
 for each combination and dependency/toolchain change. GitHub expires entries not
 accessed for seven days and evicts least-recently-used entries when repository
 storage is exhausted. Increased quotas can incur charges; this change does not

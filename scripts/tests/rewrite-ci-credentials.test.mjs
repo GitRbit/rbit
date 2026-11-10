@@ -12,7 +12,7 @@ function checkoutPolicy(source, expected) {
   }
 }
 const workflows = [
-  ["ci.yml", 8],
+  ["ci.yml", 13],
   ["actions-production-visual.yml", 2],
 ];
 for (const [name, expected] of workflows) {
