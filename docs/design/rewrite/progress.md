@@ -27,6 +27,35 @@ Public development and review continue in [draft PR #53](https://github.com/GitR
 
 The kernel now coordinates password admission and its first statically owned background workers. Full module lifecycle and the remaining feature ports are still pending. Existing services remain the behavior authority during the transition.
 
+## 2026-11-09 release checkpoint
+
+At `bb9faf9f`, 55 of the 56 rows in the [feature ledger](feature-ledger.json) are
+`ported`. The one other row is `delivery.releases` (`baseline-retained`): the rewrite
+check enforces the release contract, but the paired runner archives and `rbit-runner`
+image have not yet run in a tagged release, so it closes on the first tag of the current
+release workflow. The row count rose from 55 because `operations.admin` was split: the
+restart-required configuration editor, monitoring and graceful restart are now the
+separate `operations.configuration` row ([acceptance](operations-configuration-acceptance.md)).
+
+Design decisions recorded in the acceptance documents:
+
+- The Actions review gate and environment wait timer stay SQL predicates inside the
+  store's transactions, as the race authority; the surrounding decisions live in
+  `rbit-actions` ([scheduling](actions-scheduling-acceptance.md#the-review-gate-and-the-wait-timer)).
+- The inactive original-proof session paths, including the original-proof external
+  provider path, stay inactive and move with the original-proof session protocol
+  ([external sign-in](identity-external-acceptance.md), [identity retirement](identity-retirement.md#scope)).
+
+Dependencies: `zip` 9.2.3, `async-compression` 0.4.52, Tailwind CSS 4.3.4 and a pinned
+`taiki-e/install-action` v2.90.0. RUSTSEC-2026-0459 (bundled SQLite) is accepted in
+`deny.toml` until `sqlx` admits the fixed `libsqlite3-sys`; only an operator restoring an
+untrusted backup reaches it. The [non-regression comparison](measurements/release-020-nonregression.md)
+flags only German Explore (+6.5%, about 50 µs); every other scenario's median server
+time is within 5% of 0.1.5.
+
+Windows test suites were not run for the retirement slices and are deferred to after
+0.2.0; Windows release binaries are still built.
+
 ## Current validation checkpoint
 
 The release target is **0.2.0**, across the server, runner and workspace crates.
