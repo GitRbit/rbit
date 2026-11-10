@@ -42,6 +42,9 @@ pub struct InstanceSettings {
     pub registration: RegistrationMode,
     /// Whether `/explore` (and the links to it) are offered. When off, it is `404` for everyone.
     pub explore_enabled: bool,
+    /// Only signed-in users may browse: anonymous visitors are sent to the sign-in page, and
+    /// Git, LFS and the API answer anonymous reads with an authentication challenge.
+    pub require_sign_in: bool,
     pub org_creation: OrgCreationPolicy,
     pub default_visibility: Visibility,
     /// The hour (0–23, UTC) email digests are sent at for users who did not choose one.
@@ -56,6 +59,7 @@ impl InstanceSettings {
             branding: config.branding.clone(),
             registration: if config.server.open_registration { RegistrationMode::Open } else { RegistrationMode::Closed },
             explore_enabled: config.server.explore_enabled,
+            require_sign_in: config.server.require_sign_in,
             org_creation: OrgCreationPolicy::AnyUser,
             default_visibility: Visibility::Public,
             digest_hour: config.notifications.digest_hour,

@@ -6,7 +6,7 @@
 //! protection and a browser session cannot be ridden. Presented tokens are throttled per client address (`ApiAuth`; invalid ones cost
 //! extra), authenticated requests per account and anonymous ones per address
 //! (`ApiRequest`). Expired tokens and tokens of suspended accounts are refused like
-//! unknown ones. With `[api] enabled = false` every request is answered 404 here.
+//! unknown ones. An instance that requires signing in answers anonymous requests 401. With `[api] enabled = false` every request is answered 404 here.
 //!
 //! Repositories are opened by their current name; an old name of a repository the caller
 //! may read (it was renamed or transferred) is answered with a redirect to the same
@@ -180,6 +180,9 @@ impl FromRequestParts<AppState> for Caller {
 
         let Some(authorization) = parts.headers.get(header::AUTHORIZATION) else {
             throttle.check_client(ThrottleScope::ApiRequest, &address)?;
+            if state.services.instance.require_sign_in() {
+                return Err(ApiError::unauthorized("Requires authentication"));
+            }
             return Ok(Self { request, ..Self::default() });
         };
         let Some(token) = presented_token(authorization) else {

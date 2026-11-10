@@ -123,6 +123,8 @@ entries! { De:
         ConfigText::Help { section: "server", key: "site_name" } => text.literal("Standardname, solange kein Live-Branding ihn überschreibt. Den aktiven Namen ändern Sie unter „Branding und Richtlinien“."),
         ConfigText::Label { section: "server", key: "explore_enabled" } => text.literal("Entdecken-Seite standardmäßig anbieten"),
         ConfigText::Help { section: "server", key: "explore_enabled" } => text.literal("Standard für die Entdecken-Seite, die alle öffentlichen Repositorys auflistet. Die Live-Einstellung unter „Branding und Richtlinien“ hat Vorrang."),
+        ConfigText::Label { section: "server", key: "require_sign_in" } => text.literal("Standardmäßig Anmeldung zum Durchsuchen verlangen"),
+        ConfigText::Help { section: "server", key: "require_sign_in" } => text.literal("Standard dafür, wer die Seite durchsuchen darf. Wenn aktiviert, werden Besucher zur Anmeldeseite weitergeleitet, und Git, LFS und die API verweigern anonyme Lesezugriffe. Die Live-Einstellung unter „Branding und Richtlinien“ hat Vorrang."),
         ConfigText::Label { section: "server", key: "open_registration" } => text.literal("Registrierung standardmäßig offen"),
         ConfigText::Help { section: "server", key: "open_registration" } => text.literal("Standardrichtlinie für Registrierungen. Die Live-Richtlinie unter „Branding und Richtlinien“ hat Vorrang."),
         ConfigText::Label { section: "storage", key: "data_dir" } => text.literal("Datenverzeichnis"),

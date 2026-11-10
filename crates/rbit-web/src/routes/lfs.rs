@@ -9,7 +9,8 @@
 //!
 //! * HTTP Basic with a password or personal access token, exactly as for Git
 //!   ([`git_http::authenticate`]: throttled, two-factor accounts need a token, a token's
-//!   scope caps access), or none for public repositories;
+//!   scope caps access), or none for public repositories (unless the instance requires
+//!   signing in);
 //! * `Authorization: Bearer lfs1.…`, the short-lived signed header the batch API and
 //!   `git-lfs-authenticate` (SSH) hand out. Invalid ones count as failed attempts;
 //! * a workflow task's token (`rbat_…`), as for Git: its own repository at its grant
@@ -149,11 +150,18 @@ pub(crate) async fn authorize(
             return Err(LfsError::Challenge);
         };
         let (subject, object) = (grant.subject, grant.object.clone());
+        // Issued to an anonymous caller before the instance began requiring sign-in.
+        if subject == TokenSubject::Anonymous && state.services.instance.require_sign_in() {
+            return Err(LfsError::Challenge);
+        }
         let granted = lfs.open_granted(grant, owner, repo).await?;
         return Ok(Authorized { ctx: granted.ctx, user: granted.user, subject, object, authenticated: true, task: false });
     }
 
     let caller = git_http::authenticate(state, client, headers).await?;
+    if caller.is_none() && state.services.instance.require_sign_in() {
+        return Err(LfsError::Challenge);
+    }
     // Actions: S. A task opens its own repository at its grant, others only if public.
     if let (Some(GitCaller::Task(grant)), Some(actions)) = (&caller, &state.services.actions) {
         let ctx = actions.open_for_task(grant, owner, repo).await?;

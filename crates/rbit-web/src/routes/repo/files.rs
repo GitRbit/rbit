@@ -66,7 +66,7 @@ pub async fn commit_count(
         capped,
         singular: count == 1,
     };
-    let pinned = commit_id == revision && ctx.repo.repo.visibility.is_public();
+    let pinned = commit_id == revision && state.readable_anonymously(ctx.repo.repo.visibility);
     Ok(crate::middleware::cache_pinned(locale.response(fragment.into_response()), pinned))
 }
 
@@ -100,7 +100,7 @@ pub async fn find(
             body.push('\n');
         }
         let response = ([(header::CONTENT_TYPE, "text/plain; charset=utf-8")], body).into_response();
-        let pinned = commit_id == revision && loaded.ctx.repo.repo.visibility.is_public();
+        let pinned = commit_id == revision && state.readable_anonymously(loaded.ctx.repo.repo.visibility);
         return Ok(crate::middleware::cache_pinned(response, pinned));
     }
 

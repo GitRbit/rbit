@@ -13,7 +13,7 @@ use rbit_auth::SessionToken;
 
 use crate::{
     AppState,
-    extract::{CurrentSession, UnreadNotifications, Viewer},
+    extract::{CurrentSession, UnreadNotifications, Viewer, sign_in_redirect},
 };
 
 pub const SESSION_COOKIE: &str = "rbit_session";
@@ -55,6 +55,9 @@ pub async fn session(State(state): State<AppState>, jar: CookieJar, mut request:
             Err(error) => tracing::warn!(%error, "failed to resume session"),
         }
     }
+    if viewer.0.is_none() && state.services.instance.require_sign_in() && !reachable_signed_out(request.uri().path()) {
+        return ([(header::CACHE_CONTROL, "no-store")], sign_in_redirect(request.uri())).into_response();
+    }
     request.extensions_mut().insert(viewer);
 
     let changes_password = request.method() == Method::POST && request.uri().path() == PASSWORD_CHANGE_PATH;
@@ -72,6 +75,28 @@ pub async fn session(State(state): State<AppState>, jar: CookieJar, mut request:
         guard.finish(response.status().is_redirection()).await;
     }
     response
+}
+
+/// What an anonymous visitor may still reach while the instance requires signing in:
+/// signing in (external providers and the second step included) and up, signing out,
+/// password recovery, email verification and one-click unsubscribe links, the offline
+/// page, and the language and theme choices the sign-in page offers. Static assets, the
+/// app manifest, the service worker and the health and metrics endpoints never pass
+/// through this layer; Git, LFS and the API refuse anonymous reads themselves.
+fn reachable_signed_out(path: &str) -> bool {
+    const EXACT: [&str; 9] = [
+        "/login",
+        "/signup",
+        "/logout",
+        "/password/forgot",
+        "/offline",
+        "/settings/language",
+        "/settings/language/dialog",
+        crate::views::themes::CHOOSE_URL,
+        crate::views::themes::PICKER_URL,
+    ];
+    const PREFIXES: [&str; 4] = ["/login/", "/password/reset/", "/email/verify/", "/email/unsubscribe/"];
+    EXACT.contains(&path) || PREFIXES.iter().any(|prefix| path.starts_with(prefix))
 }
 
 /// Only the password form, its submission, sign-out and presentation assets remain available.

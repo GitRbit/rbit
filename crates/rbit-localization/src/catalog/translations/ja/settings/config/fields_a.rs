@@ -13,6 +13,8 @@ config_entries! {
         ConfigText::Label { section: "server", key: "site_name" } => text.literal("デフォルトのサイト名"),
         ConfigText::Label { section: "server", key: "explore_enabled" } => text.literal("デフォルトで探索ページを提供"),
         ConfigText::Help { section: "server", key: "explore_enabled" } => text.literal("すべてのパブリックリポジトリを一覧表示する探索ページのデフォルトです。「ブランディングとポリシー」で設定した値が優先されます。"),
+        ConfigText::Label { section: "server", key: "require_sign_in" } => text.literal("デフォルトで閲覧にサインインを必須にする"),
+        ConfigText::Help { section: "server", key: "require_sign_in" } => text.literal("閲覧できるユーザーのデフォルトです。オンにすると、訪問者はサインインページに移動し、Git、LFS、API は匿名の読み取りを拒否します。「ブランディングとポリシー」で設定した値が優先されます。"),
         ConfigText::Label { section: "server", key: "open_registration" } => text.literal("デフォルトでアカウント登録を許可"),
         ConfigText::Label { section: "storage", key: "data_dir" } => text.literal("データディレクトリ"),
         ConfigText::Label { section: "storage", key: "secret_key_file" } => text.literal("秘密鍵ファイル"),

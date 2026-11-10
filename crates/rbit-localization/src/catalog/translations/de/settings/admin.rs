@@ -69,6 +69,9 @@ entries! { De:
         DashboardMessage::Explore => text.literal("Entdecken-Seite"),
         DashboardMessage::ExploreEnabled => text.literal("An"),
         DashboardMessage::ExploreDisabled => text.literal("Aus"),
+        DashboardMessage::Browsing => text.literal("Durchsuchen"),
+        DashboardMessage::BrowsingOpen => text.literal("Alle, angemeldet oder nicht"),
+        DashboardMessage::BrowsingSignedIn => text.literal("Nur angemeldete Benutzer"),
         DashboardMessage::Registration => text.literal("Registrierung"),
         DashboardMessage::RegistrationOpen => text.literal("Für alle offen"),
         DashboardMessage::RegistrationClosed => {

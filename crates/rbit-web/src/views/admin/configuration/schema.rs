@@ -16,6 +16,7 @@ const SERVER: &[Spec] = &[
     Spec { key: "site_name", kind: Kind::Text, optional: false, max: "" },
     Spec { key: "open_registration", kind: Kind::Toggle, optional: false, max: "" },
     Spec { key: "explore_enabled", kind: Kind::Toggle, optional: false, max: "" },
+    Spec { key: "require_sign_in", kind: Kind::Toggle, optional: false, max: "" },
 ];
 
 const STORAGE: &[Spec] = &[

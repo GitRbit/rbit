@@ -24,6 +24,7 @@ mod key {
     pub const DEFAULT_VISIBILITY: &str = "default_visibility";
     pub const DIGEST_HOUR: &str = "digest_hour";
     pub const EXPLORE: &str = "explore";
+    pub const REQUIRE_SIGN_IN: &str = "require_sign_in";
 }
 
 #[derive(Debug, Clone)]
@@ -49,6 +50,12 @@ impl InstanceService {
         self.settings.read().map_or_else(|poisoned| poisoned.into_inner().clone(), |s| s.clone())
     }
 
+    /// Whether only signed-in users may browse. Cheaper than [`Self::current`]: checked by
+    /// every anonymous request.
+    pub fn require_sign_in(&self) -> bool {
+        self.settings.read().map_or_else(|poisoned| poisoned.into_inner().require_sign_in, |s| s.require_sign_in)
+    }
+
     /// Public repositories, active users and organisations, for the front page. One cheap
     /// query; it reveals nothing a visitor could not count by browsing.
     pub async fn public_counts(&self) -> Result<PublicCounts, ServiceError> {
@@ -67,6 +74,7 @@ impl InstanceService {
         }
         let digest_hour = new.digest_hour.to_string();
         let explore = new.explore_enabled.to_string();
+        let require_sign_in = new.require_sign_in.to_string();
         let branding = serde_json::to_string(&new.branding).map_err(ServiceError::internal)?;
         let new = InstanceSettings { site_name: validate_site_name(&new.site_name)?, ..new };
 
@@ -79,6 +87,7 @@ impl InstanceService {
                 (key::DEFAULT_VISIBILITY, new.default_visibility.as_str()),
                 (key::DIGEST_HOUR, digest_hour.as_str()),
                 (key::EXPLORE, explore.as_str()),
+                (key::REQUIRE_SIGN_IN, require_sign_in.as_str()),
             ])
             .await?;
 
@@ -90,6 +99,7 @@ impl InstanceService {
             default_visibility = new.default_visibility.as_str(),
             digest_hour = new.digest_hour,
             explore_enabled = new.explore_enabled,
+            require_sign_in = new.require_sign_in,
             "instance settings updated"
         );
         match self.settings.write() {
@@ -121,6 +131,7 @@ fn apply_override(settings: &mut InstanceSettings, key: &str, value: &str) {
         key::DEFAULT_VISIBILITY => Visibility::parse(value).map(|visibility| settings.default_visibility = visibility),
         key::DIGEST_HOUR => value.parse::<u8>().ok().filter(|hour| *hour <= MAX_DIGEST_HOUR).map(|hour| settings.digest_hour = hour),
         key::EXPLORE => value.parse::<bool>().ok().map(|enabled| settings.explore_enabled = enabled),
+        key::REQUIRE_SIGN_IN => value.parse::<bool>().ok().map(|required| settings.require_sign_in = required),
         _ => None,
     }
     .is_some();
@@ -156,6 +167,8 @@ mod tests {
         apply_override(&mut settings, "digest_hour", "24");
         apply_override(&mut settings, "explore", "false");
         apply_override(&mut settings, "explore", "off");
+        apply_override(&mut settings, "require_sign_in", "true");
+        apply_override(&mut settings, "require_sign_in", "yes");
         apply_override(&mut settings, "site_name", "");
         apply_override(&mut settings, "unknown", "value");
 
@@ -166,6 +179,7 @@ mod tests {
                 branding: rbit_core::config::BrandingConfig::default(),
                 registration: RegistrationMode::Closed,
                 explore_enabled: false,
+                require_sign_in: true,
                 org_creation: OrgCreationPolicy::AdminsOnly,
                 default_visibility: Visibility::Private,
                 digest_hour: 19,

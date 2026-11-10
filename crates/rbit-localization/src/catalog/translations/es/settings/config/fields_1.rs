@@ -28,6 +28,8 @@ config_arms! {
         ),
         ConfigText::Label { section: "server", key: "explore_enabled" } => text.literal("Ofrecer la página Explorar por defecto"),
         ConfigText::Help { section: "server", key: "explore_enabled" } => text.literal("Valor predeterminado de la página Explorar, que lista todos los repositorios públicos. Prevalece el ajuste en vivo de Marca y políticas."),
+        ConfigText::Label { section: "server", key: "require_sign_in" } => text.literal("Exigir inicio de sesión para navegar por defecto"),
+        ConfigText::Help { section: "server", key: "require_sign_in" } => text.literal("Valor predeterminado de quién puede navegar. Si está activado, los visitantes se envían a la página de inicio de sesión y Git, LFS y la API rechazan las lecturas anónimas. Prevalece el ajuste en vivo de Marca y políticas."),
         ConfigText::Label { section: "server", key: "open_registration" } => text.literal("Registro abierto por defecto"),
         ConfigText::Help { section: "server", key: "open_registration" } => text.literal(
             "Política de registro predeterminada. Prevalece la política en vivo de Marca y políticas.",
