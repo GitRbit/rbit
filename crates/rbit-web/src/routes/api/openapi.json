@@ -585,14 +585,21 @@
       },
       "Error": {
         "type": "object",
-        "required": ["message"],
-        "properties": { "message": { "type": "string" } }
+        "required": ["message", "code"],
+        "properties": {
+          "message": { "type": "string", "description": "For people; may change." },
+          "code": {
+            "type": "string",
+            "description": "rbit's own stable error code for programs: `not_found`, `unauthenticated`, `forbidden`, `blocked`, `conflict` (or a precise kind of conflict: `head_changed`, `base_changed`), `invalid`, `rate_limited`, `unavailable`, `moved` or `internal`. New codes may be added."
+          }
+        }
       },
       "ValidationError": {
         "type": "object",
-        "required": ["message", "errors"],
+        "required": ["message", "code", "errors"],
         "properties": {
           "message": { "type": "string", "const": "Validation Failed" },
+          "code": { "type": "string", "const": "invalid" },
           "errors": { "type": "array", "items": { "type": "object", "required": ["field", "message"], "properties": { "field": { "type": "string" }, "message": { "type": "string" } } } }
         }
       },

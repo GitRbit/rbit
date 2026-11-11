@@ -147,6 +147,7 @@ async fn runs_page(
         status: query.status(),
         actor: non_empty(&query.actor),
         before: query.before.map(RunId),
+        sha: None,
     };
     let listing = actions.list_runs(&loaded.ctx, &run_query).await?;
     let action = selected.as_ref().map_or_else(|| urls.runs(), |(path, _)| urls.workflow(path));
@@ -307,8 +308,7 @@ pub struct SwitchForm {
     disabled: bool,
 }
 
-/// `POST /{owner}/{repo}/actions/workflows/{workflow}/switch`: disables or enables the
-/// workflow, then shows its page again.
+/// `POST /{owner}/{repo}/actions/workflows/{workflow}/switch`: disables or enables the workflow, then shows its page again.
 pub async fn switch(
     State(state): State<AppState>,
     SignedIn(user): SignedIn,

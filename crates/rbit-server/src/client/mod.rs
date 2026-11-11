@@ -14,8 +14,13 @@
 //! The client is part of the `rbit` binary, which every release already builds for every
 //! platform, so it always speaks the API of the server it ships with.
 
+mod agent;
 mod commands;
 mod hosts;
+mod pulls;
+mod runs;
+mod runs_view;
+mod util;
 
 use std::time::Duration;
 
@@ -23,6 +28,7 @@ use anyhow::{Context as _, anyhow, bail};
 use reqwest::{Method, StatusCode};
 use serde_json::Value;
 
+pub use agent::exit_code;
 pub use commands::{ClientCommand, run};
 
 /// An authenticated connection to one instance's REST API.
@@ -127,7 +133,7 @@ impl Api {
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
         if !status.is_success() {
-            bail!("{}", failure(status, &text));
+            return Err(agent::ApiFailure::from_response(status.as_u16(), &text).into());
         }
         Ok(if text.trim().is_empty() { Value::Null } else { serde_json::from_str(&text).context("the server's answer is not JSON")? })
     }
@@ -152,19 +158,9 @@ impl Api {
     pub async fn download(&self, path: &str) -> anyhow::Result<Vec<u8>> {
         let (status, _, bytes) = self.raw(Method::GET, path, None).await?;
         if !status.is_success() {
-            bail!("{}", failure(status, &String::from_utf8_lossy(&bytes)));
+            return Err(agent::ApiFailure::from_response(status.as_u16(), &String::from_utf8_lossy(&bytes)).into());
         }
         Ok(bytes)
-    }
-}
-
-/// What a refused request says: the server's `message` when it sent one.
-fn failure(status: StatusCode, body: &str) -> String {
-    let message = serde_json::from_str::<Value>(body).ok().and_then(|value| value["message"].as_str().map(str::to_owned));
-    match (status, message) {
-        (StatusCode::UNAUTHORIZED, _) => "not signed in, or the token is not valid: run `rbit auth login`".to_owned(),
-        (_, Some(message)) => format!("{message} ({})", status.as_u16()),
-        _ => format!("the server answered {status}"),
     }
 }
 

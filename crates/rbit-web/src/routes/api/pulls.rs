@@ -347,10 +347,10 @@ pub async fn merge(
     match state.services.pulls.merge(user, &ctx, input).await {
         Ok(sha) => Ok(Json(json!({ "sha": sha, "merged": true, "message": "Pull Request successfully merged" }))),
         Err(MergeFailure::HeadChanged) => {
-            Err(ApiError::new(StatusCode::CONFLICT, "Head branch was modified. Review and try the merge again."))
+            Err(ApiError::new(StatusCode::CONFLICT, "Head branch was modified. Review and try the merge again.").with_code("head_changed"))
         }
         Err(MergeFailure::BaseChanged) => {
-            Err(ApiError::new(StatusCode::CONFLICT, "Base branch was changed. Review and try the merge again."))
+            Err(ApiError::new(StatusCode::CONFLICT, "Base branch was changed. Review and try the merge again.").with_code("base_changed"))
         }
         Err(MergeFailure::Blocked(message)) => Err(ApiError::new(StatusCode::METHOD_NOT_ALLOWED, message)),
         Err(MergeFailure::Service(error)) => Err(error.into()),

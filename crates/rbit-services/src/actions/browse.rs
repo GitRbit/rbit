@@ -39,8 +39,10 @@ pub struct Badge {
 pub struct RunQuery {
     /// A workflow path (`.rbit/workflows/ci.yml`).
     pub workflow: Option<String>,
-    /// A branch name, without `refs/heads/`.
+    /// A branch name, without `refs/heads/`; also matches its pull requests' runs.
     pub branch: Option<String>,
+    /// The commit a run tested: a full id or a prefix of at least 7 hex digits.
+    pub sha: Option<String>,
     pub event: Option<RunEvent>,
     pub status: Option<Status>,
     /// The name of the account that caused the run.
@@ -181,6 +183,7 @@ impl ActionsService {
             status: query.status,
             actor,
             reference: reference.as_deref(),
+            sha: query.sha.as_deref(),
             before: query.before,
             limit: RUNS_PER_PAGE + 1,
             ..RunFilter::default()
@@ -307,6 +310,7 @@ impl ActionsService {
             status: query.status,
             actor,
             reference: reference.as_deref(),
+            sha: query.sha.as_deref(),
             statuses,
             offset,
             limit,

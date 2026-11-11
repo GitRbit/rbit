@@ -7,6 +7,36 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Output for programs: every `rbit run`, `pr`, `workflow`, `artifact` and `api` command
+  takes `--json` and prints one compact object with a versioned `schema`; failures print an
+  `rbit.error/1` object with a `code` and, where one helps, a runnable `hint`. Exit codes
+  now say what kind of answer it was (2 usage, 3 auth, 4 not found, 5 head or base moved, 8
+  pending, 9 cannot be trusted). `--fields` narrows lists; `--remote` (or `RBIT_REMOTE`)
+  reads a remote other than `origin`. See "Output for programs" in `docs/cli.md`.
+- Every REST API error body has a stable `code` beside its `message` (`not_found`,
+  `head_changed`, `invalid`, …).
+- `GET …/actions/runs?head_sha=` lists the runs that tested a commit (full id or a prefix
+  of 7 or more hex digits).
+
+### Changed
+
+- `rbit run view`, `watch` and `download` without a run id work on the runs of `--sha`, or
+  of the checkout's `HEAD`, instead of the repository's newest run, which could be another
+  branch's. A commit with no run yet is `pending` (exit 8); `watch` waits for its first run.
+- `rbit pr checks` treats "no status reported yet" as pending (exit 8), not as passed.
+- `rbit pr merge` always sends the head it expects (`--head`, or the one it just read), so a
+  newer push is refused with `head_changed` instead of merged.
+- `rbit run view --log-failed` includes timed-out and cancelled jobs.
+- `rbit run list --workflow` asks the server for that workflow's runs instead of filtering
+  one page after fetching it, which could come back empty.
+- The `--json` output of `rbit run list`, `run view` and `pr view` is now the compact,
+  versioned shape described in `docs/cli.md` instead of whole API objects.
+
+### Fixed
+
+- The runs API's `branch` filter now matches the runs of pull requests from that branch.
 ### Fixed
 
 - `rbit` started inside an rbit Actions job no longer refuses to start with "invalid

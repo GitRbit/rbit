@@ -26,9 +26,18 @@
           {
             "name": "branch",
             "in": "query",
-            "description": "Runs for this branch (without `refs/heads/`).",
+            "description": "Runs for this branch (without `refs/heads/`), including the runs of pull requests from it.",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "head_sha",
+            "in": "query",
+            "description": "rbit's own: runs that tested this commit, given as its full id or a prefix of at least 7 hex digits (422 otherwise). An empty list means no run has started for the commit yet, or none will.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{7,40}$"
             }
           },
           {
@@ -966,9 +975,18 @@
           {
             "name": "branch",
             "in": "query",
-            "description": "Runs for this branch (without `refs/heads/`).",
+            "description": "Runs for this branch (without `refs/heads/`), including the runs of pull requests from it.",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "head_sha",
+            "in": "query",
+            "description": "rbit's own: runs that tested this commit, given as its full id or a prefix of at least 7 hex digits (422 otherwise). An empty list means no run has started for the commit yet, or none will.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{7,40}$"
             }
           },
           {

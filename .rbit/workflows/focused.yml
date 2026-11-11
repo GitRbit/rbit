@@ -59,6 +59,10 @@ jobs:
       - name: Stylesheets
         if: ${{ contains(fromJSON('["rbit-web", "rbit-server", "rbit-e2e"]'), inputs.package) }}
         run: npm ci --no-audit --no-fund && npm run build:css
+      # The end-to-end tests start the built `rbit` and `rbit-runner` binaries.
+      - name: Binaries
+        if: ${{ inputs.package == 'rbit-e2e' }}
+        run: cargo build --locked --package rbit-server --package rbit-runner
       - name: Clippy
         if: ${{ inputs.clippy }}
         env:

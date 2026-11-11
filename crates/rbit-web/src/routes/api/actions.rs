@@ -44,15 +44,12 @@ use axum::{
 };
 use rbit_core::{
     RepoId, Timestamp, TokenScope, User,
-    actions::{
-        Artifact, ArtifactId, CacheEntry, CacheEntryId, JobId, RunEvent, RunId, Runner, RunnerId, SecretScope, SecretVisibility, Status,
-        Variable,
-    },
+    actions::{Artifact, ArtifactId, CacheEntry, CacheEntryId, JobId, RunId, Runner, RunnerId, SecretScope, SecretVisibility, Variable},
 };
 use rbit_services::{
     ActionsService, OrgContext, RepoContext, ServiceError,
     actions::{
-        browse::{RunQuery, WorkflowState},
+        browse::WorkflowState,
         caches::CacheOrder,
         dispatch::DispatchRequest,
         hooks,
@@ -78,6 +75,9 @@ use crate::AppState;
 
 // Actions: settings API.
 mod permissions;
+mod run_filters;
+
+use run_filters::{RunsQuery, non_empty};
 
 /// Where secrets and variables are served: a repository, an organisation, the caller.
 const SETTINGS_PREFIXES: [&str; 3] = ["/repos/{owner}/{repo}/actions", "/orgs/{org}/actions", "/user/actions"];
@@ -231,38 +231,6 @@ fn state_error(error: ServiceError) -> ApiError {
 
 // ------------------------------------------------------------------ runs and jobs
 
-/// The filters of `GET …/actions/runs`.
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
-pub struct RunsQuery {
-    branch: String,
-    event: String,
-    status: String,
-    actor: String,
-}
-
-/// The run statuses a GitHub `status` filter stands for; `None` for an unknown one. Valid
-/// values rbit never produces (`neutral`, `stale`, `timed_out`) stand for none.
-fn github_statuses(status: &str) -> Option<&'static [Status]> {
-    Some(match status {
-        "queued" | "requested" | "pending" => &[Status::Waiting, Status::Blocked],
-        "waiting" | "action_required" => &[Status::AwaitingApproval],
-        "in_progress" => &[Status::Running],
-        "completed" => &[Status::Success, Status::Failure, Status::Cancelled, Status::Skipped],
-        "success" => &[Status::Success],
-        "failure" => &[Status::Failure],
-        "cancelled" => &[Status::Cancelled],
-        "skipped" => &[Status::Skipped],
-        "neutral" | "stale" | "timed_out" => &[],
-        _ => return None,
-    })
-}
-
-fn non_empty(value: &str) -> Option<String> {
-    let value = value.trim();
-    (!value.is_empty()).then(|| value.to_owned())
-}
-
 /// `GET /repos/{owner}/{repo}/actions/runs`: newest first.
 pub async fn list_runs(
     State(state): State<AppState>,
@@ -283,20 +251,7 @@ async fn runs_page(
     filters: &RunsQuery,
     workflow: Option<String>,
 ) -> ApiResult<Response> {
-    let statuses = match non_empty(&filters.status) {
-        Some(status) => github_statuses(&status).ok_or_else(|| ApiError::invalid("status", format!("unknown status `{status}`")))?,
-        None => &[],
-    };
-    let event = non_empty(&filters.event);
-    let matches_nothing = (!filters.status.trim().is_empty() && statuses.is_empty())
-        || event.as_deref().is_some_and(|event| RunEvent::parse(event).is_none());
-    let query = RunQuery {
-        workflow,
-        branch: non_empty(&filters.branch),
-        event: event.as_deref().and_then(RunEvent::parse),
-        actor: non_empty(&filters.actor),
-        ..RunQuery::default()
-    };
+    let (query, statuses, matches_nothing) = filters.query(workflow)?;
     let actions = actions(state)?;
     let limit = u32::try_from(pager.limit()).unwrap_or(u32::MAX);
     let offset = u32::try_from(pager.offset()).unwrap_or(u32::MAX);
@@ -1184,6 +1139,8 @@ mod tests {
     use rbit_services::{CreateOrganization, CreateRepository};
     use rbit_storage::sqlite::actions_runs::{NewJob, NewRun, RunStart};
 
+    use rbit_core::actions::{RunEvent, Status};
+
     use super::{super::test_support::Fixture, *};
 
     const SHA: &str = "0123456789abcdef0123456789abcdef01234567";
@@ -1845,18 +1802,5 @@ jobs:
         let (_, json) = enabled.send("GET", "/api/v1/openapi.json", None, None).await;
         assert!(json["paths"]["/repos/{owner}/{repo}/actions/runs"]["get"].is_object());
         assert!(json["components"]["schemas"]["WorkflowRun"].is_object());
-    }
-
-    #[test]
-    fn github_statuses_cover_every_run_status_once() {
-        for status in Status::ALL {
-            let named = ["queued", "waiting", "in_progress", "completed"]
-                .into_iter()
-                .filter(|name| github_statuses(name).is_some_and(|statuses| statuses.contains(&status)))
-                .count();
-            assert_eq!(named, 1, "{status}");
-        }
-        assert_eq!(github_statuses("timed_out"), Some(&[][..]));
-        assert_eq!(github_statuses("Completed"), None);
     }
 }

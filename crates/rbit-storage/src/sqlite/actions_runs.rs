@@ -21,6 +21,8 @@
 
 use std::collections::BTreeSet;
 
+pub use super::actions_run_filter::RunFilter;
+
 use rbit_core::{
     AccountId, RepoId, Timestamp,
     actions::{
@@ -112,12 +114,15 @@ macro_rules! select_run {
 
 // Actions: integration (I).
 /// The `WHERE` clause of a [`RunFilter`] for repository `?1`; [`bind_run_filter!`] binds
-/// `?1` to `?8`.
+/// `?1` to `?10`. A branch (`?6` its ref, `?9` its name) also matches the runs of the
+/// repository's pull requests from that branch (`refs/pull/<n>/head`).
 macro_rules! runs_where {
     () => {
         "WHERE repo_id = ?1 AND (?2 IS NULL OR workflow_path = ?2) AND (?3 IS NULL OR event = ?3) AND (?4 IS NULL OR status = ?4) \
-         AND (?5 IS NULL OR actor_id = ?5) AND (?6 IS NULL OR ref = ?6) AND (?7 IS NULL OR id < ?7) \
-         AND (?8 IS NULL OR status IN (SELECT value FROM json_each(?8)))"
+         AND (?5 IS NULL OR actor_id = ?5) AND (?6 IS NULL OR ref = ?6 OR (?9 IS NOT NULL AND ref IN (SELECT 'refs/pull/' || i.number \
+         || '/head' FROM pull_requests p JOIN issues i ON i.id = p.issue_id WHERE p.repo_id = ?1 AND p.head_branch = ?9))) \
+         AND (?7 IS NULL OR id < ?7) AND (?8 IS NULL OR status IN (SELECT value FROM json_each(?8))) \
+         AND (?10 IS NULL OR sha = ?10 OR (length(?10) BETWEEN 7 AND 39 AND substr(sha, 1, length(?10)) = lower(?10)))"
     };
 }
 
@@ -133,6 +138,8 @@ macro_rules! bind_run_filter {
             .bind($filter.reference)
             .bind($filter.before.map(|run| run.0))
             .bind(status_codes($filter.statuses))
+            .bind($filter.reference.and_then(|reference| reference.strip_prefix("refs/heads/")))
+            .bind($filter.sha)
     };
 }
 
@@ -347,26 +354,6 @@ pub struct NewJob<'a> {
     pub environment: Option<&'a str>,
 }
 
-/// Filters of the runs list. `before` pages by id (newest first), `offset` by position
-/// (the API's pages).
-#[derive(Debug, Clone, Default)]
-pub struct RunFilter<'a> {
-    pub workflow_path: Option<&'a str>,
-    pub event: Option<RunEvent>,
-    pub status: Option<RunStatus>,
-    pub actor: Option<AccountId>,
-    /// The full ref.
-    pub reference: Option<&'a str>,
-    pub before: Option<RunId>,
-    pub limit: u32,
-    // Actions: integration (I).
-    /// One of these statuses, when not empty (a GitHub status such as `completed` stands
-    /// for several); applies together with `status`.
-    pub statuses: &'a [RunStatus],
-    /// Runs skipped after the filters apply.
-    pub offset: u32,
-}
-
 /// A runner asking for work.
 #[derive(Debug, Clone)]
 pub struct ClaimRequest<'a> {
@@ -536,7 +523,7 @@ impl ActionsRunStore {
 
     /// The repository's runs, newest first.
     pub async fn list_runs(&self, repo: RepoId, filter: &RunFilter<'_>) -> Result<Vec<Run>, StorageError> {
-        let query = sqlx::query_as(select_run!(concat!(runs_where!(), " ORDER BY id DESC LIMIT ?9 OFFSET ?10")));
+        let query = sqlx::query_as(select_run!(concat!(runs_where!(), " ORDER BY id DESC LIMIT ?11 OFFSET ?12")));
         let rows: Vec<RunRow> = bind_run_filter!(query, repo, filter).bind(filter.limit).bind(filter.offset).fetch_all(&self.pool).await?;
         rows.into_iter().map(Run::try_from).collect()
     }
