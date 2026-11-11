@@ -143,23 +143,24 @@ export const SCENARIOS = [
       }
       const runs = [];
       for (const sha of shas) {
-        const run = await findRun(ctx.api, ctx.repo, { branch: "s/burst", sha, deadlineMs: 30_000, pollMs: 2_000 });
+        // Ten runs on one branch: look further back than the recipe's usual five.
+        const run = await findRun(ctx.api, ctx.repo, { branch: "s/burst", sha, deadlineMs: 30_000, pollMs: 2_000, perPage: 20 });
         if (run) runs.push(await waitForRun(ctx.api, ctx.repo, run.id, { deadlineMs: 600_000, pollMs: ctx.pollMs }));
       }
-      const minutes = await runnerMinutes(ctx, runs.map((run) => run.id));
+      const seconds = await runnerSeconds(ctx, runs.map((run) => run.id));
       const finished = runs.filter((run) => run.conclusion === "success").length;
       const superseded = runs.filter((run) => run.conclusion === "cancelled").length;
-      return graded({ runs: runs.length, finished, superseded, runnerMinutes: minutes }, { finished: 1, superseded: 9 }, finished === 1 && superseded === 9);
+      return graded({ runs: runs.length, finished, superseded, runnerSeconds: seconds }, { finished: 1, superseded: 9 }, finished === 1 && superseded === 9);
     },
   },
 ];
 
-/** Sums the wall time of every job of `runIds`, in minutes. */
-async function runnerMinutes(ctx, runIds) {
+/** Sums the wall time of every job of `runIds`, in seconds (the API's resolution). */
+async function runnerSeconds(ctx, runIds) {
   let ms = 0;
   for (const id of runIds) {
     const { jobs } = await ctx.api.json(`/repos/${ctx.repo}/actions/runs/${id}/jobs`, { label: "jobs" });
     for (const job of jobs) if (job.started_at && job.completed_at) ms += Date.parse(job.completed_at) - Date.parse(job.started_at);
   }
-  return Math.round((ms / 60_000) * 100) / 100;
+  return Math.round(ms / 1000);
 }

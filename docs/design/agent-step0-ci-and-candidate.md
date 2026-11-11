@@ -141,7 +141,30 @@ lists a commit's changed files) is left out rather than graded as noise.
 
 ## Baseline numbers
 
-Filled in from the first runs on the stable instance's CI; see "As built".
+Measured 2026-11-11 with the release binaries CI built for this branch (rbit 0.2.1 plus
+this step), one capacity-1 host runner, 16 cores, while other CI ran on the same machine.
+Calls and bytes are deterministic; times are this machine's.
+
+| Scenario | Answer | Calls | Bytes read | Push to first failure line |
+|---|---|---|---|---|
+| `green` | right | 3 | 2,326 | |
+| `compile_error` | right | 5 | 6,311 | 3.0 s |
+| `test_failure` | right | 5 | 167,514 | 3.0 s |
+| `flaky` | trap: not labelled; one re-run to learn it | 7 | 168,256 | 3.0 s |
+| `timeout` | trap: reads `failure`, not `timed_out` | 24 | 189,087 | |
+| `docs_only` | trap: a 30 s wait ending in "no run" | 12 | 1,300 | |
+| `status_after_push` | trap: `pending` with no statuses | 4 | 3,226 | |
+| `newest_run_trap` | trap: the newest run is another branch's | 11 | 10,288 | |
+| `head_moves` | trap: the watch ends `success` for the old head | 12 | 13,729 | |
+| `burst` | trap: ten runs, none superseded | | | |
+
+The cost of reading one failing test is the whole job log: 167 KB, of which the failing
+line is under 100 bytes. With a 0.2.0 runner the same log is 91 KB; the 0.2.1 runner
+starts every line with a timestamp. Goal 2 of the plan (6 KB, 2 calls) is 28 times
+smaller.
+
+CI on rbit for one push, jobs one after another: 23.5 minutes (release build 9.6, tests
+6.6, contracts 3.7, clippy 2.9, candidate 0.4, the rest under 0.3 each).
 
 ## Tests
 
@@ -153,4 +176,16 @@ by the candidate job on every commit.
 
 ## As built
 
-To be completed when the step lands.
+- The first runs on rbit found a real bug: rbit-runner sets `RBIT_ACTIONS=true` and an
+  `RBIT_<name>` for every field of the run in every job, and the server read them as
+  settings, so no rbit server could start inside an rbit Actions job (18 of rbit's own
+  tests failed). The server now reads only `RBIT_SECTION__KEY` variables, and the
+  candidate harness passes no inherited `RBIT_*` variable to what it starts.
+- `cargo deny` found RUSTSEC-2026-0486 in rustix 1.1.5; both exact pins moved to 1.1.6.
+- A docs-only case is left out of the agent eval: no API lists a commit's changed files,
+  so an agent cannot tell "none expected" from "not started yet". The benchmark keeps it
+  as a trap.
+- The `burst` scenario lists twenty runs per page, since the recipe's usual five cannot
+  find ten pushes. Its row is filled in from the next full run.
+- A new server and a 0.2.0 runner pass the candidate check together, so the runner can be
+  upgraded after the server.

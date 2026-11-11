@@ -37,10 +37,10 @@ export function firstFailure(log) {
  * one whose `head_sha` matches. Returns `null` when none appears before `deadlineMs`, which
  * the caller must report as "no run", never as a pass.
  */
-export async function findRun(api, repo, { branch, sha, deadlineMs, pollMs = 3_000 }) {
+export async function findRun(api, repo, { branch, sha, deadlineMs, pollMs = 3_000, perPage = 5 }) {
   const until = Date.now() + deadlineMs;
   for (;;) {
-    const page = await api.json(`/repos/${repo}/actions/runs?branch=${encodeURIComponent(branch)}&per_page=5`, { label: "runs" });
+    const page = await api.json(`/repos/${repo}/actions/runs?branch=${encodeURIComponent(branch)}&per_page=${perPage}`, { label: "runs" });
     const run = page.workflow_runs.find((candidate) => candidate.head_sha === sha);
     if (run) return run;
     if (Date.now() >= until) return null;
