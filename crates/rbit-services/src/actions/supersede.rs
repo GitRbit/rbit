@@ -38,7 +38,8 @@ impl ActionsService {
     /// Cancels run `run` of `repo` because commit `by` superseded it, recording that.
     pub(crate) async fn cancel_superseded(&self, repo: RepoId, run: RunId, by: Option<&str>) -> Result<Option<Settled>, ServiceError> {
         let store = self.ctx().database.actions_runs();
-        let running: Vec<TaskId> = store.jobs(run).await?.into_iter().filter(|job| job.status == Status::Running).filter_map(|job| job.task_id).collect();
+        let running: Vec<TaskId> =
+            store.jobs(run).await?.into_iter().filter(|job| job.status == Status::Running).filter_map(|job| job.task_id).collect();
         let settled = store.cancel_run(repo, run, Timestamp::now()).await?;
         if settled.is_some()
             && let Some(by) = by

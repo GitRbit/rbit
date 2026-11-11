@@ -15,8 +15,8 @@ use rbit_core::{
     RepoId, Timestamp,
     actions::{Job, Run, Status, TerminationReason},
 };
-use rbit_storage::sqlite::actions_runs::{CommitDecision, QueuePlace};
 use rbit_git::divergence::Divergence;
+use rbit_storage::sqlite::actions_runs::{CommitDecision, QueuePlace};
 
 use super::{browse::RunQuery, logs::FailedJob};
 use crate::{ActionsService, RepoContext, ServiceError};
@@ -75,7 +75,12 @@ impl ActionsService {
             .await?
             .into_iter()
             .find(|(issue, _)| issue.repo_id == repo.repo.repo.id)
-            .map(|(issue, pull)| BranchPull { number: i64::from(issue.number.get()), draft: pull.is_draft, base: pull.base_branch, head_sha: pull.head_sha });
+            .map(|(issue, pull)| BranchPull {
+                number: i64::from(issue.number.get()),
+                draft: pull.is_draft,
+                base: pull.base_branch,
+                head_sha: pull.head_sha,
+            });
         let base = pull.as_ref().map_or_else(|| repo.repo.repo.default_branch.clone(), |pull| pull.base.clone());
         let divergence = if base == branch { None } else { repo.reader.divergence(format!("refs/heads/{base}"), head.clone()).await.ok() };
         let ci = self.commit_ci(repo, &head).await?;
@@ -90,9 +95,17 @@ impl ActionsService {
 
     /// Records what the trigger decided for pushed commit `sha`: its `workflows`, how many
     /// `started`, and why none did.
-    pub(crate) async fn record_decision(&self, repo: RepoId, sha: &str, workflows: usize, started: usize, skipped: Option<&str>) -> Result<(), ServiceError> {
+    pub(crate) async fn record_decision(
+        &self,
+        repo: RepoId,
+        sha: &str,
+        workflows: usize,
+        started: usize,
+        skipped: Option<&str>,
+    ) -> Result<(), ServiceError> {
         let count = |n: usize| i64::try_from(n).unwrap_or(i64::MAX);
-        let decision = CommitDecision { workflows: count(workflows), started: count(started), reason: skipped.unwrap_or("started").to_owned() };
+        let decision =
+            CommitDecision { workflows: count(workflows), started: count(started), reason: skipped.unwrap_or("started").to_owned() };
         Ok(self.ctx().database.actions_runs().record_decision(repo, sha, &decision, Timestamp::now()).await?)
     }
 
@@ -112,7 +125,15 @@ impl ActionsService {
                 Some("started") => ("not_started", "runs were started for this commit and are gone"),
                 _ => ("not_started", "workflow files exist but no run has appeared yet"),
             };
-            return Ok(CommitCi { state, reason: Some(reason), runs: Vec::new(), counts: [0; 4], failed: Vec::new(), superseded_by: None, queue: None });
+            return Ok(CommitCi {
+                state,
+                reason: Some(reason),
+                runs: Vec::new(),
+                counts: [0; 4],
+                failed: Vec::new(),
+                superseded_by: None,
+                queue: None,
+            });
         }
         let mut jobs: Vec<Job> = Vec::new();
         for run in &page.runs {
@@ -134,7 +155,8 @@ impl ActionsService {
         }
         // A commit whose every run a newer push cancelled is superseded, not merely cancelled.
         let superseded = self.superseded_by(&page.runs).await?;
-        let superseded_by = page.runs.iter().all(|run| superseded.contains_key(&run.id)).then(|| superseded.values().next().cloned()).flatten();
+        let superseded_by =
+            page.runs.iter().all(|run| superseded.contains_key(&run.id)).then(|| superseded.values().next().cloned()).flatten();
         let state = if superseded_by.is_some() { "superseded" } else { ci_state(&page.runs, &counts, &failed) };
         let queue = self.queue_places(&jobs).await?.into_values().min_by_key(|place| place.ahead);
         Ok(CommitCi { state, reason: None, runs: page.runs, counts, failed, superseded_by, queue })

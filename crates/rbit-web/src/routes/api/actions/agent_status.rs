@@ -54,8 +54,11 @@ impl RepoPath {
 /// The CI of a commit as both endpoints show it.
 fn ci_json(ci: &CommitCi) -> Value {
     let [success, failure, running, queued] = ci.counts;
-    let runs: Vec<Value> =
-        ci.runs.iter().map(|run| json!({ "id": run.id.0, "number": run.number, "workflow": run.workflow_name, "status": run.status.to_string() })).collect();
+    let runs: Vec<Value> = ci
+        .runs
+        .iter()
+        .map(|run| json!({ "id": run.id.0, "number": run.number, "workflow": run.workflow_name, "status": run.status.to_string() }))
+        .collect();
     json!({
         "state": ci.state,
         "reason": ci.reason,
@@ -105,13 +108,21 @@ pub struct StatusQuery {
 }
 
 /// `GET /repos/{owner}/{repo}/agent/status`
-pub async fn status(State(state): State<AppState>, caller: Caller, Path(path): Path<RepoPath>, Query(query): Query<StatusQuery>) -> ApiResult<Json<Value>> {
+pub async fn status(
+    State(state): State<AppState>,
+    caller: Caller,
+    Path(path): Path<RepoPath>,
+    Query(query): Query<StatusQuery>,
+) -> ApiResult<Json<Value>> {
     let ctx = path.open(&state, &caller).await?;
     let status = actions(&state)?.branch_status(&ctx, query.branch.as_deref().filter(|branch| !branch.is_empty())).await?;
     let failed_run = status.ci.failed.first().map(|failed| failed.job.run_id.0);
     let pull = status.pull.as_ref().map(|pull| (pull.number, pull.draft));
     let next = next(status.ci.state, &status.head, failed_run, pull);
-    let divergence = status.divergence.as_ref().map(|divergence| json!({ "merge_base": divergence.merge_base, "ahead": divergence.ahead, "behind": divergence.behind }));
+    let divergence = status
+        .divergence
+        .as_ref()
+        .map(|divergence| json!({ "merge_base": divergence.merge_base, "ahead": divergence.ahead, "behind": divergence.behind }));
     let pull = status.pull.as_ref().map(|pull| json!({ "number": pull.number, "draft": pull.draft, "base": pull.base, "head_sha": pull.head_sha, "up_to_date_with_head": pull.head_sha == status.head }));
     let mut ci = ci_json(&status.ci);
     ci["for_sha"] = json!(status.head);
@@ -139,7 +150,12 @@ pub struct WatchQuery {
 }
 
 /// `GET /repos/{owner}/{repo}/agent/watch`
-pub async fn watch(State(state): State<AppState>, caller: Caller, Path(path): Path<RepoPath>, Query(query): Query<WatchQuery>) -> ApiResult<Json<Value>> {
+pub async fn watch(
+    State(state): State<AppState>,
+    caller: Caller,
+    Path(path): Path<RepoPath>,
+    Query(query): Query<WatchQuery>,
+) -> ApiResult<Json<Value>> {
     let sha = query.sha.trim().to_ascii_lowercase();
     if sha.len() != 40 || !sha.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err(ApiError::invalid("sha", "give the full id of the commit to watch"));

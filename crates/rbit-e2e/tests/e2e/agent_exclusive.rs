@@ -81,7 +81,8 @@ async fn an_exclusive_job_has_the_runner_to_itself() {
     std::fs::create_dir_all(sample.dir.join(".rbit/workflows")).unwrap();
     let sha = git.commit_file(&sample.dir, ".rbit/workflows/ci.yml", WORKFLOW);
     git.ok(&sample.dir, &["push", "--quiet", &server.git_url_as("alice", "rocket", "alice", PASSWORD), "main"]);
-    let _runner = Running(Command::new(&binary).args(["--config", &config_arg, "run"]).stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap());
+    let _runner =
+        Running(Command::new(&binary).args(["--config", &config_arg, "run"]).stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap());
 
     let api = reqwest::Client::builder().no_proxy().build().unwrap();
     let get = |path: String| {

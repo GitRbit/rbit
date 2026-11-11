@@ -20,11 +20,9 @@ pub mod archive;
 pub mod blame;
 pub mod changes;
 pub mod compare;
+pub mod diff;
 // Agent loop: where a branch stands, cheaply.
 pub mod divergence;
-// Agent loop: scratch refs for CI runs of commits on no branch.
-pub mod scratch;
-pub mod diff;
 // Milestone 3: editing files in the browser (E).
 pub mod edit;
 pub mod error;
@@ -47,6 +45,8 @@ pub mod relocate;
 // Milestone 3: importing and push mirrors (M).
 pub mod remote;
 pub mod revision;
+// Agent loop: scratch refs for CI runs of commits on no branch.
+pub mod scratch;
 pub mod storage;
 pub mod wikis;
 

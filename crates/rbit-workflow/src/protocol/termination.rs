@@ -34,7 +34,9 @@ pub struct TaskTermination {
 impl TaskTermination {
     pub fn validate(&self) -> Result<(), ValidationError> {
         let reason = &self.reason;
-        ensure(!reason.is_empty() && reason.len() <= MAX_REASON_BYTES, || format!("a termination reason has 1 to {MAX_REASON_BYTES} bytes"))?;
+        ensure(!reason.is_empty() && reason.len() <= MAX_REASON_BYTES, || {
+            format!("a termination reason has 1 to {MAX_REASON_BYTES} bytes")
+        })?;
         ensure(reason.bytes().all(|byte| byte.is_ascii_lowercase() || byte == b'_'), || {
             "a termination reason is lowercase letters and `_`".to_owned()
         })

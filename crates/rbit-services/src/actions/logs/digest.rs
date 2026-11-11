@@ -53,8 +53,11 @@ impl ActionsService {
     /// The failure digest of run `id` of `repo`: empty `failed` for a run with no failed job.
     pub async fn failure_digest(&self, repo: &RepoContext, id: RunId) -> Result<FailureDigest, ServiceError> {
         let detail = self.run_by_id(repo, id).await?;
-        let failed_jobs: Vec<Job> =
-            detail.jobs.into_iter().filter(|job| matches!(job.status, Status::Failure | Status::Cancelled) && job.task_id.is_some()).collect();
+        let failed_jobs: Vec<Job> = detail
+            .jobs
+            .into_iter()
+            .filter(|job| matches!(job.status, Status::Failure | Status::Cancelled) && job.task_id.is_some())
+            .collect();
         let ends = self.task_ends(&failed_jobs).await?;
         let steps = self.steps(&failed_jobs).await?;
         let store = self.ctx().database.actions_runs();
@@ -65,7 +68,11 @@ impl ActionsService {
             let Some(task) = job.task_id else { continue };
             let end = ends.get(&task);
             let termination = end.and_then(|end| end.termination).unwrap_or_else(|| {
-                Termination::because(if job.status == Status::Cancelled { TerminationReason::Cancelled } else { TerminationReason::Unknown })
+                Termination::because(if job.status == Status::Cancelled {
+                    TerminationReason::Cancelled
+                } else {
+                    TerminationReason::Unknown
+                })
             });
             let own: Vec<&Step> = steps.iter().filter(|step| step.task_id == task).collect();
             let step = pick_step(&own, termination).cloned();
@@ -96,7 +103,12 @@ impl ActionsService {
 
     /// The task of attempt `attempt` of job `id` (the current one when `None`), for a reader
     /// of `repo`, with every attempt the job has had.
-    pub async fn job_attempt(&self, repo: &RepoContext, id: JobId, attempt: Option<i64>) -> Result<(TaskId, Vec<(TaskId, i64)>), ServiceError> {
+    pub async fn job_attempt(
+        &self,
+        repo: &RepoContext,
+        id: JobId,
+        attempt: Option<i64>,
+    ) -> Result<(TaskId, Vec<(TaskId, i64)>), ServiceError> {
         let detail = self.job_detail(repo, id).await?;
         let attempts = self.ctx().database.actions_runs().job_tasks(detail.job.id).await?;
         let task = match attempt {
@@ -107,7 +119,12 @@ impl ActionsService {
     }
 
     /// The annotations of attempt `attempt` (the current one when `None`) of job `id`.
-    pub async fn job_annotations(&self, repo: &RepoContext, id: JobId, attempt: Option<i64>) -> Result<Vec<StoredAnnotation>, ServiceError> {
+    pub async fn job_annotations(
+        &self,
+        repo: &RepoContext,
+        id: JobId,
+        attempt: Option<i64>,
+    ) -> Result<Vec<StoredAnnotation>, ServiceError> {
         let (task, _) = self.job_attempt(repo, id, attempt).await?;
         Ok(self.ctx().database.actions_runs().annotations_of_tasks(&[task]).await?)
     }
@@ -153,7 +170,12 @@ mod tests {
 
     #[test]
     fn the_named_step_wins_then_the_last_failure_then_the_last_that_ran() {
-        let steps = [step(0, Status::Success, true), step(1, Status::Failure, true), step(2, Status::Success, true), step(3, Status::Skipped, false)];
+        let steps = [
+            step(0, Status::Success, true),
+            step(1, Status::Failure, true),
+            step(2, Status::Success, true),
+            step(3, Status::Skipped, false),
+        ];
         let refs: Vec<&Step> = steps.iter().collect();
         let named = Termination { reason: TerminationReason::StepFailed, step: Some(2), exit_code: Some(1) };
         assert_eq!(pick_step(&refs, named).map(|step| step.number), Some(2));

@@ -246,8 +246,7 @@ pub enum RunnerBackend {
 }
 
 /// What a runner declared about itself, stored as JSON (`actions_runners.capabilities`).
-/// Unknown keys are ignored and missing ones default, so a newer runner's declaration and
-/// a runner that has not declared yet both read.
+/// Unknown keys are ignored and missing ones default, so a newer runner's declaration and a runner that has not declared yet both read.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RunnerCapabilities {
@@ -261,7 +260,6 @@ pub struct RunnerCapabilities {
     pub capacity: u32,
     /// The labels it runs on the host backend: jobs there have no isolation.
     pub host_labels: Vec<RunnerLabel>,
-    // Agent loop: exclusive labels.
     /// Labels whose jobs need the whole runner.
     pub exclusive_labels: Vec<RunnerLabel>,
 }
@@ -404,8 +402,7 @@ pub struct CacheEntry {
     /// The scope it was saved in (`heads/main`, `untrusted/41`).
     pub scope: String,
     pub key: String,
-    /// What else must match for a restore: a digest of the cached paths and the runner's
-    /// platform, chosen by the runner.
+    /// What else must match for a restore: a digest of the cached paths and the runner's platform, chosen by the runner.
     pub version: String,
     /// Bytes of the tar.gz.
     pub size: u64,

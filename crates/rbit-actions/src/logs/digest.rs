@@ -79,10 +79,8 @@ pub fn excerpt(lines: &[String], keep: usize) -> Excerpt {
     let start = folded.len().saturating_sub(keep.max(1));
     let kept = &folded[start..];
     let covered = kept.iter().map(|(_, count)| count).sum();
-    let lines = kept
-        .iter()
-        .map(|(line, count)| if *count > 1 { format!("{line} … (repeated {count} times)") } else { line.clone() })
-        .collect();
+    let lines =
+        kept.iter().map(|(line, count)| if *count > 1 { format!("{line} … (repeated {count} times)") } else { line.clone() }).collect();
     Excerpt { lines, covered }
 }
 

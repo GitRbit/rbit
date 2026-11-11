@@ -12,8 +12,10 @@ use rbit_core::{
 impl ActionsRunStore {
     /// Whether newer pushes to `repo`'s branches cancel the branches' older runs.
     pub async fn supersede_enabled(&self, repo: RepoId) -> Result<bool, StorageError> {
-        let enabled: Option<bool> =
-            sqlx::query_scalar("SELECT enabled FROM actions_supersede_settings WHERE repo_id = ?").bind(repo.0).fetch_optional(&self.pool).await?;
+        let enabled: Option<bool> = sqlx::query_scalar("SELECT enabled FROM actions_supersede_settings WHERE repo_id = ?")
+            .bind(repo.0)
+            .fetch_optional(&self.pool)
+            .await?;
         Ok(enabled.unwrap_or(false))
     }
 

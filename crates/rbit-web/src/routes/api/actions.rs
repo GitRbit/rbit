@@ -276,7 +276,8 @@ async fn runs_page(
     let total = if matches_nothing { 0 } else { page.total };
     let base = base_url(state);
     let superseded = actions.superseded_by(&page.runs).await?;
-    let items = page.runs.iter().map(|run| with_supersession(hooks::workflow_run(run, &ctx.repo, &page.people, base), run, &superseded)).collect();
+    let items =
+        page.runs.iter().map(|run| with_supersession(hooks::workflow_run(run, &ctx.repo, &page.people, base), run, &superseded)).collect();
     Ok(pager.paged(items, Some(total), false).wrapped("workflow_runs"))
 }
 

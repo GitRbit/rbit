@@ -104,12 +104,16 @@ pub async fn watch_commit(api: &Api, repo: &Repo, wait: CommitWait, out: &Output
         let state = text(&answer, "state").to_owned();
         if !out.json && state != last_state {
             let jobs = &answer["jobs"];
-            eprintln!("{state:<14} {} ok, {} failed, {} running, {} queued", jobs["success"], jobs["failure"], jobs["running"], jobs["queued"]);
+            eprintln!(
+                "{state:<14} {} ok, {} failed, {} running, {} queued",
+                jobs["success"], jobs["failure"], jobs["running"], jobs["queued"]
+            );
             last_state.clone_from(&state);
         }
         if let Some(moved) = answer["head_changed"].as_object() {
             let newer = moved.get("sha").and_then(Value::as_str).unwrap_or_default().to_owned();
-            let message = format!("{} moved on to {} while {} was watched", branch.as_deref().unwrap_or("the branch"), short(&newer), short(&sha));
+            let message =
+                format!("{} moved on to {} while {} was watched", branch.as_deref().unwrap_or("the branch"), short(&newer), short(&sha));
             return Err(agent::outcome("head_changed", message, Some(format!("rbit run watch --sha {newer}"))));
         }
         let early_failure = matches!(state.as_str(), "failure" | "indeterminate");
@@ -117,7 +121,11 @@ pub async fn watch_commit(api: &Api, repo: &Repo, wait: CommitWait, out: &Output
             return Ok(finish(&answer, &state, wait.exit_status, out));
         }
         if tokio::time::Instant::now() >= deadline {
-            return Err(agent::outcome("timeout", format!("the CI of {} did not settle in time ({state})", short(&sha)), Some(format!("rbit run watch --sha {sha}"))));
+            return Err(agent::outcome(
+                "timeout",
+                format!("the CI of {} did not settle in time ({state})", short(&sha)),
+                Some(format!("rbit run watch --sha {sha}")),
+            ));
         }
         cursor = answer["cursor"].as_str().map(str::to_owned);
     }
@@ -131,7 +139,13 @@ fn finish(answer: &Value, state: &str, exit_status: bool, out: &Output) -> i32 {
         println!("{state}: {}", text(answer, "sha"));
         for failed in answer["failed"].as_array().into_iter().flatten() {
             let termination = &failed["termination"];
-            println!("  {} (job {}): {} {}", text(failed, "job"), failed["job_id"], text(termination, "reason"), termination["step_name"].as_str().unwrap_or(""));
+            println!(
+                "  {} (job {}): {} {}",
+                text(failed, "job"),
+                failed["job_id"],
+                text(termination, "reason"),
+                termination["step_name"].as_str().unwrap_or("")
+            );
         }
     }
     match state {

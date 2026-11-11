@@ -9,10 +9,8 @@
 //! * the `github` context names the repository after the checkout's directory, its `HEAD`
 //!   commit and branch, the event and an empty event payload;
 //! * a job's `if` is evaluated here, against the results of the jobs it needs;
-//! * secrets are the `--secret NAME` variables of this process's environment, and the task
-//!   token is a placeholder no server accepts;
-//! * the built-in checkout fetches the `HEAD` commit from the local repository, so changes
-//!   that are not committed are not part of the run;
+//! * secrets are the `--secret NAME` variables of this process's environment, and the task token is a placeholder no server accepts;
+//! * the built-in checkout fetches the `HEAD` commit from the local repository, so changes that are not committed are not part of the run;
 //! * every `runs-on` label runs on `--backend`: the host, or a container of
 //!   `docker.io/library/ubuntu:24.04` unless the job names an image. A `runner.toml`, when
 //!   there is one, supplies the container settings and the labels it defines.

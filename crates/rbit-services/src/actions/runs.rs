@@ -218,7 +218,14 @@ impl ActionsService {
     /// other unfinished run of the group is cancelled; otherwise runs that were only held
     /// are cancelled (the newer run replaces them) and the run is held while another is
     /// active. Runs awaiting approval never hold a group. `own` is the run itself, when it already exists.
-    async fn enter_group(&self, repo: RepoId, group: &str, cancel: bool, own: Option<RunId>, by: Option<&str>) -> Result<RunStart, ServiceError> {
+    async fn enter_group(
+        &self,
+        repo: RepoId,
+        group: &str,
+        cancel: bool,
+        own: Option<RunId>,
+        by: Option<&str>,
+    ) -> Result<RunStart, ServiceError> {
         let store = self.ctx().database.actions_runs();
         let others = members(&store.unfinished_in_group(repo, group).await?);
         let entry = scheduling::enter_group(&others, own, cancel);
@@ -345,7 +352,9 @@ impl ActionsService {
         requests::check_approval(run.status == Status::AwaitingApproval).map_err(|why| ServiceError::Invalid(why.to_owned()))?;
         let decisions = self.inner.groups.lock().await;
         let hold = match &run.concurrency_group {
-            Some(group) => self.enter_group(repo_id, group, run.cancel_in_progress, Some(id), Some(&run.sha)).await? == RunStart::HeldForConcurrency,
+            Some(group) => {
+                self.enter_group(repo_id, group, run.cancel_in_progress, Some(id), Some(&run.sha)).await? == RunStart::HeldForConcurrency
+            }
             None => false,
         };
         let settled = store.approve_run(repo_id, id, actor.id(), hold, Timestamp::now()).await?;

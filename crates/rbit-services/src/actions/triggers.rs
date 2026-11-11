@@ -392,7 +392,13 @@ fn evaluate_push(
         }
         let Some(files) = by_commit.get(after) else { continue };
         if files.is_empty() {
-            outcomes.push(PushOutcome { update: update.clone(), head, candidates: Vec::new(), workflows: 0, skipped: Some("no_workflows") });
+            outcomes.push(PushOutcome {
+                update: update.clone(),
+                head,
+                candidates: Vec::new(),
+                workflows: 0,
+                skipped: Some("no_workflows"),
+            });
             continue;
         }
         let base = decide::comparison_base(pushed(update), default_branch);

@@ -41,7 +41,11 @@ async fn a_newer_push_supersedes_a_branchs_older_run_only_when_the_repository_as
     let alice = server.sign_up("alice").await;
     alice.create_repo("alice", "rocket", "public").await;
     alice.post("/alice/rocket/settings/actions", &[("enabled", "on"), ("token_permission", "read")]).await;
-    let api = Api { http: reqwest::Client::builder().no_proxy().build().unwrap(), base: server.base_url().to_owned(), token: alice.create_token("agent", "admin").await };
+    let api = Api {
+        http: reqwest::Client::builder().no_proxy().build().unwrap(),
+        base: server.base_url().to_owned(),
+        token: alice.create_token("agent", "admin").await,
+    };
     let git = Git::new();
     let sample = git.sample();
     let url = server.git_url_as("alice", "rocket", "alice", PASSWORD);

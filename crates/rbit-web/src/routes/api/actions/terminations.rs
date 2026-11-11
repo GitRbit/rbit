@@ -100,12 +100,19 @@ mod tests {
     fn a_record_names_the_step_and_a_timeout_reads_timed_out() {
         let ends = BTreeMap::from([(
             TaskId(7),
-            TaskEnd { termination: Some(Termination { reason: TerminationReason::Timeout, step: Some(1), exit_code: None }), log_complete: true },
+            TaskEnd {
+                termination: Some(Termination { reason: TerminationReason::Timeout, step: Some(1), exit_code: None }),
+                log_complete: true,
+            },
         )]);
-        let mut item = json!({ "conclusion": "failure", "steps": [{ "number": 1, "name": "Set up" }, { "number": 2, "name": "Run shard" }] });
+        let mut item =
+            json!({ "conclusion": "failure", "steps": [{ "number": 1, "name": "Set up" }, { "number": 2, "name": "Run shard" }] });
         annotate(&mut item, &job(Status::Failure, Some(7)), &ends);
         assert_eq!(item["conclusion"], "timed_out");
-        assert_eq!(item["termination"], json!({ "reason": "timeout", "step": 2, "step_name": "Run shard", "exit_code": null, "log_complete": true }));
+        assert_eq!(
+            item["termination"],
+            json!({ "reason": "timeout", "step": 2, "step_name": "Run shard", "exit_code": null, "log_complete": true })
+        );
     }
 
     #[test]

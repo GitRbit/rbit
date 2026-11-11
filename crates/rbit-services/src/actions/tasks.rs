@@ -156,7 +156,9 @@ fn step_status(status: StepStatus) -> Status {
 /// an older runner sent none (a failure nobody explained is `unknown`).
 fn termination(reported: Option<&TaskTermination>, result: TaskResult) -> Termination {
     match reported {
-        Some(reported) => Termination { reason: TerminationReason::parse(&reported.reason), step: reported.step, exit_code: reported.exit_code },
+        Some(reported) => {
+            Termination { reason: TerminationReason::parse(&reported.reason), step: reported.step, exit_code: reported.exit_code }
+        }
         None => Termination::because(match result {
             TaskResult::Success => TerminationReason::Completed,
             TaskResult::Cancelled => TerminationReason::Cancelled,

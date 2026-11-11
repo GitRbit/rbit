@@ -125,7 +125,10 @@ pub async fn issues(api: &Api, repo: &Repo, command: IssueCommand, out: &Output)
                 return Ok(0);
             }
             for issue in issues {
-                let labels = row(issue)["labels"].as_array().map(|labels| labels.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(",")).unwrap_or_default();
+                let labels = row(issue)["labels"]
+                    .as_array()
+                    .map(|labels| labels.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(","))
+                    .unwrap_or_default();
                 println!("#{:<6} {:<60} {labels}", issue["number"], clip(text(issue, "title"), 60));
             }
         }
@@ -198,7 +201,10 @@ mod tests {
     #[test]
     fn rows_are_short_and_bodies_bounded() {
         let issue = json!({ "number": 7, "title": "Fix it", "state": "open", "labels": [{ "name": "bug" }], "assignee": { "login": "ada" }, "updated_at": "x", "body": "long" });
-        assert_eq!(row(&issue), json!({ "number": 7, "title": "Fix it", "state": "open", "labels": ["bug"], "assignee": "ada", "updated": "x" }));
+        assert_eq!(
+            row(&issue),
+            json!({ "number": 7, "title": "Fix it", "state": "open", "labels": ["bug"], "assignee": "ada", "updated": "x" })
+        );
         assert_eq!(bounded("abcdef", 3), ("abc".to_owned(), true));
         assert_eq!(bounded("ab", 3), ("ab".to_owned(), false));
         assert_eq!(body(Some("given".to_owned()), None).unwrap(), "given");

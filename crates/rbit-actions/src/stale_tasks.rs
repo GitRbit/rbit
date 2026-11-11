@@ -74,7 +74,12 @@ pub trait StaleTaskStore: Sync {
     fn note(&self, id: Self::TaskId, reason: &str) -> impl Future<Output = Result<(), Self::Error>> + Send;
     /// Fails the task if it is still running, recording why (`staleness`); `None` when it
     /// was not.
-    fn fail(&self, id: Self::TaskId, staleness: Staleness, now: i64) -> impl Future<Output = Result<Option<Self::Settled>, Self::Error>> + Send;
+    fn fail(
+        &self,
+        id: Self::TaskId,
+        staleness: Staleness,
+        now: i64,
+    ) -> impl Future<Output = Result<Option<Self::Settled>, Self::Error>> + Send;
     /// After a failure: forgets the task's masks and finalises its log, logging `reason`.
     fn close(&self, id: Self::TaskId, reason: &str) -> impl Future<Output = Result<(), Self::Error>> + Send;
     /// Settles the jobs and runs a transition changed, and what depends on them.
@@ -110,7 +115,13 @@ impl StaleTasks {
 
     /// Fails running task `id` with `reason` in its log; deletes its runner when that was
     /// ephemeral. False when it was gone or no longer running.
-    pub async fn time_out<P: StaleTaskStore>(port: &P, id: P::TaskId, reason: &str, staleness: Staleness, now: i64) -> Result<bool, P::Error> {
+    pub async fn time_out<P: StaleTaskStore>(
+        port: &P,
+        id: P::TaskId,
+        reason: &str,
+        staleness: Staleness,
+        now: i64,
+    ) -> Result<bool, P::Error> {
         let Some(task) = port.task(id).await? else { return Ok(false) };
         port.note(id, reason).await?;
         let Some(settled) = port.fail(id, staleness, now).await? else { return Ok(false) };

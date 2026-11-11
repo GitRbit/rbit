@@ -268,8 +268,16 @@ fn interval_poll_and_state_caps() {
 
     let step = StepState { index: 0, status: StepStatus::Running, started_at: Some(5), stopped_at: None, log_index: 0, log_length: 0 };
     let state = |steps: Vec<StepState>, outputs: BTreeMap<String, String>, result| {
-        TaskStateRequest { steps, outputs, result, summaries: BTreeMap::new(), post_steps: BTreeMap::new(), environment_url: None, termination: None }
-            .validate()
+        TaskStateRequest {
+            steps,
+            outputs,
+            result,
+            summaries: BTreeMap::new(),
+            post_steps: BTreeMap::new(),
+            environment_url: None,
+            termination: None,
+        }
+        .validate()
     };
     assert!(state(vec![step], BTreeMap::new(), None).is_ok());
     assert!(state(vec![step], BTreeMap::new(), Some(TaskResult::Failure)).is_err(), "a final state with a running step");

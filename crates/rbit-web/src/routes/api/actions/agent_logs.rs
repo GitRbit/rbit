@@ -83,7 +83,11 @@ pub fn failed_job(failed: &FailedJob) -> Value {
     let step = failed.step.as_ref();
     let mut termination = json!({});
     // The digest's step is the one that ended the job even when the record names none.
-    let named = if failed.termination.step.is_some() { failed.termination } else { rbit_core::actions::Termination { step: step.and_then(|step| u32::try_from(step.number).ok()), ..failed.termination } };
+    let named = if failed.termination.step.is_some() {
+        failed.termination
+    } else {
+        rbit_core::actions::Termination { step: step.and_then(|step| u32::try_from(step.number).ok()), ..failed.termination }
+    };
     terminations::describe(&mut termination, named, step.map(|step| (step.number + 1, step.name.as_str())), failed.log_complete);
     let excerpt = failed.excerpt.as_ref().zip(step).map(|(excerpt, step)| {
         let number = step.number + 1;

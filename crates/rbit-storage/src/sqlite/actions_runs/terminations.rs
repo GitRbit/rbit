@@ -58,8 +58,10 @@ impl ActionsRunStore {
     // Agent loop: earlier attempts.
     /// Every task of job `job` (one per attempt), with its attempt, oldest first.
     pub async fn job_tasks(&self, job: rbit_core::actions::JobId) -> Result<Vec<(TaskId, i64)>, StorageError> {
-        let rows: Vec<(i64, i64)> =
-            sqlx::query_as("SELECT id, attempt FROM actions_tasks WHERE job_id = ? ORDER BY attempt, id").bind(job.0).fetch_all(&self.pool).await?;
+        let rows: Vec<(i64, i64)> = sqlx::query_as("SELECT id, attempt FROM actions_tasks WHERE job_id = ? ORDER BY attempt, id")
+            .bind(job.0)
+            .fetch_all(&self.pool)
+            .await?;
         Ok(rows.into_iter().map(|(task, attempt)| (TaskId(task), attempt)).collect())
     }
 }

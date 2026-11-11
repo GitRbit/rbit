@@ -25,7 +25,8 @@ pub fn setup(hostname: &str) -> anyhow::Result<()> {
     let key = format!("credential.{host}.helper");
     // An empty value first resets the helpers inherited from broader configuration.
     for value in ["", helper.as_str()] {
-        let status = std::process::Command::new("git").args(["config", "--global", "--add", &key, value]).status().context("cannot run git")?;
+        let status =
+            std::process::Command::new("git").args(["config", "--global", "--add", &key, value]).status().context("cannot run git")?;
         if !status.success() {
             bail!("git config --global --add {key} failed");
         }
@@ -84,7 +85,10 @@ mod tests {
     #[test]
     fn git_requests_are_read_and_answered_without_prompting() {
         let request = read_request("protocol=https\nhost=git.example.com\npath=a/b.git\n\nignored=1\n".as_bytes());
-        assert_eq!(request, [("protocol".into(), "https".into()), ("host".into(), "git.example.com".into()), ("path".into(), "a/b.git".into())]);
+        assert_eq!(
+            request,
+            [("protocol".into(), "https".into()), ("host".into(), "git.example.com".into()), ("path".into(), "a/b.git".into())]
+        );
         assert_eq!(answer(Some("rbit_abc")), "username=x-access-token\npassword=rbit_abc\n");
         assert_eq!(answer(None), "quit=1\n", "no login stops Git instead of prompting");
     }

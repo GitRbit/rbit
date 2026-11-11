@@ -440,8 +440,8 @@ pub use scratch::ScratchRef;
 pub use queue::QueuePlace;
 mod supersede;
 mod terminations;
-pub use terminations::TaskEnd;
 pub use annotations::StoredAnnotation;
+pub use terminations::TaskEnd;
 mod log_queries;
 
 #[derive(Debug, Clone)]

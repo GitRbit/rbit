@@ -1,6 +1,5 @@
 //! The Actions stores against a real, migrated `SQLite` database: settings, runners and
-//! registration, the run state machine (create, claim, finish, cancel, approve, re-run),
-//! secrets and variables, and schedules.
+//! registration, the run state machine (create, claim, finish, cancel, approve, re-run), secrets and variables, and schedules.
 
 use rbit_core::{
     AccountId, RepoId, Timestamp, Visibility,

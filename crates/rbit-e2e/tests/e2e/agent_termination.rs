@@ -72,7 +72,12 @@ async fn a_failed_job_says_which_step_ended_it_and_with_what_exit_code() {
     let sha = git.commit_file(&sample.dir, ".rbit/workflows/ci.yml", WORKFLOW);
     git.ok(&sample.dir, &["push", "--quiet", &server.git_url_as("alice", "rocket", "alice", PASSWORD), "main"]);
     let _runner = Running(
-        Command::new(&binary).args(["--config", &config, "run"]).stdout(Stdio::null()).stderr(Stdio::null()).spawn().expect("start the runner"),
+        Command::new(&binary)
+            .args(["--config", &config, "run"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("start the runner"),
     );
 
     let api = reqwest::Client::builder().no_proxy().build().unwrap();
@@ -127,7 +132,10 @@ async fn a_failed_job_says_which_step_ended_it_and_with_what_exit_code() {
     assert_eq!(tail["more_before"], true, "the step wrote more than one line");
     let attempts = get(format!("jobs/{}/attempts", failed["id"])).await;
     assert_eq!(attempts["attempts"].as_array().unwrap().len(), 1);
-    assert_eq!((attempts["attempts"][0]["current"].as_bool(), attempts["attempts"][0]["reason"].as_str()), (Some(true), Some("step_failed")));
+    assert_eq!(
+        (attempts["attempts"][0]["current"].as_bool(), attempts["attempts"][0]["reason"].as_str()),
+        (Some(true), Some("step_failed"))
+    );
     let annotations = get(format!("jobs/{}/annotations", failed["id"])).await;
     assert!(
         annotations["annotations"].as_array().unwrap().iter().any(|annotation| annotation["level"] == "error"),
