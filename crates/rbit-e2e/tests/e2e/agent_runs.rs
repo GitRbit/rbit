@@ -12,7 +12,8 @@ use serde_json::{Value, json};
 
 use super::actions_runner::runner_binary;
 
-const WORKFLOW: &str = "name: CI\non: [push, pull_request]\njobs:\n  test:\n    runs-on: nobody-has-this-label\n    steps:\n      - run: true\n";
+const WORKFLOW: &str =
+    "name: CI\non: [push, pull_request]\njobs:\n  test:\n    runs-on: nobody-has-this-label\n    steps:\n      - run: true\n";
 
 /// The `rbit` binary built beside `rbit-runner`.
 fn rbit_binary() -> std::path::PathBuf {
@@ -76,7 +77,12 @@ async fn an_agent_finds_the_runs_of_its_commit_and_reads_codes_not_prose() {
     alice.create_repo("alice", "rocket", "public").await;
     alice.post("/alice/rocket/settings/actions", &[("enabled", "on"), ("token_permission", "read")]).await;
     let token = alice.create_token("agent", "write").await;
-    let agent = Agent { server: &server, http: reqwest::Client::builder().no_proxy().build().unwrap(), token, config: tempfile::tempdir().unwrap() };
+    let agent = Agent {
+        server: &server,
+        http: reqwest::Client::builder().no_proxy().build().unwrap(),
+        token,
+        config: tempfile::tempdir().unwrap(),
+    };
 
     let git = Git::new();
     let sample = git.sample();
@@ -114,7 +120,8 @@ async fn an_agent_finds_the_runs_of_its_commit_and_reads_codes_not_prose() {
     let (status, missing) = agent.get("repos/alice/nothing-here").await;
     assert_eq!((status, missing["code"].as_str()), (404, Some("not_found")));
     let stale = json!({ "sha": base, "merge_method": "merge" });
-    let (status, moved) = agent.send(reqwest::Method::PUT, &format!("repos/alice/rocket/pulls/{}/merge", pull["number"]), Some(stale)).await;
+    let (status, moved) =
+        agent.send(reqwest::Method::PUT, &format!("repos/alice/rocket/pulls/{}/merge", pull["number"]), Some(stale)).await;
     assert_eq!((status, moved["code"].as_str()), (409, Some("head_changed")), "{moved}");
 
     // The CLI: one JSON object, the exit code of the contract.
