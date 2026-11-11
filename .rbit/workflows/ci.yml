@@ -74,7 +74,7 @@ jobs:
         run: |
           cargo fmt --all --check > /dev/null && exit 0
           cargo fmt --all
-          git diff > "$RUNNER_TEMP/fmt.patch"
+          git diff > fmt.patch
           echo "::error::cargo fmt changes $(git diff --name-only | wc -l) files; the fix is the fmt-patch artifact"
           git diff --stat
           exit 1
@@ -82,7 +82,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: fmt-patch
-          path: ${{ runner.temp }}/fmt.patch
+          path: fmt.patch
           retention-days: 3
       # Pedantic lints are enabled workspace-wide in Cargo.toml; warnings fail the build.
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
