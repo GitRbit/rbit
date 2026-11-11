@@ -9,6 +9,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Superseded runs: `PUT …/actions/supersede {"enabled": true}` lets a newer push to a
+  branch (not the default one) cancel that branch's older runs of the same workflow. A run
+  a newer run of its group cancelled says `superseded_by` with the commit, its running
+  tasks end as `superseded`, and `rbit status` reads `superseded`.
 - `rbit issue list`, `view`, `create`, `comment`, `close` and `label`, with `--json`.
 - `rbit status` and `GET …/agent/status`: where a branch stands in one call (its head, how
   far from its base, the CI of exactly that commit with failed jobs and how they ended, the

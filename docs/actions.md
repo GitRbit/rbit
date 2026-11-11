@@ -475,6 +475,14 @@ a cleaned excerpt of the last 30 lines of the step that ended it, with a `more` 
 job and how it ended, so a test that failed and then passed on the same commit can be seen).
 `rbit run failure` and `rbit run log` use them.
 
+`GET` and `PUT …/actions/supersede` (`{"enabled": true}`, administrators) let a newer push to
+a branch other than the default one cancel that branch's older unfinished runs of the same
+workflow, as if each workflow said `concurrency: {group: <workflow>-<ref>,
+cancel-in-progress: true}` (a workflow's own `concurrency` wins). It is off by default. Every
+run cancelled by a newer run of its group, this way or by a workflow's own
+`cancel-in-progress`, carries `superseded_by` with the newer commit, and the tasks it was
+running end as `superseded`.
+
 `GET /repos/{owner}/{repo}/agent/status?branch=` answers "where am I" in one object (see
 `rbit status` in [the client's guide](cli.md)), and `GET /repos/{owner}/{repo}/agent/watch?
 sha=&branch=&cursor=&timeout=` is a long-poll on the CI of one commit: it answers when that

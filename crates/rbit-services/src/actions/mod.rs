@@ -72,6 +72,7 @@ pub mod secrets;
 pub mod settings;
 mod stale_task_port;
 pub mod status;
+mod supersede;
 pub mod statuses;
 pub mod sweeper;
 mod task_leases;

@@ -62,6 +62,7 @@ fn ci_json(ci: &CommitCi) -> Value {
         "runs": runs,
         "jobs": { "success": success, "failure": failure, "running": running, "queued": queued },
         "failed": ci.failed.iter().map(agent_logs::failed_job).collect::<Vec<_>>(),
+        "superseded_by": ci.superseded_by,
     })
 }
 
@@ -87,6 +88,7 @@ fn next(state: &str, sha: &str, failed_run: Option<i64>, pull: Option<(i64, bool
         ("queued" | "running" | "not_started", ..) => Some(format!("rbit run watch --sha {sha}")),
         ("success", _, Some((number, false))) => Some(format!("rbit pr merge {number} --head {sha}")),
         ("success", _, None) => Some("rbit pr create --title …".to_owned()),
+        ("superseded", ..) => Some("rbit status".to_owned()),
         _ => None,
     }
 }
@@ -151,7 +153,7 @@ pub async fn watch(State(state): State<AppState>, caller: Caller, Path(path): Pa
         };
         let changed = query.cursor.as_deref() != Some(seen.as_str());
         if changed || moved.is_some() || Instant::now() >= deadline {
-            let done = matches!(ci.state, "success" | "failure" | "cancelled" | "indeterminate" | "none_expected");
+            let done = matches!(ci.state, "success" | "failure" | "cancelled" | "superseded" | "indeterminate" | "none_expected");
             let mut body = ci_json(&ci);
             body["schema"] = json!("rbit.watch/1");
             body["sha"] = json!(sha);
@@ -183,7 +185,14 @@ mod tests {
 
     #[test]
     fn a_cursor_moves_when_what_a_watcher_cares_about_moves() {
-        let ci = |state: &'static str, counts: [usize; 4]| CommitCi { state, reason: None, runs: Vec::new(), counts, failed: Vec::new() };
+        let ci = |state: &'static str, counts: [usize; 4]| CommitCi {
+            state,
+            reason: None,
+            runs: Vec::new(),
+            counts,
+            failed: Vec::new(),
+            superseded_by: None,
+        };
         assert_eq!(cursor(&ci("running", [1, 0, 1, 0])), cursor(&ci("running", [1, 0, 1, 0])));
         assert_ne!(cursor(&ci("running", [1, 0, 1, 0])), cursor(&ci("running", [2, 0, 0, 0])));
         assert_ne!(cursor(&ci("running", [1, 0, 1, 0])), cursor(&ci("failure", [1, 0, 1, 0])));

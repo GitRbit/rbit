@@ -3895,6 +3895,92 @@
           }
         }
       }
+    },
+    "/repos/{owner}/{repo}/actions/supersede": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "getSupersedeSetting",
+        "tags": [
+          "actions"
+        ],
+        "summary": "rbit's own: whether newer branch pushes supersede older runs",
+        "description": "`{\"enabled\": bool}`. When enabled, a push to a branch other than the default one cancels that branch's older unfinished runs of the same workflow (unless the workflow declares its own `concurrency`); the cancelled run's `superseded_by` names the newer commit.",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The setting",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "setSupersedeSetting",
+        "tags": [
+          "actions"
+        ],
+        "summary": "rbit's own: turn superseding branch runs on or off",
+        "description": "Repository administrators, `admin` scope. Off by default.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "enabled"
+                ],
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4068,6 +4154,10 @@
           },
           "is_schedule": {
             "type": "boolean"
+          },
+          "superseded_by": {
+            "type": "string",
+            "description": "rbit's own: on a cancelled run, the commit whose newer run superseded it (a `concurrency` group with `cancel-in-progress`, or the repository's supersede setting)."
           }
         },
         "description": "A run, as the `workflow_run` webhook sends it. A workflow that failed to parse is a completed run with conclusion failure and no jobs."

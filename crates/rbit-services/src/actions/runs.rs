@@ -100,14 +100,12 @@ pub struct Trigger<'a> {
 pub use rbit_actions::scheduling::Allowance;
 
 impl ActionsService {
-    /// The allowance of one event, from `[actions] max_runs_per_event` and
-    /// `max_jobs_per_event`.
+    /// The allowance of one event, from `[actions] max_runs_per_event` and `max_jobs_per_event`.
     pub fn allowance(&self) -> Allowance {
         Allowance { runs: self.config().max_runs_per_event, jobs: self.config().max_jobs_per_event }
     }
 
-    /// Creates the run `candidate` asks for, within `allowance`; `None` once the event
-    /// started as many runs as it may.
+    /// Creates the run `candidate` asks for, within `allowance`; `None` once the event started as many runs as it may.
     pub async fn start_run(
         &self,
         trigger: &Trigger<'_>,
@@ -139,7 +137,10 @@ impl ActionsService {
         if let Err(error) = admitted {
             return self.record_error(trigger, &candidate.path, &candidate.name, ErrorKind::Limit, &error).await.map(Some);
         }
-        let group = plan.concurrency.as_ref().map(|(group, cancel)| (namespaced_group(trigger, group), *cancel));
+        let group = match plan.concurrency.as_ref() {
+            Some((group, cancel)) => Some((namespaced_group(trigger, group), *cancel)),
+            None => self.supersede_group(trigger, &candidate.path).await?,
+        };
         let awaiting = matches!(trigger.trust, RunTrust::Untrusted { awaits_approval: true });
         let decisions = self.inner.groups.lock().await;
         let start = if awaiting {
@@ -152,7 +153,7 @@ impl ActionsService {
                 return self.record_error(trigger, &candidate.path, &candidate.name, ErrorKind::Limit, &error).await.map(Some);
             }
             match &group {
-                Some((group, cancel)) => self.enter_group(trigger.repo.repo.id, group, *cancel, None).await?,
+                Some((group, cancel)) => self.enter_group(trigger.repo.repo.id, group, *cancel, None, Some(trigger.sha)).await?,
                 None => RunStart::Runnable,
             }
         };
@@ -216,14 +217,13 @@ impl ActionsService {
     /// group's decisions already serialised by the caller: with `cancel_in_progress` every
     /// other unfinished run of the group is cancelled; otherwise runs that were only held
     /// are cancelled (the newer run replaces them) and the run is held while another is
-    /// active. Runs awaiting approval never hold a group. `own` is the run itself, when it
-    /// already exists.
-    async fn enter_group(&self, repo: RepoId, group: &str, cancel_in_progress: bool, own: Option<RunId>) -> Result<RunStart, ServiceError> {
+    /// active. Runs awaiting approval never hold a group. `own` is the run itself, when it already exists.
+    async fn enter_group(&self, repo: RepoId, group: &str, cancel: bool, own: Option<RunId>, by: Option<&str>) -> Result<RunStart, ServiceError> {
         let store = self.ctx().database.actions_runs();
         let others = members(&store.unfinished_in_group(repo, group).await?);
-        let entry = scheduling::enter_group(&others, own, cancel_in_progress);
+        let entry = scheduling::enter_group(&others, own, cancel);
         for other in entry.cancel {
-            if let Some(settled) = store.cancel_run(repo, other, Timestamp::now()).await? {
+            if let Some(settled) = self.cancel_superseded(repo, other, by).await? {
                 tracing::info!(repo = repo.0, run = other.0, group, "workflow run cancelled by its concurrency group");
                 self.followed_up(&settled).await?;
             }
@@ -318,7 +318,7 @@ impl ActionsService {
         let decisions = self.inner.groups.lock().await;
         let start = match (&run.concurrency_group, awaits) {
             (_, true) => RunStart::AwaitingApproval,
-            (Some(group), false) => self.enter_group(repo_id, group, run.cancel_in_progress, Some(id)).await?,
+            (Some(group), false) => self.enter_group(repo_id, group, run.cancel_in_progress, Some(id), Some(&run.sha)).await?,
             (None, false) => RunStart::Runnable,
         };
         let settled = store.rerun(repo_id, id, which, start, Timestamp::now()).await?;
@@ -345,7 +345,7 @@ impl ActionsService {
         requests::check_approval(run.status == Status::AwaitingApproval).map_err(|why| ServiceError::Invalid(why.to_owned()))?;
         let decisions = self.inner.groups.lock().await;
         let hold = match &run.concurrency_group {
-            Some(group) => self.enter_group(repo_id, group, run.cancel_in_progress, Some(id)).await? == RunStart::HeldForConcurrency,
+            Some(group) => self.enter_group(repo_id, group, run.cancel_in_progress, Some(id), Some(&run.sha)).await? == RunStart::HeldForConcurrency,
             None => false,
         };
         let settled = store.approve_run(repo_id, id, actor.id(), hold, Timestamp::now()).await?;

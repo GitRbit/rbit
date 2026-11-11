@@ -8,7 +8,8 @@
 //! (the commit has no workflow files, or Actions is off), `not_started` (workflows exist
 //! but no run has appeared), `queued`, `running`, `failure` (as soon as one job failed,
 //! even while others run), `indeterminate` (every failed job's account is incomplete: a
-//! lost runner, an unexplained failure, a log cut short), `cancelled` and `success`.
+//! lost runner, an unexplained failure, a log cut short), `cancelled`, `superseded` (a
+//! newer push cancelled every run, naming the newer commit) and `success`.
 
 use rbit_core::actions::{Job, Run, Status, TerminationReason};
 use rbit_git::divergence::Divergence;
@@ -27,6 +28,8 @@ pub struct CommitCi {
     pub counts: [usize; 4],
     /// The failed jobs, with how they ended (newest run first).
     pub failed: Vec<FailedJob>,
+    /// For `superseded`: the commit whose run cancelled this one's.
+    pub superseded_by: Option<String>,
 }
 
 /// A branch's open pull request.
@@ -91,7 +94,7 @@ impl ActionsService {
             } else {
                 ("not_started", "workflow files exist but no run has appeared (a `paths` filter may skip this commit)")
             };
-            return Ok(CommitCi { state, reason: Some(reason), runs: Vec::new(), counts: [0; 4], failed: Vec::new() });
+            return Ok(CommitCi { state, reason: Some(reason), runs: Vec::new(), counts: [0; 4], failed: Vec::new(), superseded_by: None });
         }
         let mut jobs: Vec<Job> = Vec::new();
         for run in &page.runs {
@@ -111,8 +114,11 @@ impl ActionsService {
         for run in page.runs.iter().filter(|run| jobs.iter().any(|job| job.run_id == run.id && job.status == Status::Failure)) {
             failed.extend(self.failure_digest(repo, run.id).await?.failed.into_iter().filter(|job| job.job.status == Status::Failure));
         }
-        let state = ci_state(&page.runs, &counts, &failed);
-        Ok(CommitCi { state, reason: None, runs: page.runs, counts, failed })
+        // A commit whose every run a newer push cancelled is superseded, not merely cancelled.
+        let superseded = self.superseded_by(&page.runs).await?;
+        let superseded_by = page.runs.iter().all(|run| superseded.contains_key(&run.id)).then(|| superseded.values().next().cloned()).flatten();
+        let state = if superseded_by.is_some() { "superseded" } else { ci_state(&page.runs, &counts, &failed) };
+        Ok(CommitCi { state, reason: None, runs: page.runs, counts, failed, superseded_by })
     }
 }
 

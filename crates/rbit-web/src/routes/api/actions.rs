@@ -81,6 +81,8 @@ mod terminations;
 // Agent loop: logs by step, failure digests, attempts.
 mod agent_logs;
 mod agent_status;
+// Agent loop: superseded branch runs.
+mod supersede;
 
 use run_filters::{RunsQuery, non_empty};
 
@@ -109,6 +111,8 @@ pub(super) fn routes() -> Vec<ApiRoute> {
         route(Get, repo("/jobs/{job_id}/attempts"), agent_logs::attempts),
         route(Get, "/repos/{owner}/{repo}/agent/status".to_owned(), agent_status::status),
         route(Get, "/repos/{owner}/{repo}/agent/watch".to_owned(), agent_status::watch),
+        route(Get, repo("/supersede"), supersede::show),
+        route(Put, repo("/supersede"), supersede::update),
         route(Post, repo("/jobs/{job_id}/rerun"), rerun_job),
         route(Get, repo("/runs/{run_id}/artifacts"), run_artifacts),
         route(Get, repo("/artifacts"), list_artifacts),
@@ -271,7 +275,8 @@ async fn runs_page(
     let page = actions.page_runs(ctx, &query, statuses, offset, if matches_nothing { 0 } else { limit }).await?;
     let total = if matches_nothing { 0 } else { page.total };
     let base = base_url(state);
-    let items = page.runs.iter().map(|run| hooks::workflow_run(run, &ctx.repo, &page.people, base)).collect();
+    let superseded = actions.superseded_by(&page.runs).await?;
+    let items = page.runs.iter().map(|run| with_supersession(hooks::workflow_run(run, &ctx.repo, &page.people, base), run, &superseded)).collect();
     Ok(pager.paged(items, Some(total), false).wrapped("workflow_runs"))
 }
 
@@ -279,7 +284,17 @@ async fn runs_page(
 pub async fn show_run(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Json<Value>> {
     let ctx = path.repo(&state, &caller).await?;
     let detail = actions(&state)?.run_by_id(&ctx, path.run()?).await?;
-    Ok(Json(hooks::workflow_run(&detail.run, &ctx.repo, &detail.people, base_url(&state))))
+    let superseded = actions(&state)?.superseded_by(std::slice::from_ref(&detail.run)).await?;
+    Ok(Json(with_supersession(hooks::workflow_run(&detail.run, &ctx.repo, &detail.people, base_url(&state)), &detail.run, &superseded)))
+}
+
+/// `item` (a run's JSON) with rbit's own `superseded_by`, the commit whose newer run
+/// cancelled it, when one did.
+fn with_supersession(mut item: Value, run: &rbit_core::actions::Run, superseded: &BTreeMap<RunId, String>) -> Value {
+    if let Some(newer) = superseded.get(&run.id) {
+        item["superseded_by"] = json!(newer);
+    }
+    item
 }
 
 /// `GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs`: in the workflow's order.
