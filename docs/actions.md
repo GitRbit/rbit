@@ -475,6 +475,12 @@ a cleaned excerpt of the last 30 lines of the step that ended it, with a `more` 
 job and how it ended, so a test that failed and then passed on the same commit can be seen).
 `rbit run failure` and `rbit run log` use them.
 
+`GET /repos/{owner}/{repo}/agent/status?branch=` answers "where am I" in one object (see
+`rbit status` in [the client's guide](cli.md)), and `GET /repos/{owner}/{repo}/agent/watch?
+sha=&branch=&cursor=&timeout=` is a long-poll on the CI of one commit: it answers when that
+CI changes from what `cursor` saw, when `branch` moves on (`head_changed`), or after at most
+30 seconds, and checks the caller's rights again before every answer.
+
 ## Differences from GitHub Actions
 
 - A called workflow is read from this rbit instance, never from github.com. A calling job

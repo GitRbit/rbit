@@ -110,7 +110,11 @@ pub async fn runs(api: &Api, repo: &Repo, command: RunCommand, out: &Output) -> 
             let found = resolve(api, repo, run, sha).await?;
             return super::runs_view::view(api, repo, &found, &super::runs_view::Show { log, log_failed, job, exit_status }, out).await;
         }
-        RunCommand::Watch { run, sha, exit_status, interval, timeout } => {
+        RunCommand::Watch { run: None, sha, exit_status, interval: _, timeout, branch } => {
+            let wait = super::status::CommitWait { sha, branch, exit_status, timeout };
+            return super::status::watch_commit(api, repo, wait, out).await;
+        }
+        RunCommand::Watch { run, sha, exit_status, interval, timeout, branch: _ } => {
             return watch(api, repo, run, sha, Wait { exit_status, interval, timeout }, out).await;
         }
         RunCommand::Rerun { run, failed, job } => {

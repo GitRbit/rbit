@@ -21,6 +21,7 @@ mod hosts;
 mod pulls;
 mod runs;
 mod runs_view;
+mod status;
 mod util;
 
 use std::time::Duration;

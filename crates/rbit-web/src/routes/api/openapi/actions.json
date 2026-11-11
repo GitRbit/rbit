@@ -3769,6 +3769,132 @@
           }
         }
       }
+    },
+    "/repos/{owner}/{repo}/agent/status": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "getAgentStatus",
+        "tags": [
+          "actions"
+        ],
+        "summary": "rbit's own: where a branch stands, in one answer",
+        "description": "`schema: rbit.status/1`: the branch's head and where it stands against its base (merge base, ahead, behind), the CI of exactly that commit (`state`: `none_expected` with a reason, `not_started`, `queued`, `running`, `failure` as soon as a job failed, `indeterminate` when every failed job's account is incomplete, `cancelled`, `success`; job counts; the failed jobs with their termination records and excerpts), the base's CI, the open pull request from the branch, the issue a `feature/<n>-…` branch names, and `next`, a command worth running.",
+        "parameters": [
+          {
+            "name": "branch",
+            "in": "query",
+            "description": "The branch; the default branch when not given.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/agent/watch": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "watchAgentCommit",
+        "tags": [
+          "actions"
+        ],
+        "summary": "rbit's own: wait until the CI of a commit changes",
+        "description": "`schema: rbit.watch/1`, a long-poll. Answers at once when the CI of `sha` differs from what `cursor` saw (the first answer always does), when `branch` no longer points at `sha` (`head_changed` with the newer commit), or after `timeout` seconds (default and at most 30) with `changed: false`. `done` is true for a state that will not change by itself. The body has the same `state`, `jobs` and `failed` as the status, and the `cursor` for the next call.",
+        "parameters": [
+          {
+            "name": "sha",
+            "in": "query",
+            "required": true,
+            "description": "The full id of the commit.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{40}$"
+            }
+          },
+          {
+            "name": "branch",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "timeout",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 30
+            }
+          }
+        ],
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The CI of the commit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
     }
   },
   "components": {

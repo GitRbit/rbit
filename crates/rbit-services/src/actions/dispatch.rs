@@ -80,6 +80,13 @@ impl ActionsService {
             Err(GitError::NotFound(_)) => return Ok(Vec::new()),
             Err(error) => return Err(error.into()),
         };
+        self.workflow_paths_at(repo, &sha).await
+    }
+
+    // Agent loop: whether a commit can start runs at all.
+    /// The workflow files of commit `sha` of `repo`, found as runs find them; nothing parsed.
+    pub async fn workflow_paths_at(&self, repo: &RepoContext, sha: &str) -> Result<Vec<String>, ServiceError> {
+        let sha = sha.to_owned();
         let mut discovery = Discovery::new();
         while let Some(dir) = discovery.next_dir() {
             if let Some(selected) = discovery.record(listing(repo.reader.tree(sha.clone(), dir.to_owned()).await)?) {

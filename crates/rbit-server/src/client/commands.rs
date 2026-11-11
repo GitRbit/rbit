@@ -67,6 +67,14 @@ pub enum ClientCommand {
         #[command(flatten)]
         target: Target,
     },
+    /// Where a branch stands: its head, its CI for exactly that commit, its base, its pull
+    /// request and the next command worth running (the current branch by default).
+    Status {
+        #[arg(short, long)]
+        branch: Option<String>,
+        #[command(flatten)]
+        target: Target,
+    },
     /// Pull requests: create, list, view, merge and their checks.
     Pr {
         #[command(subcommand)]
@@ -175,6 +183,10 @@ pub enum RunCommand {
         /// Give up after this many seconds with `timeout` (exit 8).
         #[arg(long, default_value_t = 3600)]
         timeout: u64,
+        /// With a commit: end with `head_changed` (exit 5) when this branch moves on (the
+        /// current branch when watching `HEAD`).
+        #[arg(long, conflicts_with = "run")]
+        branch: Option<String>,
     },
     /// Run a run's jobs again: all, the failed ones, or one.
     Rerun {
@@ -330,6 +342,7 @@ pub async fn run(command: ClientCommand) -> anyhow::Result<i32> {
         | ClientCommand::Workflow { target, .. }
         | ClientCommand::Artifact { target, .. }
         | ClientCommand::Pr { target, .. }
+        | ClientCommand::Status { target, .. }
         | ClientCommand::Api { target, .. } => target.output.json,
         ClientCommand::Auth { .. } => false,
     };
@@ -360,6 +373,10 @@ async fn dispatch(command: ClientCommand) -> anyhow::Result<i32> {
         ClientCommand::Pr { command, target } => {
             let (api, repo) = connect(&target, true)?;
             pulls::pulls(&api, &repo.expect("a repository"), command, &target.output).await
+        }
+        ClientCommand::Status { branch, target } => {
+            let (api, repo) = connect(&target, true)?;
+            super::status::status(&api, &repo.expect("a repository"), branch, &target.output).await
         }
         ClientCommand::Api { path, method, raw_fields, fields, input, target } => {
             let needs_repo = path.contains("{owner}") || path.contains("{repo}");

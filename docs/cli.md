@@ -57,6 +57,21 @@ The exit code says what kind of answer it was, with or without `--json`:
 | 8 | pending, or a wait that timed out |
 | 9 | the answer cannot be trusted: a log cut short, the server unavailable |
 
+## Where am I
+
+```bash
+rbit status [--branch BRANCH]
+```
+
+One call for the state of a branch (the current one by default): its head on the server and
+whether your checkout's `HEAD` is that commit, how far it is ahead of and behind its base,
+the CI of exactly that commit, the base's CI, the open pull request from the branch, the
+issue a `feature/<n>-…` branch works on, and `next`, the command worth running now. The CI
+`state` is one of `none_expected` (with the reason: no workflow files, Actions off),
+`not_started`, `queued`, `running`, `failure` (as soon as one job failed, even while others
+run), `indeterminate` (nobody can say why the jobs failed: a lost runner, a log cut short),
+`cancelled` and `success`, so "nothing yet" is never confused with "nothing expected".
+
 ## Workflow runs
 
 ```bash
@@ -82,9 +97,12 @@ step's lines, the last 100 by default, of any attempt.
 Runs are found by the commit they tested. Without a run id, `view`, `watch` and `download`
 work on the runs of `--sha` (a commit id, or a prefix of at least 7 hex digits), or of the
 current checkout's `HEAD`: never on "the newest run" of the repository, which may be another
-branch's. A commit with no run yet is `pending` (exit 8) with a hint to watch it; `watch`
-waits for its first run to appear, follows every run of the commit, and gives up after
-`--timeout` seconds (exit 8). `--branch` also matches the runs of pull requests from that
+branch's. A commit with no run yet is `pending` (exit 8) with a hint to watch it. `watch` on a
+commit long-polls the server: it returns as soon as a job fails (exit 1 with
+`--exit-status`), when everything passed (0), when no run will come (`none_expected`, 0),
+when nobody can say why a job failed (`indeterminate`, 9), when the branch moves on to a
+newer commit (`head_changed`, exit 5, naming it; watching `HEAD` follows the current branch,
+`--branch` names another), or after `--timeout` seconds (exit 8). `--branch` also matches the runs of pull requests from that
 branch. `--log-failed` prints the logs of the jobs that did not succeed (failed, timed out
 or cancelled), each line prefixed with its job's name. `rerun --job` wins over `--failed`
 when both are given. `--exit-status` exits with 1 when a run did not succeed and 8 while one

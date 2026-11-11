@@ -80,6 +80,7 @@ mod run_filters;
 mod terminations;
 // Agent loop: logs by step, failure digests, attempts.
 mod agent_logs;
+mod agent_status;
 
 use run_filters::{RunsQuery, non_empty};
 
@@ -106,6 +107,8 @@ pub(super) fn routes() -> Vec<ApiRoute> {
         route(Get, repo("/jobs/{job_id}/steps/{step}/log"), agent_logs::step_log),
         route(Get, repo("/jobs/{job_id}/annotations"), agent_logs::annotations),
         route(Get, repo("/jobs/{job_id}/attempts"), agent_logs::attempts),
+        route(Get, "/repos/{owner}/{repo}/agent/status".to_owned(), agent_status::status),
+        route(Get, "/repos/{owner}/{repo}/agent/watch".to_owned(), agent_status::watch),
         route(Post, repo("/jobs/{job_id}/rerun"), rerun_job),
         route(Get, repo("/runs/{run_id}/artifacts"), run_artifacts),
         route(Get, repo("/artifacts"), list_artifacts),

@@ -77,7 +77,8 @@ pub async fn failure(State(state): State<AppState>, caller: Caller, Path(path): 
     })))
 }
 
-fn failed_job(failed: &FailedJob) -> Value {
+/// A failed job as the digest, status and watch show it.
+pub fn failed_job(failed: &FailedJob) -> Value {
     let job = &failed.job;
     let step = failed.step.as_ref();
     let mut termination = json!({});

@@ -20,6 +20,8 @@ pub mod archive;
 pub mod blame;
 pub mod changes;
 pub mod compare;
+// Agent loop: where a branch stands, cheaply.
+pub mod divergence;
 pub mod diff;
 // Milestone 3: editing files in the browser (E).
 pub mod edit;

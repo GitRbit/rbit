@@ -141,4 +141,38 @@ async fn an_agent_finds_the_runs_of_its_commit_and_reads_codes_not_prose() {
     assert_eq!((code, merge["code"].as_str()), (5, Some("head_changed")), "{merge}");
     let (code, gone) = agent.cli(&["run", "view", "999999"]);
     assert_eq!((code, gone["schema"].as_str(), gone["code"].as_str()), (4, Some("rbit.error/1"), Some("not_found")));
+
+    // Where am I: one call.
+    let (_, status) = agent.get("repos/alice/rocket/agent/status?branch=agent-change").await;
+    assert_eq!(status["schema"], "rbit.status/1");
+    assert_eq!((status["head"]["sha"].as_str(), status["ci"]["for_sha"].as_str()), (Some(head.as_str()), Some(head.as_str())));
+    assert_eq!(status["ci"]["state"], "queued", "no runner takes the jobs: {status}");
+    assert_eq!((status["head"]["divergence"]["ahead"].as_u64(), status["head"]["divergence"]["behind"].as_u64()), (Some(1), Some(0)));
+    assert_eq!(status["pr"]["number"], pull["number"]);
+    assert_eq!(status["next"], format!("rbit run watch --sha {head}"));
+    assert!(serde_json::to_string(&status).unwrap().len() < 1536, "a status is small");
+    let (code, cli_status) = agent.cli(&["status", "--branch", "agent-change"]);
+    assert_eq!((code, cli_status["schema"].as_str(), cli_status["ci"]["state"].as_str()), (0, Some("rbit.status/1"), Some("queued")));
+
+    // Watch: the first look answers, an unchanged one waits out its timeout.
+    let watch = format!("repos/alice/rocket/agent/watch?sha={head}&branch=agent-change&timeout=1");
+    let (_, first) = agent.get(&watch).await;
+    assert_eq!((first["changed"].as_bool(), first["state"].as_str(), first["done"].as_bool()), (Some(true), Some("queued"), Some(false)));
+    let (_, again) = agent.get(&format!("{watch}&cursor={}", first["cursor"].as_str().unwrap())).await;
+    assert_eq!(again["changed"], false);
+    // A newer push to the branch ends the watch of the older commit.
+    let newer = git.commit_file(&sample.dir, "more.txt", "more\n");
+    git.ok(&sample.dir, &["push", "--quiet", &url, "agent-change"]);
+    let (_, moved) = agent.get(&format!("{watch}&cursor={}", first["cursor"].as_str().unwrap())).await;
+    assert_eq!(moved["head_changed"]["sha"], newer.as_str(), "{moved}");
+    let (code, cli_moved) = agent.cli(&["run", "watch", "--sha", &head, "--branch", "agent-change", "--timeout", "5"]);
+    assert_eq!((code, cli_moved["code"].as_str()), (5, Some("head_changed")), "{cli_moved}");
+
+    // A commit with no workflow files expects no run: said at once, not after a wait.
+    git.ok(&sample.dir, &["checkout", "--quiet", "-b", "no-ci", "main"]);
+    git.ok(&sample.dir, &["rm", "--quiet", "-r", ".rbit"]);
+    git.ok(&sample.dir, &["commit", "--quiet", "-m", "Drop CI"]);
+    git.ok(&sample.dir, &["push", "--quiet", &url, "no-ci"]);
+    let (_, quiet) = agent.get("repos/alice/rocket/agent/status?branch=no-ci").await;
+    assert_eq!((quiet["ci"]["state"].as_str(), quiet["ci"]["reason"].as_str()), (Some("none_expected"), Some("the commit has no workflow files")));
 }

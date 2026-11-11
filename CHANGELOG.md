@@ -9,6 +9,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `rbit status` and `GET …/agent/status`: where a branch stands in one call (its head, how
+  far from its base, the CI of exactly that commit with failed jobs and how they ended, the
+  base's CI, its pull request and issue, and the next command). `rbit run watch` on a commit
+  long-polls `GET …/agent/watch`: it returns at the first failed job, ends with
+  `head_changed` when the branch moves on, and says `none_expected` at once for a commit no
+  workflow applies to.
 - Failure digests: `GET …/actions/runs/{run_id}/failure` and `rbit run failure [RUN | --sha]`
   say what failed in a few kilobytes: per failed job its termination record, error
   annotations and the cleaned last 30 lines of the step that ended it. `GET …/jobs/{id}/
