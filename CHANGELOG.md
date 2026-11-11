@@ -9,11 +9,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- `rbit` started inside an rbit Actions job no longer refuses to start with "invalid type:
-  found bool true, expected struct ActionsConfig". The runner sets `RBIT_ACTIONS=true` in
-  every job, and the server read it as its `[actions]` configuration; it now ignores that
-  one variable (`RBIT_ACTIONS__ENABLED` and the other `RBIT_ACTIONS__…` settings still
-  apply). This broke rbit's own tests, and any server a workflow starts, on rbit Actions.
+- `rbit` started inside an rbit Actions job no longer refuses to start with "invalid
+  configuration". The runner sets `RBIT_ACTIONS=true`, `RBIT_ACTOR`, `RBIT_SHA` and the
+  other `RBIT_*` names of the run in every job, and the server read them as settings. It
+  now reads only `RBIT_SECTION__KEY` variables (every setting is in a section, so nothing
+  that worked before changes). This broke rbit's own tests, and any server a workflow
+  starts, on rbit Actions.
 - rustix is updated to 1.1.6 for RUSTSEC-2026-0486.
 
 ## [0.2.1] - 2026-11-10

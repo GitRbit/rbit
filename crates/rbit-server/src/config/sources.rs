@@ -75,12 +75,14 @@ impl ConfigSources {
             figment = figment.merge(Serialized::defaults(value));
         }
         for prefix in [LEGACY_ENV_PREFIX, ENV_PREFIX] {
-            // `RBIT_ACTIONS=true` is what rbit-runner sets in every job (as GitHub sets
-            // `GITHUB_ACTIONS`); it is not the `[actions]` table, so a server started inside a
-            // job must not read it as one. `RBIT_ACTIONS__…` keys still configure Actions.
+            // Every setting lives in a section (`RBIT_SECTION__KEY`), so a variable without
+            // the separator is never configuration. rbit-runner sets such names in every job
+            // (`RBIT_ACTIONS=true`, `RBIT_ACTOR`, `RBIT_SHA`, … as GitHub sets `GITHUB_*`),
+            // and a server started inside a job must not read them as sections. This also
+            // leaves out `RBIT_CONFIG` and `RBIT_IGNORE_ADMIN_CONFIG`.
             let env = Env::prefixed(prefix)
                 .split(ENV_SEPARATOR)
-                .ignore(&["config", "ignore_admin_config", "actions"])
+                .filter(|key| key.as_str().contains('.'))
                 .filter(|key| !AuthConfig::is_provider_env_key(key.as_str()));
             figment = figment.merge(env);
         }

@@ -323,8 +323,8 @@ In a container job a matcher file is read when its step ends, with the container
 the matcher applies from the next step on.
 The environment has
 `CI=true`, `GITHUB_ACTIONS=true`, `RBIT_ACTIONS=true` and the usual `GITHUB_*` and `RUNNER_*`
-variables. (An `rbit` server started by a job ignores `RBIT_ACTIONS` itself; its Actions
-settings are the `RBIT_ACTIONS__…` variables.)
+variables. (An `rbit` server started by a job reads only `RBIT_SECTION__KEY` variables as
+settings, so these names do not configure it.)
 
 ## Secrets and variables
 

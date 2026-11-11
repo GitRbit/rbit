@@ -55,8 +55,9 @@ fn rbit(data_dir: &Path, args: &[&str]) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_rbit")).args(args).env("RBIT_STORAGE__DATA_DIR", data_dir).env_remove("RBIT_CONFIG").output().unwrap()
 }
 
-/// rbit-runner sets `RBIT_ACTIONS=true` in every job; a server command run inside a CI job
-/// must not read it as the `[actions]` table, while `RBIT_ACTIONS__ENABLED` still applies.
+/// rbit-runner sets `RBIT_ACTIONS=true`, `RBIT_ACTOR`, `RBIT_SHA`, … in every job; a server
+/// command run inside a CI job must not read them as settings, while `RBIT_SECTION__KEY`
+/// variables still apply.
 #[tokio::test]
 async fn the_ci_marker_variable_is_not_configuration() {
     let dir = tempfile::tempdir().unwrap();
@@ -67,6 +68,8 @@ async fn the_ci_marker_variable_is_not_configuration() {
         .args(["backup", "--output", backup.to_str().unwrap()])
         .env("RBIT_STORAGE__DATA_DIR", &data_dir)
         .env("RBIT_ACTIONS", "true")
+        .env("RBIT_ACTOR", "octocat")
+        .env("RBIT_SHA", "0123456789abcdef0123456789abcdef01234567")
         .env("RBIT_ACTIONS__ENABLED", "true")
         .env_remove("RBIT_CONFIG")
         .output()
