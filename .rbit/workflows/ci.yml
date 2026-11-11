@@ -1,0 +1,208 @@
+# CI for rbit's own repository when it is hosted on rbit. GitHub ignores `.rbit/`, and rbit
+# reads this directory instead of `.github/workflows`, so `.github/workflows/ci.yml` stays
+# the GitHub CI (Linux and Windows) and this file is its Linux half for a self-hosted
+# runner. See docs/design/agent-step0-ci-and-candidate.md.
+#
+# Runner requirements: a runner with the `linux` label whose jobs find `cargo` (stable Rust
+# with rustfmt and clippy), `cargo-nextest`, Node.js 24, git, bash, curl and the C
+# toolchain on PATH. A host-backend runner gets them from its service environment; a
+# container runner from its image. Nothing here names a machine.
+name: CI
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to a branch supersedes that branch's running checks. Runs on `main` are
+# never cancelled, so every commit that lands there gets a complete result.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  CARGO_TERM_COLOR: never
+  CARGO_INCREMENTAL: "0"
+  # Four compile jobs: measured near 12 GB peak compiler memory for a full build.
+  CARGO_BUILD_JOBS: "4"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+
+jobs:
+  contracts:
+    name: Rewrite contracts
+    runs-on: linux
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: node --version && cargo --version
+      - run: node scripts/workspace.mjs fetch --locked
+      - run: node --test scripts/tests/rewrite-*.test.mjs scripts/tests/identity-features.test.mjs scripts/tests/platform-boundary.test.mjs scripts/tests/workspace*.test.mjs
+      - run: node scripts/rewrite/check.mjs
+      # Separate invocations keep workspace feature unification from hiding a missing
+      # feature-gated dependency; the same list as the GitHub CI's Linux leg.
+      - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --locked
+      - run: node scripts/workspace.mjs test --package rbit-identity-models --no-default-features --locked
+      - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --features credentials --locked
+      - run: node scripts/workspace.mjs test --package rbit-credential-inventory --no-default-features --locked
+      - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --features session-tokens --locked
+      - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --features sessions --locked
+      - run: node scripts/workspace.mjs test --package rbit-collaboration --no-default-features --locked
+      - run: node scripts/workspace.mjs test --package rbit-collaboration --no-default-features --features applications --locked
+      - run: node scripts/workspace.mjs test --package rbit-contracts --package rbit-core --package rbit-repositories --package rbit-kernel --package rbit-localization --package rbit-identity-models --package rbit-identity --package rbit-collaboration --package rbit-auth --package rbit-rewrite-check --features rbit-identity/password-work,rbit-identity/sessions,rbit-collaboration/applications --locked
+      - run: node scripts/workspace.mjs test --package rbit-render-probe --no-default-features --features inheritance,segments,blocks,count-8 --locked
+      - run: node scripts/workspace.mjs clippy --package rbit-platform --all-targets --locked -- -D warnings
+      - run: node scripts/rewrite/check-types.mjs
+
+  lint:
+    name: Format and clippy
+    runs-on: linux
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: cargo fmt --all --check
+      # Pedantic lints are enabled workspace-wide in Cargo.toml; warnings fail the build.
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  deny:
+    name: Licenses and advisories
+    runs-on: linux
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      # A prebuilt, checksum-pinned cargo-deny: compiling it would take longer than the check.
+      - name: Install cargo-deny
+        run: bash scripts/ci/install-cargo-deny.sh "$RUNNER_TEMP/cargo-deny"
+      - run: '"$RUNNER_TEMP/cargo-deny/cargo-deny" --locked check licenses advisories'
+
+  assets:
+    name: Front-end build
+    runs-on: linux
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - run: npm test
+      # Vendored scripts and generated icons are committed; the build must not change them.
+      - run: git diff --exit-code -- crates/rbit-web/assets
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-css
+          path: |
+            crates/rbit-web/assets/app.css
+            crates/rbit-web/assets/deferred.css
+          retention-days: 1
+
+  tests:
+    name: Tests
+    needs: assets
+    runs-on: linux
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      # Asset tests need the generated (gitignored) stylesheets.
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-css
+          path: crates/rbit-web/assets
+      - run: git --version
+      - name: Workspace tests
+        run: cargo nextest run --workspace --locked --no-fail-fast
+      # nextest does not execute doctests, so documentation examples run here.
+      - run: cargo test --workspace --doc --locked
+      # Upgrade rehearsal (fast mode): see docs/upgrade-rehearsal.md.
+      - run: cargo build --locked --package rbit-server
+      - run: node --test scripts/tests/release-rehearsal.test.mjs
+        env:
+          RBIT_REHEARSAL_CANDIDATE: target/debug/rbit
+
+  release:
+    name: Release build
+    needs: assets
+    runs-on: linux
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-css
+          path: crates/rbit-web/assets
+      # rbit-runner is not a default member: name both, as the release does.
+      - run: cargo build --release --locked --package rbit-server --package rbit-runner
+      - run: ./target/release/rbit --version && ./target/release/rbit-runner --version
+      - run: node scripts/release-rehearsal.mjs --candidate target/release/rbit
+      - name: Checksums
+        run: |
+          cd target/release
+          sha256sum rbit rbit-runner | tee SHA256SUMS
+      # The binaries of this exact commit: a promotion installs these, never a rebuild.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rbit-linux-x86_64
+          path: |
+            target/release/rbit
+            target/release/rbit-runner
+            target/release/SHA256SUMS
+          retention-days: 14
+
+  candidate:
+    name: Candidate
+    needs: release
+    runs-on: linux
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: rbit-linux-x86_64
+          path: candidate-bin
+      - name: Verify the artifact
+        working-directory: candidate-bin
+        run: sha256sum --check SHA256SUMS && chmod +x rbit rbit-runner
+      # Boots the built server on loopback with empty data, registers a runner, pushes a
+      # generated fixture project and checks that rbit reports each seeded result right.
+      - name: Candidate check
+        run: node scripts/agent-loop/bench.mjs --rbit candidate-bin/rbit --runner candidate-bin/rbit-runner --quick --report agent-loop/report.json
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-loop-report
+          path: agent-loop/report.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  required:
+    # The one check branch protection requires. It passes only when every job passed.
+    name: CI required
+    if: ${{ always() }}
+    needs: [contracts, lint, deny, assets, tests, release, candidate]
+    runs-on: linux
+    timeout-minutes: 5
+    steps:
+      - name: Require every job
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: |
+          node -e '
+            const needs = JSON.parse(process.env.CI_NEEDS);
+            const failed = Object.entries(needs).filter(([, need]) => need.result !== "success");
+            for (const [name, need] of Object.entries(needs)) console.log(`${name}: ${need.result}`);
+            if (failed.length) { console.log(`::error::not passed: ${failed.map(([name]) => name).join(", ")}`); process.exit(1); }
+          '

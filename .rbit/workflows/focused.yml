@@ -1,0 +1,73 @@
+# A quick check of one crate before paying for the full suite: tests one package, optionally
+# filtered, on any branch. Start it with "Run workflow" or the dispatch API, e.g.
+#   rbit api -X POST "repos/{owner}/{repo}/actions/workflows/focused.yml/dispatches" \
+#     -f ref=my-branch -f inputs[package]=rbit-actions -f inputs[filter]=scheduling
+# Same runner requirements as ci.yml.
+name: Focused tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Cargo package to test (e.g. rbit-actions)
+        type: string
+        required: true
+      filter:
+        description: nextest filter expression or test name substring; empty runs the whole package
+        type: string
+        default: ""
+      clippy:
+        description: Also run clippy on the package
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: focused-${{ github.ref }}-${{ inputs.package }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+  CARGO_INCREMENTAL: "0"
+  CARGO_BUILD_JOBS: "4"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+
+jobs:
+  focused:
+    name: Focused (${{ inputs.package }})
+    runs-on: linux
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      # Inputs reach the shell through the environment, never spliced into the script.
+      - name: Check the inputs
+        env:
+          PACKAGE: ${{ inputs.package }}
+        run: |
+          [[ "$PACKAGE" =~ ^[a-z0-9_-]+$ ]] || { echo "::error::package must be a crate name"; exit 2; }
+          cargo metadata --format-version 1 --no-deps --locked | node -e '
+            let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
+              const names = JSON.parse(s).packages.map((p) => p.name);
+              if (!names.includes(process.env.PACKAGE)) { console.log(`::error::no package ${process.env.PACKAGE}`); process.exit(2); }
+            });'
+      # The web crates read the generated (gitignored) stylesheets.
+      - name: Stylesheets
+        if: ${{ contains(fromJSON('["rbit-web", "rbit-server", "rbit-e2e"]'), inputs.package) }}
+        run: npm ci --no-audit --no-fund && npm run build:css
+      - name: Clippy
+        if: ${{ inputs.clippy }}
+        env:
+          PACKAGE: ${{ inputs.package }}
+        run: cargo clippy --locked --package "$PACKAGE" --all-targets -- -D warnings
+      - name: Tests
+        env:
+          PACKAGE: ${{ inputs.package }}
+          FILTER: ${{ inputs.filter }}
+        run: |
+          if [ -n "$FILTER" ]; then cargo nextest run --locked --package "$PACKAGE" --no-fail-fast -- "$FILTER"
+          else cargo nextest run --locked --package "$PACKAGE" --no-fail-fast; fi
