@@ -9,6 +9,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `rbit auth setup-git`: Git uses the stored login for an instance through a credential
+  helper that never prompts; a missing or revoked token fails at once.
 - Queue position: a waiting job in the API carries `queue` (its position among waiting jobs
   with the same labels, and an expected start from how long such jobs recently took), and
   `rbit status` and the watch show the position of the commit's front job.

@@ -21,6 +21,12 @@ only by you on Unix. `RBIT_TOKEN` (or `GH_TOKEN`) in the environment wins over a
 login, which suits CI. `rbit auth token` prints a stored token for scripts, and
 `rbit auth logout --hostname …` forgets it.
 
+`rbit auth setup-git --hostname https://git.example.com` makes Git use that login for the
+instance: it installs `rbit auth git-credential` as the credential helper for that URL in
+your global Git configuration (resetting other helpers for it). A push then never stops at
+a password prompt: without a login the helper tells Git to stop at once
+(`rbit: no login for …`), and a revoked token fails with `Authentication failed`.
+
 ## Which repository
 
 Commands work on `--repo owner/name` (`-R`), or on the repository the current directory's

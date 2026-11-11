@@ -17,6 +17,7 @@
 mod agent;
 mod commands;
 mod failure;
+mod git_credential;
 mod hosts;
 mod issues;
 mod pulls;

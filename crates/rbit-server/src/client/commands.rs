@@ -133,6 +133,14 @@ pub enum AuthCommand {
         #[arg(long)]
         hostname: Option<String>,
     },
+    /// Let `git push` and `git fetch` use the stored login for an instance, never prompting.
+    SetupGit {
+        #[arg(long)]
+        hostname: String,
+    },
+    /// The Git credential helper `setup-git` installs (`get`, `store`, `erase`).
+    #[command(hide = true)]
+    GitCredential { operation: String },
 }
 
 #[derive(Debug, Subcommand)]
@@ -494,6 +502,8 @@ async fn auth(command: AuthCommand) -> anyhow::Result<i32> {
             stored.save()?;
             eprintln!("Logged out of {host}");
         }
+        AuthCommand::SetupGit { hostname } => super::git_credential::setup(&hostname)?,
+        AuthCommand::GitCredential { operation } => return super::git_credential::credential(&operation),
         AuthCommand::Token { hostname } => {
             let Some(host) = hostname.map(|host| hosts::normalize(&host)).or(stored.default.clone()) else {
                 bail!("which instance? pass --hostname");
