@@ -4,8 +4,7 @@
 //! When the server keeps caches for all its runners (it says so when the runner declares
 //! itself), entries go to the server and any runner of the repository restores them; the
 //! server picks the scopes from the task's run, matches the version [`version`] derives
-//! from the paths and the platform, and evicts. Otherwise the cache is local to the
-//! runner, and what follows describes it: entries live at
+//! from the paths and the platform, and evicts. Otherwise the cache is local to the runner, and what follows describes it: entries live at
 //! `<work_dir>/cache/<repository id>/<scope>/<sha256(key)>.tar.gz` (tar and gzip), with a
 //! small `.json` beside each naming its key and paths, and are evicted least recently used
 //! once all of them together exceed `cache.max_bytes`. A restore touches the entry it
@@ -568,18 +567,19 @@ pub async fn cache(job: &mut Job, kind: BuiltinKind, inputs: &Inputs) -> Outcome
         Outcome::success(outputs)
     };
     let Some(found) = found else {
-        job.reporter.log(&format!("No cache entry for `{key}`"));
+        job.reporter.log(&format!("##[notice]cache miss: no entry for `{key}`"));
         return miss(job, outputs, false);
     };
     job.reporter.log(&format!("Restoring the cache entry `{}` from scope `{}`", found.key, found.scope));
     let archive = found.archive.clone();
-    let downloaded = server.is_some();
+    let (downloaded, started, bytes) = (server.is_some(), std::time::Instant::now(), fs::metadata(&archive).map_or(0, |meta| meta.len()));
     // As with GitHub's cache, an entry that cannot be restored (another job's save evicted
     // it meanwhile, it is damaged) is a miss, not a failed job, and the job's save replaces
     // it.
     let error = match tokio::task::spawn_blocking(move || extract(&archive, &roots)).await {
         Ok(Ok(files)) => {
-            job.reporter.log(&format!("Restored {files} file(s)"));
+            let (kind, seconds) = (if found.key == key { "hit" } else { "partial hit" }, started.elapsed().as_secs_f64());
+            job.reporter.log(&format!("##[notice]cache {kind}: restored `{}` ({files} files, {bytes} bytes) in {seconds:.1}s", found.key));
             if !downloaded {
                 touch(&found.archive);
             }
@@ -624,7 +624,7 @@ pub async fn save(job: &Job, key: &str, paths: &[String], replace: bool) -> Resu
     })
     .await
     .map_err(|error| error.to_string())??;
-    job.reporter.log(&format!("Saved the cache entry `{key}` ({size} bytes)"));
+    job.reporter.log(&format!("##[notice]cache saved: `{key}` ({size} bytes)"));
     Ok(())
 }
 
@@ -671,7 +671,7 @@ async fn save_shared(job: &Job, server: &crate::client::Client, key: &str, paths
     };
     let _ = fs::remove_file(&archive);
     match saved? {
-        (size, Some(entry)) => job.reporter.log(&format!("Saved the cache entry `{key}` ({size} bytes) in scope `{}`", entry.scope)),
+        (size, Some(entry)) => job.reporter.log(&format!("##[notice]cache saved: `{key}` ({size} bytes) in scope `{}`", entry.scope)),
         (_, None) => job.reporter.log(&format!("The cache entry `{key}` was saved meanwhile; it is not saved again")),
     }
     Ok(())

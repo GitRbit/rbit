@@ -9,6 +9,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Cache steps report what they bought: a hit, a partial hit or a miss, with files, bytes
+  and seconds, as `##[notice]` lines, so they show among a job's annotations in the API.
 - `rbit auth setup-git`: Git uses the stored login for an instance through a credential
   helper that never prompts; a missing or revoked token fails at once.
 - Queue position: a waiting job in the API carries `queue` (its position among waiting jobs
