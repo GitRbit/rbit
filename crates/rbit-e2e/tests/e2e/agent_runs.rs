@@ -90,11 +90,11 @@ async fn an_agent_finds_the_runs_of_its_commit_and_reads_codes_not_prose() {
     std::fs::create_dir_all(sample.dir.join(".rbit/workflows")).unwrap();
     let base = git.commit_file(&sample.dir, ".rbit/workflows/ci.yml", WORKFLOW);
     git.ok(&sample.dir, &["push", "--quiet", &url, "main"]);
-    git.ok(&sample.dir, &["checkout", "--quiet", "-b", "feature"]);
+    git.ok(&sample.dir, &["checkout", "--quiet", "-b", "agent-change"]);
     let head = git.commit_file(&sample.dir, "feature.txt", "work\n");
-    git.ok(&sample.dir, &["push", "--quiet", &url, "feature"]);
+    git.ok(&sample.dir, &["push", "--quiet", &url, "agent-change"]);
     let (status, pull) = agent
-        .send(reqwest::Method::POST, "repos/alice/rocket/pulls", Some(json!({ "title": "Feature", "head": "feature", "base": "main" })))
+        .send(reqwest::Method::POST, "repos/alice/rocket/pulls", Some(json!({ "title": "Change", "head": "agent-change", "base": "main" })))
         .await;
     assert_eq!(status, 201, "{pull}");
 
@@ -111,7 +111,7 @@ async fn an_agent_finds_the_runs_of_its_commit_and_reads_codes_not_prose() {
     assert_eq!((status, refused["code"].as_str()), (422, Some("invalid")));
 
     // A branch's runs include its pull request's (`refs/pull/1/head`).
-    let (_, branch) = agent.get("repos/alice/rocket/actions/runs?branch=feature").await;
+    let (_, branch) = agent.get("repos/alice/rocket/actions/runs?branch=agent-change").await;
     assert_eq!(shas(&branch).iter().filter(|(event, _)| event == "pull_request").count(), 1, "{branch}");
     let (_, main) = agent.get("repos/alice/rocket/actions/runs?branch=main").await;
     assert_eq!(shas(&main), [("push".to_owned(), base.clone())]);
