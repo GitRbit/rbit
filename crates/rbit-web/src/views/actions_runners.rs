@@ -255,6 +255,7 @@ mod tests {
                 arch: "x86_64".into(),
                 capacity: 2,
                 host_labels: vec!["self-hosted".parse().unwrap()],
+                exclusive_labels: Vec::new(),
             },
             protocol: 1,
         }

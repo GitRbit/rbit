@@ -331,6 +331,7 @@ async fn runners_are_found_by_token_and_managed_within_their_scope() {
         arch: "x86_64".into(),
         capacity: 2,
         host_labels: vec![labels[1].clone()],
+        exclusive_labels: Vec::new(),
     };
     let declaration = Declaration {
         name: "builder-2",

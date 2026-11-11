@@ -102,6 +102,10 @@ pub struct Label {
     /// The job container's image, unless the workflow names one (container labels only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
+    /// Its jobs need the whole runner: taken only when the runner runs nothing else, and
+    /// nothing else is taken while one runs (for timing-sensitive work).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub exclusive: bool,
 }
 
 /// `[container]`: how the container backend runs jobs.
@@ -261,6 +265,7 @@ impl RunnerConfig {
             capacity: if ephemeral { 1 } else { self.capacity },
             version: env!("CARGO_PKG_VERSION").to_owned(),
             ephemeral,
+            exclusive_labels: self.labels.iter().filter(|label| label.exclusive).map(|label| label.name.clone()).collect(),
         }
     }
 
@@ -291,7 +296,7 @@ pub fn parse_label(spec: &str) -> anyhow::Result<Label> {
         None => bail!("label `{spec}` must be `name:backend[:image]`"),
     };
     let image = parts.next().map(|image| image.trim().to_owned()).filter(|image| !image.is_empty());
-    Ok(Label { name: name.to_owned(), backend, image })
+    Ok(Label { name: name.to_owned(), backend, image, exclusive: false })
 }
 
 /// The server's base URL: `https`, or `http` on a loopback host when `insecure_http` is
@@ -540,9 +545,9 @@ max_bytes = 10737418240
     fn labels_parse_with_images_that_have_colons() {
         assert_eq!(
             parse_label("ubuntu-latest:container:docker.io/library/ubuntu:24.04").unwrap(),
-            Label { name: "ubuntu-latest".into(), backend: Backend::Container, image: Some("docker.io/library/ubuntu:24.04".into()) }
+            Label { name: "ubuntu-latest".into(), backend: Backend::Container, image: Some("docker.io/library/ubuntu:24.04".into()), exclusive: false }
         );
-        assert_eq!(parse_label("self-hosted:host").unwrap(), Label { name: "self-hosted".into(), backend: Backend::Host, image: None });
+        assert_eq!(parse_label("self-hosted:host").unwrap(), Label { name: "self-hosted".into(), backend: Backend::Host, image: None, exclusive: false });
         assert!(parse_label("self-hosted").is_err());
         assert!(parse_label("x:vm").is_err());
     }

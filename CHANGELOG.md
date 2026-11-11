@@ -9,6 +9,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Exclusive runner labels: `exclusive = true` on a `[[labels]]` entry of `runner.toml` makes
+  the runner take that label's jobs only when it runs nothing else, and nothing else while
+  one runs, so timing-sensitive jobs never share the machine. Older servers ignore it.
 - Superseded runs: `PUT …/actions/supersede {"enabled": true}` lets a newer push to a
   branch (not the default one) cancel that branch's older runs of the same workflow. A run
   a newer run of its group cancelled says `superseded_by` with the commit, its running

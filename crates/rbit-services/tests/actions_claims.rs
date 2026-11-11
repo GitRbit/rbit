@@ -27,6 +27,7 @@ async fn runner(fixture: &Fixture) -> Arc<CachedRunner> {
                 capacity: 1,
                 version: "0.2.0".into(),
                 ephemeral: false,
+                exclusive_labels: Vec::new(),
             },
         })
         .await

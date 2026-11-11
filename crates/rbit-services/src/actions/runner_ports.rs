@@ -43,6 +43,7 @@ fn capabilities(declared: &Capabilities, host_labels: &[RunnerLabel]) -> RunnerC
         arch: declared.arch.clone(),
         capacity: declared.capacity,
         host_labels: host_labels.to_vec(),
+        exclusive_labels: declared.exclusive_labels.iter().filter_map(|name| name.parse().ok()).collect(),
     }
 }
 
@@ -268,6 +269,7 @@ mod tests {
             capacity: 2,
             version: "0.2.0".into(),
             ephemeral: false,
+            exclusive_labels: Vec::new(),
         };
         let declared = declared(&Labels, &labels, &capabilities).unwrap();
         assert_eq!(declared.labels.iter().map(RunnerLabel::as_str).collect::<Vec<_>>(), ["ubuntu-latest", "self-hosted"]);

@@ -586,7 +586,10 @@ desktop task leaves a stop request in the work directory, and logging off stops 
 `deploy/rbit-runner.service` remains an example unit for hosts set up by hand.
 
 `deploy/rbit-runner.example.toml` documents `runner.toml`: capacity, the work directory, labels
-and the container limits (memory, CPUs, pids). The container image keeps `runner.toml`, the
+and the container limits (memory, CPUs, pids). A label marked `exclusive = true` gives its jobs
+the whole runner: the runner takes one only when it runs nothing else, and nothing else while
+it runs, so a benchmark or a timing-sensitive test never shares the machine; the runner's
+other labels still use the full `capacity`. The container image keeps `runner.toml`, the
 credential and the work directory in its `/var/lib/rbit-runner` volume.
 
 **Isolation.** Each label runs its jobs one way:

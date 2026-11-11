@@ -261,6 +261,9 @@ pub struct RunnerCapabilities {
     pub capacity: u32,
     /// The labels it runs on the host backend: jobs there have no isolation.
     pub host_labels: Vec<RunnerLabel>,
+    // Agent loop: exclusive labels.
+    /// Labels whose jobs need the whole runner.
+    pub exclusive_labels: Vec<RunnerLabel>,
 }
 
 impl RunnerCapabilities {

@@ -341,8 +341,10 @@ fn local_config(config_path: &Path, templates: &[JobTemplate], backend: ExecBack
     for label in templates.iter().flat_map(|template| template.runs_on.iter()) {
         if !config.labels.iter().any(|known| &known.name == label) {
             config.labels.push(match backend {
-                ExecBackend::Host => Label { name: label.clone(), backend: Backend::Host, image: None },
-                ExecBackend::Container => Label { name: label.clone(), backend: Backend::Container, image: Some(DEFAULT_IMAGE.into()) },
+                ExecBackend::Host => Label { name: label.clone(), backend: Backend::Host, image: None, exclusive: false },
+                ExecBackend::Container => {
+                    Label { name: label.clone(), backend: Backend::Container, image: Some(DEFAULT_IMAGE.into()), exclusive: false }
+                }
             });
         }
     }

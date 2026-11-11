@@ -30,6 +30,7 @@ fn request(token: &str, labels: &[&str]) -> RegisterRequest {
             capacity: 1,
             version: "0.2.0".into(),
             ephemeral: false,
+            exclusive_labels: Vec::new(),
         },
     }
 }
