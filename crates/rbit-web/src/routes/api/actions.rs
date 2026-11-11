@@ -308,11 +308,13 @@ pub async fn run_jobs(State(state): State<AppState>, caller: Caller, pager: Page
     let base = base_url(&state);
     let runner = |job: &rbit_core::actions::Job| job.runner_id.and_then(|id| runners.get(&id)).map(String::as_str);
     let ends = actions.task_ends(&shown).await?;
+    let places = actions.queue_places(&shown).await?;
     let items = shown
         .iter()
         .map(|job| {
             let mut item = hooks::workflow_job(job, &detail.run, &ctx.repo, &steps, runner(job), base);
             terminations::annotate(&mut item, job, &ends);
+            terminations::queue(&mut item, places.get(&job.id));
             item
         })
         .collect();
@@ -329,6 +331,8 @@ pub async fn show_job(State(state): State<AppState>, caller: Caller, Path(path):
     let mut item = hooks::workflow_job(&detail.job, &detail.run, &ctx.repo, &detail.steps, runner, base_url(&state));
     let ends = actions(&state)?.task_ends(std::slice::from_ref(&detail.job)).await?;
     terminations::annotate(&mut item, &detail.job, &ends);
+    let places = actions(&state)?.queue_places(std::slice::from_ref(&detail.job)).await?;
+    terminations::queue(&mut item, places.get(&detail.job.id));
     Ok(Json(item))
 }
 

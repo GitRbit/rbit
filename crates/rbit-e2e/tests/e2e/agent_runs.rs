@@ -150,6 +150,11 @@ async fn an_agent_finds_the_runs_of_its_commit_and_reads_codes_not_prose() {
     assert_eq!((status["head"]["divergence"]["ahead"].as_u64(), status["head"]["divergence"]["behind"].as_u64()), (Some(1), Some(0)));
     assert_eq!(status["pr"]["number"], pull["number"]);
     assert_eq!(status["next"], format!("rbit run watch --sha {head}"));
+    // Nothing takes the jobs, so the branch's push job waits behind main's.
+    assert_eq!(status["ci"]["queue"]["position"], 2, "{status}");
+    let (_, runs) = agent.get(&format!("repos/alice/rocket/actions/runs?head_sha={head}&event=push")).await;
+    let (_, jobs) = agent.get(&format!("repos/alice/rocket/actions/runs/{}/jobs", runs["workflow_runs"][0]["id"])).await;
+    assert_eq!((jobs["jobs"][0]["queue"]["position"].as_u64(), jobs["jobs"][0]["queue"]["ahead"].as_u64()), (Some(2), Some(1)));
     assert!(serde_json::to_string(&status).unwrap().len() < 1536, "a status is small");
     let (code, cli_status) = agent.cli(&["status", "--branch", "agent-change"]);
     assert_eq!((code, cli_status["schema"].as_str(), cli_status["ci"]["state"].as_str()), (0, Some("rbit.status/1"), Some("queued")));

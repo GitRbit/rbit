@@ -15,7 +15,7 @@ use rbit_core::{
     RepoId, Timestamp,
     actions::{Job, Run, Status, TerminationReason},
 };
-use rbit_storage::sqlite::actions_runs::CommitDecision;
+use rbit_storage::sqlite::actions_runs::{CommitDecision, QueuePlace};
 use rbit_git::divergence::Divergence;
 
 use super::{browse::RunQuery, logs::FailedJob};
@@ -34,6 +34,8 @@ pub struct CommitCi {
     pub failed: Vec<FailedJob>,
     /// For `superseded`: the commit whose run cancelled this one's.
     pub superseded_by: Option<String>,
+    /// While jobs wait: the place in line of the one nearest the front.
+    pub queue: Option<QueuePlace>,
 }
 
 /// A branch's open pull request.
@@ -110,7 +112,7 @@ impl ActionsService {
                 Some("started") => ("not_started", "runs were started for this commit and are gone"),
                 _ => ("not_started", "workflow files exist but no run has appeared yet"),
             };
-            return Ok(CommitCi { state, reason: Some(reason), runs: Vec::new(), counts: [0; 4], failed: Vec::new(), superseded_by: None });
+            return Ok(CommitCi { state, reason: Some(reason), runs: Vec::new(), counts: [0; 4], failed: Vec::new(), superseded_by: None, queue: None });
         }
         let mut jobs: Vec<Job> = Vec::new();
         for run in &page.runs {
@@ -134,7 +136,8 @@ impl ActionsService {
         let superseded = self.superseded_by(&page.runs).await?;
         let superseded_by = page.runs.iter().all(|run| superseded.contains_key(&run.id)).then(|| superseded.values().next().cloned()).flatten();
         let state = if superseded_by.is_some() { "superseded" } else { ci_state(&page.runs, &counts, &failed) };
-        Ok(CommitCi { state, reason: None, runs: page.runs, counts, failed, superseded_by })
+        let queue = self.queue_places(&jobs).await?.into_values().min_by_key(|place| place.ahead);
+        Ok(CommitCi { state, reason: None, runs: page.runs, counts, failed, superseded_by, queue })
     }
 }
 

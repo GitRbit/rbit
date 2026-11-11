@@ -9,6 +9,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Queue position: a waiting job in the API carries `queue` (its position among waiting jobs
+  with the same labels, and an expected start from how long such jobs recently took), and
+  `rbit status` and the watch show the position of the commit's front job.
 - Exclusive runner labels: `exclusive = true` on a `[[labels]]` entry of `runner.toml` makes
   the runner take that label's jobs only when it runs nothing else, and nothing else while
   one runs, so timing-sensitive jobs never share the machine. Older servers ignore it.

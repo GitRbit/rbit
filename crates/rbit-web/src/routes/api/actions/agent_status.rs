@@ -63,6 +63,10 @@ fn ci_json(ci: &CommitCi) -> Value {
         "jobs": { "success": success, "failure": failure, "running": running, "queued": queued },
         "failed": ci.failed.iter().map(agent_logs::failed_job).collect::<Vec<_>>(),
         "superseded_by": ci.superseded_by,
+        "queue": ci.queue.map(|place| json!({
+            "position": place.ahead + 1,
+            "expected_start_seconds": place.mean_seconds.map(|mean| mean.saturating_mul(place.ahead)),
+        })),
     })
 }
 
@@ -192,6 +196,7 @@ mod tests {
             counts,
             failed: Vec::new(),
             superseded_by: None,
+            queue: None,
         };
         assert_eq!(cursor(&ci("running", [1, 0, 1, 0])), cursor(&ci("running", [1, 0, 1, 0])));
         assert_ne!(cursor(&ci("running", [1, 0, 1, 0])), cursor(&ci("running", [2, 0, 0, 0])));

@@ -15,7 +15,7 @@ use rbit_core::{
     Account, AccountId, RepoId,
     actions::{Job, JobId, Run, RunEvent, RunId, RunnerId, Status, Step, TaskId},
 };
-use rbit_storage::sqlite::actions_runs::{RunFilter, TaskEnd};
+use rbit_storage::sqlite::actions_runs::{QueuePlace, RunFilter, TaskEnd};
 
 use super::{ActionsService, hooks};
 use crate::{RepoContext, ServiceError};
@@ -361,6 +361,19 @@ impl ActionsService {
             }
         }
         Ok(names)
+    }
+
+    // Agent loop: queue position.
+    /// Where each waiting job of `jobs` stands in line, by job.
+    pub async fn queue_places(&self, jobs: &[Job]) -> Result<BTreeMap<JobId, QueuePlace>, ServiceError> {
+        let store = self.ctx().database.actions_runs();
+        let mut places = BTreeMap::new();
+        for job in jobs.iter().filter(|job| job.status == Status::Waiting) {
+            if let Some(place) = store.queue_place(job.id).await? {
+                places.insert(job.id, place);
+            }
+        }
+        Ok(places)
     }
 
     // Agent loop: termination records.

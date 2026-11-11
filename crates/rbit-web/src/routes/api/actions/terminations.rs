@@ -10,7 +10,7 @@
 use std::collections::BTreeMap;
 
 use rbit_core::actions::{Job, Status, TaskId, Termination, TerminationReason};
-use rbit_storage::sqlite::actions_runs::TaskEnd;
+use rbit_storage::sqlite::actions_runs::{QueuePlace, TaskEnd};
 use serde_json::{Value, json};
 
 /// Adds `job`'s termination record to `item`, its JSON, once the job has ended.
@@ -33,6 +33,19 @@ pub fn annotate(item: &mut Value, job: &Job, ends: &BTreeMap<TaskId, TaskEnd>) {
     describe(item, termination, step.as_ref().map(|(number, name)| (*number, name.as_str())), end.log_complete);
     if reason == TerminationReason::Timeout {
         item["conclusion"] = json!("timed_out");
+    }
+}
+
+// Agent loop: queue position.
+/// Adds `queue` to a waiting job's JSON: how many jobs with the same labels are ahead of it
+/// and, from how long such jobs recently took, when it may start (one runner assumed).
+pub fn queue(item: &mut Value, place: Option<&QueuePlace>) {
+    if let Some(place) = place {
+        item["queue"] = json!({
+            "position": place.ahead + 1,
+            "ahead": place.ahead,
+            "expected_start_seconds": place.mean_seconds.map(|mean| mean.saturating_mul(place.ahead)),
+        });
     }
 }
 

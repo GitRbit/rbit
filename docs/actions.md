@@ -475,6 +475,11 @@ a cleaned excerpt of the last 30 lines of the step that ended it, with a `more` 
 job and how it ended, so a test that failed and then passed on the same commit can be seen).
 `rbit run failure` and `rbit run log` use them.
 
+A waiting job carries rbit's own `queue`: its `position` among waiting jobs with the same
+labels (oldest first), how many are `ahead`, and `expected_start_seconds`, from how long the
+last 50 such jobs took, assuming one runner; `rbit status` shows the position of a commit's
+front job.
+
 rbit records what the trigger decided for every pushed commit: how many workflow files it
 has, how many started a run, and why none did (a skip marker, no workflow files, or the
 workflows' `branches`/`paths` filters). A required check that rbit Actions reports
