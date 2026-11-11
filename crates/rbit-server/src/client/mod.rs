@@ -15,6 +15,7 @@
 //! platform, so it always speaks the API of the server it ships with.
 
 mod agent;
+mod ci;
 mod commands;
 mod failure;
 mod git_credential;

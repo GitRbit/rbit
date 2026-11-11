@@ -22,6 +22,8 @@ pub mod changes;
 pub mod compare;
 // Agent loop: where a branch stands, cheaply.
 pub mod divergence;
+// Agent loop: scratch refs for CI runs of commits on no branch.
+pub mod scratch;
 pub mod diff;
 // Milestone 3: editing files in the browser (E).
 pub mod edit;

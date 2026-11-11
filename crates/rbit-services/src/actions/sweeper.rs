@@ -67,6 +67,8 @@ pub struct Swept {
     pub expired_caches: usize,
     /// Files removed because what they belonged to is gone.
     pub orphaned_files: usize,
+    /// Scratch refs deleted because they outlived their lifetime.
+    pub expired_scratch: usize,
 }
 
 impl ActionsService {
@@ -120,6 +122,7 @@ impl ActionsService {
         swept.expired_artifacts = self.expire_artifacts(now).await?;
         // Actions: shared cache.
         swept.expired_caches = self.expire_caches(now).await?;
+        swept.expired_scratch = self.expire_scratch(now).await?;
         // Actions: metrics.
         self.record_gauges(now).await?;
 

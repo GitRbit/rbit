@@ -71,6 +71,7 @@ pub mod secrets;
 // Actions: interface and secrets (U).
 pub mod settings;
 mod stale_task_port;
+mod scratch;
 pub mod status;
 mod supersede;
 pub mod statuses;

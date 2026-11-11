@@ -114,6 +114,28 @@ or cancelled), each line prefixed with its job's name. `rerun --job` wins over `
 when both are given. `--exit-status` exits with 1 when a run did not succeed and 8 while one
 has not finished.
 
+## CI without a branch
+
+```bash
+rbit ci run [--jobs JOB,JOB] [--commit COMMIT] [--no-watch] [--timeout SECONDS]
+```
+
+Tests what is in your working tree, committed or not, without making a branch or moving
+`HEAD`: it builds a commit of the tree (tracked and untracked files; what `.gitignore`
+leaves out stays out) through a temporary index, pushes it to `refs/scratch/<login>/<id>`
+and watches its run like `rbit run watch --sha`, with the same exit codes. `--commit` tests
+an existing commit instead. `--jobs` runs only the named jobs and the jobs they `needs`, by
+adding an `Rbit-CI-Jobs: lint, tests` trailer to the commit it builds; a workflow with none
+of them starts no run. The push uses Git's credentials for the instance (`rbit auth
+setup-git`).
+
+Scratch refs are not branches: no branch list shows them and no pull request comes from
+them. You push only under your own login, hold at most 20 at a time in a repository, and
+the server deletes each one a day after it was pushed. Workflows see a scratch ref as the
+branch `scratch/<login>/<id>`, so `on: push` with `branches: ["**"]` or no filter runs on it
+and `branches: [main]` does not. A subset run reports only its jobs, so it never stands in
+for the full set of required checks.
+
 ## Issues
 
 ```bash

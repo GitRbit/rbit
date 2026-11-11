@@ -57,3 +57,12 @@ fn closing_cancels_only_runs_that_have_not_started() {
     }
     assert!(!cancelled_when_pull_closes(RunStage::Started));
 }
+
+#[test]
+fn a_scratch_ref_is_pushed_like_a_branch_of_its_name() {
+    let updates = [("refs/scratch/ada/4c1e9a", None, Some("a")), ("refs/scratch/ada/gone", Some("b"), None)];
+    let names: Vec<_> = considered_refs(&updates, |(n, b, a)| pushed(n, *b, *a)).into_iter().map(|u| u.0).collect();
+    assert_eq!(names, ["refs/scratch/ada/4c1e9a"], "a deleted scratch ref starts nothing");
+    let scratch = pushed("refs/scratch/ada/4c1e9a", None, Some("a"));
+    assert_eq!(comparison_base(scratch, "main"), Some("main"), "its paths are compared with the default branch");
+}

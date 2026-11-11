@@ -9,6 +9,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `rbit ci run [--jobs a,b]` tests the working tree (or `--commit`) without a branch: it
+  pushes a commit to `refs/scratch/<login>/…`, which the workflows see as the branch
+  `scratch/<login>/…`, and watches its run. An `Rbit-CI-Jobs:` trailer on a scratch
+  commit runs only those jobs and the jobs they need. Scratch refs are never listed as
+  branches, are limited to 20 per person and repository, and expire after a day.
 - Cache steps report what they bought: a hit, a partial hit or a miss, with files, bytes
   and seconds, as `##[notice]` lines, so they show among a job's annotations in the API.
 - `rbit auth setup-git`: Git uses the stored login for an instance through a credential

@@ -31,8 +31,10 @@ pub struct PushedRef<'a> {
 }
 
 impl<'a> PushedRef<'a> {
+    /// The branch a pushed ref is, a scratch ref (`refs/scratch/…`) counting as the branch
+    /// `scratch/…`.
     fn branch(self) -> Option<&'a str> {
-        self.name.strip_prefix("refs/heads/")
+        self.name.strip_prefix("refs/heads/").or_else(|| self.name.strip_prefix("refs/").filter(|rest| rest.starts_with("scratch/")))
     }
 
     fn considered(self) -> bool {

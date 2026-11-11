@@ -25,7 +25,7 @@ use rbit_access::{
 use rbit_core::access::repo_access;
 pub use rbit_core::protection::{MergeRules, PushActor, PushVerdict, Refusal};
 use rbit_core::{
-    AccountId, AccountKind, RefUpdate, RepoId, User,
+    AccountId, AccountKind, RefUpdate, RepoId, Timestamp, User,
     membership::{Team, TeamId},
     protection::{BranchProtection, ProtectionId, RuleSettings, is_protected},
 };
@@ -37,6 +37,9 @@ use crate::{
     audit::{AuditAction, AuditEntry},
     repositories::viewer_grants,
 };
+
+/// Scratch refs one person may hold in one repository at a time.
+pub const SCRATCH_REFS_PER_OWNER: u64 = 20;
 
 /// The rule's protections in a few words, for the audit log.
 pub use rbit_access::protection::summary;
@@ -213,7 +216,8 @@ impl ProtectionService {
         }
         let principal = Principal { user: actor.user.map(User::id), deploy_key: actor.deploy_key, access: actor.access };
         let store = self.store();
-        let decision = ProtectionGate::new(&store).check_push(repo.repo.repo.id, principal, updates).await?;
+        let mut decision = ProtectionGate::new(&store).check_push(repo.repo.repo.id, principal, updates).await?;
+        self.check_scratch(repo, actor, updates, &mut decision.verdict).await?;
         if let Some(user) = actor.user {
             for bypass in &decision.bypasses {
                 tracing::info!(repo = %repo.repo.full_name(), r#ref = %bypass.name, by = %user.name(), "branch protection bypassed");
@@ -225,6 +229,33 @@ impl ProtectionService {
             tracing::info!(repo = %repo.repo.full_name(), r#ref = %refusal.name, reason = %refusal.reason, "push refused");
         }
         Ok(decision.verdict)
+    }
+
+    /// Scratch refs (`refs/scratch/<owner>/<name>`): only a person may push them, only under
+    /// their own name, and a new one only while they have fewer than
+    /// [`SCRATCH_REFS_PER_OWNER`] in the repository. Deleting one's own is always allowed.
+    /// An allowed update is recorded here, so the sweep expires it even if Actions is off; a
+    /// push that then fails leaves a record whose ref the sweep finds gone.
+    async fn check_scratch(&self, repo: &RepoContext, actor: &PushActor<'_>, updates: &[RefUpdate], verdict: &mut PushVerdict) -> Result<(), ServiceError> {
+        for update in updates.iter().filter(|update| update.name.starts_with(rbit_git::scratch::PREFIX)) {
+            let owner = rbit_git::scratch::owner(&update.name);
+            let reason = match actor.user {
+                Some(user) if owner == Some(user.name().as_str()) => {
+                    let new = update.before.is_none() && update.after.is_some();
+                    let held = if new { self.ctx.database.actions_runs().count_scratch(repo.repo.repo.id, user.id(), &update.name).await? } else { 0 };
+                    (held >= SCRATCH_REFS_PER_OWNER).then(|| format!("you have {held} scratch refs here; delete one or wait for them to expire"))
+                }
+                _ => Some("refs/scratch/<you>/… is for your own scratch commits".to_owned()),
+            };
+            let store = self.ctx.database.actions_runs();
+            match (reason, &update.after, &update.before) {
+                (Some(reason), _, _) => verdict.refusals.push(Refusal { name: update.name.clone(), reason }),
+                (None, Some(after), _) => store.record_scratch(repo.repo.repo.id, &update.name, actor.user.map(User::id), after, Timestamp::now()).await?,
+                (None, None, Some(before)) => store.forget_scratch(repo.repo.repo.id, &update.name, before).await?,
+                (None, None, None) => {}
+            }
+        }
+        Ok(())
     }
 
     /// What merging into `branch` requires of `merger` (`repo` is opened for the merger).

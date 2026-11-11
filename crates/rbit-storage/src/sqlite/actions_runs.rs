@@ -435,6 +435,8 @@ mod annotations;
 mod decisions;
 pub use decisions::CommitDecision;
 mod queue;
+mod scratch;
+pub use scratch::ScratchRef;
 pub use queue::QueuePlace;
 mod supersede;
 mod terminations;

@@ -12,6 +12,7 @@ mod actions_runner;
 mod agent_exclusive;
 mod agent_paths;
 mod agent_runs;
+mod agent_scratch;
 mod agent_supersede;
 mod agent_termination;
 mod api;

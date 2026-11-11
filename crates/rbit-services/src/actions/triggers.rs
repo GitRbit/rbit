@@ -202,7 +202,7 @@ impl ActionsService {
                 payload: &payload,
                 inputs: None,
             };
-            for candidate in outcome.candidates {
+            for candidate in Self::scratch_run(&outcome.update, &outcome.head, outcome.candidates) {
                 started.extend(self.start_run(&trigger, candidate, &mut allowance).await?);
             }
         }
