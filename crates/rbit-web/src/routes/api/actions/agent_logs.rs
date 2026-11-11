@@ -144,7 +144,7 @@ pub async fn step_log(
     let limit = limit.clamp(1, MAX_TAIL.min(MAX_LINES_PER_CALL));
     let window = actions.step_log(&ctx, task, number - 1, range, limit, MAX_LOG_BYTES).await?;
     let lines: Vec<String> =
-        if query.raw { window.lines } else { window.lines.iter().map(|line| rbit_actions::logs::clean_line(line)).collect() };
+        if query.raw { window.lines } else { window.lines.iter().map(|line| rbit_actions::logs::readable_line(line)).collect() };
     Ok(Json(json!({
         "schema": "rbit.log/1",
         "job_id": job.0,

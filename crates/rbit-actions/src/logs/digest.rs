@@ -21,7 +21,7 @@ pub struct Excerpt {
 
 /// `line` without its leading runner timestamp and without ANSI escape sequences, cut to
 /// [`EXCERPT_LINE_CHARS`].
-pub fn clean_line(line: &str) -> String {
+pub fn readable_line(line: &str) -> String {
     let line = strip_timestamp(line);
     let mut out = String::with_capacity(line.len());
     let mut chars = line.chars().peekable();
@@ -67,7 +67,7 @@ fn strip_timestamp(line: &str) -> &str {
 /// The last `keep` lines of `lines`, cleaned, with repeats folded (`… (repeated 12 times)`).
 /// Blank lines at the end are dropped first: they say nothing.
 pub fn excerpt(lines: &[String], keep: usize) -> Excerpt {
-    let cleaned: Vec<String> = lines.iter().map(|line| clean_line(line)).collect();
+    let cleaned: Vec<String> = lines.iter().map(|line| readable_line(line)).collect();
     let end = cleaned.iter().rposition(|line| !line.is_empty()).map_or(0, |last| last + 1);
     let mut folded: Vec<(String, usize)> = Vec::new();
     for line in &cleaned[..end] {
@@ -92,11 +92,11 @@ mod tests {
 
     #[test]
     fn timestamps_and_colours_go() {
-        assert_eq!(clean_line("2026-11-11T21:39:47.129Z \u{1b}[31merror\u{1b}[0m: it broke"), "error: it broke");
-        assert_eq!(clean_line("no stamp here"), "no stamp here");
-        assert_eq!(clean_line("2026-11-11 is a date, not a stamp"), "2026-11-11 is a date, not a stamp");
+        assert_eq!(readable_line("2026-11-11T21:39:47.129Z \u{1b}[31merror\u{1b}[0m: it broke"), "error: it broke");
+        assert_eq!(readable_line("no stamp here"), "no stamp here");
+        assert_eq!(readable_line("2026-11-11 is a date, not a stamp"), "2026-11-11 is a date, not a stamp");
         let long = "x".repeat(EXCERPT_LINE_CHARS + 10);
-        assert_eq!(clean_line(&long).chars().count(), EXCERPT_LINE_CHARS);
+        assert_eq!(readable_line(&long).chars().count(), EXCERPT_LINE_CHARS);
     }
 
     #[test]
