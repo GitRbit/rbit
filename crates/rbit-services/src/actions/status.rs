@@ -11,7 +11,11 @@
 //! lost runner, an unexplained failure, a log cut short), `cancelled`, `superseded` (a
 //! newer push cancelled every run, naming the newer commit) and `success`.
 
-use rbit_core::actions::{Job, Run, Status, TerminationReason};
+use rbit_core::{
+    RepoId, Timestamp,
+    actions::{Job, Run, Status, TerminationReason},
+};
+use rbit_storage::sqlite::actions_runs::CommitDecision;
 use rbit_git::divergence::Divergence;
 
 use super::{browse::RunQuery, logs::FailedJob};
@@ -82,17 +86,29 @@ impl ActionsService {
         Ok(BranchStatus { issue: issue_of(&branch), branch, head, base, divergence, ci, base_sha, base_ci, pull })
     }
 
+    /// Records what the trigger decided for pushed commit `sha`: its `workflows`, how many
+    /// `started`, and why none did.
+    pub(crate) async fn record_decision(&self, repo: RepoId, sha: &str, workflows: usize, started: usize, skipped: Option<&str>) -> Result<(), ServiceError> {
+        let count = |n: usize| i64::try_from(n).unwrap_or(i64::MAX);
+        let decision = CommitDecision { workflows: count(workflows), started: count(started), reason: skipped.unwrap_or("started").to_owned() };
+        Ok(self.ctx().database.actions_runs().record_decision(repo, sha, &decision, Timestamp::now()).await?)
+    }
+
     /// The CI of commit `sha` of `repo`.
     pub async fn commit_ci(&self, repo: &RepoContext, sha: &str) -> Result<CommitCi, ServiceError> {
         let query = RunQuery { sha: Some(sha.to_owned()), ..RunQuery::default() };
         let page = self.page_runs(repo, &query, &[], 0, 20).await?;
         if page.runs.is_empty() {
             let enabled = self.require_pages(repo).await.is_ok();
+            let decided = self.ctx().database.actions_runs().decision(repo.repo.repo.id, sha).await?;
             let none = !enabled || self.workflow_paths_at(repo, sha).await?.is_empty();
-            let (state, reason) = if none {
-                ("none_expected", if enabled { "the commit has no workflow files" } else { "Actions is off for this repository" })
-            } else {
-                ("not_started", "workflow files exist but no run has appeared (a `paths` filter may skip this commit)")
+            let (state, reason) = match decided.as_ref().map(|decision| decision.reason.as_str()) {
+                _ if !enabled => ("none_expected", "Actions is off for this repository"),
+                Some("filtered") => ("none_expected", "the workflows' `branches` or `paths` filters leave this commit out"),
+                Some("skip_marker") => ("none_expected", "the head commit asks to skip CI"),
+                _ if none => ("none_expected", "the commit has no workflow files"),
+                Some("started") => ("not_started", "runs were started for this commit and are gone"),
+                _ => ("not_started", "workflow files exist but no run has appeared yet"),
             };
             return Ok(CommitCi { state, reason: Some(reason), runs: Vec::new(), counts: [0; 4], failed: Vec::new(), superseded_by: None });
         }

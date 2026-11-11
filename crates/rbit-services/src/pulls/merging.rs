@@ -92,6 +92,7 @@ impl PullService {
         );
         let base_tip = base_tip?;
         let rules = rules?;
+        let required = self.required_for_head(ctx, &rules.required_contexts).await?;
         let (reviews, writers) = voters?;
         let tally = tally(&reviews, ctx.issue().author, &ctx.pull.head_sha, rules.dismiss_stale_approvals, |id| writers.contains(&id));
         let statuses = statuses?;
@@ -111,7 +112,7 @@ impl PullService {
             mergeable,
             tally: &tally,
             checks: checks_status(&statuses),
-            required_checks: required_checks(&rules.required_contexts, &statuses),
+            required_checks: required_checks(&required, &statuses),
         };
         let evaluation = evaluate(&facts, &rules);
         let can_delete_head = can_delete_head?;
@@ -343,6 +344,20 @@ impl PullService {
         Ok(head_ctx.can_write_content() && self.inner.protection.may_delete_branch(head_ctx, actor, &ctx.pull.head_branch).await?)
     }
 
+    // Agent loop: checks a commit does not need.
+    /// The `required` contexts the head commit needs: a required check that rbit Actions
+    /// reports (`<workflow> / <job> (<event>)`) is not required of a commit for which the
+    /// trigger recorded that every workflow left it out (`branches` or `paths` filters, a
+    /// skip marker), or a docs-only push would never become mergeable.
+    async fn required_for_head<S: ToString>(&self, ctx: &PullContext, required: &[S]) -> Result<Vec<String>, ServiceError> {
+        let required: Vec<String> = required.iter().map(ToString::to_string).collect();
+        let decision = self.ctx().database.actions_runs().decision(ctx.repo().repo.repo.id, &ctx.pull.head_sha).await?;
+        if !decision.is_some_and(|decision| decision.started == 0 && matches!(decision.reason.as_str(), "filtered" | "skip_marker")) {
+            return Ok(required);
+        }
+        Ok(required.into_iter().filter(|context| !is_actions_context(context)).collect())
+    }
+
     /// Deletes the head branch of a merged or closed pull request on request (the "Delete
     /// branch" button). `false` when it was not deleted.
     pub async fn delete_head(&self, actor: &User, ctx: &PullContext) -> Result<bool, ServiceError> {
@@ -365,4 +380,9 @@ impl PullService {
         self.delete_head_branch(actor, ctx).await;
         Ok(!self.head_branch_exists(ctx).await)
     }
+}
+
+/// Whether `context` is the shape of an rbit Actions job status: `<workflow> / <job> (<event>)`.
+fn is_actions_context(context: &str) -> bool {
+    context.contains(" / ") && context.ends_with(')') && context.contains(" (")
 }

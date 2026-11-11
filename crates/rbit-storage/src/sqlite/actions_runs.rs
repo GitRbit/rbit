@@ -432,6 +432,8 @@ pub enum Rerun {
 
 // Actions: annotations.
 mod annotations;
+mod decisions;
+pub use decisions::CommitDecision;
 mod supersede;
 mod terminations;
 pub use terminations::TaskEnd;

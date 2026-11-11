@@ -475,6 +475,13 @@ a cleaned excerpt of the last 30 lines of the step that ended it, with a `more` 
 job and how it ended, so a test that failed and then passed on the same commit can be seen).
 `rbit run failure` and `rbit run log` use them.
 
+rbit records what the trigger decided for every pushed commit: how many workflow files it
+has, how many started a run, and why none did (a skip marker, no workflow files, or the
+workflows' `branches`/`paths` filters). A required check that rbit Actions reports
+(`<workflow> / <job> (<event>)`) is not required of a commit every workflow left out, so a
+docs-only change behind `paths-ignore` can still merge; checks from other CI systems stay
+required.
+
 `GET` and `PUT …/actions/supersede` (`{"enabled": true}`, administrators) let a newer push to
 a branch other than the default one cancel that branch's older unfinished runs of the same
 workflow, as if each workflow said `concurrency: {group: <workflow>-<ref>,

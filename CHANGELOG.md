@@ -60,6 +60,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A required Actions check no longer holds a pull request forever when every workflow left
+  its head commit out (`branches`/`paths` filters, a skip marker): the trigger now records
+  its decision per pushed commit, `rbit status` says `none_expected` with the reason, and
+  the check is not required of that commit. A check from another CI is still required.
 - The runs API's `branch` filter now matches the runs of pull requests from that branch.
 ### Fixed
 

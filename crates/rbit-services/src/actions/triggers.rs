@@ -5,18 +5,15 @@
 //!
 //! * The subscriber exists only with Actions enabled (`ActionsService::spawn_background`),
 //!   so a disabled instance does no work on a push at all. Enabled, a push costs the push
-//!   handler nothing: the subscriber reads the event and, when Actions is on for the
-//!   repository, spawns the evaluation.
+//!   handler nothing: the subscriber reads the event and, when Actions is on for the repository, spawns the evaluation.
 //! * Only people and their deploy keys start runs ([`PushSource::starts_runs`], §11.2):
 //!   mirror fetches, imports, task pushes and rbit's own ref changes never do.
 //! * Discovery ([`rbit_workflow::discovery`]): at the pushed commit, the first existing of
 //!   its workflow directories; at most its cap of `*.yml`/`*.yaml` files directly in it,
 //!   each within `[actions] max_workflow_bytes`, read through [`GitWorkflows`]. A skip marker in the head commit message skips the
-//!   push's runs. At most [`decide::MAX_REF_UPDATES`] updated refs of one push are considered, one
-//!   run per workflow and ref.
+//!   push's runs. At most [`decide::MAX_REF_UPDATES`] updated refs of one push are considered, one run per workflow and ref.
 //! * Evaluation holds a permit of the evaluation semaphore until its blocking work returns,
-//!   and the work checks a cooperative deadline ([`EVALUATION_BUDGET`]); running out of
-//!   time is a workflow error, not a stuck thread.
+//!   and the work checks a cooperative deadline ([`EVALUATION_BUDGET`]); running out of time is a workflow error, not a stuck thread.
 //! * A file that fails to parse or plan becomes a workflow-error run on the Actions page.
 //! * Pull requests: `opened`, `reopened`, `synchronize`, `closed`, `edited` and
 //!   `ready_for_review` are matched against `on.pull_request` (`branches` against the base
@@ -24,8 +21,7 @@
 //!   commit, which `refs/pull/{n}/head` keeps in the base repository; [`super::trust`]
 //!   decides what the run may touch. A `synchronize` caused by a push that may not start
 //!   runs (a mirror, a task) starts none. Closing a pull request first cancels its runs that
-//!   have not started (waiting, held or awaiting approval). A skip marker in the title skips
-//!   its runs.
+//!   have not started (waiting, held or awaiting approval). A skip marker in the title skips its runs.
 //! * A push that may start runs and moves the default branch also refreshes the
 //!   repository's schedule ([`super::schedules`]), whatever its commit message says.
 //! * A new repository gets its Actions settings row (`enable_for_new_repositories`) before
@@ -140,8 +136,7 @@ impl ActionsService {
         Ok(())
     }
 
-    /// Starts the runs a push asks for and returns them. Public so tests can drive it
-    /// without the subscriber.
+    /// Starts the runs a push asks for and returns them. Public so tests can drive it without the subscriber.
     pub async fn handle_push(&self, repo: RepoId, source: PushSource, updates: &[RefUpdate]) -> Result<Vec<Run>, ServiceError> {
         if !source.starts_runs() {
             return Ok(Vec::new());
@@ -186,6 +181,10 @@ impl ActionsService {
         let mut allowance = self.allowance();
         for outcome in outcomes {
             let Some(after) = outcome.update.after.clone() else { continue };
+            self.record_decision(repo, &after, outcome.workflows, outcome.candidates.len(), outcome.skipped).await?;
+            if outcome.candidates.is_empty() {
+                continue;
+            }
             let commits = pushed_commits(&reader, &outcome.update, &after).await;
             let payload = context::push_event(&owned, &outcome.update, &commits, pusher.as_ref(), fork, base_url);
             let payload = context::fit_payload(payload);
@@ -296,8 +295,7 @@ impl ActionsService {
         Ok(started)
     }
 
-    /// Cancels the runs of pull request `number` that have not started: waiting, held or
-    /// awaiting approval. Running ones finish.
+    /// Cancels the runs of pull request `number` that have not started: waiting, held or awaiting approval. Running ones finish.
     async fn cancel_pull_runs(&self, repo: RepoId, number: i64) -> Result<(), ServiceError> {
         let store = self.ctx().database.actions_runs();
         for run in store.unfinished_for_pull(repo, number).await? {
@@ -345,6 +343,9 @@ struct PushOutcome {
     update: RefUpdate,
     head: CommitSummary,
     candidates: Vec<Candidate>,
+    /// Agent loop: the commit's workflow files, and why none started when none did.
+    workflows: usize,
+    skipped: Option<&'static str>,
 }
 
 /// Blocking: the candidates of every updated ref of a push.
@@ -375,6 +376,7 @@ fn evaluate_push(
         };
         if has_skip_marker(&decide::head_message(&head.summary, head.body.as_deref())) {
             tracing::debug!(r#ref = %update.name, "skip marker in the head commit; no runs");
+            outcomes.push(PushOutcome { update: update.clone(), head, candidates: Vec::new(), workflows: 0, skipped: Some("skip_marker") });
             continue;
         }
         if !by_commit.contains_key(after) {
@@ -390,6 +392,7 @@ fn evaluate_push(
         }
         let Some(files) = by_commit.get(after) else { continue };
         if files.is_empty() {
+            outcomes.push(PushOutcome { update: update.clone(), head, candidates: Vec::new(), workflows: 0, skipped: Some("no_workflows") });
             continue;
         }
         let base = decide::comparison_base(pushed(update), default_branch);
@@ -398,16 +401,14 @@ fn evaluate_push(
         let group = GroupContext { reference: update.name.clone(), sha: after.clone(), ..planning.clone() };
         let mut loader = CallLoader::new(handle, service, caller, reader, after, limits, deadline);
         let candidates = candidates(files, &event, &mut changed, &group, limits, deadline, &mut loader);
-        if !candidates.is_empty() {
-            outcomes.push(PushOutcome { update: update.clone(), head, candidates });
-        }
+        let skipped = candidates.is_empty().then_some("filtered");
+        outcomes.push(PushOutcome { update: update.clone(), head, candidates, workflows: files.len(), skipped });
     }
     outcomes
 }
 
 /// Blocking: the paths changed from `base` to `head`, with both sides of renames; `None`
-/// without a base, when the comparison fails, or when [`decide::changed_paths_known`]
-/// refuses the list — then `paths` filters pass.
+/// without a base, when the comparison fails, or when [`decide::changed_paths_known`] refuses the list — then `paths` filters pass.
 pub(super) fn changed_paths(handle: &Handle, reader: &RepositoryReader, base: Option<&str>, head: &str) -> Option<Vec<String>> {
     let base = base?;
     let limits = DiffLimits { max_files: LISTED_CHANGED_PATHS, max_file_bytes: 0, max_total_lines: 0, max_total_bytes: 0 };
@@ -424,8 +425,7 @@ pub(super) fn changed_paths(handle: &Handle, reader: &RepositoryReader, base: Op
     Some(comparison.files.into_iter().flat_map(|file| iter::once(file.path).chain(file.old_path)).collect())
 }
 
-/// What each workflow of `files` makes of `event` ([`discovery::evaluate`]), with problems
-/// as workflow-error runs record them.
+/// What each workflow of `files` makes of `event` ([`discovery::evaluate`]), with problems as workflow-error runs record them.
 pub(super) fn candidates(
     files: &[WorkflowFile],
     event: &Event<'_>,
