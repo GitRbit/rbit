@@ -26,10 +26,10 @@ impl ActionsService {
     /// supersedes branch runs and this is a push to a branch other than the default one.
     pub(crate) async fn supersede_group(&self, trigger: &Trigger<'_>, path: &str) -> Result<Option<(String, bool)>, ServiceError> {
         let branch = trigger.reference.strip_prefix("refs/heads/");
-        if trigger.event != RunEvent::Push || branch.is_none_or(|branch| branch == trigger.repo.default_branch) {
+        if trigger.event != RunEvent::Push || branch.is_none_or(|branch| branch == trigger.repo.repo.default_branch) {
             return Ok(None);
         }
-        if !self.ctx().database.actions_runs().supersede_enabled(trigger.repo.id).await? {
+        if !self.ctx().database.actions_runs().supersede_enabled(trigger.repo.repo.id).await? {
             return Ok(None);
         }
         Ok(Some((format!("rbit-supersede/{path}/{}", trigger.reference), true)))
