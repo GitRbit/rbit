@@ -41,7 +41,8 @@ function model({ loseDraft = false, loseOpen = false, wrongRaw = false, wrongNat
         waitForFunction: async (predicate, previous) => {
           previous.isConnected = false;
           if (loseDraft) { branch = ""; focus = null; }
-          if (loseOpen) open = false;
+          // A reload that drops the viewer's choice shows the default: a finished failure opens.
+          if (loseOpen) open = finished;
           assert.equal(predicate(previous), true);
         },
       };
@@ -52,7 +53,7 @@ function model({ loseDraft = false, loseOpen = false, wrongRaw = false, wrongNat
           focus: async () => { focus = selector; },
           fill: async value => { assert.equal(selector, "#runs-branch"); branch = value; },
           inputValue: async () => branch,
-          evaluate: async () => selector.endsWith(".code-lines")
+          evaluate: async () => selector.endsWith(".log-console")
             ? { direction: mirroredLog ? "rtl" : "ltr", gutterBefore: !mirroredLog,
               lines: ["waiting for finish", alteredLog ? "*** task token" : "task token ***"] }
             : focus === selector,
@@ -61,14 +62,14 @@ function model({ loseDraft = false, loseOpen = false, wrongRaw = false, wrongNat
             else { assert.match(selector, /button\[type="submit"\]/); url = new URL(productionOrigin + productionOverview + "?branch=main"); }
           },
           textContent: async () => { assert.equal(selector, "#job h1"); return "Build / stable <synthetic> & matrix"; },
-          allTextContents: async () => { assert.match(selector, /\.line-code$/); return expectedLogText().split("\n").slice(205, 1205); },
+          allTextContents: async () => { assert.match(selector, /\.log-text$/); return expectedLogText().split("\n").slice(205, 1205); },
           count: async () => {
             if (selector.includes('#runs a[href*=')) return url.searchParams.has("before") ? 1 : branch === "main" ? 14 : branch === "missing" ? 0 : 25;
             if (selector === '#runs a[rel="next"]') return url.searchParams.has("before") ? 0 : 1;
             if (selector.endsWith("synthetic")) return 0;
             if (selector.includes('data-line="1"')) return selector.startsWith("#step") ? 1 : 0;
             if (selector.includes("data-line=")) return 1;
-            if (selector.endsWith(".code-line")) return selector.startsWith("#step") ? 1205 : 1000;
+            if (selector.endsWith(".log-line")) return selector.startsWith("#step") ? 1205 : 1000;
             throw Error(`Unexpected contract selector: ${selector}`);
           },
           getAttribute: async name => {
@@ -111,10 +112,12 @@ test("extension consumes real-page assertions for seven bounded candidates and c
 test("lost filter drafts, lost step-open state and unproved raw data fail before candidate images", async () => {
   const draft = model({ loseDraft: true }); await assert.rejects(draft.overview());
   assert.equal(draft.captures.length, 0); assert.ok(draft.contexts.every(context => context.closed));
-  for (const options of [{ loseOpen: true }, { wrongRaw: true }]) {
-    const fixture = model(options); await assert.rejects(fixture.job());
-    assert.equal(fixture.captures.length, 0); assert.ok(fixture.contexts.every(context => context.closed));
-  }
+  const raw = model({ wrongRaw: true }); await assert.rejects(raw.job());
+  assert.equal(raw.captures.length, 0); assert.ok(raw.contexts.every(context => context.closed));
+  // The open-state check runs on the reload that finishing the job causes.
+  const open = model({ loseOpen: true }); await assert.rejects(open.job(), assert.AssertionError);
+  assert.equal(open.captures.includes("production-job-finished-desktop"), false);
+  assert.ok(open.contexts.every(context => context.closed));
   const native = model({ wrongNative: true }); await assert.rejects(native.overview());
   assert.ok(native.contexts.every(context => context.closed));
 });
