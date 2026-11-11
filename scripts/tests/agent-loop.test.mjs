@@ -6,7 +6,7 @@ import test from "node:test";
 import { Meter, attributeAfter } from "../agent-loop/api.mjs";
 import { QUICK, parseArgs, selectScenarios, summarize } from "../agent-loop/bench.mjs";
 import { baseFiles, lineOf, workflow } from "../agent-loop/fixtures.mjs";
-import { RUNNER_LABEL, candidateConfig } from "../agent-loop/instance.mjs";
+import { RUNNER_LABEL, candidateConfig, cleanEnv } from "../agent-loop/instance.mjs";
 import { firstFailure } from "../agent-loop/recipes.mjs";
 import { SCENARIOS } from "../agent-loop/scenarios.mjs";
 
@@ -130,4 +130,9 @@ test("the eval split holds out about a third of every kind", async () => {
   const { train, test } = splitCases(kinds);
   assert.deepEqual(test, ["c03", "c06"]);
   assert.equal(train.length + test.length, 8);
+});
+
+test("the candidate does not inherit RBIT_ variables from a CI job", () => {
+  const env = cleanEnv({ PATH: "/bin", RBIT_ACTIONS: "true", rbit_config: "x", RUSTIT_X: "1", HOME: "/h" }, { RBIT_RUNNER_TOKEN: "t" });
+  assert.deepEqual(env, { PATH: "/bin", HOME: "/h", RBIT_RUNNER_TOKEN: "t" });
 });

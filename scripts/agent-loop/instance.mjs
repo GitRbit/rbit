@@ -36,9 +36,16 @@ export function candidateConfig({ port, dataDir, setupToken }) {
   ].join("\n");
 }
 
+/** The parent's environment without `RBIT_*` variables: a CI job's own (`RBIT_ACTIONS`, a
+ *  runner's config path) must not configure the candidate. Only `extra` adds any back. */
+export function cleanEnv(parent, extra = {}) {
+  const env = Object.fromEntries(Object.entries(parent).filter(([key]) => !/^(RBIT|RUSTIT)_/i.test(key)));
+  return { ...env, ...extra };
+}
+
 function startProcess(program, args, { cwd, env, log }) {
   const output = createWriteStream(log, { flags: "a" });
-  const child = spawn(program, args, { cwd, env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn(program, args, { cwd, env: cleanEnv(process.env, env), stdio: ["ignore", "pipe", "pipe"] });
   child.stdout.pipe(output);
   child.stderr.pipe(output);
   return child;
