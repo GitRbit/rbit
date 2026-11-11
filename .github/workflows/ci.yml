@@ -31,6 +31,11 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    # Windows runners (4 cores, 16 GB, no swap needed) compile four units at once: a full
+    # workspace test build peaks near 12 GB of compiler memory and takes a third of the
+    # time it takes one unit at a time. Linux keeps the workflow-wide single job.
+    env:
+      CARGO_BUILD_JOBS: ${{ matrix.os == 'windows-latest' && '4' || '1' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -291,6 +296,9 @@ jobs:
   tests-windows-build:
     name: Test build (windows-latest)
     runs-on: windows-latest
+    # See rewrite-contracts: four compile jobs on Windows runners.
+    env:
+      CARGO_BUILD_JOBS: "4"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -388,6 +396,9 @@ jobs:
   tests-windows-extras:
     name: Doc tests (windows-latest)
     runs-on: windows-latest
+    # See rewrite-contracts: four compile jobs on Windows runners.
+    env:
+      CARGO_BUILD_JOBS: "4"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
