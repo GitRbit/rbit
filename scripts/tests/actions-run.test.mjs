@@ -38,7 +38,7 @@ function browser(href = "https://forge.example/owner/repo/actions/runs/1") {
   return {
     document, location,
     swap(old, next, { status = 200, verb = "get", source = old, path = location.href,
-      responseURL = location.href, headers = {}, boosted = false, beforeAfter = () => {}, afterTarget = next } = {}) {
+      responseURL = location.href, headers = {}, boosted = false, beforeAfter = () => {}, afterTarget = next, oob = [] } = {}) {
       const xhr = { status, responseURL, getResponseHeader: name => headers[name] ?? null };
       const requestConfig = { verb, elt: source, path, boosted };
       document.run = old; old.isConnected = true;
@@ -46,7 +46,9 @@ function browser(href = "https://forge.example/owner/repo/actions/runs/1") {
       document.activeElement = document.body; beforeAfter({ xhr, requestConfig });
       for (const form of next.forms) for (const field of form.fields) field.document = document;
       old.isConnected = false; next.isConnected = true; document.run = next;
-      // htmx 2.0.11 dispatches on the inserted element and retains responseInfo.target.
+      // htmx 2.0.11 dispatches on each swapped element, out-of-band ones (hx-select-oob)
+      // first, all with the same request; responseInfo.target stays the replaced #run.
+      for (const element of oob) fire("htmx:afterSwap", { target: old, xhr, requestConfig }, element);
       fire("htmx:afterSwap", { target: old, xhr, requestConfig }, afterTarget);
     },
   };
@@ -63,6 +65,18 @@ test("GET poll restores edited review text, checkbox, focus and caret into newly
   assert.equal(page.document.activeElement, nextComment);
   assert.deepEqual(nextComment.selection, [2, 4, "forward"]);
   assert.equal(nextComment.focusOptions.preventScroll, true);
+});
+
+test("the sidebar's out-of-band swap from the same poll keeps the draft for #run", () => {
+  const page = browser(), trust = new Field("trust_author", "true", true);
+  trust.checked = true; page.document.activeElement = trust;
+  const old = new Run([new Form("approval", [trust], "", "/run/approve")]);
+  const nextTrust = new Field("trust_author", "true", true);
+  const next = new Run([new Form("approval", [nextTrust], "", "/run/approve")]);
+  const sidebar = new Element(); sidebar.id = "run-sidebar-jobs"; sidebar.isConnected = true;
+  page.swap(old, next, { oob: [sidebar] });
+  assert.equal(nextTrust.checked, true);
+  assert.equal(page.document.activeElement, nextTrust);
 });
 
 test("new permission, environment, action and disabled-control decisions take precedence over saved input", () => {

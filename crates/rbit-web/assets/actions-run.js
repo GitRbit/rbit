@@ -55,12 +55,14 @@ document.addEventListener("htmx:beforeSwap", event => {
 document.addEventListener("htmx:afterSwap", event => {
   const xhr = event.detail?.xhr;
   const saved = xhr && pending.get(xhr);
-  if (xhr) pending.delete(xhr);
   // htmx retains the detached request target in responseInfo after outerHTML.
-  // The event itself is dispatched on the newly inserted, authorized element.
+  // The event itself is dispatched on each newly inserted element: the poll's
+  // out-of-band sidebar jobs (hx-select-oob) first, then #run. Only #run's own
+  // event takes the saved input.
   const target = event.target;
-  if (!saved || saved.run !== runIdentity(location.href) || !polling(event)
-    || !(target instanceof Element) || target.id !== "run" || !target.isConnected
+  if (!saved || !(target instanceof Element) || target.id !== "run") return;
+  pending.delete(xhr);
+  if (saved.run !== runIdentity(location.href) || !polling(event) || !target.isConnected
     || document.getElementById("run") !== target) return;
   for (const form of forms(target)) {
     const previous = saved.values.find(item => item.key === formKey(form));
