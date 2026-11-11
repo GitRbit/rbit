@@ -107,4 +107,30 @@ async fn a_failed_job_says_which_step_ended_it_and_with_what_exit_code() {
     assert!(passed["termination"]["exit_code"].is_null());
     let one = get(format!("jobs/{}", failed["id"])).await;
     assert_eq!(one["termination"], failed["termination"], "the single-job endpoint says the same");
+
+    // The failure digest: only the failed job, its record, and the cleaned end of the step.
+    let digest = get(format!("runs/{}/failure", run["id"])).await;
+    assert_eq!((digest["schema"].as_str(), digest["sha"].as_str()), (Some("rbit.failure/1"), Some(sha.as_str())));
+    let digested = digest["jobs"].as_array().unwrap();
+    assert_eq!(digested.len(), 1, "only the failed job: {digest}");
+    assert_eq!(digested[0]["termination"]["reason"], "step_failed");
+    assert_eq!(digested[0]["termination"]["exit_code"], 3);
+    let excerpt: Vec<&str> = digested[0]["excerpt"]["lines"].as_array().unwrap().iter().map(|line| line.as_str().unwrap()).collect();
+    assert!(excerpt.iter().any(|line| line.contains("exit code 3")), "{excerpt:?}");
+    assert!(excerpt.iter().all(|line| !line.starts_with("20")), "timestamps are removed: {excerpt:?}");
+    assert!(serde_json::to_string(&digest).unwrap().len() < 6 * 1024, "a digest is small");
+
+    // One step's log, tail first, and the job's attempts and annotations.
+    let tail = get(format!("jobs/{}/steps/{}/log?tail=1", failed["id"], ended["step"])).await;
+    assert_eq!(tail["schema"], "rbit.log/1");
+    assert_eq!(tail["lines"].as_array().unwrap().len(), 1);
+    assert_eq!(tail["more_before"], true, "the step wrote more than one line");
+    let attempts = get(format!("jobs/{}/attempts", failed["id"])).await;
+    assert_eq!(attempts["attempts"].as_array().unwrap().len(), 1);
+    assert_eq!((attempts["attempts"][0]["current"].as_bool(), attempts["attempts"][0]["reason"].as_str()), (Some(true), Some("step_failed")));
+    let annotations = get(format!("jobs/{}/annotations", failed["id"])).await;
+    assert!(
+        annotations["annotations"].as_array().unwrap().iter().any(|annotation| annotation["level"] == "error"),
+        "the failing step's error is an annotation: {annotations}"
+    );
 }

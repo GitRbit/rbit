@@ -31,6 +31,8 @@ mod append;
 mod archive;
 mod batch;
 mod batch_reader;
+// Agent loop: failure digests.
+mod digest;
 mod disk;
 mod masking;
 mod plan;
@@ -42,6 +44,7 @@ mod work;
 
 pub use archive::add_raw_log;
 pub use batch::JobLogDetail;
+pub use digest::{DIGEST_ANNOTATIONS, DigestAnnotation, FailedJob, FailureDigest};
 pub use masking::{MASK, MIN_MASKED_CHARS, Masker};
 pub use sections::{Sections, has_log, sections};
 pub use types::{LogLimits, LogRange, LogWindow, MAX_LINES_PER_CALL, RawLog, STEP_VIEW_BYTES, STEP_VIEW_LINES};

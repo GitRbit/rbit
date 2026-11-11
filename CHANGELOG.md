@@ -9,6 +9,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Failure digests: `GET …/actions/runs/{run_id}/failure` and `rbit run failure [RUN | --sha]`
+  say what failed in a few kilobytes: per failed job its termination record, error
+  annotations and the cleaned last 30 lines of the step that ended it. `GET …/jobs/{id}/
+  steps/{n}/log` and `rbit run log JOB --step N` read one step tail first, of any attempt;
+  `…/jobs/{id}/annotations` and `…/jobs/{id}/attempts` are in the API too.
 - Termination records: every finished Actions job says how it ended in the jobs API
   (`termination`: reason, the step by number and name, its exit code, and whether the log
   is complete), so a timeout, a lost runner and a failing step no longer all read

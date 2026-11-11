@@ -16,6 +16,7 @@
 
 mod agent;
 mod commands;
+mod failure;
 mod hosts;
 mod pulls;
 mod runs;

@@ -15,6 +15,8 @@
 //!   least [`MIN_MASKED_CHARS`] characters, longest match first ([`Masker`]).
 
 mod annotations;
+// Agent loop: failure digests.
+mod digest;
 #[cfg(test)]
 mod file_tests;
 mod files;
@@ -29,6 +31,7 @@ pub use annotations::{
     AnnotationLevel, AnnotationLine, AnnotationText, MAX_ANNOTATION_BYTES, MAX_ANNOTATIONS_PER_TASK, annotation_line, annotation_lines,
     annotation_text,
 };
+pub use digest::{EXCERPT_LINE_CHARS, EXCERPT_LINES, Excerpt, clean_line, excerpt};
 pub use files::{LogFile, LogPart, TaskLogFiles};
 pub use masking::{MASK, MIN_MASKED_CHARS, Masker};
 pub use reading::{Representation, Snapshot, prepare, read_data, read_plans, read_window, read_windows, retryable};

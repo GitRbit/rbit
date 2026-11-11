@@ -78,6 +78,8 @@ mod permissions;
 mod run_filters;
 // Agent loop: termination records.
 mod terminations;
+// Agent loop: logs by step, failure digests, attempts.
+mod agent_logs;
 
 use run_filters::{RunsQuery, non_empty};
 
@@ -99,6 +101,11 @@ pub(super) fn routes() -> Vec<ApiRoute> {
         route(Post, repo("/runs/{run_id}/approve"), approve),
         route(Get, repo("/jobs/{job_id}"), show_job),
         route(Get, repo("/jobs/{job_id}/logs"), job_logs),
+        // Agent loop: rbit's own reads for agents.
+        route(Get, repo("/runs/{run_id}/failure"), agent_logs::failure),
+        route(Get, repo("/jobs/{job_id}/steps/{step}/log"), agent_logs::step_log),
+        route(Get, repo("/jobs/{job_id}/annotations"), agent_logs::annotations),
+        route(Get, repo("/jobs/{job_id}/attempts"), agent_logs::attempts),
         route(Post, repo("/jobs/{job_id}/rerun"), rerun_job),
         route(Get, repo("/runs/{run_id}/artifacts"), run_artifacts),
         route(Get, repo("/artifacts"), list_artifacts),

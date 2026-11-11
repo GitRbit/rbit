@@ -186,6 +186,34 @@ pub enum RunCommand {
     },
     /// Cancel a run.
     Cancel { run: i64 },
+    /// What failed: per failed job, how it ended, its error annotations and the last lines
+    /// of the step that ended it. Without an id, every failed run of `--sha` or of `HEAD`.
+    Failure {
+        run: Option<i64>,
+        #[arg(long, conflicts_with = "run")]
+        sha: Option<String>,
+    },
+    /// One step's log lines: the last 100 by default.
+    Log {
+        job: i64,
+        /// The step's number, as `run view` lists it.
+        #[arg(long)]
+        step: i64,
+        #[arg(long, conflicts_with = "from")]
+        tail: Option<u32>,
+        /// Start at this task-log line.
+        #[arg(long)]
+        from: Option<u64>,
+        /// With `--from`, how many lines.
+        #[arg(long, requires = "from")]
+        lines: Option<u32>,
+        /// An earlier attempt of the job (default: the current one).
+        #[arg(long)]
+        attempt: Option<i64>,
+        /// Keep timestamps and colour codes.
+        #[arg(long)]
+        raw: bool,
+    },
     /// Download a run's artifacts; without an id, the run of `--sha` or of `HEAD`.
     Download {
         run: Option<i64>,

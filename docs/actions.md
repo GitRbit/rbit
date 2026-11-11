@@ -467,6 +467,14 @@ finalised or was cut short: such a result is not a complete one, and an agent sh
 so instead of reading the log as the whole story. `rbit run view --json` shows the record of
 each job.
 
+rbit's own endpoints read failures without whole logs: `GET …/runs/{run_id}/failure`
+(the failure digest: per failed job, its termination record, up to 10 error annotations and
+a cleaned excerpt of the last 30 lines of the step that ended it, with a `more` command),
+`GET …/jobs/{job_id}/steps/{step}/log` (one step's lines, tail first, of any attempt),
+`GET …/jobs/{job_id}/annotations` and `GET …/jobs/{job_id}/attempts` (every attempt of a
+job and how it ended, so a test that failed and then passed on the same commit can be seen).
+`rbit run failure` and `rbit run log` use them.
+
 ## Differences from GitHub Actions
 
 - A called workflow is read from this rbit instance, never from github.com. A calling job

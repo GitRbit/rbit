@@ -66,7 +66,18 @@ rbit run watch [RUN | --sha COMMIT] [--exit-status] [--timeout SECONDS]
 rbit run rerun RUN [--failed | --job JOB]
 rbit run cancel RUN
 rbit run download [RUN | --sha COMMIT] [-n NAME]... [-p PATTERN] [-D DIR]
+rbit run failure [RUN | --sha COMMIT]
+rbit run log JOB --step N [--tail K | --from LINE [--lines K]] [--attempt A] [--raw]
 ```
+
+`run failure` is the one to read first when a run is red: for each failed job, how it
+ended (the reason, the step and its exit code, whether its log is complete), its error
+annotations (`path:line: message`) and the last 30 lines of the step that ended it, cleaned
+of timestamps and colours, with repeated lines folded. Without an id it covers every failed
+run of `--sha` or `HEAD`. It exits with 1 when something failed, 0 when nothing did, 8
+while a run has not finished, and 9 when a failure's log is incomplete or nobody recorded
+its cause (a lost runner): then the answer is not the whole story. `run log` reads one
+step's lines, the last 100 by default, of any attempt.
 
 Runs are found by the commit they tested. Without a run id, `view`, `watch` and `download`
 work on the runs of `--sha` (a commit id, or a prefix of at least 7 hex digits), or of the

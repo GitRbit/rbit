@@ -9,7 +9,7 @@
 
 use std::collections::BTreeMap;
 
-use rbit_core::actions::{Job, Status, TaskId, TerminationReason};
+use rbit_core::actions::{Job, Status, TaskId, Termination, TerminationReason};
 use rbit_storage::sqlite::actions_runs::TaskEnd;
 use serde_json::{Value, json};
 
@@ -24,20 +24,29 @@ pub fn annotate(item: &mut Value, job: &Job, ends: &BTreeMap<TaskId, TaskEnd>) {
         // Still running or waiting: nothing has ended yet.
         (None, _) => return,
     };
-    let step = end.termination.and_then(|termination| termination.step).map(|index| index + 1);
-    let step_name = step.and_then(|number| {
-        item["steps"].as_array().and_then(|steps| steps.iter().find(|candidate| candidate["number"] == number)).map(|found| found["name"].clone())
+    let termination = end.termination.unwrap_or(Termination::because(reason));
+    let step = termination.step.map(|index| i64::from(index) + 1).and_then(|number| {
+        let steps = item["steps"].as_array()?;
+        let name = steps.iter().find(|candidate| candidate["number"] == number)?["name"].as_str()?.to_owned();
+        Some((number, name))
     });
-    item["termination"] = json!({
-        "reason": reason.as_str(),
-        "step": step,
-        "step_name": step_name,
-        "exit_code": end.termination.and_then(|termination| termination.exit_code),
-        "log_complete": end.log_complete,
-    });
+    describe(item, termination, step.as_ref().map(|(number, name)| (*number, name.as_str())), end.log_complete);
     if reason == TerminationReason::Timeout {
         item["conclusion"] = json!("timed_out");
     }
+}
+
+/// Sets `item["termination"]` to `termination`, naming `step` (its number and name) when
+/// the record names one.
+pub fn describe(item: &mut Value, termination: Termination, step: Option<(i64, &str)>, log_complete: bool) {
+    let named = termination.step.and(step);
+    item["termination"] = json!({
+        "reason": termination.reason.as_str(),
+        "step": named.map(|(number, _)| number),
+        "step_name": named.map(|(_, name)| name),
+        "exit_code": termination.exit_code,
+        "log_complete": log_complete,
+    });
 }
 
 #[cfg(test)]

@@ -126,6 +126,10 @@ pub async fn runs(api: &Api, repo: &Repo, command: RunCommand, out: &Output) -> 
             api.json(Method::POST, &actions(repo, &format!("runs/{run}/cancel")), Some(&json!({}))).await?;
             report(out, "rbit.cancel/1", json!({ "run": run }), &format!("Run {run} was cancelled"));
         }
+        RunCommand::Failure { run, sha } => return super::failure::failure(api, repo, run, sha, out).await,
+        RunCommand::Log { job, step, tail, from, lines, attempt, raw } => {
+            return super::failure::log(api, repo, &super::failure::LogRequest { job, step, tail, from, lines, attempt, raw }, out).await;
+        }
         RunCommand::Download { run, sha, name, pattern, dir } => {
             let found = resolve(api, repo, run, sha).await?;
             let [one] = found.as_slice() else {

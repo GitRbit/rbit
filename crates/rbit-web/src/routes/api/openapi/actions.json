@@ -3511,6 +3511,264 @@
           }
         }
       }
+    },
+    "/repos/{owner}/{repo}/actions/runs/{run_id}/failure": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "run_id",
+          "in": "path",
+          "required": true,
+          "description": "The run's id.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getRunFailureDigest",
+        "tags": [
+          "actions"
+        ],
+        "summary": "rbit's own: what failed in a run, small enough to read",
+        "description": "The failure digest (`schema: rbit.failure/1`): for each job that did not succeed, its termination record, up to 10 error annotations (`path`, `line`, `message`) and an excerpt of the last 30 lines of the step that ended it, with timestamps and colours removed and repeated lines folded. A cut excerpt says `truncated`, how many lines it shows of how many, and a `more` command. A run without failed jobs has an empty `jobs`.",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The digest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/jobs/{job_id}/steps/{step}/log": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "job_id",
+          "in": "path",
+          "required": true,
+          "description": "The job's id.",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "step",
+          "in": "path",
+          "required": true,
+          "description": "The step's `number`, as in the job's `steps`.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getJobStepLog",
+        "tags": [
+          "actions"
+        ],
+        "summary": "rbit's own: one step's log lines, tail first",
+        "description": "`schema: rbit.log/1`. The last `tail` lines (default 100, at most 1,000), or `lines` lines from task-log line `from`; at most 256 KiB. Lines are cleaned of timestamps and colours unless `raw=true`. `more_before` says earlier lines exist; `next_line` continues; `live` that the step still runs; `truncated` that the job wrote more than the instance keeps.",
+        "parameters": [
+          {
+            "name": "tail",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "lines",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "attempt",
+            "in": "query",
+            "description": "Which attempt of the job; the current one by default.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "raw",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The lines",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/jobs/{job_id}/annotations": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "job_id",
+          "in": "path",
+          "required": true,
+          "description": "The job's id.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getJobAnnotations",
+        "tags": [
+          "actions"
+        ],
+        "summary": "rbit's own: a job attempt's annotations",
+        "description": "`schema: rbit.annotations/1`: the `::error`, `::warning` and `::notice` lines and problem-matcher findings of an attempt (at most 50), each with `level`, `path`, `line`, `message` and the task-log line.",
+        "parameters": [
+          {
+            "name": "attempt",
+            "in": "query",
+            "description": "Which attempt of the job; the current one by default.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The annotations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/jobs/{job_id}/attempts": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "job_id",
+          "in": "path",
+          "required": true,
+          "description": "The job's id.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listJobAttempts",
+        "tags": [
+          "actions"
+        ],
+        "summary": "rbit's own: every attempt of a job and how it ended",
+        "description": "`schema: rbit.attempts/1`: oldest first, each with its `attempt`, whether it is the `current` one, its termination `reason` and `log_complete`. A job that failed and then passed on a re-run of the same commit shows both.",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The attempts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3791,16 +4049,52 @@
           "termination": {
             "description": "rbit's own: how the job's task ended, once it has. A task without a record reads by its status (`completed`, `cancelled`, or `unknown` for an unexplained failure). A job that ran out of time also reads `conclusion: timed_out`.",
             "type": "object",
-            "required": ["reason", "step", "step_name", "exit_code", "log_complete"],
+            "required": [
+              "reason",
+              "step",
+              "step_name",
+              "exit_code",
+              "log_complete"
+            ],
             "properties": {
               "reason": {
                 "type": "string",
-                "enum": ["completed", "step_failed", "timeout", "cancelled", "superseded", "runner_lost", "setup_failed", "server_shutdown", "unknown"]
+                "enum": [
+                  "completed",
+                  "step_failed",
+                  "timeout",
+                  "cancelled",
+                  "superseded",
+                  "runner_lost",
+                  "setup_failed",
+                  "server_shutdown",
+                  "unknown"
+                ]
               },
-              "step": { "type": ["integer", "null"], "description": "The `number` of the step that ended the job." },
-              "step_name": { "type": ["string", "null"] },
-              "exit_code": { "type": ["integer", "null"], "description": "That step's exit code, when it was a process that exited." },
-              "log_complete": { "type": "boolean", "description": "The log was finalised and nothing was cut from it. When false, the job's result cannot be trusted as complete." }
+              "step": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "The `number` of the step that ended the job."
+              },
+              "step_name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "exit_code": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "That step's exit code, when it was a process that exited."
+              },
+              "log_complete": {
+                "type": "boolean",
+                "description": "The log was finalised and nothing was cut from it. When false, the job's result cannot be trusted as complete."
+              }
             }
           },
           "id": {
