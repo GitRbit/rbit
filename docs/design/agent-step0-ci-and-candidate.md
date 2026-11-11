@@ -12,9 +12,11 @@ they improve.
 1. `.rbit/workflows/ci.yml`: the Linux half of `.github/workflows/ci.yml` for a
    self-hosted runner, plus a candidate job.
 2. `.rbit/workflows/focused.yml`: a dispatch-only workflow that tests one package.
-3. `scripts/agent-loop/`: the candidate harness and the agent-loop benchmark, with unit
-   tests in `scripts/tests/agent-loop.test.mjs`.
-4. `scripts/ci/install-cargo-deny.sh`: a version- and checksum-pinned `cargo-deny`.
+3. `scripts/agent-loop/`: the candidate harness, the agent-loop benchmark and the agent
+   eval kit, with unit tests in `scripts/tests/agent-loop.test.mjs`.
+4. `docs/agent-guide.md`: how an agent reads CI results with today's API; the text the
+   agent eval measures and improves.
+5. `scripts/ci/install-cargo-deny.sh`: a version- and checksum-pinned `cargo-deny`.
 
 Out of scope: any change to the server, the runner, the CLI or the API; GitHub's CI;
 Windows (GitHub keeps testing it).
@@ -111,6 +113,31 @@ Every call goes through a meter that records calls and response bytes per scenar
 Measured per scenario: calls, bytes, wall time, and for failures the time from push to the
 first failure line. Byte and call counts and correctness are deterministic and can become
 hard gates; times depend on the machine and are reported, not gated.
+
+## Agent evals against a frozen candidate
+
+The benchmark measures a fixed recipe. To measure agents, and the guidance they are given
+(`docs/agent-guide.md`), the same harness seeds a long-lived candidate:
+
+- `eval-cases.mjs` generates 30 cases from a seed: green runs, lint failures, test
+  failures, runs where two jobs fail, runs that stay queued, and failed runs followed by
+  a newer green run on another branch (so "the newest run" is the wrong one). The
+  generator is public; the seed is not, so the code does not reveal which case is which.
+  Ids (`c01`…), branch names and commit messages are opaque.
+- `eval-seed.mjs` boots the candidate, pushes every case, waits for each to reach its
+  seeded state, and writes `cases.json` (questions), `token` and `truth.json` (answers,
+  with the seed and the seeding time). The truth is moved away before an agent starts.
+- `eval-api.mjs` is the agent's only way in: one metered `GET` per call, read-only.
+- `eval-grade.mjs` grades answers (normalising `./` and `:col`), charges each case the
+  calls and bytes it read, and reports accuracy and cost on a train/test split that is
+  stratified by kind. It refuses truth older than 20 hours, because a queued run is
+  cancelled after a day. With `--stdin` it takes one bundle, so the truth need not be
+  stored where it runs.
+
+Before an eval is trusted, an oracle (today's safe recipe through `eval-api.mjs`) must
+score every case right, which shows each case can be solved with today's API. A case
+that cannot be solved (for example "none expected" for a docs-only push, while no API
+lists a commit's changed files) is left out rather than graded as noise.
 
 ## Baseline numbers
 

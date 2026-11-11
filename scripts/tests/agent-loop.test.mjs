@@ -94,3 +94,40 @@ test("only a wrong 'correct' scenario or an error fails the run; fixed traps are
   assert.deepEqual(bad.wrongAnswers, ["green"]);
   assert.deepEqual(bad.errors, ["x"]);
 });
+
+test("eval cases are generated from a seed, opaque and complete", async () => {
+  const { MIX, generateCases } = await import("../agent-loop/eval-cases.mjs");
+  const a = generateCases("seed-1");
+  const b = generateCases("seed-1");
+  const total = Object.values(MIX).reduce((sum, n) => sum + n, 0);
+  assert.equal(a.length, total);
+  assert.deepEqual(a.map((c) => c.kind), b.map((c) => c.kind));
+  assert.notDeepEqual(a.map((c) => c.kind), generateCases("seed-2").map((c) => c.kind));
+  assert.ok(a.every((c, i) => c.id === `c${String(i + 1).padStart(2, "0")}`));
+  const files = baseFiles();
+  for (const item of a) {
+    const changed = item.files((path) => files[path]);
+    const truth = item.truth(changed);
+    if (truth.verdict === "failure") assert.ok(Number.isInteger(truth.line) && truth.line > 0, `${item.kind} has a line`);
+  }
+});
+
+test("eval answers are normalised before grading", async () => {
+  const { gradeAnswer } = await import("../agent-loop/eval-cases.mjs");
+  const truth = { verdict: "failure", path: "src/calc.sh", line: 4, also: [{ path: "tests/cases.txt", line: 2 }] };
+  assert.equal(gradeAnswer({ verdict: "failure", path: "./src/calc.sh", line: "4" }, truth).correct, true);
+  assert.equal(gradeAnswer({ verdict: "Failure", path: "src/calc.sh:4:9" }, truth).correct, true);
+  assert.equal(gradeAnswer({ verdict: "failure", path: "tests/cases.txt", line: 2 }, truth).correct, true);
+  assert.equal(gradeAnswer({ verdict: "failure", path: "src/calc.sh", line: 5 }, truth).correct, false);
+  assert.equal(gradeAnswer({ verdict: "success" }, truth).correct, false);
+  assert.equal(gradeAnswer(undefined, truth).correct, false);
+  assert.equal(gradeAnswer({ verdict: "pending" }, { verdict: "pending" }).correct, true);
+});
+
+test("the eval split holds out about a third of every kind", async () => {
+  const { splitCases } = await import("../agent-loop/eval-cases.mjs");
+  const kinds = { c01: "green", c02: "green", c03: "green", c04: "lint", c05: "lint", c06: "lint", c07: "lint", c08: "pending" };
+  const { train, test } = splitCases(kinds);
+  assert.deepEqual(test, ["c03", "c06"]);
+  assert.equal(train.length + test.length, 8);
+});
