@@ -33,7 +33,14 @@ const fixtureErrors = new Set(["FIXTURE_FILE_REFUSED", "FIXTURE_FILE_DRIFT", "FI
   "FIXTURE_READY_TIMEOUT", "FIXTURE_EXITED_EARLY", "FIXTURE_AUTH_NOT_READY", "FIXTURE_CONTROL_REFUSED",
   "FIXTURE_STOP_REFUSED", "FIXTURE_CLOSE_UNPROVED", "FIXTURE_FORCED_STOP", "FIXTURE_EXIT_REFUSED", "PRODUCTION_CONTEXT_CLOSE_FAILED", "PRODUCTION_LANGUAGE_CHAIN_UNPROVED"]);
 function code(error) {
-  if (error?.code === "ERR_ASSERTION") return "ASSERTION_FAILED";
+  if (error?.code === "ERR_ASSERTION") {
+    // Name the failed check in the job log (stderr reaches it; stdout is the container's
+    // bounded output). Only synthetic fixture values are compared, and the fixture masks
+    // its one runtime token before any page shows it.
+    const at = error.stack?.split("\n").find(line => line.includes("/actions-visual/"))?.trim() ?? "";
+    process.stderr.write(`Assertion failed in stage ${stage}: ${String(error.message).slice(0, 600)} ${at}\n`);
+    return "ASSERTION_FAILED";
+  }
   if (fixtureErrors.has(error?.message)) return error.message;
   return setupFailure(stage, error);
 }
