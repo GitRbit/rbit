@@ -32,7 +32,7 @@ export function publicAssetPath(path) {
 // Repository navigation preloads are actual application GET behavior. Permit only
 // these exact synthetic-repository read routes, not arbitrary repository prefixes.
 const readPaths = new Set(["/themes/picker", productionLanguageDialog, productionLanguage,productionExplore, productionRun, "/alice/rocket/actions/runs/2", productionJob,
-  `${productionJob}/logs`, `${productionJob}/logs/raw`, "/alice/rocket", productionOverview,
+  `${productionJob}/logs`, `${productionJob}/logs/raw`, `${productionJob}/logs/live`, "/alice/rocket", productionOverview,
   "/alice/rocket/actions/workflows/ci.yml", ...["issues", "pulls", "commits", "branches", "tags", "releases", "activity"]
     .map(name => `/alice/rocket/${name}`), "/manifest.webmanifest", "/sw.js"]);
 const languageBodies = new Set(["locale=", "locale=en", "locale=es"]);
@@ -57,6 +57,10 @@ export function allowedProductionRequest(value, method, form = {}) {
     if (url.pathname === `${productionJob}/logs`
       && (url.searchParams.getAll("step").length !== 1 || !["0", "1"].includes(url.searchParams.get("step"))
         || [...url.searchParams.keys()].some(key => key !== "step"))) return false;
+    // The running job page's own log tail (assets/actions-log.js): one line number, nothing else.
+    if (url.pathname === `${productionJob}/logs/live`
+      && (url.searchParams.getAll("from").length !== 1 || !/^\d{1,7}$/.test(url.searchParams.get("from"))
+        || [...url.searchParams.keys()].some(key => key !== "from"))) return false;
     if ([productionJob, `${productionJob}/logs/raw`].includes(url.pathname) && url.search) return false;
     return url.origin === productionOrigin && !url.username && !url.password
       && (readPaths.has(url.pathname) || (url.pathname.startsWith("/assets/") && publicAssetPath(url.pathname.slice(8))));

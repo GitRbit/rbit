@@ -18,8 +18,9 @@
 //! none, an error, a page without the markers — gets the full page, which `nav.js` still
 //! swaps partially on its own.
 //!
-//! The page is cut at markers the layout emits (`templates/base.html` around `<title>` and
-//! `<main>`, `templates/repo/subnav.html` around the tabs), the way [`crate::timing`] marks
+//! The page is cut at markers the layout emits (around `<title>` and `<main>`, in
+//! `templates/base.html` and its parts in `templates/layout/`; `templates/repo/subnav.html`
+//! around the tabs), the way [`crate::timing`] marks
 //! the render time, so no handler or template does anything per page and the partial
 //! response can only ever contain a subset of the full page (plus the `hx-swap-oob`
 //! attribute). The title and tabs are searched from the start of the page and `<main>`'s end
@@ -103,10 +104,18 @@ mod tests {
 
     #[test]
     fn the_layout_emits_every_marker() {
-        let base = include_str!("../templates/base.html");
+        // base.html and the fixed parts it renders (templates/layout/), in page order.
+        let layout = [
+            include_str!("../templates/layout/head.html"),
+            include_str!("../templates/layout/top.html"),
+            include_str!("../templates/layout/menus.html"),
+            include_str!("../templates/base.html"),
+            include_str!("../templates/layout/foot.html"),
+        ]
+        .concat();
         let subnav = include_str!("../templates/repo/subnav.html");
         for marker in [TITLE_START, TITLE_END, MAIN_START, MAIN_END] {
-            assert_eq!(base.matches(marker).count(), 1, "{marker}");
+            assert_eq!(layout.matches(marker).count(), 1, "{marker}");
         }
         for marker in [SUBNAV_START, SUBNAV_END] {
             assert_eq!(subnav.matches(marker).count(), 1, "{marker}");

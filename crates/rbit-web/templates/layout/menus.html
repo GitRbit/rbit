@@ -1,0 +1,103 @@
+{% import "macros.html" as ui %}{#- Language, light/dark switch and the theme picker as menu rows: the phone-sized stand-ins
+    for the top bar's language, sun/moon and palette buttons. -#}
+{% macro display_menu_items(page, chrome) %}
+<a class="menu-item sm:hidden" href="/settings/language" hx-boost="false" aria-haspopup="dialog" data-language-dialog-open>{% call ui::icon("languages", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.language()) %}{% endcall %}</a>
+{%- let toggle = page.theme.toggled() %}
+<form method="post" action="/themes" class="sm:hidden" hx-boost="false" data-theme-form data-asset-version="{{ crate::assets::build_version() }}">
+  <input type="hidden" name="next" value="{{ page.path }}">
+  <button class="menu-item" type="submit" name="theme" value="{{ toggle.slug() }}" data-theme-toggle data-variant="{{ toggle.scheme().unwrap_or_default() }}">
+    <span class="when-dark">{% call ui::icon("sun", "menu-icon") %}{% endcall %}</span><span class="when-light">{% call ui::icon("moon", "menu-icon") %}{% endcall %}</span>
+    <span class="when-dark">{% call ui::localized(chrome.light_mode()) %}{% endcall %}</span><span class="when-light">{% call ui::localized(chrome.dark_mode()) %}{% endcall %}</span>
+  </button>
+</form>
+<a class="menu-item sm:hidden" href="/settings/appearance" hx-boost="false" aria-haspopup="dialog" data-theme-dialog-open>{% call ui::icon("palette", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.themes()) %}{% endcall %}</a>
+{% endmacro %}{% let chrome = page.chrome() %}{# layout segment #}
+      </div>
+
+      <div class="ms-auto flex shrink-0 items-center gap-1">
+        {% if page.show_explore %}<a href="/explore" class="btn btn-ghost hidden sm:inline-flex {% if page.is_at("/explore") %}text-ink{% endif %}">{% call ui::localized(chrome.explore()) %}{% endcall %}</a>{% endif %}
+        {#- Opens the language dialog; without scripts, the language page (account settings when
+            signed in, a cookie choice otherwise). It leads the display controls, so it sits
+            before the theme buttons in reading order and mirrors with them right to left. -#}
+        <a href="/settings/language" class="btn btn-ghost btn-icon hidden sm:inline-flex" hx-boost="false" aria-haspopup="dialog" aria-label="{{ chrome.language() }}" title="{{ chrome.language() }}" data-language-dialog-open>
+          {% call ui::icon("languages", "size-4") %}{% endcall %}
+        </a>
+        {#- One click flips light/dark, keeping a tinted scheme's family (Gruvbox dark ↔ light);
+            the palette menu next to it picks any theme. Both are plain forms without JS. On
+            phones all three move into the account menu (or, signed out, the site menu). -#}
+        {%- let toggle = page.theme.toggled() %}
+        <form method="post" action="/themes" class="hidden sm:contents" hx-boost="false" data-theme-form data-asset-version="{{ crate::assets::build_version() }}">
+          <input type="hidden" name="next" value="{{ page.path }}">
+          <button class="btn btn-ghost btn-icon" type="submit" name="theme" value="{{ toggle.slug() }}" data-theme-toggle data-variant="{{ toggle.scheme().unwrap_or_default() }}" aria-label="{{ chrome.switch_theme() }}" title="{{ chrome.switch_theme() }}">
+            {% call ui::icon("sun", "size-4 when-dark") %}{% endcall %}
+            {% call ui::icon("moon", "size-4 when-light") %}{% endcall %}
+          </button>
+        </form>
+        {#- Opens the theme picker dialog; without scripts, Appearance settings. -#}
+        <a href="/settings/appearance" class="btn btn-ghost btn-icon hidden sm:inline-flex" hx-boost="false" aria-haspopup="dialog" aria-label="{{ chrome.choose_theme() }}" title="{{ chrome.choose_theme() }}" data-theme-dialog-open>
+          {% call ui::icon("palette", "size-4") %}{% endcall %}
+        </a>
+
+        {% if let Some(user) = page.viewer %}
+        <a href="/notifications" class="btn btn-ghost btn-icon relative {% if page.is_at("/notifications") %}text-ink{% endif %}" aria-label="{{ chrome.notifications() }}" title="{% if page.has_unread_notifications %}{{ chrome.unread() }}{% else %}{{ chrome.notifications() }}{% endif %}">
+          {% call ui::icon("bell", "size-4") %}{% endcall %}
+          {%- if page.has_unread_notifications %}<span class="notification-dot" aria-hidden="true"></span>{% endif %}
+        </a>
+        <a href="/new" class="btn btn-ghost btn-icon hidden sm:inline-flex" aria-label="{{ chrome.new_repository() }}" title="{{ chrome.new_repository() }}">
+          {% call ui::icon("plus", "size-4") %}{% endcall %}
+        </a>
+        <details class="relative ms-1" data-menu>
+          <summary class="flex size-9 cursor-pointer items-center justify-center rounded-full sm:size-8" aria-label="{{ chrome.account_menu() }}">
+            {% call ui::avatar(user.avatar, "size-7 text-[10px]") %}{% endcall %}
+          </summary>
+          <div class="menu inset-e-0 w-60">
+            <a class="menu-item" href="/issues">{% call ui::localized(chrome.issues()) %}{% endcall %}</a>
+            <a class="menu-item" href="/pulls">{% call ui::localized(chrome.pulls()) %}{% endcall %}</a>
+            <div class="flex items-center gap-2.5 px-2.5 py-2">
+              {% call ui::avatar(user.avatar, "size-8 text-[11px]") %}{% endcall %}
+              <div class="min-w-0">
+                <p class="truncate text-[13px] font-medium">{{ user.label }}</p>
+                <p class="truncate text-xs text-ink-muted">{{ user.name }}</p>
+              </div>
+            </div>
+            <div class="menu-divider"></div>
+            <a class="menu-item" href="/">{% call ui::icon("code", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.dashboard()) %}{% endcall %}</a>
+            <a class="menu-item" href="/{{ user.name }}">{% call ui::icon("user", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.profile()) %}{% endcall %}</a>
+            {% if page.show_explore %}<a class="menu-item sm:hidden" href="/explore">{% call ui::icon("compass", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.explore()) %}{% endcall %}</a>{% endif %}
+            <div class="menu-divider"></div>
+            <a class="menu-item" href="/new">{% call ui::icon("plus", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.new_repository()) %}{% endcall %}</a>
+            {% if user.can_create_org %}<a class="menu-item" href="/organizations/new">{% call ui::icon("building", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.new_organization()) %}{% endcall %}</a>{% endif %}
+            <div class="menu-divider"></div>
+            {% call display_menu_items(page, chrome) %}{% endcall %}
+            <a class="menu-item" href="/settings">{% call ui::icon("settings", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.settings()) %}{% endcall %}</a>
+            {% if user.is_admin %}
+            <a class="menu-item" href="/admin">{% call ui::icon("shield", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.administration()) %}{% endcall %}</a>
+            {% endif %}
+            <div class="menu-divider"></div>
+            <form method="post" action="/logout">
+              <button class="menu-item text-ink-muted" type="submit">{% call ui::icon("log-out", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.sign_out()) %}{% endcall %}</button>
+            </form>
+          </div>
+        </details>
+        {% else %}
+        <a href="/login" class="btn btn-ghost hidden sm:inline-flex">{% call ui::localized(chrome.sign_in()) %}{% endcall %}</a>
+        {% if page.show_sign_up %}<a href="/signup" class="btn btn-primary hidden sm:inline-flex">{% call ui::localized(chrome.sign_up()) %}{% endcall %}</a>{% endif %}
+        {%- if !page.is_at("/login") %}<a href="/login" class="btn sm:hidden">{% call ui::localized(chrome.sign_in()) %}{% endcall %}</a>{% endif %}
+        <details class="relative sm:hidden" data-menu>
+          <summary class="btn btn-ghost btn-icon cursor-pointer" aria-label="{{ chrome.menu() }}">{% call ui::icon("menu", "size-4") %}{% endcall %}</summary>
+          <div class="menu inset-e-0 w-60">
+            {% if page.show_explore %}<a class="menu-item" href="/explore">{% call ui::icon("compass", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.explore()) %}{% endcall %}</a>{% endif %}
+            {% if page.show_sign_up %}<a class="menu-item" href="/signup">{% call ui::icon("user-plus", "menu-icon") %}{% endcall %}{% call ui::localized(chrome.create_account()) %}{% endcall %}</a>{% endif %}
+            <div class="menu-divider"></div>
+            {% call display_menu_items(page, chrome) %}{% endcall %}
+          </div>
+        </details>
+        {% endif %}
+      </div>
+    </nav>
+  </header>
+  {#- Page tabs: sticky under the top bar from `md` up, scrolling with the page on phones
+      (app.css `.site-subnav`). Hidden when a page has none. Like the rest of the chrome, the
+      tabs take the document language and direction; an untranslated label marks itself
+      English through `ui::localized`. -#}
+  <div class="site-subnav">

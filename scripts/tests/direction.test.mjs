@@ -6,6 +6,7 @@ import { readdir, readFile } from "node:fs/promises";
 import test from "node:test";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { layoutSource } from "./support/layout-source.mjs";
 
 const web = new URL("../../crates/rbit-web/", import.meta.url);
 const root = fileURLToPath(web);
@@ -36,9 +37,7 @@ const UNISOLATED_MONO = [
     "a localized sentence; the two submodule ids are one <bdi dir=\"ltr\">"],
   ["templates/pulls/files.html", '<p class="diff-placeholder font-mono text-xs">',
     "a localized sentence; the two submodule ids are one <bdi dir=\"ltr\">"],
-  ["templates/base.html", '<span class="hidden font-mono text-[11px] sm:inline"',
-    "the render time is a localized phrase around a number"],
-  ["templates/render_probe/shell_close.html", '<span class="hidden font-mono text-[11px] sm:inline"',
+  ["templates/layout/foot.html", '<span class="hidden font-mono text-[11px] sm:inline"',
     "the render time is a localized phrase around a number"],
   ["templates/actions/run/header.html", '<dd class="mt-1 flex min-w-0 flex-wrap',
     "the commit cell follows the cell's direction; its sha is a <bdi dir=\"ltr\">"],
@@ -98,11 +97,11 @@ test("every stylesheet uses only logical sides", async () => {
 });
 
 test("the header, tabs and footer inherit the document direction and language", async () => {
-  const base = await read("templates/base.html");
+  const base = layoutSource();
   assert.match(base, /<html lang="\{\{ page\.locale\.tag\(\) \}\}" dir="\{\{ page\.locale\.direction\(\)\.as_str\(\) \}\}"/);
   for (const [name, open] of [["header", /<header\b[^>]*>/], ["tabs", /<div class="site-subnav"[^>]*>/], ["footer", /<footer\b[^>]*>/]]) {
     const tag = base.match(open)?.[0];
-    assert.ok(tag, `${name} is in base.html`);
+    assert.ok(tag, `${name} is in the layout`);
     assert.doesNotMatch(tag, /\bdir=/, `${name} must not pin its own direction: ${tag}`);
     // Untranslated labels inside mark themselves `lang="en"` through `ui::localized`.
     assert.doesNotMatch(tag, /\blang=/, `${name} must not pin its own language: ${tag}`);
@@ -183,11 +182,13 @@ test("direction tokens follow every explicit dir, so LTR islands stay LTR", asyn
 
 test("directional icons, and only those, are marked to mirror", async () => {
   const macros = await read("templates/macros.html");
-  const marker = macros.match(/\{% macro icon\(name, class\) %\}\n<svg class="\{\{ class \}\}(.*?)" viewBox=/)?.[1];
-  assert.ok(marker, "the icon macro marks its svg");
-  const flipped = [...marker.matchAll(/name == "([a-z-]+)"/g)].map((match) => match[1]).sort();
+  assert.match(macros, /\{% macro icon\(name, class\) %\}\n\{\{ crate::icons::svg\(name, class\)\|safe \}\}\n\{% endmacro %\}/, "the icon macro draws through src/icons.rs");
+  const icons = await read("src/icons.rs");
+  const mirrored = icons.match(/const MIRRORED: \[&str; \d+\] = \[([^\]]*)\];/)?.[1];
+  assert.ok(mirrored, "src/icons.rs lists the icons that mirror");
+  const flipped = [...mirrored.matchAll(/"([a-z-]+)"/g)].map((match) => match[1]).sort();
   assert.deepEqual(flipped, ["chevron-left", "chevron-right", "log-out"]);
-  assert.match(marker, /\bdir-icon\b/);
+  assert.match(icons, /if self\.mirrored \{\s*f\.write_str\(" dir-icon"\)/, "mirrored icons get dir-icon");
   // Rotation applies after the mirror: a mirrored chevron turned by a fixed quarter would
   // point up in a right-to-left document.
   for (const path of await files("templates/", ".html")) {

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
+import { layoutSource } from "./support/layout-source.mjs";
 import vm from "node:vm";
 
 const source = readFileSync(new URL("../../crates/rbit-web/assets/theme-picker-labels.js", import.meta.url), "utf8");
@@ -21,7 +22,7 @@ test("picker updates keep translated text and author bytes out of HTML", () => {
 test("theme machine filter and no-script appearance fallback remain independent of labels", () => {
   const template = readFileSync(new URL("../../crates/rbit-web/templates/themes/picker.html", import.meta.url), "utf8");
   assert.deepEqual([...template.matchAll(/data-tpk-variant="([^"]*)"/g)].map(match => match[1]), ["", "dark", "light", "colorblind"]);
-  const shell = readFileSync(new URL("../../crates/rbit-web/templates/base.html", import.meta.url), "utf8");
+  const shell = layoutSource();
   assert.equal((shell.match(/href="\/settings\/appearance"[^>]*data-theme-dialog-open/g) ?? []).length, 2);
 });
 test("live counts follow CLDR plural rules: Russian one, few and many", () => {

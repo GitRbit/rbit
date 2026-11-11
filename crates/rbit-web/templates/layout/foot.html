@@ -1,0 +1,26 @@
+{% import "macros.html" as ui %}{# layout segment #}
+  </main><!--/partial:main-->
+
+  <footer class="border-t border-line pb-[env(safe-area-inset-bottom)]">
+    <div class="mx-auto flex min-h-12 flex-wrap max-w-[96rem] items-center justify-between gap-4 px-4 text-xs text-ink-faint sm:px-6">
+      <p class="flex min-w-0 items-center gap-2">
+        {% if page.branding.show_powered_by %}{% call ui::brand_logo(page, "size-3.5 shrink-0 text-ink-muted", 14) %}{% endcall %}
+        {% let credit = page.chrome().powered_by() %}<span class="truncate"{% if credit.fallback() %} lang="en"{% endif %}>{% for part in credit.parts() %}{% if part.is_slot(0) %}<span class="text-ink-muted">rbit</span>{% else %}{{ part.text() }}{% endif %}{% endfor %}</span>{% endif %}
+        <span class="truncate">{{ page.branding.footer_text }}</span>
+        {% if page.branding.show_version %}<span class="font-mono text-[11px]" dir="ltr">v{{ env!("CARGO_PKG_VERSION") }}</span>{% endif %}
+        <span data-update-notice="{{ page.updates.revision }};{{ page.updates.notice() }}" data-update-label="{{ page.chrome().update_available() }}">{% if let Some(release) = page.updates.release %}<a href="{{ release.url }}" class="link whitespace-nowrap" hx-boost="false" rel="noreferrer">{% call ui::localized(page.chrome().update_available()) %}{% endcall %}</a>{% endif %}</span>
+        {%- if let Some(elapsed) = crate::timing::elapsed() %}
+        <!--render-time-->{% let timing = page.chrome().rendered_in() %}<span class="hidden font-mono text-[11px] sm:inline" title="{{ page.chrome().timing_help() }}"{% if timing.fallback() %} lang="en"{% endif %}>· {% for part in timing.parts() %}{% if part.is_slot(0) %}<span data-render-time>{{ elapsed }}</span>{% else %}{{ part.text() }}{% endif %}{% endfor %}</span><!--/render-time-->
+        {%- endif %}
+      </p>
+      <nav class="flex max-w-full flex-wrap gap-x-4 gap-y-2 py-3" aria-label="{{ page.chrome().footer() }}">
+        {% if page.show_explore %}<a href="/explore" class="hover:text-ink">{% call ui::localized(page.chrome().explore()) %}{% endcall %}</a>{% endif %}
+        {% if !page.branding.support_url.is_empty() %}<a href="{{ page.branding.support_url }}" hx-boost="false">{% call ui::localized(page.chrome().support()) %}{% endcall %}</a>{% endif %}
+        {% if !page.branding.terms_url.is_empty() %}<a href="{{ page.branding.terms_url }}" hx-boost="false">{% call ui::localized(page.chrome().terms()) %}{% endcall %}</a>{% endif %}
+        {% if !page.branding.privacy_url.is_empty() %}<a href="{{ page.branding.privacy_url }}" hx-boost="false">{% call ui::localized(page.chrome().privacy()) %}{% endcall %}</a>{% endif %}
+        <a href="/healthz" class="hover:text-ink" hx-boost="false">{% call ui::localized(page.chrome().status()) %}{% endcall %}</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

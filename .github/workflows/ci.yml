@@ -31,6 +31,11 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    # Windows runners (4 cores, 16 GB, no swap needed) compile four units at once: a full
+    # workspace test build peaks near 12 GB of compiler memory and takes a third of the
+    # time it takes one unit at a time. Linux keeps the workflow-wide single job.
+    env:
+      CARGO_BUILD_JOBS: ${{ matrix.os == 'windows-latest' && '4' || '1' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -45,18 +50,35 @@ jobs:
       - run: node scripts/rewrite/check.mjs
       # Separate invocations prevent workspace feature unification from hiding a
       # missing model-only or credentials-only dependency/compile contract.
+      # Feature contracts of crates with no OS-specific code or dependencies run on
+      # Linux only: Windows would repeat the same resolution, and Tests (windows-latest)
+      # still builds and tests every workspace crate there. scripts/tests/
+      # rewrite-ci-contract-platforms.test.mjs fails if one of them gains OS-specific code.
       - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --locked
+        if: runner.os == 'Linux'
       - run: node scripts/workspace.mjs test --package rbit-identity-models --no-default-features --locked
+        if: runner.os == 'Linux'
       - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --features credentials --locked
+        if: runner.os == 'Linux'
       # The workspace test union enables identity password-work; compile this tool
       # separately so an accidental application-only import cannot be hidden by it.
       - run: node scripts/workspace.mjs test --package rbit-credential-inventory --no-default-features --locked
       - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --features session-tokens --locked
+        if: runner.os == 'Linux'
       - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --features sessions --locked
+        if: runner.os == 'Linux'
       - run: node scripts/workspace.mjs test --package rbit-collaboration --no-default-features --locked
+        if: runner.os == 'Linux'
       - run: node scripts/workspace.mjs test --package rbit-collaboration --no-default-features --features applications --locked
+        if: runner.os == 'Linux'
       - run: node scripts/workspace.mjs test --package rbit-contracts --package rbit-core --package rbit-repositories --package rbit-kernel --package rbit-localization --package rbit-identity-models --package rbit-identity --package rbit-collaboration --package rbit-auth --package rbit-rewrite-check --features rbit-identity/password-work,rbit-identity/sessions,rbit-collaboration/applications --locked
+        if: runner.os == 'Linux'
       - run: node scripts/workspace.mjs test --package rbit-render-probe --no-default-features --features inheritance,segments,blocks,count-8 --locked
+        if: runner.os == 'Linux'
+      # rbit-rewrite-check (in the union above) has Windows-only filesystem code, so it
+      # is tested on Windows as well.
+      - run: node scripts/workspace.mjs test --package rbit-rewrite-check --locked
+        if: runner.os == 'Windows'
       # rbit-platform's native namespace boundary is Windows-only code that the Linux lint
       # job never compiles, so it is linted strictly on both matrix platforms here.
       - run: node scripts/workspace.mjs clippy --package rbit-platform --all-targets --locked -- -D warnings
@@ -274,6 +296,9 @@ jobs:
   tests-windows-build:
     name: Test build (windows-latest)
     runs-on: windows-latest
+    # See rewrite-contracts: four compile jobs on Windows runners.
+    env:
+      CARGO_BUILD_JOBS: "4"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -371,6 +396,9 @@ jobs:
   tests-windows-extras:
     name: Doc tests (windows-latest)
     runs-on: windows-latest
+    # See rewrite-contracts: four compile jobs on Windows runners.
+    env:
+      CARGO_BUILD_JOBS: "4"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

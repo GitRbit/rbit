@@ -74,7 +74,7 @@ pub async fn offline(State(state): State<AppState>) -> OfflinePage {
     OfflinePage { page: page.titled(title) }
 }
 
-/// The colours `base.html` links the branding sheet with (`?color=…&text=…`).
+/// The colours the layout (`templates/layout/head.html`) links the branding sheet with (`?color=…&text=…`).
 #[derive(Debug, Default, serde::Deserialize)]
 #[serde(default)]
 pub struct BrandingQuery {

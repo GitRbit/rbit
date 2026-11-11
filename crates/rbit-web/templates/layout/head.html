@@ -1,0 +1,34 @@
+{# layout segment #}<!doctype html>
+<html lang="{{ page.locale.tag() }}" dir="{{ page.locale.direction().as_str() }}" data-catalog-key="{{ page.locale.catalog_key() }}"{% if let Some(theme) = page.theme.attribute() %} data-theme="{{ theme }}"{% endif %}{% if let Some(scheme) = page.theme.scheme() %} data-scheme="{{ scheme }}"{% endif %}>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!--partial:title--><title>{{ page.document_title() }}</title><!--/partial:title-->
+  <meta name="description" content="{{ page.branding.description }}">
+  {%- if let Some(color) = page.theme.theme_color() %}
+  <meta name="theme-color" content="{{ color }}">
+  <meta name="color-scheme" content="{{ page.theme.scheme().unwrap_or_default() }}">
+  {%- else %}
+  <meta name="theme-color" content="{{ crate::themes::DNA_DAY_CANVAS }}" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="{{ crate::themes::DNA_DARK_CANVAS }}" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+  {%- endif %}
+  <meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false,"historyCacheSize":3,"defaultSettleDelay":0,"responseHandling":[{"code":"204","swap":false},{"code":"...","swap":true}]}'>
+  <link rel="icon" href="{{ page.favicon_url() }}">
+  <link rel="apple-touch-icon" sizes="180x180" href="{{ page.app_icon_url() }}">
+  {#- Before the inline stylesheets, so the preload scanner finds these without first
+      reading ~140 KB of CSS; neither holds up parsing. -#}
+  <script src="{{ page.asset("vendor/htmx.min.js") }}" defer></script>
+  <script src="{{ page.asset("app.bundle.js") }}" type="module"></script>
+  {#- Exact embedded bytes are authorized by hashes in the response CSP. htmx requests
+      leave them out: htmx drops the <head> and the page keeps its own stylesheets. The
+      deferred sheet (single pages, script-opened dialogs) is linked, cached for good, and
+      follows app.css in the cascade as if inlined after it. -#}
+  {%- if crate::assets::head_styles() %}
+  <style data-app-stylesheet>{{ crate::assets::inline_css("app.css")|safe }}</style>
+  <link rel="stylesheet" href="{{ page.asset("deferred.css") }}" data-deferred-stylesheet>
+  {%- if let Some(path) = page.theme.stylesheet_path() %}
+  <style data-theme-stylesheet data-theme="{{ page.theme.slug() }}">{{ crate::assets::inline_css(path)|safe }}</style>
+  {%- endif %}
+  {%- endif %}
+  {% if !page.branding.primary_color.is_empty() %}<link rel="stylesheet" href="/assets/branding.css?color={{ page.branding.primary_color|urlencode }}&amp;text={{ page.branding.primary_text_color|urlencode }}">{% endif %}

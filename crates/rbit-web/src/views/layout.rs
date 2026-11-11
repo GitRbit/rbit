@@ -167,6 +167,59 @@ impl Page {
     pub fn is_at(&self, prefix: &str) -> bool {
         self.path == prefix || (prefix != "/" && self.path.starts_with(prefix))
     }
+
+    /// The layout's `<!doctype>` and `<head>` up to the theme script (`templates/layout/head.html`).
+    pub fn layout_head(&self) -> LayoutHead<'_> {
+        LayoutHead { page: self }
+    }
+
+    /// From `</head>` to the top bar's navigation context (`templates/layout/top.html`).
+    pub fn layout_top(&self) -> LayoutTop<'_> {
+        LayoutTop { page: self }
+    }
+
+    /// The top bar's controls and menus, up to the page tabs (`templates/layout/menus.html`).
+    pub fn layout_menus(&self) -> LayoutMenus<'_> {
+        LayoutMenus { page: self }
+    }
+
+    /// From the end of `<main>` through the footer (`templates/layout/foot.html`).
+    pub fn layout_foot(&self) -> LayoutFoot<'_> {
+        LayoutFoot { page: self }
+    }
+}
+
+// The fixed parts of `templates/base.html`. Askama copies a parent template into every page
+// that extends it, so the layout used to be compiled once per page (about 120 times);
+// as templates of their own they are compiled once, and `base.html` renders them with
+// `|safe`: they are Askama templates that escape their own values.
+
+/// See [`Page::layout_head`].
+#[derive(Debug, askama::Template)]
+#[template(path = "layout/head.html")]
+pub struct LayoutHead<'a> {
+    page: &'a Page,
+}
+
+/// See [`Page::layout_top`].
+#[derive(Debug, askama::Template)]
+#[template(path = "layout/top.html")]
+pub struct LayoutTop<'a> {
+    page: &'a Page,
+}
+
+/// See [`Page::layout_menus`].
+#[derive(Debug, askama::Template)]
+#[template(path = "layout/menus.html")]
+pub struct LayoutMenus<'a> {
+    page: &'a Page,
+}
+
+/// See [`Page::layout_foot`].
+#[derive(Debug, askama::Template)]
+#[template(path = "layout/foot.html")]
+pub struct LayoutFoot<'a> {
+    page: &'a Page,
 }
 
 #[cfg(test)]

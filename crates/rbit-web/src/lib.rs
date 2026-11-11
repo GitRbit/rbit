@@ -18,6 +18,7 @@ pub mod assets;
 pub mod client_ip;
 pub mod error;
 pub mod extract;
+pub mod icons;
 pub mod localization;
 pub mod metrics;
 pub mod middleware;
