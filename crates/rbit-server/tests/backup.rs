@@ -55,6 +55,25 @@ fn rbit(data_dir: &Path, args: &[&str]) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_rbit")).args(args).env("RBIT_STORAGE__DATA_DIR", data_dir).env_remove("RBIT_CONFIG").output().unwrap()
 }
 
+/// rbit-runner sets `RBIT_ACTIONS=true` in every job; a server command run inside a CI job
+/// must not read it as the `[actions]` table, while `RBIT_ACTIONS__ENABLED` still applies.
+#[tokio::test]
+async fn the_ci_marker_variable_is_not_configuration() {
+    let dir = tempfile::tempdir().unwrap();
+    let data_dir = dir.path().join("data");
+    populate(&data_dir).await;
+    let backup = dir.path().join("backup");
+    let output = Command::new(env!("CARGO_BIN_EXE_rbit"))
+        .args(["backup", "--output", backup.to_str().unwrap()])
+        .env("RBIT_STORAGE__DATA_DIR", &data_dir)
+        .env("RBIT_ACTIONS", "true")
+        .env("RBIT_ACTIONS__ENABLED", "true")
+        .env_remove("RBIT_CONFIG")
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "backup failed: {}", String::from_utf8_lossy(&output.stderr));
+}
+
 #[tokio::test]
 async fn backup_writes_a_restorable_snapshot() {
     let dir = tempfile::tempdir().unwrap();
