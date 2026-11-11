@@ -3788,6 +3788,21 @@
           "completed_at"
         ],
         "properties": {
+          "termination": {
+            "description": "rbit's own: how the job's task ended, once it has. A task without a record reads by its status (`completed`, `cancelled`, or `unknown` for an unexplained failure). A job that ran out of time also reads `conclusion: timed_out`.",
+            "type": "object",
+            "required": ["reason", "step", "step_name", "exit_code", "log_complete"],
+            "properties": {
+              "reason": {
+                "type": "string",
+                "enum": ["completed", "step_failed", "timeout", "cancelled", "superseded", "runner_lost", "setup_failed", "server_shutdown", "unknown"]
+              },
+              "step": { "type": ["integer", "null"], "description": "The `number` of the step that ended the job." },
+              "step_name": { "type": ["string", "null"] },
+              "exit_code": { "type": ["integer", "null"], "description": "That step's exit code, when it was a process that exited." },
+              "log_complete": { "type": "boolean", "description": "The log was finalised and nothing was cut from it. When false, the job's result cannot be trusted as complete." }
+            }
+          },
           "id": {
             "type": "integer"
           },
@@ -3843,6 +3858,7 @@
               "success",
               "failure",
               "cancelled",
+              "timed_out",
               "skipped",
               null
             ],

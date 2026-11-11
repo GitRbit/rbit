@@ -9,6 +9,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Termination records: every finished Actions job says how it ended in the jobs API
+  (`termination`: reason, the step by number and name, its exit code, and whether the log
+  is complete), so a timeout, a lost runner and a failing step no longer all read
+  `failure`. A job that ran out of time reads `conclusion: timed_out`. Runners 0.2.2 and
+  later report the step and exit code; an older runner's failures read `unknown`.
 - Output for programs: every `rbit run`, `pr`, `workflow`, `artifact` and `api` command
   takes `--json` and prints one compact object with a versioned `schema`; failures print an
   `rbit.error/1` object with a `code` and, where one helps, a runnable `hint`. Exit codes
@@ -22,6 +27,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- A running task whose runner sends no word for two minutes now fails as `runner_lost`;
+  before, the default `zombie_timeout_seconds` was ten minutes. Set it back in `[actions]`
+  if your runners lose touch for longer and recover.
 - `rbit run view`, `watch` and `download` without a run id work on the runs of `--sha`, or
   of the checkout's `HEAD`, instead of the repository's newest run, which could be another
   branch's. A commit with no run yet is `pending` (exit 8); `watch` waits for its first run.

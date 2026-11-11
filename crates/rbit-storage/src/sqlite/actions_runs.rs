@@ -432,6 +432,8 @@ pub enum Rerun {
 
 // Actions: annotations.
 mod annotations;
+mod terminations;
+pub use terminations::TaskEnd;
 pub use annotations::StoredAnnotation;
 mod log_queries;
 

@@ -62,8 +62,7 @@ pub fn task_dir(work_dir: &Path, task: TaskId) -> PathBuf {
 }
 
 /// Creates `<work_dir>/tasks` for the runner's user alone (Unix): a job container on a
-/// rootful engine can leave files there owned by root, setuid ones included, and no other
-/// local user may reach them.
+/// rootful engine can leave files there owned by root, setuid ones included, and no other local user may reach them.
 pub fn prepare_tasks_dir(work_dir: &Path) -> std::io::Result<()> {
     let tasks = work_dir.join("tasks");
     std::fs::create_dir_all(&tasks)?;
@@ -99,6 +98,7 @@ pub struct Reporter {
     /// New log lines: they are sent soon, without a state call.
     logged: Notify,
     cancel: CancellationToken,
+    pub ending: crate::termination::Ending,
 }
 
 #[derive(Debug)]
@@ -110,8 +110,7 @@ struct Progress {
     // Actions: step summaries.
     /// Step summaries, masked and within their limits, by step index.
     summaries: BTreeMap<u32, String>,
-    /// The steps whose summary the server accepted: it keeps the first one it sees, so they
-    /// are not sent again.
+    /// The steps whose summary the server accepted: it keeps the first one it sees, so they are not sent again.
     acknowledged: BTreeSet<u32>,
     /// The server answered `404`: nothing more is reported.
     gone: bool,
@@ -156,6 +155,7 @@ impl Reporter {
             changed: Notify::new(),
             logged: Notify::new(),
             cancel: CancellationToken::new(),
+            ending: crate::termination::Ending::default(),
         })
     }
 
@@ -176,8 +176,7 @@ impl Reporter {
         &self.dir
     }
 
-    /// Masks `value` in every later log line and output (secrets, the task token,
-    /// `::add-mask::`).
+    /// Masks `value` in every later log line and output (secrets, the task token, `::add-mask::`).
     pub fn add_mask(&self, value: &str) {
         if !self.masker.add(value) {
             self.log.push("##[warning]this task masks too many values; `::add-mask::` was refused");
@@ -213,8 +212,7 @@ impl Reporter {
         &self.cancel
     }
 
-    /// Appends a line (or several, at newlines) to the task log, counted to the current
-    /// step.
+    /// Appends a line (or several, at newlines) to the task log, counted to the current step.
     pub fn log(&self, text: &str) {
         let masked = self.masker.mask(text);
         if let Some(Echo(sink)) = &self.echo {
@@ -256,6 +254,7 @@ impl Reporter {
 
     /// Step `index` starts: its log begins at the next line.
     pub fn start_step(&self, index: usize) {
+        self.ending.step_started();
         let line = self.log.len();
         let mut progress = self.lock();
         let Some(step) = progress.steps.get_mut(index) else { return };
@@ -367,6 +366,7 @@ impl Reporter {
             summaries,
             post_steps: progress.post_steps.clone(),
             environment_url: progress.environment_url.clone(),
+            termination: result.map(|result| self.ending.report(result)),
         }
     }
 

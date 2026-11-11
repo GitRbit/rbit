@@ -76,6 +76,8 @@ use crate::AppState;
 // Actions: settings API.
 mod permissions;
 mod run_filters;
+// Agent loop: termination records.
+mod terminations;
 
 use run_filters::{RunsQuery, non_empty};
 
@@ -280,7 +282,15 @@ pub async fn run_jobs(State(state): State<AppState>, caller: Caller, pager: Page
     let runners = actions.runner_names(&shown).await?;
     let base = base_url(&state);
     let runner = |job: &rbit_core::actions::Job| job.runner_id.and_then(|id| runners.get(&id)).map(String::as_str);
-    let items = shown.iter().map(|job| hooks::workflow_job(job, &detail.run, &ctx.repo, &steps, runner(job), base)).collect();
+    let ends = actions.task_ends(&shown).await?;
+    let items = shown
+        .iter()
+        .map(|job| {
+            let mut item = hooks::workflow_job(job, &detail.run, &ctx.repo, &steps, runner(job), base);
+            terminations::annotate(&mut item, job, &ends);
+            item
+        })
+        .collect();
     let total = u64::try_from(detail.jobs.len()).unwrap_or(u64::MAX);
     Ok(pager.paged(items, Some(total), false).wrapped("jobs"))
 }
@@ -291,7 +301,10 @@ pub async fn show_job(State(state): State<AppState>, caller: Caller, Path(path):
     let detail = actions(&state)?.job_detail(&ctx, path.job()?).await?;
     let runners = actions(&state)?.runner_names(std::slice::from_ref(&detail.job)).await?;
     let runner = detail.job.runner_id.and_then(|id| runners.get(&id)).map(String::as_str);
-    Ok(Json(hooks::workflow_job(&detail.job, &detail.run, &ctx.repo, &detail.steps, runner, base_url(&state))))
+    let mut item = hooks::workflow_job(&detail.job, &detail.run, &ctx.repo, &detail.steps, runner, base_url(&state));
+    let ends = actions(&state)?.task_ends(std::slice::from_ref(&detail.job)).await?;
+    terminations::annotate(&mut item, &detail.job, &ends);
+    Ok(Json(item))
 }
 
 // Actions: REST API.

@@ -1,5 +1,6 @@
 //! Protocol tasks contracts and original validation.
 use super::limits::{MAX_CAPACITY, MAX_ENVIRONMENT_URL_BYTES, MAX_POST_STEP_NAME_BYTES, MAX_STEP_SUMMARY_BYTES, MAX_TASK_SUMMARY_BYTES};
+use super::termination::TaskTermination;
 use super::validation::{ValidationError, ensure, unique, validate_outputs};
 use crate::spec::JobSpec;
 use serde::{Deserialize, Serialize};
@@ -101,6 +102,10 @@ pub struct TaskStateRequest {
     /// The job's `environment.url`, as the runner evaluated it after the steps (masked).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment_url: Option<String>,
+    // Agent loop: termination records.
+    /// How the task ended, on the final call only; left out by older runners.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub termination: Option<TaskTermination>,
 }
 
 impl TaskStateRequest {
@@ -144,6 +149,10 @@ impl TaskStateRequest {
             ensure(url.len() <= MAX_ENVIRONMENT_URL_BYTES && !url.chars().any(char::is_control), || {
                 format!("the environment URL must be at most {MAX_ENVIRONMENT_URL_BYTES} bytes, on one line")
             })?;
+        }
+        if let Some(termination) = &self.termination {
+            ensure(self.is_final(), || "only the final state call says how the task ended".to_owned())?;
+            termination.validate()?;
         }
         validate_outputs(&self.outputs)
     }

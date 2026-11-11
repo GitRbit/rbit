@@ -6,7 +6,7 @@ use super::{
     Backend, Capabilities, DeclareRequest, DeclareResponse, DeclaredLabel, Endpoint, ErrorBody, ErrorCode, Intervals, LogsQuery,
     LogsResponse, MAX_CAPACITY, MAX_IDEMPOTENCY_KEY_BYTES, MAX_OUTPUT_BYTES, MAX_OUTPUT_KEY_BYTES, MAX_POST_STEP_NAME_BYTES,
     MAX_STEP_SUMMARY_BYTES, PROTOCOL_VERSION, PollRequest, RegisterRequest, RegisterResponse, RunnerId, SUPPORTED_PROTOCOL_VERSIONS,
-    StepState, StepStatus, TaskId, TaskResult, TaskStateRequest, TaskStateResponse, UnregisterRequest, ValidationError,
+    StepState, StepStatus, TaskId, TaskResult, TaskStateRequest, TaskStateResponse, TaskTermination, UnregisterRequest, ValidationError,
     valid_artifact_name, valid_idempotency_key, valid_runner_credential, valid_task_token,
 };
 use crate::secret::Secret;
@@ -106,6 +106,7 @@ fn golden_poll_state_and_logs() {
         summaries: BTreeMap::new(),
         post_steps: BTreeMap::new(),
         environment_url: None,
+        termination: None,
     };
     state.validate().unwrap();
     assert!(!state.is_final());
@@ -124,6 +125,7 @@ fn golden_poll_state_and_logs() {
         summaries: BTreeMap::new(),
         post_steps: BTreeMap::new(),
         environment_url: None,
+        termination: None,
     };
     assert!(done.is_final());
     golden(&done, r#"{"steps":[],"outputs":{},"result":"cancelled"}"#);
@@ -132,6 +134,16 @@ fn golden_poll_state_and_logs() {
     golden(&summarised, r##"{"steps":[],"outputs":{},"result":"cancelled","summaries":{"0":"# Done\n"}}"##);
     let old: TaskStateRequest = serde_json::from_str(r#"{"steps":[],"outputs":{},"result":null}"#).unwrap();
     assert!(old.summaries.is_empty());
+    // Agent loop: termination records, on the final call only; older peers leave them out.
+    assert!(old.termination.is_none());
+    let ended = TaskStateRequest {
+        termination: Some(TaskTermination { reason: "step_failed".to_owned(), step: Some(1), exit_code: Some(2) }),
+        ..done.clone()
+    };
+    ended.validate().unwrap();
+    golden(&ended, r#"{"steps":[],"outputs":{},"result":"cancelled","termination":{"reason":"step_failed","step":1,"exit_code":2}}"#);
+    let early = TaskStateRequest { result: None, ..ended };
+    assert!(early.validate().is_err(), "a termination before the final call");
     golden(&TaskStateResponse { cancel: true }, r#"{"cancel":true}"#);
     golden(&LogsQuery { from: 42 }, r#"{"from":42}"#);
     golden(&LogsResponse { next_line: 57 }, r#"{"next_line":57}"#);
@@ -255,7 +267,7 @@ fn interval_poll_and_state_caps() {
 
     let step = StepState { index: 0, status: StepStatus::Running, started_at: Some(5), stopped_at: None, log_index: 0, log_length: 0 };
     let state = |steps: Vec<StepState>, outputs: BTreeMap<String, String>, result| {
-        TaskStateRequest { steps, outputs, result, summaries: BTreeMap::new(), post_steps: BTreeMap::new(), environment_url: None }
+        TaskStateRequest { steps, outputs, result, summaries: BTreeMap::new(), post_steps: BTreeMap::new(), environment_url: None, termination: None }
             .validate()
     };
     assert!(state(vec![step], BTreeMap::new(), None).is_ok());
@@ -282,6 +294,7 @@ fn interval_poll_and_state_caps() {
         summaries: summaries.iter().map(|(index, bytes)| (*index, "x".repeat(*bytes))).collect(),
         post_steps: BTreeMap::new(),
         environment_url: None,
+        termination: None,
     };
     assert!(summarised(&[(0, MAX_STEP_SUMMARY_BYTES)]).validate().is_ok());
     assert!(summarised(&[(0, MAX_STEP_SUMMARY_BYTES + 1)]).validate().is_err());

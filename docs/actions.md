@@ -452,6 +452,21 @@ repository (`/repos/{owner}/{repo}/actions/…`), an organisation (`/orgs/{org}/
 rbit's own), with the `admin` scope; a value past the owner's ceiling is `409`. Webhooks can subscribe
 to `workflow_run` and `workflow_job`.
 
+### How a job ended
+
+Beside GitHub's fields, a job in the API carries rbit's own `termination` once it has
+ended: `{"reason", "step", "step_name", "exit_code", "log_complete"}`. The runner reports
+`completed`, `step_failed` (with the step, as numbered in `steps`, and its exit code),
+`timeout`, `cancelled` or `setup_failed` (a failure before or outside the steps); the server
+records `runner_lost` when a runner stops reporting for `zombie_timeout_seconds` (two
+minutes by default) and `timeout` when a task runs past `endless_timeout_seconds`. A job
+whose runner reported nothing (an older runner) reads `completed`, `cancelled` or, for a
+failure nobody explained, `unknown`. A job that ran out of time reads
+`conclusion: timed_out`, as on GitHub. `log_complete` is false when the log was not
+finalised or was cut short: such a result is not a complete one, and an agent should say
+so instead of reading the log as the whole story. `rbit run view --json` shows the record of
+each job.
+
 ## Differences from GitHub Actions
 
 - A called workflow is read from this rbit instance, never from github.com. A calling job

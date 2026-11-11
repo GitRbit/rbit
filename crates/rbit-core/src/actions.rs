@@ -21,6 +21,8 @@ use crate::{AccountId, RepoId};
 // Actions: settings API.
 pub mod permissions;
 pub mod records;
+mod termination;
+pub use termination::{Termination, TerminationReason};
 
 pub use records::{
     Artifact, BranchPolicy, CacheEntry, DeploymentReview, Environment, Job, LogState, RUNNER_ONLINE_SECONDS, RegistrationToken,
@@ -272,8 +274,7 @@ fn parse_label(value: &str) -> Result<String, ActionsNameError> {
     Ok(value.to_owned())
 }
 
-/// Secret and variable names are case-insensitive, as on GitHub and Forgejo: they are
-/// stored upper-cased.
+/// Secret and variable names are case-insensitive, as on GitHub and Forgejo: they are stored upper-cased.
 fn parse_environment_name(kind: &'static str, value: &str) -> Result<String, ActionsNameError> {
     let value = value.trim().to_ascii_uppercase();
     if value.is_empty() {
@@ -380,8 +381,7 @@ pub fn runner_sees(scope: RunnerScope, repo: RepoId, owner: AccountId, instance_
     }
 }
 
-/// Where a secret or variable is defined. Environment values win over repository values,
-/// which win over owner values.
+/// Where a secret or variable is defined. Environment values win over repository values, which win over owner values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SecretScope {
     Owner(AccountId),

@@ -15,7 +15,7 @@ use rbit_core::{
     Account, AccountId, RepoId,
     actions::{Job, JobId, Run, RunEvent, RunId, RunnerId, Status, Step, TaskId},
 };
-use rbit_storage::sqlite::actions_runs::RunFilter;
+use rbit_storage::sqlite::actions_runs::{RunFilter, TaskEnd};
 
 use super::{ActionsService, hooks};
 use crate::{RepoContext, ServiceError};
@@ -361,6 +361,13 @@ impl ActionsService {
             }
         }
         Ok(names)
+    }
+
+    // Agent loop: termination records.
+    /// How the tasks of `jobs` ended (termination record, log completeness), by task.
+    pub async fn task_ends(&self, jobs: &[Job]) -> Result<BTreeMap<TaskId, TaskEnd>, ServiceError> {
+        let tasks: Vec<TaskId> = jobs.iter().filter_map(|job| job.task_id).collect();
+        Ok(self.ctx().database.actions_runs().task_ends(&tasks).await?)
     }
 }
 

@@ -1,0 +1,105 @@
+//! Termination records in the jobs API (rbit's own fields beside GitHub's): how each job's
+//! task ended, so an agent reads "timed out at step 6" or "runner lost, log incomplete"
+//! instead of a bare `failure`.
+//!
+//! A job gains `termination`: `{reason, step, step_name, exit_code, log_complete}` once its
+//! task has ended. A task without a record reads by its status: `completed`, `cancelled`,
+//! or `unknown` for a failure nobody explained. A job that ran out of time reads
+//! `conclusion: timed_out`, as on GitHub.
+
+use std::collections::BTreeMap;
+
+use rbit_core::actions::{Job, Status, TaskId, TerminationReason};
+use rbit_storage::sqlite::actions_runs::TaskEnd;
+use serde_json::{Value, json};
+
+/// Adds `job`'s termination record to `item`, its JSON, once the job has ended.
+pub fn annotate(item: &mut Value, job: &Job, ends: &BTreeMap<TaskId, TaskEnd>) {
+    let Some(end) = job.task_id.and_then(|task| ends.get(&task)) else { return };
+    let reason = match (end.termination, job.status) {
+        (Some(termination), _) => termination.reason,
+        (None, Status::Success) => TerminationReason::Completed,
+        (None, Status::Cancelled) => TerminationReason::Cancelled,
+        (None, Status::Failure) => TerminationReason::Unknown,
+        // Still running or waiting: nothing has ended yet.
+        (None, _) => return,
+    };
+    let step = end.termination.and_then(|termination| termination.step).map(|index| index + 1);
+    let step_name = step.and_then(|number| {
+        item["steps"].as_array().and_then(|steps| steps.iter().find(|candidate| candidate["number"] == number)).map(|found| found["name"].clone())
+    });
+    item["termination"] = json!({
+        "reason": reason.as_str(),
+        "step": step,
+        "step_name": step_name,
+        "exit_code": end.termination.and_then(|termination| termination.exit_code),
+        "log_complete": end.log_complete,
+    });
+    if reason == TerminationReason::Timeout {
+        item["conclusion"] = json!("timed_out");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rbit_core::{
+        RepoId, Timestamp,
+        actions::{JobId, RunId, Termination},
+    };
+
+    use super::*;
+
+    fn job(status: Status, task: Option<i64>) -> Job {
+        Job {
+            id: JobId(1),
+            run_id: RunId(1),
+            repo_id: RepoId(1),
+            key: "test".to_owned(),
+            name: "test".to_owned(),
+            matrix: None,
+            needs: Vec::new(),
+            runs_on: Vec::new(),
+            permissions: None,
+            status,
+            attempt: 1,
+            task_id: task.map(TaskId),
+            runner_id: None,
+            created_at: Timestamp(0),
+            queued_at: None,
+            started_at: None,
+            finished_at: None,
+            environment: None,
+            environment_url: None,
+            awaiting_review: false,
+        }
+    }
+
+    #[test]
+    fn a_record_names_the_step_and_a_timeout_reads_timed_out() {
+        let ends = BTreeMap::from([(
+            TaskId(7),
+            TaskEnd { termination: Some(Termination { reason: TerminationReason::Timeout, step: Some(1), exit_code: None }), log_complete: true },
+        )]);
+        let mut item = json!({ "conclusion": "failure", "steps": [{ "number": 1, "name": "Set up" }, { "number": 2, "name": "Run shard" }] });
+        annotate(&mut item, &job(Status::Failure, Some(7)), &ends);
+        assert_eq!(item["conclusion"], "timed_out");
+        assert_eq!(item["termination"], json!({ "reason": "timeout", "step": 2, "step_name": "Run shard", "exit_code": null, "log_complete": true }));
+    }
+
+    #[test]
+    fn without_a_record_the_status_speaks_and_a_running_job_has_none() {
+        let ends = BTreeMap::from([(TaskId(7), TaskEnd { termination: None, log_complete: false })]);
+        for (status, reason) in [(Status::Success, "completed"), (Status::Cancelled, "cancelled"), (Status::Failure, "unknown")] {
+            let mut item = json!({ "steps": [] });
+            annotate(&mut item, &job(status, Some(7)), &ends);
+            assert_eq!(item["termination"]["reason"], reason);
+            assert_eq!(item["termination"]["log_complete"], false);
+        }
+        let mut running = json!({});
+        annotate(&mut running, &job(Status::Running, Some(7)), &ends);
+        assert!(running.get("termination").is_none());
+        let mut queued = json!({});
+        annotate(&mut queued, &job(Status::Waiting, None), &ends);
+        assert!(queued.get("termination").is_none());
+    }
+}

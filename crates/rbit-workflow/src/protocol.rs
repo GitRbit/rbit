@@ -28,6 +28,7 @@ mod errors;
 mod limits;
 mod runners;
 mod tasks;
+mod termination;
 mod tokens;
 mod validation;
 
@@ -55,6 +56,7 @@ pub use self::runners::{
 pub use self::tasks::{
     LogsQuery, LogsResponse, PollRequest, PollResponse, StepState, StepStatus, TaskId, TaskResult, TaskStateRequest, TaskStateResponse,
 };
+pub use self::termination::{MAX_REASON_BYTES, RUNNER_REASONS, TaskTermination};
 pub use self::tokens::{valid_idempotency_key, valid_runner_credential, valid_task_token};
 pub use self::validation::ValidationError;
 pub(crate) use self::validation::{ensure, unique, validate_labels, validate_outputs};

@@ -10,6 +10,7 @@ mod actions_disabled;
 mod actions_runner;
 // Agent plan step 1: runs by commit, error codes, the CLI's output contract.
 mod agent_runs;
+mod agent_termination;
 mod api;
 mod api_workflow;
 mod archives;

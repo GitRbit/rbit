@@ -78,7 +78,7 @@ fn job_summary(job: &Value) -> Value {
         .filter(|step| step["conclusion"].as_str() != Some("success"))
         .map(|step| json!({ "number": step["number"], "name": step["name"], "status": state(step) }))
         .collect();
-    json!({ "id": job["id"], "name": job["name"], "status": state(job), "steps": steps })
+    json!({ "id": job["id"], "name": job["name"], "status": state(job), "termination": job["termination"], "steps": steps })
 }
 
 fn print_run(run: &Value, jobs: &[Value]) {

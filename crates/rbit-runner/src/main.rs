@@ -36,6 +36,7 @@ mod shutdown;
 mod stamp;
 mod steps;
 mod task;
+mod termination;
 #[cfg(test)]
 mod testing;
 mod untrusted;

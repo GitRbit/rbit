@@ -15,7 +15,7 @@
 //! max_log_bytes = 67108864
 //! max_workflow_bytes = 262144
 //! # Fail a task with no heartbeat, a task running too long, cancel a job nobody picks up.
-//! zombie_timeout_seconds = 600
+//! zombie_timeout_seconds = 120
 //! endless_timeout_seconds = 10800
 //! abandoned_timeout_seconds = 86400
 //! # Workflow evaluations (Git reads + YAML) running at once.
@@ -132,7 +132,7 @@ impl Default for ActionsConfig {
             run_retention_days: 365,
             max_log_bytes: 64 * 1024 * 1024,
             max_workflow_bytes: 256 * 1024,
-            zombie_timeout_seconds: 10 * 60,
+            zombie_timeout_seconds: 2 * 60,
             endless_timeout_seconds: 3 * 60 * 60,
             abandoned_timeout_seconds: 24 * 60 * 60,
             evaluation_concurrency: 2,
@@ -245,7 +245,7 @@ mod tests {
         assert!(!config.enabled && !config.enable_for_new_repositories);
         assert_eq!((config.log_retention_days, config.run_retention_days), (90, 365));
         assert_eq!((config.max_log_bytes, config.max_workflow_bytes), (67_108_864, 262_144));
-        assert_eq!(config.zombie_timeout(), Duration::from_mins(10));
+        assert_eq!(config.zombie_timeout(), Duration::from_mins(2));
         assert_eq!(config.endless_timeout(), Duration::from_hours(3));
         assert_eq!(config.abandoned_timeout(), Duration::from_hours(24));
         assert_eq!(config.evaluation_concurrency, 2);
