@@ -67,6 +67,13 @@ pub enum ClientCommand {
         #[command(flatten)]
         target: Target,
     },
+    /// Issues: list, view, create, comment, close and label.
+    Issue {
+        #[command(subcommand)]
+        command: super::issues::IssueCommand,
+        #[command(flatten)]
+        target: Target,
+    },
     /// Where a branch stands: its head, its CI for exactly that commit, its base, its pull
     /// request and the next command worth running (the current branch by default).
     Status {
@@ -343,6 +350,7 @@ pub async fn run(command: ClientCommand) -> anyhow::Result<i32> {
         | ClientCommand::Artifact { target, .. }
         | ClientCommand::Pr { target, .. }
         | ClientCommand::Status { target, .. }
+        | ClientCommand::Issue { target, .. }
         | ClientCommand::Api { target, .. } => target.output.json,
         ClientCommand::Auth { .. } => false,
     };
@@ -373,6 +381,10 @@ async fn dispatch(command: ClientCommand) -> anyhow::Result<i32> {
         ClientCommand::Pr { command, target } => {
             let (api, repo) = connect(&target, true)?;
             pulls::pulls(&api, &repo.expect("a repository"), command, &target.output).await
+        }
+        ClientCommand::Issue { command, target } => {
+            let (api, repo) = connect(&target, true)?;
+            super::issues::issues(&api, &repo.expect("a repository"), command, &target.output).await
         }
         ClientCommand::Status { branch, target } => {
             let (api, repo) = connect(&target, true)?;

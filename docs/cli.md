@@ -108,6 +108,21 @@ or cancelled), each line prefixed with its job's name. `rerun --job` wins over `
 when both are given. `--exit-status` exits with 1 when a run did not succeed and 8 while one
 has not finished.
 
+## Issues
+
+```bash
+rbit issue list [--state open|closed|all] [--label NAME]... [--mine] [-L 20]
+rbit issue view NUMBER
+rbit issue create --title "…" [--body "…" | --body-file FILE] [--label NAME]...
+rbit issue comment NUMBER [--body "…" | --body-file FILE]
+rbit issue close NUMBER [--reason completed|not_planned]
+rbit issue label NUMBER LABEL... [--remove]
+```
+
+`list` leaves pull requests out and gives one short row per issue; `view` gives the body
+and the three newest comments, each cut at 4,000 characters with `--json`. `--body-file -`
+reads standard input.
+
 ## Workflows and artifacts
 
 ```bash

@@ -175,4 +175,19 @@ async fn an_agent_finds_the_runs_of_its_commit_and_reads_codes_not_prose() {
     git.ok(&sample.dir, &["push", "--quiet", &url, "no-ci"]);
     let (_, quiet) = agent.get("repos/alice/rocket/agent/status?branch=no-ci").await;
     assert_eq!((quiet["ci"]["state"].as_str(), quiet["ci"]["reason"].as_str()), (Some("none_expected"), Some("the commit has no workflow files")));
+
+    // Issues as the task queue: one object per command, pull requests left out of lists.
+    let (code, created) = agent.cli(&["issue", "create", "--title", "Watch by commit", "--body", "Details"]);
+    assert_eq!((code, created["schema"].as_str()), (0, Some("rbit.issue/1")), "{created}");
+    let number = created["number"].as_u64().unwrap().to_string();
+    let (_, listed) = agent.cli(&["issue", "list"]);
+    let numbers: Vec<u64> = listed["issues"].as_array().unwrap().iter().map(|issue| issue["number"].as_u64().unwrap()).collect();
+    assert_eq!(numbers, [created["number"].as_u64().unwrap()], "the pull request is not an issue: {listed}");
+    let (code, _) = agent.cli(&["issue", "comment", &number, "--body", "Taking it"]);
+    assert_eq!(code, 0);
+    let (_, viewed) = agent.cli(&["issue", "view", &number]);
+    assert_eq!((viewed["body"].as_str(), viewed["comments"]["total"].as_u64()), (Some("Details"), Some(1)));
+    assert_eq!(viewed["comments"]["recent"][0]["body"], "Taking it");
+    let (code, closed) = agent.cli(&["issue", "close", &number]);
+    assert_eq!((code, closed["schema"].as_str()), (0, Some("rbit.issue-closed/1")));
 }

@@ -18,6 +18,7 @@ mod agent;
 mod commands;
 mod failure;
 mod hosts;
+mod issues;
 mod pulls;
 mod runs;
 mod runs_view;

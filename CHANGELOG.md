@@ -9,6 +9,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `rbit issue list`, `view`, `create`, `comment`, `close` and `label`, with `--json`.
 - `rbit status` and `GET …/agent/status`: where a branch stands in one call (its head, how
   far from its base, the CI of exactly that commit with failed jobs and how they ended, the
   base's CI, its pull request and issue, and the next command). `rbit run watch` on a commit
