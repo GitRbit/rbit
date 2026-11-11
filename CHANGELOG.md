@@ -15,6 +15,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   now reads only `RBIT_SECTION__KEY` variables (every setting is in a section, so nothing
   that worked before changes). This broke rbit's own tests, and any server a workflow
   starts, on rbit Actions.
+- A server killed while it creates its secret key file (on its first start, or during
+  `rbit migrate`) no longer leaves a short key file behind that every later start refuses
+  ("the secret key file … must hold 32 bytes in base64"). The key is written whole and
+  then linked into place, so a second process starting at the same time never reads a
+  half-written key either.
 - rustix is updated to 1.1.6 for RUSTSEC-2026-0486.
 
 ## [0.2.1] - 2026-11-10

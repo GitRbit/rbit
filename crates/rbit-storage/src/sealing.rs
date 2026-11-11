@@ -82,16 +82,23 @@ impl SealingKey {
 
     /// Writes a new random key file at `path`, readable only by its owner (on Unix). If
     /// another process created it first, its key is used instead, so every instance agrees.
+    ///
+    /// The key is written whole to a temporary file beside `path` and then linked into
+    /// place, which fails if `path` exists. So `path` never holds a partial key: a process
+    /// killed while creating it leaves no key file (and the next start makes one), and a
+    /// second process never reads a key that is still being written.
     pub fn create(path: &Path) -> Result<Self, SealError> {
         let bytes = random()?;
         if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
             create_private_dir(parent).map_err(|source| io_error(parent, source))?;
         }
-        match create_private_file(path) {
-            Ok(mut file) => {
-                let encoded = format!("{}\n", STANDARD.encode(bytes));
-                file.write_all(encoded.as_bytes()).and_then(|()| file.sync_all()).map_err(|source| io_error(path, source))?;
-            }
+        let temp = temp_path(path)?;
+        let encoded = format!("{}\n", STANDARD.encode(bytes));
+        let published = write_private(&temp, encoded.as_bytes()).and_then(|()| fs::hard_link(&temp, path));
+        // The temporary name is ours alone; whatever happened, it goes.
+        fs::remove_file(&temp).ok();
+        match published {
+            Ok(()) => sync_parent(path),
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
                 let contents = fs::read_to_string(path).map_err(|source| io_error(path, source))?;
                 return parse(path, &contents);
@@ -192,6 +199,31 @@ fn random<const N: usize>() -> Result<[u8; N], SealError> {
     getrandom::fill(&mut bytes).map_err(|error| SealError::Random(error.to_string()))?;
     Ok(bytes)
 }
+
+/// `.<name>.<random>.tmp` in the key file's directory: on the same file system, so it can
+/// be linked into place, and hidden from a listing of the data directory.
+fn temp_path(path: &Path) -> Result<std::path::PathBuf, SealError> {
+    let name = path.file_name().map_or_else(|| "secret.key".into(), |name| name.to_string_lossy());
+    let suffix = u64::from_le_bytes(random()?);
+    Ok(path.with_file_name(format!(".{name}.{suffix:016x}.tmp")))
+}
+
+fn write_private(path: &Path, contents: &[u8]) -> io::Result<()> {
+    let mut file = create_private_file(path)?;
+    file.write_all(contents)?;
+    file.sync_all()
+}
+
+/// Makes the new directory entry durable, so a key that was used survives a power cut.
+#[cfg(unix)]
+fn sync_parent(path: &Path) {
+    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+        fs::File::open(parent).and_then(|dir| dir.sync_all()).ok();
+    }
+}
+
+#[cfg(not(unix))]
+fn sync_parent(_path: &Path) {}
 
 fn parse(path: &Path, contents: &str) -> Result<SealingKey, SealError> {
     let invalid = || SealError::InvalidKey { path: path.display().to_string() };
