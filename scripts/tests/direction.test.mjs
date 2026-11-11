@@ -6,6 +6,7 @@ import { readdir, readFile } from "node:fs/promises";
 import test from "node:test";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { layoutSource } from "./support/layout-source.mjs";
 
 const web = new URL("../../crates/rbit-web/", import.meta.url);
 const root = fileURLToPath(web);
@@ -36,9 +37,7 @@ const UNISOLATED_MONO = [
     "a localized sentence; the two submodule ids are one <bdi dir=\"ltr\">"],
   ["templates/pulls/files.html", '<p class="diff-placeholder font-mono text-xs">',
     "a localized sentence; the two submodule ids are one <bdi dir=\"ltr\">"],
-  ["templates/base.html", '<span class="hidden font-mono text-[11px] sm:inline"',
-    "the render time is a localized phrase around a number"],
-  ["templates/render_probe/shell_close.html", '<span class="hidden font-mono text-[11px] sm:inline"',
+  ["templates/layout/foot.html", '<span class="hidden font-mono text-[11px] sm:inline"',
     "the render time is a localized phrase around a number"],
   ["templates/actions/run/header.html", '<dd class="mt-1 flex min-w-0 flex-wrap',
     "the commit cell follows the cell's direction; its sha is a <bdi dir=\"ltr\">"],
@@ -98,11 +97,11 @@ test("every stylesheet uses only logical sides", async () => {
 });
 
 test("the header, tabs and footer inherit the document direction and language", async () => {
-  const base = await read("templates/base.html");
+  const base = layoutSource();
   assert.match(base, /<html lang="\{\{ page\.locale\.tag\(\) \}\}" dir="\{\{ page\.locale\.direction\(\)\.as_str\(\) \}\}"/);
   for (const [name, open] of [["header", /<header\b[^>]*>/], ["tabs", /<div class="site-subnav"[^>]*>/], ["footer", /<footer\b[^>]*>/]]) {
     const tag = base.match(open)?.[0];
-    assert.ok(tag, `${name} is in base.html`);
+    assert.ok(tag, `${name} is in the layout`);
     assert.doesNotMatch(tag, /\bdir=/, `${name} must not pin its own direction: ${tag}`);
     // Untranslated labels inside mark themselves `lang="en"` through `ui::localized`.
     assert.doesNotMatch(tag, /\blang=/, `${name} must not pin its own language: ${tag}`);

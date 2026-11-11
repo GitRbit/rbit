@@ -2,6 +2,7 @@
 // and reloads once; without scripts the button is a link to that page.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { layoutSource } from "./support/layout-source.mjs";
 import test from "node:test";
 import { DIALOG_URL, installLanguagePicker, saveLanguage } from "../../crates/rbit-web/assets/language-picker.js";
 
@@ -177,8 +178,7 @@ test("a refused save or a missing dialog falls back to the language page", async
 });
 
 test("the header links the button to the language page before the theme buttons, in both shells", () => {
-  for (const path of ["templates/base.html", "templates/render_probe/shell_open.html"]) {
-    const shell = read(path);
+  for (const [path, shell] of [["the layout", layoutSource()]]) {
     const desktop = shell.indexOf('<a href="/settings/language" class="btn btn-ghost btn-icon hidden sm:inline-flex" hx-boost="false" aria-haspopup="dialog"');
     assert.ok(desktop > 0, `${path} has the header button`);
     assert.ok(desktop < shell.indexOf('<form method="post" action="/themes" class="hidden sm:contents"'), "it precedes the theme switch");

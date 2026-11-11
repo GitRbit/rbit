@@ -17,7 +17,7 @@ pub const PRELOAD_HEADER: &str = "hx-preloaded";
 pub const NAV_EPOCH_HEADER: &str = "rbit-nav-epoch";
 
 /// How long a preloaded page stays fresh in the browser cache, and (rendered into
-/// `base.html`) how long the preloader treats a URL as preloaded: long enough to cover the
+/// `templates/layout/top.html`) how long the preloader treats a URL as preloaded: long enough to cover the
 /// gap between seeing or hovering a link and clicking it, short enough that it can't go
 /// stale. The navigation epoch makes it safe across the viewer's own changes: any form
 /// post changes the cache key, so nothing preloaded before it is reused after it.

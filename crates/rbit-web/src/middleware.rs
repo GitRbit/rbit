@@ -158,8 +158,8 @@ mod tests {
     #[test]
     fn the_preloader_shares_the_freshness_window() {
         // preload.js reads its window from <body data-preload-fresh>, rendered from the constant.
-        let base = include_str!("../templates/base.html");
-        assert!(base.contains("data-preload-fresh=\"{{ crate::middleware::PRELOAD_MAX_AGE_SECONDS }}\""));
+        let top = include_str!("../templates/layout/top.html");
+        assert!(top.contains("data-preload-fresh=\"{{ crate::middleware::PRELOAD_MAX_AGE_SECONDS }}\""));
         assert_eq!(PRELOAD_MAX_AGE_SECONDS, 30);
     }
 
