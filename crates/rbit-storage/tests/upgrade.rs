@@ -740,7 +740,7 @@ async fn actions_checks_refuse_inconsistent_rows(db: &Upgraded) {
 }
 
 /// Every Actions table an upgraded database has, by name.
-const ACTIONS_TABLES: [&str; 35] = [
+const ACTIONS_TABLES: [&str; 36] = [
     // Actions: annotations.
     "actions_annotations",
     "actions_artifacts",
@@ -776,6 +776,7 @@ const ACTIONS_TABLES: [&str; 35] = [
     "actions_tasks",
     "actions_terminations",
     "actions_test_failures",
+    "actions_test_passes",
     "actions_test_reports",
     "actions_trusted_users",
     "actions_variables",
@@ -785,11 +786,8 @@ const ACTIONS_TABLES: [&str; 35] = [
 #[tokio::test]
 async fn actions_tables_start_empty_with_their_checks_and_cascades() {
     let db = upgraded().await;
-    let tables: Vec<String> =
-        sqlx::query_scalar("SELECT name FROM sqlite_master WHERE type = 'table' AND name GLOB 'actions_*' ORDER BY name")
-            .fetch_all(&db.raw)
-            .await
-            .unwrap();
+    let listed = "SELECT name FROM sqlite_master WHERE type = 'table' AND name GLOB 'actions_*' ORDER BY name";
+    let tables: Vec<String> = sqlx::query_scalar(listed).fetch_all(&db.raw).await.unwrap();
     assert_eq!(tables, ACTIONS_TABLES);
     for table in &tables {
         assert_eq!(db.count(&format!("SELECT COUNT(*) FROM {table}")).await, 0, "{table}");

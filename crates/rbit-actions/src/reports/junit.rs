@@ -3,7 +3,7 @@
 //! declarations, keeps `CDATA` as text, and decodes the five XML entities and numeric
 //! references; nothing else is resolved, so a hostile report costs at most its size.
 
-use super::{FailedTest, MAX_FAILED_TESTS, MAX_TEST_MESSAGE, TestReport};
+use super::{FailedTest, MAX_FAILED_TESTS, MAX_PASSED_TESTS, MAX_TEST_MESSAGE, TestReport};
 
 /// The test case being read.
 #[derive(Default)]
@@ -12,6 +12,7 @@ struct Case {
     path: Option<String>,
     line: Option<u64>,
     failed: bool,
+    skipped: bool,
     message: Option<String>,
     text: String,
     in_failure: bool,
@@ -76,17 +77,25 @@ pub fn parse_junit(xml: &str, report: &mut TestReport) {
                     case.in_failure = !closed;
                 }
             }
+            "skipped" => {
+                if let Some(case) = case.as_mut() {
+                    case.skipped = true;
+                }
+            }
             _ => {}
         }
     }
     finish(case, report);
 }
 
-/// Counts finished test case `case` and keeps it when it failed.
+/// Counts finished test case `case` and keeps it when it failed, or its id when it passed.
 fn finish(case: Option<Case>, report: &mut TestReport) {
     let Some(case) = case else { return };
     report.total += 1;
     if !case.failed {
+        if !case.skipped && !case.id.is_empty() && report.passed.len() < MAX_PASSED_TESTS {
+            report.passed.push(clip(&case.id));
+        }
         return;
     }
     report.failed += 1;
@@ -245,6 +254,7 @@ assertion `left == right` failed
         assert_eq!(failed.id, "rbit-e2e::e2e pulls::merge_rejects_stale_head");
         assert_eq!((failed.path.as_deref(), failed.line), (Some("crates/rbit-e2e/tests/e2e/pulls.rs"), Some(412)));
         assert_eq!(failed.message, "assertion `left == right` failed");
+        assert_eq!(report.passed, ["rbit-e2e::e2e issues::list"], "the skipped test did not pass");
     }
 
     #[test]
@@ -276,6 +286,9 @@ assertion `left == right` failed
         parse_junit(&many, &mut report);
         assert_eq!((report.total, report.failed, report.items.len()), (200, 200, MAX_FAILED_TESTS));
         assert!(report.items[0].message.len() <= MAX_TEST_MESSAGE);
+        let mut report = TestReport::default();
+        parse_junit(&"<testcase name=\"ok\"/>".repeat(MAX_PASSED_TESTS + 10), &mut report);
+        assert_eq!((report.total, report.passed.len()), (u64::try_from(MAX_PASSED_TESTS + 10).unwrap(), MAX_PASSED_TESTS));
         assert_eq!(decode("a &lt;b&gt; &#65; &unknown; &"), "a <b> A &unknown; &");
     }
 }

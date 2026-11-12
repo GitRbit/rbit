@@ -130,7 +130,8 @@ A job that uploads its JUnit report as an artifact named `rbit-test-report`, or 
 with a suffix such as `rbit-test-report-${{ matrix.os }}` since a run's artifact names are
 unique (with `actions/upload-artifact`, `if: always()`), gets its failed tests in `run failure`: the test,
 where it failed and its message, and `flaky` when the same test passed at the same commit in
-another attempt or run. Each failed job also says whether its failures are `new` or
+another attempt or run of a job of the same name (the server keeps the ids of the first 2,000
+passed tests of each report for this). Each failed job also says whether its failures are `new` or
 `recurring` against the previous run of the workflow on that ref, and whether the default
 branch fails the same way (`also_failing_on_base`): then the failure is not yours. `--exit-status` exits with 1 when a run did not succeed and 8 while one
 has not finished; a skipped run (every job's `if` was false) counts as passed, here and in

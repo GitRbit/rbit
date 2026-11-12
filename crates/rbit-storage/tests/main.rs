@@ -12,6 +12,7 @@ mod accounts;
 mod actions;
 // Agent loop: scratch refs.
 mod actions_decisions;
+mod actions_flaky;
 mod actions_scratch;
 mod archives;
 mod backup;

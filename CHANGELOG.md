@@ -129,6 +129,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Promoting an artifact with two files of one name (`linux/app`, `macos/app`) is refused;
   one overwrote the other. `agent/branch-update` answers 422 for an id that is not a full
   commit id, not 500.
+- A failed test is `flaky` in `rbit run failure` when the same test passed at the same
+  commit in another attempt or run of the job, as documented. Only a whole successful job
+  counted, so a test that passed in an attempt that failed for another test was not
+  flaky. Test reports now keep the ids of their first 2,000 passed tests (migration
+  `0085_actions_test_passes.sql`); a skipped test is not a pass.
 - Review inbox anchors follow a file the pull request renamed: the commented line is
   looked up at the new path (`head_path` names it) instead of reading `ambiguous` because
   the old path is gone. A line that had identical twins in the commented file (a `}`, a

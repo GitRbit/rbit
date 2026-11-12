@@ -1,16 +1,16 @@
 //! Test reports, failure fingerprints and flaky tests (agent plan steps 3.4 to 3.6).
 //!
 //! * An artifact named `rbit-test-report` is read once it is stored: its `JUnit` files are
-//!   parsed ([`rbit_actions::reports`]) and the counts and first failed tests are kept for
-//!   the attempt that uploaded it. A report that cannot be read is logged and ignored: the
-//!   artifact itself is kept like any other.
+//!   parsed ([`rbit_actions::reports`]) and the counts, first failed tests and the ids of the
+//!   first passed tests are kept for the attempt that uploaded it. A report that cannot be
+//!   read is logged and ignored: the artifact itself is kept like any other.
 //! * Each failed job has faults: one per failed test of its report, else one for the job
 //!   (the step that ended it and its first error). A fault's fingerprint is compared with
 //!   the previous finished run of the same workflow and ref (`new` or `recurring`, and the
 //!   faults that are gone are `resolved`), and with the newest finished run on the default
 //!   branch (`also_failing_on_base`).
 //! * A failed test that also passed at the same commit, in another attempt or run of a job
-//!   of the same name, is flaky.
+//!   of the same name (that job passed, or its report lists the test as passed), is flaky.
 
 use std::collections::BTreeMap;
 
@@ -82,7 +82,7 @@ pub fn job_faults(
 fn stored(report: TestReport) -> StoredReport {
     let items =
         report.items.into_iter().map(|test| StoredTest { id: test.id, path: test.path, line: test.line, message: test.message }).collect();
-    StoredReport { total: report.total, failed: report.failed, items }
+    StoredReport { total: report.total, failed: report.failed, items, passed: report.passed }
 }
 
 impl ActionsService {
@@ -166,7 +166,7 @@ mod tests {
         assert_eq!(one.len(), 1);
         assert_eq!(one[0].label, "Tests: Run tests");
         let test = StoredTest { id: "a b".into(), path: None, line: None, message: "boom at 12".into() };
-        let report = StoredReport { total: 3, failed: 1, items: vec![test] };
+        let report = StoredReport { total: 3, failed: 1, items: vec![test], passed: Vec::new() };
         let tests = job_faults("Tests", Some("Run tests"), ended, None, Some(&report));
         assert_eq!(tests[0].label, "Tests: a b");
         let previous = BTreeMap::from([(tests[0].fingerprint.clone(), tests[0].label.clone())]);

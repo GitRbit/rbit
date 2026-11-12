@@ -46,12 +46,18 @@ pub struct FailedTest {
     pub message: String,
 }
 
-/// What a report says: how many tests ran and failed, and the first failures.
+/// Passed test ids kept per job attempt: enough to tell that a failed test passed in
+/// another attempt (it is flaky), bounded so a huge suite costs a bounded amount.
+pub const MAX_PASSED_TESTS: usize = 2000;
+
+/// What a report says: how many tests ran and failed, the first failures, and the ids of
+/// the first tests that passed (skipped ones are neither).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TestReport {
     pub total: u64,
     pub failed: u64,
     pub items: Vec<FailedTest>,
+    pub passed: Vec<String>,
 }
 
 /// Why a report was not read.
