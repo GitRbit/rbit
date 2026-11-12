@@ -57,8 +57,13 @@ pub fn narrow(good: &str, bad: &str, commits: Vec<(String, Recorded)>, truncated
     let first_bad = first_fail.map_or_else(|| bad.to_owned(), |index| commits[index].0.clone());
     let start = last_pass.map_or(0, |index| index + 1);
     let end = first_fail.unwrap_or(commits.len().saturating_sub(1));
-    let remaining: Vec<String> =
-        commits.get(start..end).unwrap_or_default().iter().filter(|(_, recorded)| *recorded == Recorded::Untested).map(|(sha, _)| sha.clone()).collect();
+    let remaining: Vec<String> = commits
+        .get(start..end)
+        .unwrap_or_default()
+        .iter()
+        .filter(|(_, recorded)| *recorded == Recorded::Untested)
+        .map(|(sha, _)| sha.clone())
+        .collect();
     let next = remaining.get(remaining.len() / 2).cloned();
     Bisection { commits, last_good, first_bad, remaining, next, truncated }
 }

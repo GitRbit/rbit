@@ -9,7 +9,12 @@ use rbit_core::{RepoId, actions::Status};
 impl ActionsRunStore {
     /// The statuses of the finished runs of `shas` in `repo`, of workflow `path` when given,
     /// by commit. A commit without a finished run is absent.
-    pub async fn finished_runs_of(&self, repo: RepoId, shas: &[String], path: Option<&str>) -> Result<BTreeMap<String, Vec<Status>>, StorageError> {
+    pub async fn finished_runs_of(
+        &self,
+        repo: RepoId,
+        shas: &[String],
+        path: Option<&str>,
+    ) -> Result<BTreeMap<String, Vec<Status>>, StorageError> {
         if shas.is_empty() {
             return Ok(BTreeMap::new());
         }

@@ -44,11 +44,8 @@ pub enum TaskCommand {
 
 /// `title` as a branch-name slug: lowercase words joined by `-`, at most 40 characters.
 fn slug(title: &str) -> String {
-    let words: Vec<String> = title
-        .split(|c: char| !c.is_ascii_alphanumeric())
-        .filter(|word| !word.is_empty())
-        .map(str::to_ascii_lowercase)
-        .collect();
+    let words: Vec<String> =
+        title.split(|c: char| !c.is_ascii_alphanumeric()).filter(|word| !word.is_empty()).map(str::to_ascii_lowercase).collect();
     let mut out = String::new();
     for word in words {
         if out.len() + word.len() + 1 > 40 {
@@ -96,21 +93,28 @@ pub async fn task(api: &Api, repo: &Repo, remote: Option<&str>, command: TaskCom
         TaskCommand::Start { what, base, dir } => start(api, repo, remote.unwrap_or("origin"), &what, &base, dir, out).await,
         TaskCommand::Resume { name } => resume(api, repo, &name, out).await,
         TaskCommand::Finish { name } => {
-            let path = worktree_of(&name).ok_or_else(|| agent::outcome("not_found", format!("no worktree has `{name}` checked out"), None))?;
+            let path =
+                worktree_of(&name).ok_or_else(|| agent::outcome("not_found", format!("no worktree has `{name}` checked out"), None))?;
             let changed = dirty(&path)?;
             if changed > 0 {
                 let message = format!("{} has {changed} uncommitted change(s); commit or discard them first", path.display());
                 return Err(agent::outcome("conflict", message, Some(format!("git -C {} status", path.display()))));
             }
             git(&["worktree", "remove", &path.to_string_lossy()]).context("git worktree remove failed")?;
-            super::runs::report(out, "rbit.task/1", json!({ "name": name, "path": path, "removed": true }), &format!("Removed {}", path.display()));
+            super::runs::report(
+                out,
+                "rbit.task/1",
+                json!({ "name": name, "path": path, "removed": true }),
+                &format!("Removed {}", path.display()),
+            );
             Ok(0)
         }
     }
 }
 
 async fn start(api: &Api, repo: &Repo, remote: &str, what: &str, base: &str, dir: Option<PathBuf>, out: &Output) -> anyhow::Result<i32> {
-    let top = git(&["rev-parse", "--show-toplevel"]).ok_or_else(|| agent::outcome("usage", "run `rbit task start` inside a clone", None))?;
+    let top =
+        git(&["rev-parse", "--show-toplevel"]).ok_or_else(|| agent::outcome("usage", "run `rbit task start` inside a clone", None))?;
     let (name, issue) = match what.parse::<u64>() {
         Ok(number) => {
             let taken = api.json(Method::POST, &format!("repos/{repo}/issues/{number}/take"), Some(&json!({}))).await?;

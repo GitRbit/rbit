@@ -200,7 +200,6 @@ pub async fn watch(
     }
 }
 
-
 /// The query of a bisection.
 #[derive(Debug, Deserialize)]
 pub struct BisectQuery {
