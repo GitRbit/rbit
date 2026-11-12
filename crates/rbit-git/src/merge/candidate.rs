@@ -45,7 +45,11 @@ pub async fn land(env: &MergeEnvironment, repo: &Path, base: &str, commit: &str,
     let target = branch_ref(base)?;
     let git = Git { binary: &env.git_binary, dir: repo };
     let mut update = git.command();
-    update.args(["update-ref", "--no-deref", "-m", "rbit: land merge queue candidate", "--end-of-options"]).arg(&target).arg(commit).arg(expected);
+    update
+        .args(["update-ref", "--no-deref", "-m", "rbit: land merge queue candidate", "--end-of-options"])
+        .arg(&target)
+        .arg(commit)
+        .arg(expected);
     let output = update.output().await?;
     if output.status.success() {
         return Ok(());

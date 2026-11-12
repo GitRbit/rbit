@@ -245,13 +245,15 @@ impl PullService {
         let built = candidate(&self.merge_environment(), &spec, &target).await;
         drop(lease);
         match built {
-            Ok(merged) => {
-                self.ctx().database.merge_queue().testing(entry.id, &merged.commit, base_tip, Timestamp::now()).await?;
+            Ok(built) => {
+                self.ctx().database.merge_queue().testing(entry.id, &built.commit, base_tip, Timestamp::now()).await?;
                 self.inner.pushes.complete(pending).await;
-                tracing::info!(number = entry.number, candidate = %merged.commit, "merge queue candidate built");
+                tracing::info!(number = entry.number, candidate = %built.commit, "merge queue candidate built");
                 Ok(())
             }
-            Err(MergeError::Conflict(paths)) => self.leave(entry, "failed", &format!("the merge has conflicts in {}", paths.join(", "))).await,
+            Err(MergeError::Conflict(paths)) => {
+                self.leave(entry, "failed", &format!("the merge has conflicts in {}", paths.join(", "))).await
+            }
             Err(error @ (MergeError::NothingToMerge | MergeError::Unrelated)) => self.leave(entry, "failed", &error.to_string()).await,
             Err(MergeError::BaseMoved) => Ok(()),
             Err(error) => Err(ServiceError::internal(error)),
@@ -260,7 +262,14 @@ impl PullService {
 
     /// Lands `candidate_sha` on the base by compare-and-swap from `base_tip`, and records the
     /// pull request as merged by it. A base that moved means a rebuild on the next step.
-    async fn land_entry(&self, user: &User, ctx: &PullContext, entry: &QueueEntry, candidate_sha: &str, base_tip: &str) -> Result<(), ServiceError> {
+    async fn land_entry(
+        &self,
+        user: &User,
+        ctx: &PullContext,
+        entry: &QueueEntry,
+        candidate_sha: &str,
+        base_tip: &str,
+    ) -> Result<(), ServiceError> {
         let pending = self.inner.pushes.begin(ctx.repo(), PushSource::User(user.id())).await;
         let lease = self.ctx().repositories.lease(entry.repo).await;
         let landed = land(&self.merge_environment(), &ctx.repo().disk_path, &ctx.pull.base_branch, candidate_sha, base_tip).await;
@@ -274,8 +283,14 @@ impl PullService {
             Err(error) => return Err(ServiceError::internal(error)),
         }
         let strategy = strategy_of(&entry.strategy);
-        let record =
-            MergeRecord { merged_by: Some(user.id()), strategy: Some(strategy), commit: candidate_sha, base: base_tip, head: &entry.head_sha, at: Timestamp::now() };
+        let record = MergeRecord {
+            merged_by: Some(user.id()),
+            strategy: Some(strategy),
+            commit: candidate_sha,
+            base: base_tip,
+            head: &entry.head_sha,
+            at: Timestamp::now(),
+        };
         if self.ctx().database.pulls().record_merge(ctx.issue().id, &record).await? {
             let event = TimelineEvent::Merged { commit: candidate_sha.to_owned(), strategy: Some(strategy) };
             self.inner.timeline.writer().close_as_system(ctx.issue().id, Some(user.id()), StateReason::Merged, event).await?;
@@ -294,7 +309,13 @@ impl PullService {
             tracing::info!(number = entry.number, state, reason, "left the merge queue");
             if let Some(owned) = self.ctx().database.admin().find_repository(entry.repo).await? {
                 let target = candidate_ref(&entry.base_branch, entry.number);
-                if let Err(error) = drop_candidate(&self.merge_environment(), &self.ctx().repositories.path_for(owned.repo.owner_id, owned.repo.id), &target).await {
+                if let Err(error) = drop_candidate(
+                    &self.merge_environment(),
+                    &self.ctx().repositories.path_for(owned.repo.owner_id, owned.repo.id),
+                    &target,
+                )
+                .await
+                {
                     tracing::warn!(%error, target, "cannot delete a merge queue candidate");
                 }
             }

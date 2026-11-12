@@ -34,7 +34,9 @@ impl<'a> PushedRef<'a> {
     /// The branch a pushed ref is; a scratch ref (`refs/scratch/…`) or a merge-queue candidate
     /// (`refs/merge-queue/…`) counts as the branch named by the rest.
     fn branch(self) -> Option<&'a str> {
-        self.name.strip_prefix("refs/heads/").or_else(|| self.name.strip_prefix("refs/").filter(|rest| rest.starts_with("scratch/") || rest.starts_with("merge-queue/")))
+        self.name
+            .strip_prefix("refs/heads/")
+            .or_else(|| self.name.strip_prefix("refs/").filter(|rest| rest.starts_with("scratch/") || rest.starts_with("merge-queue/")))
     }
 
     fn considered(self) -> bool {

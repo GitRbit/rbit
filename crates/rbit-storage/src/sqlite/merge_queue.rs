@@ -138,11 +138,12 @@ impl MergeQueueStore {
 
     /// The live entries of `repo`'s queue into `base`, oldest first.
     pub async fn line(&self, repo: RepoId, base: &str) -> Result<Vec<QueueEntry>, StorageError> {
-        let rows: Vec<Row> = sqlx::query_as(select_entries!("repo_id = ? AND base_branch = ? AND state IN ('waiting', 'testing') ORDER BY id"))
-            .bind(repo.0)
-            .bind(base)
-            .fetch_all(&self.pool)
-            .await?;
+        let rows: Vec<Row> =
+            sqlx::query_as(select_entries!("repo_id = ? AND base_branch = ? AND state IN ('waiting', 'testing') ORDER BY id"))
+                .bind(repo.0)
+                .bind(base)
+                .fetch_all(&self.pool)
+                .await?;
         Ok(rows.into_iter().map(QueueEntry::from).collect())
     }
 
@@ -173,14 +174,15 @@ impl MergeQueueStore {
     /// Entry `id` ends `state` (`landed`, `failed` or `removed`) for `reason`; `false` when it
     /// had ended already.
     pub async fn finish(&self, id: i64, state: &str, reason: Option<&str>, now: Timestamp) -> Result<bool, StorageError> {
-        let done = sqlx::query("UPDATE merge_queue SET state = ?, reason = ?, updated_at = ? WHERE id = ? AND state IN ('waiting', 'testing')")
-            .bind(state)
-            .bind(reason)
-            .bind(now.0)
-            .bind(id)
-            .execute(&self.pool)
-            .await?
-            .rows_affected();
+        let done =
+            sqlx::query("UPDATE merge_queue SET state = ?, reason = ?, updated_at = ? WHERE id = ? AND state IN ('waiting', 'testing')")
+                .bind(state)
+                .bind(reason)
+                .bind(now.0)
+                .bind(id)
+                .execute(&self.pool)
+                .await?
+                .rows_affected();
         Ok(done > 0)
     }
 }
