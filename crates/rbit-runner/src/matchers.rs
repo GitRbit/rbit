@@ -278,6 +278,16 @@ mod tests {
     }
 
     #[test]
+    fn a_line_too_long_to_match_ends_a_multi_line_problem() {
+        let mut matchers = Matchers::default();
+        matchers.add(ESLINT).unwrap();
+        assert_eq!(matchers.annotate("src/app.js"), None);
+        // Too long to match, so it cannot continue the sequence: the file line's problem is over.
+        assert_eq!(matchers.annotate(&"x".repeat(MAX_MATCHED_BYTES + 1)), None);
+        assert_eq!(matchers.annotate("  3:7  error  'x' is never used  no-unused-vars"), None);
+    }
+
+    #[test]
     fn bad_matcher_files_are_refused_and_owners_replace() {
         let mut matchers = Matchers::default();
         assert!(matchers.add("{}").is_err());
