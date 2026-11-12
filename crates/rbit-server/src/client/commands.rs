@@ -218,9 +218,12 @@ pub enum RunCommand {
         #[arg(long, conflicts_with = "run")]
         branch: Option<String>,
     },
-    /// Run a run's jobs again: all, the failed ones, or one.
+    /// Run a run's jobs again: all, the failed ones, or one. Without a run id, every failed
+    /// or cancelled run of `--sha` (or of `HEAD`).
     Rerun {
-        run: i64,
+        run: Option<i64>,
+        #[arg(long, conflicts_with = "run")]
+        sha: Option<String>,
         #[arg(long)]
         failed: bool,
         #[arg(short, long)]

@@ -440,6 +440,8 @@ pub use queue::QueuePlace;
 pub use scratch::ScratchRef;
 mod supersede;
 mod terminations;
+mod test_reports;
+pub use test_reports::{StoredReport, StoredTest};
 pub use annotations::StoredAnnotation;
 pub use terminations::TaskEnd;
 mod log_queries;

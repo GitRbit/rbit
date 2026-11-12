@@ -74,6 +74,7 @@ pub async fn failure(State(state): State<AppState>, caller: Caller, Path(path): 
         "sha": run.sha,
         "status": run.status.to_string(),
         "jobs": jobs,
+        "resolved": digest.resolved,
     })))
 }
 
@@ -104,14 +105,30 @@ pub fn failed_job(failed: &FailedJob) -> Value {
         .iter()
         .map(|annotation| json!({ "path": annotation.path, "line": annotation.line, "message": annotation.message }))
         .collect();
+    let tests = failed.tests.as_ref().map(|report| {
+        let items: Vec<Value> = report
+            .items
+            .iter()
+            .map(|test| {
+                let flaky = failed.flaky.contains(&test.id);
+                json!({ "id": test.id, "path": test.path, "line": test.line, "message": test.message, "flaky": flaky })
+            })
+            .collect();
+        json!({ "total": report.total, "failed": report.failed, "items": items, "truncated": report.failed > items.len() as u64 })
+    });
+    let fingerprints: Vec<&str> = failed.faults.iter().map(|fault| fault.fingerprint.as_str()).collect();
     json!({
         "job": job.name,
         "job_id": job.id.0,
         "attempt": job.attempt,
         "conclusion": if failed.termination.reason == TerminationReason::Timeout { "timed_out".to_owned() } else { job.status.to_string() },
         "termination": termination["termination"],
+        "tests": tests,
         "annotations": annotations,
         "excerpt": excerpt,
+        "seen": failed.seen,
+        "also_failing_on_base": failed.also_failing_on_base,
+        "fingerprints": fingerprints,
     })
 }
 

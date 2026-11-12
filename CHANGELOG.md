@@ -9,6 +9,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Test reports: a job that uploads its JUnit files as the artifact `rbit-test-report` gets
+  its failed tests (id, place, message) in the failure digest and `rbit run failure`. A
+  test that failed and passed at the same commit is marked `flaky`.
+- Failure fingerprints: each failed job in the digest is `new` or `recurring` against the
+  previous run of its workflow and ref, says `also_failing_on_base` when the default branch
+  fails the same way, and the digest lists what was `resolved`.
+- `rbit run rerun --sha COMMIT [--failed]` reruns every failed run of a commit.
 - `rbit ci run [--jobs a,b]` tests the working tree (or `--commit`) without a branch: it
   pushes a commit to `refs/scratch/<login>/…`, which the workflows see as the branch
   `scratch/<login>/…`, and watches its run. An `Rbit-CI-Jobs:` trailer on a scratch

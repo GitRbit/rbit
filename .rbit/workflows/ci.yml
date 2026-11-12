@@ -140,7 +140,15 @@ jobs:
           path: crates/rbit-web/assets
       - run: git --version
       - name: Workspace tests
-        run: cargo nextest run --workspace --locked --no-fail-fast
+        run: cargo nextest run --workspace --locked --no-fail-fast --profile ci
+      # The JUnit report lets rbit list the failed tests in `rbit run failure`.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rbit-test-report
+          path: target/nextest/ci/junit.xml
+          if-no-files-found: ignore
+          retention-days: 7
       # nextest does not execute doctests, so documentation examples run here.
       - run: cargo test --workspace --doc --locked
       # Upgrade rehearsal (fast mode): see docs/upgrade-rehearsal.md.

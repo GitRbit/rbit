@@ -93,7 +93,13 @@ fn show(digest: &Value, out: &Output) {
         let step = termination["step_name"].as_str().map(|name| format!(" at step {} \"{name}\"", termination["step"])).unwrap_or_default();
         let code = termination["exit_code"].as_i64().map(|code| format!(", exit {code}")).unwrap_or_default();
         let incomplete = if termination["log_complete"] == false { " (log incomplete)" } else { "" };
-        println!("  {} (job {}): {}{step}{code}{incomplete}", text(job, "job"), job["job_id"], text(termination, "reason"));
+        let base = if job["also_failing_on_base"] == true { ", also failing on the base" } else { "" };
+        println!("  {} (job {}): {}{step}{code}{incomplete} [{}{base}]", text(job, "job"), job["job_id"], text(termination, "reason"), text(job, "seen"));
+        for test in job["tests"]["items"].as_array().into_iter().flatten() {
+            let place = test["path"].as_str().map(|path| format!(" ({path}:{})", test["line"])).unwrap_or_default();
+            let flaky = if test["flaky"] == true { " [flaky]" } else { "" };
+            println!("    test {}{place}{flaky}: {}", text(test, "id"), text(test, "message"));
+        }
         for annotation in job["annotations"].as_array().into_iter().flatten() {
             let place = match (annotation["path"].as_str(), annotation["line"].as_u64()) {
                 (Some(path), Some(line)) => format!("{path}:{line}: "),
@@ -110,6 +116,9 @@ fn show(digest: &Value, out: &Output) {
                 println!("    (showing {} of {} lines; more: {more})", excerpt["shown"], excerpt["total"]);
             }
         }
+    }
+    for resolved in digest["resolved"].as_array().into_iter().flatten() {
+        println!("  resolved since the previous run: {}", resolved.as_str().unwrap_or(""));
     }
 }
 

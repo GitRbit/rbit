@@ -117,14 +117,27 @@ pub async fn runs(api: &Api, repo: &Repo, command: RunCommand, out: &Output) -> 
         RunCommand::Watch { run, sha, exit_status, interval, timeout, branch: _ } => {
             return watch(api, repo, run, sha, Wait { exit_status, interval, timeout }, out).await;
         }
-        RunCommand::Rerun { run, failed, job } => {
-            let path = match (job, failed) {
-                (Some(job), _) => actions(repo, &format!("jobs/{job}/rerun")),
-                (None, true) => actions(repo, &format!("runs/{run}/rerun-failed-jobs")),
-                (None, false) => actions(repo, &format!("runs/{run}/rerun")),
+        RunCommand::Rerun { run, sha, failed, job } => {
+            if let Some(job) = job {
+                api.json(Method::POST, &actions(repo, &format!("jobs/{job}/rerun")), Some(&json!({}))).await?;
+                report(out, "rbit.rerun/1", json!({ "run": run, "runs": [], "job": job, "failed_only": false }), &format!("Job {job} runs again"));
+                return Ok(0);
+            }
+            let runs: Vec<i64> = match run {
+                Some(run) => vec![run],
+                None => resolve(api, repo, None, sha)
+                    .await?
+                    .iter()
+                    .filter(|found| matches!(found["conclusion"].as_str(), Some("failure" | "cancelled" | "timed_out")))
+                    .filter_map(|found| found["id"].as_i64())
+                    .collect(),
             };
-            api.json(Method::POST, &path, Some(&json!({}))).await?;
-            report(out, "rbit.rerun/1", json!({ "run": run, "job": job, "failed_only": failed }), &format!("Run {run} runs again"));
+            for run in &runs {
+                let path = if failed { format!("runs/{run}/rerun-failed-jobs") } else { format!("runs/{run}/rerun") };
+                api.json(Method::POST, &actions(repo, &path), Some(&json!({}))).await?;
+            }
+            let said = if runs.is_empty() { "No failed run to rerun".to_owned() } else { format!("Runs again: {runs:?}") };
+            report(out, "rbit.rerun/1", json!({ "run": runs.first(), "runs": runs, "job": null, "failed_only": failed }), &said);
         }
         RunCommand::Cancel { run } => {
             api.json(Method::POST, &actions(repo, &format!("runs/{run}/cancel")), Some(&json!({}))).await?;

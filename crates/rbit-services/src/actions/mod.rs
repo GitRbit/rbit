@@ -62,6 +62,8 @@ pub use rbit_actions::{availability::Availability, downloads};
 pub mod environments;
 pub mod hooks;
 pub mod logs;
+// Agent loop: test reports, fingerprints and flaky tests.
+pub mod reports;
 mod runner_ports;
 pub mod runners;
 pub mod runs;

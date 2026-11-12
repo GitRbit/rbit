@@ -4,15 +4,22 @@
 //!
 //! The step is the one the termination record names; without one (an older runner, a lost
 //! runner), the last step that failed, else the last step that ran. The excerpt is read from
-//! the stored, masked log, tail first, so its cost does not grow with the log.
+//! the stored, masked log, tail first, so its cost does not grow with the log. A job with a
+//! test report lists its failed tests, flaky ones marked; every failed job says whether its
+//! faults are `new` or `recurring` and whether the default branch has them too (3.4–3.6).
 
 use rbit_actions::logs::{EXCERPT_LINES, Excerpt, annotation_text, excerpt};
+use std::collections::BTreeSet;
+
 use rbit_core::actions::{Job, JobId, Run, RunId, Status, Step, TaskId, Termination, TerminationReason};
 
-use rbit_storage::sqlite::actions_runs::{StoredAnnotation, TaskEnd};
+use rbit_storage::sqlite::actions_runs::{StoredAnnotation, StoredReport, TaskEnd};
 
 use super::LogRange;
-use crate::{ActionsService, RepoContext, ServiceError};
+use crate::{
+    ActionsService, RepoContext, ServiceError,
+    actions::reports::{Fault, job_faults},
+};
 
 /// Raw lines read from the end of a step to build its excerpt.
 const EXCERPT_READ_LINES: usize = 400;
@@ -40,6 +47,13 @@ pub struct FailedJob {
     pub step: Option<Step>,
     pub annotations: Vec<DigestAnnotation>,
     pub excerpt: Option<Excerpt>,
+    /// Its test report, when it uploaded one, and which of its failed tests are flaky.
+    pub tests: Option<StoredReport>,
+    pub flaky: BTreeSet<String>,
+    pub faults: Vec<Fault>,
+    /// `new` or `recurring`, against the previous finished run of the workflow and ref.
+    pub seen: &'static str,
+    pub also_failing_on_base: bool,
 }
 
 /// A run's failure digest.
@@ -47,6 +61,8 @@ pub struct FailedJob {
 pub struct FailureDigest {
     pub run: Run,
     pub failed: Vec<FailedJob>,
+    /// Faults of the previous run that this one no longer has.
+    pub resolved: Vec<String>,
 }
 
 impl ActionsService {
@@ -63,17 +79,15 @@ impl ActionsService {
         let store = self.ctx().database.actions_runs();
         let tasks: Vec<TaskId> = failed_jobs.iter().filter_map(|job| job.task_id).collect();
         let annotations = store.annotations_of_tasks(&tasks).await?;
+        let mut reports = store.test_reports(&tasks).await?;
+        let failing: Vec<String> = reports.values().flat_map(|report| report.items.iter().map(|test| test.id.clone())).collect();
+        let flaky = store.flaky_tests(repo.repo.repo.id, &detail.run.sha, &failing).await?;
+        let comparison = self.compare_faults(repo.repo.repo.id, &detail.run, &repo.repo.repo.default_branch).await?;
         let mut failed = Vec::with_capacity(failed_jobs.len());
         for job in failed_jobs {
             let Some(task) = job.task_id else { continue };
             let end = ends.get(&task);
-            let termination = end.and_then(|end| end.termination).unwrap_or_else(|| {
-                Termination::because(if job.status == Status::Cancelled {
-                    TerminationReason::Cancelled
-                } else {
-                    TerminationReason::Unknown
-                })
-            });
+            let termination = termination_of(&job, end);
             let own: Vec<&Step> = steps.iter().filter(|step| step.task_id == task).collect();
             let step = pick_step(&own, termination).cloned();
             let excerpt = match &step {
@@ -95,10 +109,25 @@ impl ActionsService {
                         message: text.message.to_owned(),
                     }
                 })
-                .collect();
-            failed.push(FailedJob { job, termination, log_complete: end.is_some_and(|end| end.log_complete), step, annotations, excerpt });
+                .collect::<Vec<DigestAnnotation>>();
+            let tests = reports.remove(&task);
+            let first_error = annotations.first().map(|annotation| annotation.message.as_str());
+            let faults = job_faults(&job.name, step.as_ref().map(|step| step.name.as_str()), termination, first_error, tests.as_ref());
+            let marked = tests.iter().flat_map(|report| &report.items).filter(|test| flaky.contains(&test.id)).map(|test| test.id.clone()).collect();
+            let (seen, also_failing_on_base) = (comparison.seen(&faults), comparison.on_base(&faults));
+            let log_complete = end.is_some_and(|end| end.log_complete);
+            failed.push(FailedJob { job, termination, log_complete, step, annotations, excerpt, tests, flaky: marked, faults, seen, also_failing_on_base });
         }
-        Ok(FailureDigest { run: detail.run, failed })
+        let now: BTreeSet<&str> = failed.iter().flat_map(|job| job.faults.iter().map(|fault| fault.fingerprint.as_str())).collect();
+        let resolved = comparison
+            .previous
+            .iter()
+            .flatten()
+            .filter(|(fingerprint, _)| !now.contains(fingerprint.as_str()))
+            .map(|(_, label)| label.clone())
+            .take(DIGEST_ANNOTATIONS)
+            .collect();
+        Ok(FailureDigest { run: detail.run, failed, resolved })
     }
 
     /// The task of attempt `attempt` of job `id` (the current one when `None`), for a reader
@@ -139,9 +168,16 @@ impl ActionsService {
     }
 }
 
+/// How job `job` ended: its termination record, else what its status implies.
+pub(crate) fn termination_of(job: &Job, end: Option<&TaskEnd>) -> Termination {
+    end.and_then(|end| end.termination).unwrap_or_else(|| {
+        Termination::because(if job.status == Status::Cancelled { TerminationReason::Cancelled } else { TerminationReason::Unknown })
+    })
+}
+
 /// The step a digest shows: the one the record names, else the last failed one, else the
 /// last one that ran.
-fn pick_step<'a>(steps: &[&'a Step], termination: Termination) -> Option<&'a Step> {
+pub(crate) fn pick_step<'a>(steps: &[&'a Step], termination: Termination) -> Option<&'a Step> {
     let named = termination.step.and_then(|index| steps.iter().find(|step| u32::try_from(step.number).ok() == Some(index)));
     named
         .or_else(|| steps.iter().rev().find(|step| step.status == Status::Failure))

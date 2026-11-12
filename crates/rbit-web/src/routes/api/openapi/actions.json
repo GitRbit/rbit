@@ -3536,7 +3536,7 @@
           "actions"
         ],
         "summary": "rbit's own: what failed in a run, small enough to read",
-        "description": "The failure digest (`schema: rbit.failure/1`): for each job that did not succeed, its termination record, up to 10 error annotations (`path`, `line`, `message`) and an excerpt of the last 30 lines of the step that ended it, with timestamps and colours removed and repeated lines folded. A cut excerpt says `truncated`, how many lines it shows of how many, and a `more` command. A run without failed jobs has an empty `jobs`.",
+        "description": "The failure digest (`schema: rbit.failure/1`): for each job that did not succeed, its termination record, up to 10 error annotations (`path`, `line`, `message`) and an excerpt of the last 30 lines of the step that ended it, with timestamps and colours removed and repeated lines folded. A cut excerpt says `truncated`, how many lines it shows of how many, and a `more` command. A job that uploaded an `rbit-test-report` artifact lists its failed `tests` (`id`, `path`, `line`, `message`, `flaky` when it also passed at this commit). Each job says whether its failures are `new` or `recurring` against the previous run of the workflow and ref, and `also_failing_on_base`; `resolved` names the previous run's failures that are gone. A run without failed jobs has an empty `jobs`.",
         "security": [
           {},
           {

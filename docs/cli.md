@@ -84,7 +84,7 @@ run), `indeterminate` (nobody can say why the jobs failed: a lost runner, a log 
 rbit run list [--workflow ci.yml] [--branch main] [--sha COMMIT] [--event push] [--status failure] [-L 50]
 rbit run view [RUN | --sha COMMIT] [--log | --log-failed] [--job JOB] [--exit-status]
 rbit run watch [RUN | --sha COMMIT] [--exit-status] [--timeout SECONDS]
-rbit run rerun RUN [--failed | --job JOB]
+rbit run rerun [RUN | --sha COMMIT] [--failed | --job JOB]
 rbit run cancel RUN
 rbit run download [RUN | --sha COMMIT] [-n NAME]... [-p PATTERN] [-D DIR]
 rbit run failure [RUN | --sha COMMIT]
@@ -111,7 +111,15 @@ newer commit (`head_changed`, exit 5, naming it; watching `HEAD` follows the cur
 `--branch` names another), or after `--timeout` seconds (exit 8). `--branch` also matches the runs of pull requests from that
 branch. `--log-failed` prints the logs of the jobs that did not succeed (failed, timed out
 or cancelled), each line prefixed with its job's name. `rerun --job` wins over `--failed`
-when both are given. `--exit-status` exits with 1 when a run did not succeed and 8 while one
+when both are given; `rerun` without a run id reruns every failed or cancelled run of `--sha`
+or `HEAD`.
+
+A job that uploads its JUnit report as an artifact named `rbit-test-report` (with
+`actions/upload-artifact`, `if: always()`) gets its failed tests in `run failure`: the test,
+where it failed and its message, and `flaky` when the same test passed at the same commit in
+another attempt or run. Each failed job also says whether its failures are `new` or
+`recurring` against the previous run of the workflow on that ref, and whether the default
+branch fails the same way (`also_failing_on_base`): then the failure is not yours. `--exit-status` exits with 1 when a run did not succeed and 8 while one
 has not finished.
 
 ## CI without a branch
