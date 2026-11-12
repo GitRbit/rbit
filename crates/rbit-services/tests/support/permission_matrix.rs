@@ -20,7 +20,7 @@ use rbit_core::{
     OrgRole, RepoAccess, RepoId, User, Visibility,
     membership::{BasePermission, Permission},
 };
-use rbit_services::{CreateRepository, Services, orgs::CreateOrganization};
+use rbit_services::{CreateRepository, Services, issues::NewIssueInput, orgs::CreateOrganization};
 use rbit_storage::{Database, NewUser};
 
 /// Who makes a request.
@@ -186,6 +186,8 @@ pub struct Repo {
     pub disk_path: PathBuf,
     /// The commit every branch of the seeded repository points at.
     pub head: String,
+    /// The number of the one issue seeded in the repository before it is archived.
+    pub issue: u32,
 }
 
 /// The users and repositories of the regression world.
@@ -250,10 +252,19 @@ impl World {
             let mut push = vec!["push".to_owned(), "-q".to_owned(), ctx.disk_path.to_str().unwrap().to_owned()];
             push.extend(refspecs.iter().cloned());
             git(&source, &push.iter().map(String::as_str).collect::<Vec<_>>());
+            // Seeded before archiving: an archived repository takes no new issues.
+            let seeded = NewIssueInput {
+                title: "seeded".to_owned(),
+                body: String::new(),
+                labels: Vec::new(),
+                assignees: Vec::new(),
+                milestone: None,
+            };
+            let issue = services.issues.create(creator, &ctx, seeded).await.unwrap().number.get();
             if shape.archived {
                 assert!(services.repo_settings.set_archived(creator, &ctx, true).await.unwrap());
             }
-            repos.push(Repo { shape, id, disk_path: ctx.disk_path, head: head.clone() });
+            repos.push(Repo { shape, id, disk_path: ctx.disk_path, head: head.clone(), issue });
         }
         Self { repos, ..world }
     }

@@ -22,6 +22,7 @@ use crate::permission_world::{Actor, World};
 mod api;
 mod browser;
 mod caching;
+mod comments;
 mod git_http;
 mod tasks;
 
