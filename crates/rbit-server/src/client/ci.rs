@@ -142,9 +142,9 @@ mod tests {
     #[test]
     fn the_message_names_the_base_and_the_jobs() {
         let base = "4c1e9a0b".repeat(5);
-        assert_eq!(message(Some(&base), Some("main"), &[]), "rbit ci run: the working tree on main at 4c1e9a0\n");
+        assert_eq!(message(Some(&base), Some("main"), &[]), "rbit ci run: the working tree on main at 4c1e9a0b4c1e\n");
         let jobs = ["lint".to_owned(), "tests".to_owned()];
-        assert_eq!(message(Some(&base), None, &jobs), "rbit ci run: the working tree on 4c1e9a0\n\nRbit-CI-Jobs: lint, tests\n");
+        assert_eq!(message(Some(&base), None, &jobs), "rbit ci run: the working tree on 4c1e9a0b4c1e\n\nRbit-CI-Jobs: lint, tests\n");
         assert_eq!(message(None, Some("main"), &[]), "rbit ci run: the working tree on an empty history\n");
     }
 }

@@ -1,4 +1,4 @@
-//! A bounded scanner for JUnit XML: `<testcase>` elements and the `<failure>` or `<error>`
+//! A bounded scanner for `JUnit` XML: `<testcase>` elements and the `<failure>` or `<error>`
 //! inside them. It reads tags and attributes, skips comments, processing instructions and
 //! declarations, keeps `CDATA` as text, and decodes the five XML entities and numeric
 //! references; nothing else is resolved, so a hostile report costs at most its size.
@@ -17,7 +17,7 @@ struct Case {
     in_failure: bool,
 }
 
-/// Adds what JUnit document `xml` says to `report`.
+/// Adds what `JUnit` document `xml` says to `report`.
 pub fn parse_junit(xml: &str, report: &mut TestReport) {
     let mut case: Option<Case> = None;
     let mut rest = xml;
@@ -180,15 +180,12 @@ fn decode(text: &str) -> String {
                 .and_then(Result::ok)
                 .and_then(char::from_u32),
         };
-        match decoded {
-            Some(c) => {
-                out.push(c);
-                rest = &rest[end + 1..];
-            }
-            None => {
-                out.push('&');
-                rest = &rest[1..];
-            }
+        if let Some(c) = decoded {
+            out.push(c);
+            rest = &rest[end + 1..];
+        } else {
+            out.push('&');
+            rest = &rest[1..];
         }
     }
     out.push_str(rest);
@@ -259,7 +256,10 @@ assertion `left == right` failed
         parse_junit(xml, &mut report);
         assert_eq!((report.total, report.failed), (2, 2));
         let first = &report.items[0];
-        assert_eq!((first.id.as_str(), first.path.as_deref(), first.line), ("tests.test_api test_get", Some("tests/test_api.py"), Some(12)));
+        assert_eq!(
+            (first.id.as_str(), first.path.as_deref(), first.line),
+            ("tests.test_api test_get", Some("tests/test_api.py"), Some(12))
+        );
         assert_eq!(first.message, "KeyError: 'id' & more");
         assert_eq!((report.items[1].id.as_str(), report.items[1].message.as_str()), ("no_class", ""));
     }
@@ -270,7 +270,8 @@ assertion `left == right` failed
         for input in ["<", "<testcase", "<testcase name=\"a", "&#xFFFFFFFF;", "<![CDATA[", "<!--", "<testcase name='a'><failure>&bogus;"] {
             parse_junit(input, &mut report);
         }
-        let many: String = (0..200).map(|n| format!("<testcase name=\"t{n}\"><failure message=\"{}\"/></testcase>", "x".repeat(2000))).collect();
+        let many: String =
+            (0..200).map(|n| format!("<testcase name=\"t{n}\"><failure message=\"{}\"/></testcase>", "x".repeat(2000))).collect();
         let mut report = TestReport::default();
         parse_junit(&many, &mut report);
         assert_eq!((report.total, report.failed, report.items.len()), (200, 200, MAX_FAILED_TESTS));

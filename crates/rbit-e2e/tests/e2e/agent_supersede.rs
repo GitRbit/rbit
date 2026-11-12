@@ -67,7 +67,15 @@ async fn a_newer_push_supersedes_a_branchs_older_run_only_when_the_repository_as
     assert_eq!(status, 204);
     let third = git.commit_file(&sample.dir, "three.txt", "3\n");
     git.ok(&sample.dir, &["push", "--quiet", &url, "topic"]);
-    let older = api.run_of("topic", &second).await;
+    // Pushes start their runs through the event subscriber: wait for the newer one to land.
+    let mut older = api.run_of("topic", &second).await;
+    for _ in 0..100 {
+        if older["conclusion"] == "cancelled" {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        older = api.run_of("topic", &second).await;
+    }
     assert_eq!((older["conclusion"].as_str(), older["superseded_by"].as_str()), (Some("cancelled"), Some(third.as_str())), "{older}");
     assert_eq!(api.run_of("topic", &third).await["status"], "queued", "the newest run goes on");
     let (_, watched) = api.call(reqwest::Method::GET, &format!("agent/watch?sha={second}&timeout=0"), None).await;

@@ -1,7 +1,7 @@
 //! Test reports and failure fingerprints (agent plan steps 3.4 and 3.5).
 //!
-//! * A job hands the server a JUnit report by uploading an artifact named
-//!   [`REPORT_ARTIFACT`] holding one or more `.xml` files (nextest, pytest, JUnit and most
+//! * A job hands the server a `JUnit` report by uploading an artifact named
+//!   [`REPORT_ARTIFACT`] holding one or more `.xml` files (nextest, pytest, `JUnit` and most
 //!   other runners write this format). The server reads at most [`MAX_REPORT_BYTES`] of XML,
 //!   counts the tests and keeps the first [`MAX_FAILED_TESTS`] failures, each with its id,
 //!   where it failed when the report or its output says so, and a message of at most

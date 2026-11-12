@@ -94,7 +94,13 @@ fn show(digest: &Value, out: &Output) {
         let code = termination["exit_code"].as_i64().map(|code| format!(", exit {code}")).unwrap_or_default();
         let incomplete = if termination["log_complete"] == false { " (log incomplete)" } else { "" };
         let base = if job["also_failing_on_base"] == true { ", also failing on the base" } else { "" };
-        println!("  {} (job {}): {}{step}{code}{incomplete} [{}{base}]", text(job, "job"), job["job_id"], text(termination, "reason"), text(job, "seen"));
+        println!(
+            "  {} (job {}): {}{step}{code}{incomplete} [{}{base}]",
+            text(job, "job"),
+            job["job_id"],
+            text(termination, "reason"),
+            text(job, "seen")
+        );
         for test in job["tests"]["items"].as_array().into_iter().flatten() {
             let place = test["path"].as_str().map(|path| format!(" ({path}:{})", test["line"])).unwrap_or_default();
             let flaky = if test["flaky"] == true { " [flaky]" } else { "" };

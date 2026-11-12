@@ -113,10 +113,23 @@ impl ActionsService {
             let tests = reports.remove(&task);
             let first_error = annotations.first().map(|annotation| annotation.message.as_str());
             let faults = job_faults(&job.name, step.as_ref().map(|step| step.name.as_str()), termination, first_error, tests.as_ref());
-            let marked = tests.iter().flat_map(|report| &report.items).filter(|test| flaky.contains(&test.id)).map(|test| test.id.clone()).collect();
+            let marked =
+                tests.iter().flat_map(|report| &report.items).filter(|test| flaky.contains(&test.id)).map(|test| test.id.clone()).collect();
             let (seen, also_failing_on_base) = (comparison.seen(&faults), comparison.on_base(&faults));
             let log_complete = end.is_some_and(|end| end.log_complete);
-            failed.push(FailedJob { job, termination, log_complete, step, annotations, excerpt, tests, flaky: marked, faults, seen, also_failing_on_base });
+            failed.push(FailedJob {
+                job,
+                termination,
+                log_complete,
+                step,
+                annotations,
+                excerpt,
+                tests,
+                flaky: marked,
+                faults,
+                seen,
+                also_failing_on_base,
+            });
         }
         let now: BTreeSet<&str> = failed.iter().flat_map(|job| job.faults.iter().map(|fault| fault.fingerprint.as_str())).collect();
         let resolved = comparison

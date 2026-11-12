@@ -51,7 +51,7 @@ async fn silent_tasks_fail_with_a_reason_and_take_ephemeral_runners_along() {
     assert_eq!(store.job(claimed.job.id).await.unwrap().unwrap().status, Status::Failure);
     let repo = fixture.repo(&fixture.alice).await;
     let log = actions.task_log(&repo, task.id, LogRange::From(0), 10, 4096).await.unwrap();
-    assert_eq!(log.lines, ["rbit: the runner sent no word for 600 seconds, so the task failed"]);
+    assert_eq!(log.lines, ["rbit: the runner sent no word for 120 seconds, so the task failed"]);
     assert_eq!(runners.find(runner).await.unwrap(), None, "the ephemeral runner went with its task");
     assert_eq!(actions.sweep(later).await.unwrap().zombies, 0, "once");
 }

@@ -1,6 +1,6 @@
 //! Test reports, failure fingerprints and flaky tests (agent plan steps 3.4 to 3.6).
 //!
-//! * An artifact named `rbit-test-report` is read once it is stored: its JUnit files are
+//! * An artifact named `rbit-test-report` is read once it is stored: its `JUnit` files are
 //!   parsed ([`rbit_actions::reports`]) and the counts and first failed tests are kept for
 //!   the attempt that uploaded it. A report that cannot be read is logged and ignored: the
 //!   artifact itself is kept like any other.
@@ -59,7 +59,13 @@ impl Comparison {
 /// The faults of failed job `job_name`: one per failed test of `report`, else one for the
 /// step `step` that ended it, said by its first error or else its termination.
 #[must_use]
-pub fn job_faults(job_name: &str, step: Option<&str>, termination: Termination, first_error: Option<&str>, report: Option<&StoredReport>) -> Vec<Fault> {
+pub fn job_faults(
+    job_name: &str,
+    step: Option<&str>,
+    termination: Termination,
+    first_error: Option<&str>,
+    report: Option<&StoredReport>,
+) -> Vec<Fault> {
     if let Some(report) = report.filter(|report| !report.items.is_empty()) {
         return report
             .items
@@ -74,7 +80,8 @@ pub fn job_faults(job_name: &str, step: Option<&str>, termination: Termination, 
 
 /// A parsed report as stored.
 fn stored(report: TestReport) -> StoredReport {
-    let items = report.items.into_iter().map(|test| StoredTest { id: test.id, path: test.path, line: test.line, message: test.message }).collect();
+    let items =
+        report.items.into_iter().map(|test| StoredTest { id: test.id, path: test.path, line: test.line, message: test.message }).collect();
     StoredReport { total: report.total, failed: report.failed, items }
 }
 
@@ -108,7 +115,8 @@ impl ActionsService {
     /// The faults of run `run`'s failed jobs, label by fingerprint.
     async fn run_faults(&self, run: RunId) -> Result<BTreeMap<String, String>, ServiceError> {
         let store = self.ctx().database.actions_runs();
-        let jobs: Vec<Job> = store.jobs(run).await?.into_iter().filter(|job| job.status == Status::Failure && job.task_id.is_some()).collect();
+        let jobs: Vec<Job> =
+            store.jobs(run).await?.into_iter().filter(|job| job.status == Status::Failure && job.task_id.is_some()).collect();
         let (ends, steps) = (self.task_ends(&jobs).await?, self.steps(&jobs).await?);
         let tasks: Vec<TaskId> = jobs.iter().filter_map(|job| job.task_id).collect();
         let (annotations, reports) = (store.annotations_of_tasks(&tasks).await?, store.test_reports(&tasks).await?);

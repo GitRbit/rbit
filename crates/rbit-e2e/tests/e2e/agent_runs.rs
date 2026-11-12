@@ -98,8 +98,16 @@ async fn an_agent_finds_the_runs_of_its_commit_and_reads_codes_not_prose() {
         .await;
     assert_eq!(status, 201, "{pull}");
 
-    // By commit: the push run and the pull request run of `head`, nothing of `base`.
-    let (_, runs) = agent.get(&format!("repos/alice/rocket/actions/runs?head_sha={head}")).await;
+    // By commit: the push run and the pull request run of `head`, nothing of `base`. The
+    // pull request's run is started by the event subscriber, so it may come a moment later.
+    let mut runs = Value::Null;
+    for _ in 0..100 {
+        runs = agent.get(&format!("repos/alice/rocket/actions/runs?head_sha={head}")).await.1;
+        if runs["total_count"] == 2 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
     let mut found = shas(&runs);
     found.sort();
     assert_eq!(found, [("pull_request".to_owned(), head.clone()), ("push".to_owned(), head.clone())]);

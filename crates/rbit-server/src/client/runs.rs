@@ -120,7 +120,12 @@ pub async fn runs(api: &Api, repo: &Repo, command: RunCommand, out: &Output) -> 
         RunCommand::Rerun { run, sha, failed, job } => {
             if let Some(job) = job {
                 api.json(Method::POST, &actions(repo, &format!("jobs/{job}/rerun")), Some(&json!({}))).await?;
-                report(out, "rbit.rerun/1", json!({ "run": run, "runs": [], "job": job, "failed_only": false }), &format!("Job {job} runs again"));
+                report(
+                    out,
+                    "rbit.rerun/1",
+                    json!({ "run": run, "runs": [], "job": job, "failed_only": false }),
+                    &format!("Job {job} runs again"),
+                );
                 return Ok(0);
             }
             let runs: Vec<i64> = match run {

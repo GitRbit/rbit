@@ -53,7 +53,15 @@ async fn a_scratch_commit_runs_the_jobs_it_asks_for_and_is_no_branch() {
     let message = "Try a change\n\nRbit-CI-Jobs: tests\n";
     let sha = git.ok(&sample.dir, &["commit-tree", &tree, "-p", "HEAD", "-m", message]).trim().to_owned();
     git.ok(&sample.dir, &["push", "--quiet", &url, &format!("{sha}:refs/scratch/alice/try")]);
-    let runs = get(format!("actions/runs?head_sha={sha}")).await;
+    // The push starts its run through the event subscriber, a moment later.
+    let mut runs = Value::Null;
+    for _ in 0..100 {
+        runs = get(format!("actions/runs?head_sha={sha}")).await;
+        if runs["total_count"] == 1 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
     let run = &runs["workflow_runs"][0];
     assert_eq!((runs["total_count"].as_u64(), run["head_sha"].as_str()), (Some(1), Some(sha.as_str())), "{runs}");
     let jobs = get(format!("actions/runs/{}/jobs", run["id"])).await;
