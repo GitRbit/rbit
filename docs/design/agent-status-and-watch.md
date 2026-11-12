@@ -8,7 +8,9 @@ moment a job fails or the branch moves on.
 
 - `GET /repos/{owner}/{repo}/agent/status?branch=` (`rbit.status/1`): `head` (sha, base,
   `divergence` with merge base, ahead and behind, counted without diffing), `ci` (`state`,
-  `reason`, `for_sha`, runs, job counts, failed jobs as in the failure digest), `base`
+  `reason`, `for_sha`, runs, job counts (`jobs`: `success`, `failure`, `running`, `queued`
+  and `cancelled`; a cancelled job is not counted in `failure`), failed jobs as in the
+  failure digest), `base`
   (branch, sha, the state of its newest CI), `pr` (number, draft, base, head sha, whether
   the server's head is the PR's), `task` (`feature/<n>-…` → issue n) and `next`.
 - CI states: `none_expected` (no workflow files at the commit, or Actions off),

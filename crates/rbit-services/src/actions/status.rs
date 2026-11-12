@@ -30,8 +30,9 @@ pub struct CommitCi {
     /// Why, for `none_expected` and `not_started`.
     pub reason: Option<&'static str>,
     pub runs: Vec<Run>,
-    /// Jobs by state: success, failure, running, queued.
-    pub counts: [usize; 4],
+    /// Jobs by state: success, failure, running, queued, cancelled (a cancelled job is not a
+    /// failed one: a superseded or cancelled run has no failure).
+    pub counts: [usize; 5],
     /// The failed jobs, with how they ended (newest run first).
     pub failed: Vec<FailedJob>,
     /// For `superseded`: the commit whose run cancelled this one's.
@@ -146,7 +147,7 @@ impl ActionsService {
                 state,
                 reason: Some(reason),
                 runs: Vec::new(),
-                counts: [0; 4],
+                counts: [0; 5],
                 failed: Vec::new(),
                 superseded_by: None,
                 queue: None,
@@ -157,15 +158,9 @@ impl ActionsService {
         for run in &page.runs {
             jobs.extend(self.run_by_id(repo, run.id).await?.jobs);
         }
-        let mut counts = [0; 4];
+        let mut counts = [0; 5];
         for job in &jobs {
-            let slot = match job.status {
-                Status::Success | Status::Skipped => 0,
-                Status::Failure | Status::Cancelled => 1,
-                Status::Running => 2,
-                _ => 3,
-            };
-            counts[slot] += 1;
+            counts[count_slot(job.status)] += 1;
         }
         let mut failed = Vec::new();
         for run in page.runs.iter().filter(|run| jobs.iter().any(|job| job.run_id == run.id && job.status == Status::Failure)) {
@@ -198,9 +193,21 @@ impl ActionsService {
     }
 }
 
+/// The slot of [`CommitCi::counts`] a job in `status` counts in.
+const fn count_slot(status: Status) -> usize {
+    match status {
+        Status::Success | Status::Skipped => 0,
+        Status::Failure => 1,
+        Status::Running => 2,
+        Status::Cancelled => 4,
+        // Waiting for a runner, its needs or an approval: queued.
+        _ => 3,
+    }
+}
+
 /// The state of a commit with runs: a failure as soon as one job failed (unless nobody can
 /// say why: `indeterminate`), then what is still to come, then how it ended.
-fn ci_state(runs: &[Run], counts: &[usize; 4], failed: &[FailedJob]) -> &'static str {
+fn ci_state(runs: &[Run], counts: &[usize; 5], failed: &[FailedJob]) -> &'static str {
     if !failed.is_empty() {
         let untrusted = |job: &FailedJob| {
             !job.log_complete || matches!(job.termination.reason, TerminationReason::RunnerLost | TerminationReason::Unknown)
@@ -239,5 +246,12 @@ mod tests {
         assert_eq!(issue_of("main"), None);
         assert_eq!(issue_of("v2-release"), None);
         assert_eq!(issue_of("feature/2024edition"), None);
+    }
+
+    #[test]
+    fn a_cancelled_job_is_not_counted_as_failed() {
+        assert_eq!((count_slot(Status::Failure), count_slot(Status::Cancelled)), (1, 4));
+        assert_eq!((count_slot(Status::Success), count_slot(Status::Skipped)), (0, 0));
+        assert_eq!((count_slot(Status::Running), count_slot(Status::Waiting), count_slot(Status::Blocked)), (2, 3, 3));
     }
 }

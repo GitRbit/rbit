@@ -61,7 +61,7 @@ impl RepoPath {
 
 /// The CI of a commit as both endpoints show it.
 fn ci_json(ci: &CommitCi) -> Value {
-    let [success, failure, running, queued] = ci.counts;
+    let [success, failure, running, queued, cancelled] = ci.counts;
     let runs: Vec<Value> = ci
         .runs
         .iter()
@@ -74,7 +74,7 @@ fn ci_json(ci: &CommitCi) -> Value {
         "state": ci.state,
         "reason": ci.reason,
         "runs": runs,
-        "jobs": { "success": success, "failure": failure, "running": running, "queued": queued },
+        "jobs": { "success": success, "failure": failure, "running": running, "queued": queued, "cancelled": cancelled },
         "failed": ci.failed.iter().map(agent_logs::failed_job).collect::<Vec<_>>(),
         "superseded_by": ci.superseded_by,
         "waits_for": ci.waits_for,
@@ -290,7 +290,7 @@ mod tests {
 
     #[test]
     fn a_cursor_moves_when_what_a_watcher_cares_about_moves() {
-        let ci = |state: &'static str, counts: [usize; 4]| CommitCi {
+        let ci = |state: &'static str, counts: [usize; 5]| CommitCi {
             state,
             reason: None,
             runs: Vec::new(),
@@ -300,8 +300,8 @@ mod tests {
             queue: None,
             waits_for: None,
         };
-        assert_eq!(cursor(&ci("running", [1, 0, 1, 0])), cursor(&ci("running", [1, 0, 1, 0])));
-        assert_ne!(cursor(&ci("running", [1, 0, 1, 0])), cursor(&ci("running", [2, 0, 0, 0])));
-        assert_ne!(cursor(&ci("running", [1, 0, 1, 0])), cursor(&ci("failure", [1, 0, 1, 0])));
+        assert_eq!(cursor(&ci("running", [1, 0, 1, 0, 0])), cursor(&ci("running", [1, 0, 1, 0, 0])));
+        assert_ne!(cursor(&ci("running", [1, 0, 1, 0, 0])), cursor(&ci("running", [2, 0, 0, 0, 0])));
+        assert_ne!(cursor(&ci("running", [1, 0, 1, 0, 0])), cursor(&ci("failure", [1, 0, 1, 0, 0])));
     }
 }

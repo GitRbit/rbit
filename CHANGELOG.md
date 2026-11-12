@@ -129,6 +129,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Promoting an artifact with two files of one name (`linux/app`, `macos/app`) is refused;
   one overwrote the other. `agent/branch-update` answers 422 for an id that is not a full
   commit id, not 500.
+- `rbit status` and `GET …/agent/watch` no longer count cancelled jobs in `jobs.failure`:
+  a superseded or cancelled run showed one failed job and an empty `failed` list. They are
+  counted in a new `jobs.cancelled`; the other counts are unchanged.
 - `rbit run rerun RUN` on a run that has not finished says so (`pending`, exit 8), as the
   `--sha` form does; it exited 5 with the server's 409.
 - `GET …/steps/{n}/log?tail=0` (and `rbit run log --tail 0`) answers no line, with
