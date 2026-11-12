@@ -246,7 +246,8 @@ pub async fn bisect(
 ) -> ApiResult<Json<Value>> {
     let ctx = path.open(&state, &caller).await?;
     let workflow = query.workflow.as_deref().filter(|workflow| !workflow.is_empty());
-    let found = actions(&state)?.bisect(&ctx, &query.good, &query.bad, workflow).await?;
+    let found =
+        actions(&state)?.bisect(&ctx, &query.good, &query.bad, workflow).await.map_err(|error| ApiError::service(error, "range"))?;
     let count = |wanted: Recorded| found.commits.iter().filter(|(_, recorded)| *recorded == wanted).count();
     Ok(Json(json!({
         "schema": "rbit.bisect/1",
@@ -261,6 +262,7 @@ pub async fn bisect(
         "next": found.next,
         "remaining": found.remaining.len(),
         "remaining_shas": found.remaining.iter().take(BISECT_LISTED).collect::<Vec<_>>(),
+        "warnings": found.warnings,
     })))
 }
 

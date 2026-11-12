@@ -40,11 +40,27 @@ impl ApiFailure {
         let code = field("code").unwrap_or_else(|| implied_code(status).to_owned());
         let message = match (status, field("message")) {
             (401, _) => "not signed in, or the token is not valid: run `rbit auth login`".to_owned(),
-            (_, Some(message)) => message,
+            (_, Some(message)) => with_field_errors(message, parsed.as_ref()),
             _ => format!("the server answered {status}"),
         };
         Self { status, code, message }
     }
+}
+
+/// `message` followed by what each of the body's `errors` says (a 422 is only "Validation
+/// Failed" without them): `Validation Failed: good: …`.
+fn with_field_errors(message: String, body: Option<&Value>) -> String {
+    let details: Vec<String> = body
+        .and_then(|body| body["errors"].as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|error| {
+            let said = error["message"].as_str()?;
+            let field = error["field"].as_str().filter(|field| !field.is_empty());
+            Some(field.map_or_else(|| said.to_owned(), |field| format!("{field}: {said}")))
+        })
+        .collect();
+    if details.is_empty() { message } else { format!("{message}: {}", details.join("; ")) }
 }
 
 /// The code a status implies when the body names none (an older server).
@@ -164,6 +180,9 @@ mod tests {
         assert_eq!(ApiFailure::from_response(404, r#"{"message":"Not Found"}"#).code, "not_found");
         assert_eq!(ApiFailure::from_response(502, "<html>").code, "internal");
         assert!(ApiFailure::from_response(401, "{}").message.contains("rbit auth login"));
+        let invalid = r#"{"message":"Validation Failed","code":"invalid","errors":[{"field":"good","message":"not an ancestor"}]}"#;
+        assert_eq!(ApiFailure::from_response(422, invalid).message, "Validation Failed: good: not an ancestor");
+        assert_eq!(ApiFailure::from_response(422, r#"{"message":"Validation Failed","errors":[]}"#).message, "Validation Failed");
     }
 
     #[test]

@@ -134,3 +134,35 @@ async fn ancestry_paths_and_branch_deletion() {
     assert!(pull_refs::delete_branch(git_binary, &parent, "main", &main).await.unwrap());
     assert!(reader.commit_id("refs/heads/main".into()).await.is_err());
 }
+
+#[tokio::test]
+async fn a_first_parent_range_says_whether_it_ends_on_good() {
+    // main: base - one - (merge of side) - two, with side branching from one.
+    let dir = tempfile::tempdir().unwrap();
+    let work = dir.path().join("work");
+    std::fs::create_dir(&work).unwrap();
+    git(&work, &["init", "-q"]);
+    commit(&work, "README.md", "# Demo\n", "base");
+    commit(&work, "one.txt", "one\n", "one");
+    let one = git(&work, &["rev-parse", "HEAD"]);
+    git(&work, &["checkout", "-q", "-b", "side"]);
+    commit(&work, "side.txt", "side\n", "side");
+    let side = git(&work, &["rev-parse", "HEAD"]);
+    git(&work, &["checkout", "-q", "main"]);
+    git(&work, &["merge", "-q", "--no-ff", "-m", "merge side", "side"]);
+    commit(&work, "two.txt", "two\n", "two");
+    let two = git(&work, &["rev-parse", "HEAD"]);
+    let bare = dir.path().join("bare.git");
+    git(dir.path(), &["clone", "-q", "--bare", work.to_str().unwrap(), bare.to_str().unwrap()]);
+    let reader = RepositoryReader::new(bare);
+
+    let range = reader.first_parent_range(one.clone(), two.clone()).await.unwrap();
+    assert_eq!((range.commits.len(), range.truncated, range.reaches_good), (2, false, true), "{range:?}");
+    assert_eq!(range.commits[0], two);
+    // A commit merged in from a side branch is an ancestor, but not on the first-parent line.
+    assert!(reader.is_ancestor(side.clone(), two.clone()).await.unwrap());
+    assert!(!reader.first_parent_range(side, two.clone()).await.unwrap().reaches_good);
+    // Reversed bounds: nothing between them, and not reaching good.
+    let reversed = reader.first_parent_range(two, one).await.unwrap();
+    assert!(reversed.commits.is_empty() && !reversed.reaches_good, "{reversed:?}");
+}

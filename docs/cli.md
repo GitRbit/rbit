@@ -170,7 +170,10 @@ Reads what CI already recorded for the commits on `BAD`'s first-parent line down
 failed, or is untested. It answers the newest commit that passed before the first that
 failed, that failure, how many untested commits lie between them and the one to test next
 (the middle); with none left, the commit that broke it. `--workflow` counts one workflow's
-runs only.
+runs only. `GOOD` must be on `BAD`'s first-parent line: reversed arguments, a commit merged
+in from a side branch or an unrelated one are refused (exit 2) with the reason. When CI's
+records contradict the bounds (`GOOD` has a failed run, or `BAD` only passing ones), the
+answer still comes, with `warnings` (printed to stderr) saying so.
 
 ## Landing
 

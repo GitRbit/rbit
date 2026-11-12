@@ -37,5 +37,8 @@ pub async fn bisect(api: &Api, repo: &Repo, good: &str, bad: &str, workflow: Opt
         (None, Some(next)) => println!("  {} left to test; next: {next}", found["remaining"]),
         (None, None) => println!("  nothing to test"),
     }
+    for warning in found["warnings"].as_array().into_iter().flatten() {
+        eprintln!("warning: {}", warning.as_str().unwrap_or_default());
+    }
     Ok(0)
 }

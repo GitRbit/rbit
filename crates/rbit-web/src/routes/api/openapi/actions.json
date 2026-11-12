@@ -3997,7 +3997,7 @@
           "actions"
         ],
         "summary": "rbit's own: what CI already recorded between a good and a bad commit",
-        "description": "`schema: rbit.bisect/1`: walks `bad`'s first-parent line down to `good` (at most 1,000 commits, `truncated` beyond) and reads the finished runs already recorded for each commit (of `workflow` only, when given). A commit `passed` with a successful run and no failed one, `failed` with a failed one, and is `untested` otherwise. Answers the newest commit that passed before the first that failed (`last_good`), that failure (`first_bad`), how many untested commits lie between them (`remaining`, the first 50 in `remaining_shas`), the one to test next (`next`, the middle), and `culprit` when none is left to test.",
+        "description": "`schema: rbit.bisect/1`: walks `bad`'s first-parent line down to `good` (at most 1,000 commits, `truncated` beyond) and reads the finished runs already recorded for each commit (of `workflow` only, when given). A commit `passed` with a successful run and no failed one, `failed` with a failed one, and is `untested` otherwise. Answers the newest commit that passed before the first that failed (`last_good`), that failure (`first_bad`), how many untested commits lie between them (`remaining`, the first 50 in `remaining_shas`), the one to test next (`next`, the middle), and `culprit` when none is left to test. `good` must be on `bad`'s first-parent line: reversed bounds, a commit merged in from a side branch or an unrelated one answer 422 with the reason. `warnings` names a `good` with a recorded failure or a `bad` with only recorded passes.",
         "parameters": [
           {
             "name": "good",
