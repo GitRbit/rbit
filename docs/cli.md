@@ -52,7 +52,9 @@ A failure with `--json` is an object too:
 `code` is the server's (every API error body has one: `not_found`, `unauthenticated`,
 `forbidden`, `conflict`, `head_changed`, `base_changed`, `blocked`, `invalid`,
 `rate_limited`, `unavailable`, …) or the client's own (`pending`, `timeout`, `usage`). A
-`hint` is a command that can be run as it is.
+`hint` is a command that can be run as it is. A read the server throttles (`429` with a
+`Retry-After` of at most 30 seconds) is tried again after that wait, up to three times, so a
+long `run watch` survives a busy moment; a write is never repeated.
 
 The exit code says what kind of answer it was, with or without `--json`:
 

@@ -9,6 +9,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- The command-line client waits out a short `Retry-After` and tries a throttled read again
+  (up to three times) instead of failing with `rate_limited` at once; writes are never
+  repeated.
 - Test reports may be uploaded as `rbit-test-report-<suffix>` as well as `rbit-test-report`:
   a run's artifact names are unique, so with one name only one job of a run (one leg of a
   test matrix) could hand in its report, and the others' uploads failed.
