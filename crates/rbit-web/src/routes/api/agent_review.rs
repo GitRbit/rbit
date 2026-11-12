@@ -54,12 +54,53 @@ async fn open_pull(state: &AppState, caller: &Caller, owner: &str, repo: &str, n
 
 // ------------------------------------------------------------------ change classes (5.3)
 
-/// Whether `path` is documentation: under a `docs/` directory, or a markup file. Plain text
-/// elsewhere is often data or a fixture, so it is not.
+/// Extensions of code and scripts: such a file under `docs/` (a `conf.py`, a build script)
+/// changes what runs, so it is not documentation.
+const CODE_EXTENSIONS: [&str; 27] = [
+    ".py", ".sh", ".bash", ".zsh", ".ps1", ".bat", ".cmd", ".js", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".jsx", ".tsx", ".rs", ".go",
+    ".rb", ".pl", ".php", ".java", ".kt", ".c", ".h", ".cpp", ".cs", ".lua",
+];
+
+/// Whether `path` is documentation: under a `docs/` directory and not code or a script (nor
+/// a `Makefile`), or a markup file. Plain text elsewhere is often data or a fixture, so it
+/// is not.
 fn is_docs(path: &str) -> bool {
     let lower = path.to_ascii_lowercase();
-    lower.starts_with("docs/") || lower.contains("/docs/") || [".md", ".markdown", ".rst", ".adoc"].iter().any(|end| lower.ends_with(end))
+    let name = lower.rsplit('/').next().unwrap_or(&lower);
+    let code = CODE_EXTENSIONS.iter().any(|end| name.ends_with(end)) || name == "makefile";
+    let markup = [".md", ".markdown", ".rst", ".adoc"].iter().any(|end| name.ends_with(end));
+    markup || ((lower.starts_with("docs/") || lower.contains("/docs/")) && !code)
 }
+
+/// Directories whose files are CI definitions: rbit's, and the ones it also discovers or
+/// other forges read.
+const WORKFLOW_DIRS: [&str; 4] = [".rbit/workflows/", ".github/workflows/", ".forgejo/workflows/", ".gitea/workflows/"];
+
+/// Lock and manifest files of common package managers.
+const DEPENDENCY_FILES: [&str; 22] = [
+    "Cargo.lock",
+    "Cargo.toml",
+    "package.json",
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "go.mod",
+    "go.sum",
+    "requirements.txt",
+    "poetry.lock",
+    "pyproject.toml",
+    "Pipfile",
+    "Pipfile.lock",
+    "uv.lock",
+    "Gemfile",
+    "Gemfile.lock",
+    "composer.json",
+    "composer.lock",
+    "pom.xml",
+    "build.gradle",
+    "build.gradle.kts",
+    "gradle.lockfile",
+];
 
 /// Whether `path` is a test.
 fn is_test(path: &str) -> bool {
@@ -87,12 +128,10 @@ fn classes(files: &[ManifestFile]) -> Vec<&'static str> {
     if paths.iter().all(|path| is_test(path)) {
         found.push("tests_only");
     }
-    if paths.iter().any(|path| path.starts_with(".rbit/workflows/") || path.starts_with(".github/workflows/")) {
+    if paths.iter().any(|path| WORKFLOW_DIRS.iter().any(|dir| path.starts_with(dir))) {
         found.push("workflows");
     }
-    let dependency =
-        ["Cargo.lock", "Cargo.toml", "package.json", "package-lock.json", "go.mod", "go.sum", "requirements.txt", "poetry.lock"];
-    if paths.iter().any(|path| dependency.contains(&path.rsplit('/').next().unwrap_or(path))) {
+    if paths.iter().any(|path| DEPENDENCY_FILES.contains(&path.rsplit('/').next().unwrap_or(path))) {
         found.push("dependencies");
     }
     found
@@ -255,5 +294,31 @@ mod tests {
         assert_eq!(classes(&[]), Vec::<&str>::new());
         assert_eq!(classes(&[file("src/fixture.txt")]), Vec::<&str>::new(), "text outside docs/ may be data");
         assert_eq!(classes(&[file("docs/notes.txt")]), ["docs_only"]);
+    }
+
+    #[test]
+    fn code_under_docs_other_forges_workflows_and_more_lockfiles_are_classed() {
+        let none = Vec::<&str>::new();
+        for code in ["docs/conf.py", "docs/build.sh", "docs/theme/app.js", "docs/gen.ts", "site/docs/gen.rs", "docs/Makefile"] {
+            assert_eq!(classes(&[file("docs/guide.md"), file(code)]), none, "{code} is not documentation");
+        }
+        assert_eq!(classes(&[file("docs/images/flow.svg"), file("docs/guide.md")]), ["docs_only"]);
+        for workflow in [".forgejo/workflows/ci.yml", ".gitea/workflows/ci.yaml", ".github/workflows/x.yml"] {
+            assert_eq!(classes(&[file(workflow)]), ["workflows"], "{workflow}");
+        }
+        for lock in [
+            "yarn.lock",
+            "web/pnpm-lock.yaml",
+            "pyproject.toml",
+            "Pipfile.lock",
+            "uv.lock",
+            "Gemfile.lock",
+            "composer.lock",
+            "pom.xml",
+            "app/build.gradle",
+            "build.gradle.kts",
+        ] {
+            assert_eq!(classes(&[file(lock)]), ["dependencies"], "{lock}");
+        }
     }
 }

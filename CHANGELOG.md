@@ -129,6 +129,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Promoting an artifact with two files of one name (`linux/app`, `macos/app`) is refused;
   one overwrote the other. `agent/branch-update` answers 422 for an id that is not a full
   commit id, not 500.
+- Pull request change classes: `workflows` covers `.forgejo/workflows/` and
+  `.gitea/workflows/`; `dependencies` covers `yarn.lock`, `pnpm-lock.yaml`,
+  `pyproject.toml`, `Pipfile.lock`, `uv.lock`, `Gemfile.lock`, `composer.lock`, `pom.xml`,
+  `build.gradle(.kts)` and a few more; and a code or script file under `docs/` (a
+  `conf.py`, a build script) no longer makes a change `docs_only`.
 - `rbit status` and `GET …/agent/watch` no longer count cancelled jobs in `jobs.failure`:
   a superseded or cancelled run showed one failed job and an empty `failed` list. They are
   counted in a new `jobs.cancelled`; the other counts are unchanged.

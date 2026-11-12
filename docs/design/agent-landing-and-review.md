@@ -102,9 +102,12 @@ the middle one to test next, or the culprit when none is left.
 ## 5.1 to 5.3 Review
 
 `GET …/pulls/{n}/manifest` lists changed files with old and new blob ids and line counts,
-no patch text, with the change `classes` (`docs_only`, `tests_only`, `workflows`,
-`dependencies`); `?path=` gives that file's hunks, `&hunk=` one. `GET …/pulls/{n}/inbox`
-lists unresolved threads of submitted reviews with excerpts; an anchor is `current`, `moved`
+no patch text, with the change `classes` (`docs_only`: markup anywhere and other files under
+`docs/` except code, scripts and a `Makefile`; `tests_only`; `workflows`: `.rbit`, `.github`,
+`.forgejo` and `.gitea` workflow directories; `dependencies`: the lock and manifest files
+of Cargo, npm, Yarn, pnpm, Go, pip, Poetry, uv, Pipenv, Bundler, Composer, Maven and
+Gradle); `?path=` gives that file's hunks, `&hunk=` one. `GET …/pulls/{n}/inbox` lists
+unresolved threads of submitted reviews with excerpts; an anchor is `current`, `moved`
 to the one head line that still matches, or `ambiguous`. `PUT …/comments/{id}/resolution`
 resolves a thread; replies use `POST …/comments` with `in_reply_to`. Left out: review rules
 that act on the change classes.
