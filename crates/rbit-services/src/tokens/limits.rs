@@ -70,7 +70,7 @@ impl TokenLimit {
 }
 
 fn from_stored(stored: StoredLimit) -> TokenLimit {
-    TokenLimit { repo: stored.repo, rights: stored.rights.iter().filter_map(|name| Right::parse(name)).collect() }
+    TokenLimit { repo: stored.repo, rights: stored.rights.into_iter().filter_map(|name| Right::parse(&name)).collect() }
 }
 
 impl AccessTokenService {

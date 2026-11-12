@@ -2,6 +2,8 @@
 //! 4.6). A release attaches the files of an artifact CI already built for a commit, so
 //! what ships is what was tested.
 
+use std::path::PathBuf;
+
 use rbit_core::actions::{Artifact, ArtifactId};
 
 use crate::{ActionsService, RepoContext, ServiceError};
@@ -32,17 +34,27 @@ impl ActionsService {
 
     /// The files of artifact `id` of `repo`, written into a new directory under the
     /// server's temporary directory (deleted when the returned guard drops).
-    pub async fn artifact_files(&self, repo: &RepoContext, id: ArtifactId) -> Result<(Artifact, tempfile::TempDir, Vec<(String, std::path::PathBuf)>), ServiceError> {
+    pub async fn artifact_files(&self, repo: &RepoContext, id: ArtifactId) -> Result<(Artifact, Unpacked, Vec<(String, PathBuf)>), ServiceError> {
         let (artifact, file) = self.open_artifact(repo, id).await?;
-        let tmp = self.ctx().config.storage.tmp_dir();
-        tokio::fs::create_dir_all(&tmp).await.map_err(ServiceError::internal)?;
-        let dir = tempfile::Builder::new().prefix("rbit-promote-").tempdir_in(&tmp).map_err(ServiceError::internal)?;
-        let target = dir.path().to_owned();
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |since| since.as_nanos());
+        let dir = self.ctx().config.storage.tmp_dir().join(format!("rbit-promote-{}-{}-{nanos:x}", artifact.id.0, std::process::id()));
+        tokio::fs::create_dir_all(&dir).await.map_err(ServiceError::internal)?;
+        let unpacked = Unpacked(dir.clone());
         let file = file.into_std().await;
-        let files = tokio::task::spawn_blocking(move || rbit_actions::downloads::extract_files(file, &target, MAX_PROMOTED_FILES))
+        let files = tokio::task::spawn_blocking(move || rbit_actions::downloads::extract_files(file, &dir, MAX_PROMOTED_FILES))
             .await
             .map_err(ServiceError::internal)?
             .map_err(|error| ServiceError::Invalid(error.to_string()))?;
-        Ok((artifact, dir, files))
+        Ok((artifact, unpacked, files))
+    }
+}
+
+/// A directory of unpacked artifact files, deleted when dropped.
+#[derive(Debug)]
+pub struct Unpacked(PathBuf);
+
+impl Drop for Unpacked {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
     }
 }
