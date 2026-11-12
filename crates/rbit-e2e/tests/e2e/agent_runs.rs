@@ -66,7 +66,7 @@ impl Agent<'_> {
 }
 
 fn shas(runs: &Value) -> Vec<(String, String)> {
-    let runs = runs["workflow_runs"].as_array().expect("a list of runs");
+    let runs = runs["workflow_runs"].as_array().unwrap_or_else(|| panic!("a list of runs, not {runs}"));
     runs.iter().map(|run| (run["event"].as_str().unwrap().to_owned(), run["head_sha"].as_str().unwrap().to_owned())).collect()
 }
 
@@ -102,13 +102,15 @@ async fn an_agent_finds_the_runs_of_its_commit_and_reads_codes_not_prose() {
     // By commit: the push run and the pull request run of `head`, nothing of `base`. The
     // pull request's run is started by the event subscriber, so it may come a moment later.
     let mut runs = Value::Null;
+    let mut last = 0;
     for _ in 0..100 {
-        runs = agent.get(&format!("repos/alice/rocket/actions/runs?head_sha={head}")).await.1;
+        (last, runs) = agent.get(&format!("repos/alice/rocket/actions/runs?head_sha={head}")).await;
         if runs["total_count"] == 2 {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
+    assert_eq!(runs["total_count"], 2, "the push and pull request runs of the commit, within 10 s: {last} {runs}");
     let mut found = shas(&runs);
     found.sort();
     assert_eq!(found, [("pull_request".to_owned(), head.clone()), ("push".to_owned(), head.clone())]);
