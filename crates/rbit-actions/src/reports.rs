@@ -21,6 +21,14 @@ pub use junit::parse_junit;
 
 /// The artifact name that carries a job's test report.
 pub const REPORT_ARTIFACT: &str = "rbit-test-report";
+
+/// Whether an artifact named `name` carries its job's test report: [`REPORT_ARTIFACT`], or
+/// that name and a suffix (`rbit-test-report-linux`), since artifact names are unique in a
+/// run and every leg of a test matrix has a report.
+#[must_use]
+pub fn is_report_artifact(name: &str) -> bool {
+    name.strip_prefix(REPORT_ARTIFACT).is_some_and(|rest| rest.is_empty() || (rest.len() > 1 && rest.starts_with('-')))
+}
 /// XML read from one report, over all its files.
 pub const MAX_REPORT_BYTES: u64 = 16 * 1024 * 1024;
 /// Failed tests kept per job attempt.
@@ -150,6 +158,15 @@ pub fn fingerprint(job: &str, what: &str, message: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn report_artifacts_may_carry_a_suffix() {
+        assert!(is_report_artifact("rbit-test-report"));
+        assert!(is_report_artifact("rbit-test-report-ubuntu-3.12"));
+        assert!(!is_report_artifact("rbit-test-report-"));
+        assert!(!is_report_artifact("rbit-test-reports"));
+        assert!(!is_report_artifact("my-rbit-test-report"));
+    }
 
     #[test]
     fn the_same_failure_on_another_day_has_the_same_fingerprint() {

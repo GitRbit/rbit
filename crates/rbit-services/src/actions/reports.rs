@@ -14,7 +14,7 @@
 
 use std::collections::BTreeMap;
 
-use rbit_actions::reports::{REPORT_ARTIFACT, TestReport, fingerprint, read_report};
+use rbit_actions::reports::{TestReport, fingerprint, is_report_artifact, read_report};
 use rbit_core::{
     RepoId,
     actions::{Artifact, Job, Run, RunId, Status, Step, TaskId, Termination},
@@ -89,7 +89,7 @@ impl ActionsService {
     /// Reads and keeps the test report artifact `artifact` uploaded by task `task`; any other
     /// artifact is left alone. Never fails the upload.
     pub(crate) async fn take_test_report(&self, task: TaskId, artifact: &Artifact) {
-        if artifact.name != REPORT_ARTIFACT {
+        if !is_report_artifact(&artifact.name) {
             return;
         }
         let path = self.artifact_path(artifact);

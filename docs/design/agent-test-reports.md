@@ -5,7 +5,8 @@ search through a log, every red run looked new, and a flaky test was chased like
 
 ## As built
 
-- Test reports (`rbit_actions::reports`): an artifact named `rbit-test-report` is read when
+- Test reports (`rbit_actions::reports`): an artifact named `rbit-test-report`, or that
+  name and a `-suffix` (one per matrix leg: a run's artifact names are unique), is read when
   it is stored. Its `.xml` files (at most 16 MiB of XML) are scanned for `<testcase>` and
   the `<failure>` or `<error>` in it by a bounded scanner with no dependency: comments,
   declarations and `CDATA` are handled, only the five XML entities and numeric references

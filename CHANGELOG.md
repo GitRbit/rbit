@@ -9,6 +9,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Test reports may be uploaded as `rbit-test-report-<suffix>` as well as `rbit-test-report`:
+  a run's artifact names are unique, so with one name only one job of a run (one leg of a
+  test matrix) could hand in its report, and the others' uploads failed.
 - A job that waits for `runs-on` labels no runner of its repository has is named: `rbit
   status` reads reason `no_runner` with the labels in `waits_for` and no longer suggests
   watching, and `rbit run watch` stops at once with `no_runner` (exit 8) instead of waiting

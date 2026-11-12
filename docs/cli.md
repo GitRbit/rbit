@@ -122,8 +122,9 @@ when both are given; `rerun` without a run id reruns every failed or cancelled r
 or `HEAD`; while its run has not finished it says so (`pending`, exit 8) rather than that
 nothing failed.
 
-A job that uploads its JUnit report as an artifact named `rbit-test-report` (with
-`actions/upload-artifact`, `if: always()`) gets its failed tests in `run failure`: the test,
+A job that uploads its JUnit report as an artifact named `rbit-test-report`, or that name
+with a suffix such as `rbit-test-report-${{ matrix.os }}` since a run's artifact names are
+unique (with `actions/upload-artifact`, `if: always()`), gets its failed tests in `run failure`: the test,
 where it failed and its message, and `flaky` when the same test passed at the same commit in
 another attempt or run. Each failed job also says whether its failures are `new` or
 `recurring` against the previous run of the workflow on that ref, and whether the default
