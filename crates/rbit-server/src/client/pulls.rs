@@ -46,6 +46,31 @@ pub async fn pulls(api: &Api, repo: &Repo, command: PrCommand, out: &Output) -> 
                 println!("{}", text(&created, "html_url"));
             }
         }
+        PrCommand::Ensure { title, body, base, head, ready, request_id } => {
+            let head = head.or_else(current_branch).ok_or_else(|| agent::outcome("usage", "which branch? pass --head", None))?;
+            let base = match base {
+                Some(base) => base,
+                None => api.get(&format!("repos/{repo}")).await?["default_branch"].as_str().unwrap_or("main").to_owned(),
+            };
+            let request = json!({ "title": title, "body": body, "base": base, "head": head, "draft": !ready, "request_id": request_id });
+            let ensured = api.json(Method::POST, &format!("repos/{repo}/pulls/ensure"), Some(&request)).await?;
+            if out.json {
+                agent::print("rbit.pr-ensure/1", json!({ "number": ensured["number"], "outcome": ensured["outcome"], "pull": compact(&ensured["pull"]) }));
+            } else {
+                println!("{} ({})", text(&ensured["pull"], "html_url"), text(&ensured, "outcome"));
+            }
+        }
+        PrCommand::Queue { number, head, squash, rebase, watch, timeout } => {
+            let method = if squash { "squash" } else if rebase { "rebase" } else { "merge" };
+            let request = json!({ "head": head, "merge_method": method });
+            let place = api.json(Method::POST, &format!("repos/{repo}/pulls/{number}/queue"), Some(&request)).await?;
+            return queue_wait(api, repo, number, place, (watch, timeout), out).await;
+        }
+        PrCommand::Dequeue { number } => {
+            api.json(Method::DELETE, &format!("repos/{repo}/pulls/{number}/queue"), None).await?;
+            report(out, "rbit.dequeued/1", json!({ "number": number }), &format!("#{number} left the merge queue"));
+        }
+        PrCommand::Ready { number, head, mark, watch, timeout } => return ready(api, repo, number, head, (mark, watch, timeout), out).await,
         PrCommand::List { state, head, limit } => {
             let head = head.map(|head| format!("&head={}", encode(&format!("{}:{head}", repo.owner)))).unwrap_or_default();
             let path = format!("repos/{repo}/pulls?state={}&per_page={}{head}", encode(&state), limit.clamp(1, 100));
@@ -159,5 +184,83 @@ mod tests {
         assert_eq!(compact(&pull)["head_sha"], "abc");
         let open = json!({ "number": 4, "state": "open", "merged": false });
         assert_eq!(compact(&open)["state"], "open");
+    }
+}
+
+/// `pr ready`: the readiness of `number` (marked ready first with `mark`), waited on with
+/// `watch` until it is ready or a required check failed, at most `timeout` seconds.
+async fn ready(api: &Api, repo: &Repo, number: u64, head: Option<String>, (mark, watch, timeout): (bool, bool, u64), out: &Output) -> anyhow::Result<i32> {
+    let query = head.as_deref().map(|head| format!("?head={}", encode(head))).unwrap_or_default();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout);
+    let mut answer = if mark {
+        api.json(Method::POST, &format!("repos/{repo}/pulls/{number}/ready"), Some(&json!({ "head": head }))).await?
+    } else {
+        api.get(&format!("repos/{repo}/pulls/{number}/readiness{query}")).await?
+    };
+    loop {
+        let checks = answer["checks"].as_array().cloned().unwrap_or_default();
+        let required = |state: &str| checks.iter().any(|check| check["required"] == true && check["state"] == state);
+        let code = if answer["ready"] == true {
+            0
+        } else if required("failed") {
+            1
+        } else if required("expected") || required("running") {
+            8
+        } else {
+            1
+        };
+        if code != 8 || !watch || std::time::Instant::now() >= deadline {
+            if out.json {
+                let mut body = answer;
+                if let Some(object) = body.as_object_mut() {
+                    object.remove("schema");
+                }
+                agent::print("rbit.readiness/1", body);
+            } else {
+                println!("#{number} at {}: {}", short(text(&answer, "head")), if code == 0 { "ready to merge" } else { "not ready" });
+                for requirement in answer["requirements"].as_array().into_iter().flatten().filter(|requirement| requirement["met"] == false) {
+                    println!("  - {}", text(requirement, "says"));
+                }
+                for check in checks.iter().filter(|check| check["required"] == true) {
+                    println!("  {:<8} {}", text(check, "state"), text(check, "context"));
+                }
+            }
+            return Ok(code);
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        answer = api.get(&format!("repos/{repo}/pulls/{number}/readiness{query}")).await?;
+    }
+}
+
+/// `pr queue`: reports the place in line, and with `watch` waits until the entry left it.
+async fn queue_wait(api: &Api, repo: &Repo, number: u64, mut place: Value, (watch, timeout): (bool, u64), out: &Output) -> anyhow::Result<i32> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout);
+    let mut said = String::new();
+    loop {
+        let state = text(&place, "state").to_owned();
+        let code = match state.as_str() {
+            "landed" => Some(0),
+            "failed" => Some(1),
+            "removed" => Some(5),
+            _ => None,
+        };
+        if !out.json {
+            let line = format!("#{number}: {state}, position {}{}", place["position"], place["reason"].as_str().map(|reason| format!(" ({reason})")).unwrap_or_default());
+            if line != said {
+                eprintln!("{line}");
+                said = line;
+            }
+        }
+        if code.is_some() || !watch || std::time::Instant::now() >= deadline {
+            if out.json {
+                if let Some(object) = place.as_object_mut() {
+                    object.remove("schema");
+                }
+                agent::print("rbit.queue/1", place);
+            }
+            return Ok(code.unwrap_or(if watch { 8 } else { 0 }));
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        place = api.get(&format!("repos/{repo}/pulls/{number}/queue")).await?;
     }
 }

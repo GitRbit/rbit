@@ -32,6 +32,8 @@ pub mod hooks;
 pub mod json;
 pub mod lifecycle;
 mod merging;
+// Agent loop: the merge queue.
+pub mod queue;
 mod review_requests;
 mod reviews;
 

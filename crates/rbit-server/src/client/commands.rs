@@ -346,6 +346,56 @@ pub enum PrCommand {
         #[arg(short, long)]
         draft: bool,
     },
+    /// Publish or recover one draft pull request for a branch: an existing one is returned,
+    /// and `--request-id` makes a retry return the first answer.
+    Ensure {
+        #[arg(short, long, default_value = "")]
+        title: String,
+        #[arg(short, long, default_value = "")]
+        body: String,
+        #[arg(short = 'B', long)]
+        base: Option<String>,
+        #[arg(short = 'H', long)]
+        head: Option<String>,
+        /// Open it ready for review instead of as a draft.
+        #[arg(long)]
+        ready: bool,
+        #[arg(long)]
+        request_id: Option<String>,
+    },
+    /// Whether a pull request can merge, by the merge's own rules: exit 0 when ready, 1 when
+    /// a required check failed, 8 while something is still expected or running.
+    Ready {
+        number: u64,
+        /// The head you expect; a different one is `head_changed` (exit 5).
+        #[arg(long)]
+        head: Option<String>,
+        /// Mark a draft ready for review first.
+        #[arg(long)]
+        mark: bool,
+        /// Wait until it is ready or a required check failed.
+        #[arg(long)]
+        watch: bool,
+        #[arg(long, default_value_t = 3600)]
+        timeout: u64,
+    },
+    /// Queue a pull request to land only after its merge on the current base passed CI;
+    /// `--watch` waits: exit 0 when it landed, 1 when it failed, 5 when taken out of line.
+    Queue {
+        number: u64,
+        #[arg(long)]
+        head: Option<String>,
+        #[arg(long, conflicts_with = "rebase")]
+        squash: bool,
+        #[arg(long)]
+        rebase: bool,
+        #[arg(long)]
+        watch: bool,
+        #[arg(long, default_value_t = 7200)]
+        timeout: u64,
+    },
+    /// Take a pull request out of the merge queue.
+    Dequeue { number: u64 },
     /// Open pull requests.
     List {
         #[arg(short, long, default_value = "open")]

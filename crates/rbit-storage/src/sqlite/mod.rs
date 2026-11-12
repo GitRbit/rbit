@@ -37,6 +37,8 @@ pub mod issue_meta;
 pub mod issue_search;
 pub mod issues;
 pub mod lfs;
+// Agent loop: the merge queue.
+pub mod merge_queue;
 pub mod mirrors;
 pub mod notification_email;
 pub mod notifications;
@@ -318,6 +320,11 @@ impl Database {
 
     pub fn actions_runs(&self) -> actions_runs::ActionsRunStore {
         actions_runs::ActionsRunStore::new(self.pool.clone())
+    }
+
+    // Agent loop: the merge queue.
+    pub fn merge_queue(&self) -> merge_queue::MergeQueueStore {
+        merge_queue::MergeQueueStore::new(self.pool.clone())
     }
 
     // Agent loop: request ids.

@@ -243,6 +243,11 @@ impl ProtectionService {
         updates: &[RefUpdate],
         verdict: &mut PushVerdict,
     ) -> Result<(), ServiceError> {
+        // Merge-queue candidates are written by the server only: a pushed one would be an
+        // untested commit the queue could take for a tested one.
+        for update in updates.iter().filter(|update| update.name.starts_with(rbit_git::merge::candidate::CANDIDATE_PREFIX)) {
+            verdict.refusals.push(Refusal { name: update.name.clone(), reason: "refs/merge-queue/ is managed by rbit".to_owned() });
+        }
         for update in updates.iter().filter(|update| update.name.starts_with(rbit_git::scratch::PREFIX)) {
             let owner = rbit_git::scratch::owner(&update.name);
             let reason = match actor.user {

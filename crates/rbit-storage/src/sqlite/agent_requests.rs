@@ -28,20 +28,26 @@ impl AgentRequestStore {
 
     /// What `account`'s request `id` answered, if it is remembered and younger than a week.
     pub async fn find(&self, account: AccountId, id: &str, now: Timestamp) -> Result<Option<Remembered>, StorageError> {
-        let row: Option<(String, String)> = sqlx::query_as(
-            "SELECT fingerprint, answer FROM agent_requests WHERE account_id = ? AND request_id = ? AND created_at >= ?",
-        )
-        .bind(account.0)
-        .bind(id)
-        .bind(now.0 - REQUEST_ID_SECONDS)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row: Option<(String, String)> =
+            sqlx::query_as("SELECT fingerprint, answer FROM agent_requests WHERE account_id = ? AND request_id = ? AND created_at >= ?")
+                .bind(account.0)
+                .bind(id)
+                .bind(now.0 - REQUEST_ID_SECONDS)
+                .fetch_optional(&self.pool)
+                .await?;
         Ok(row.map(|(fingerprint, answer)| Remembered { fingerprint, answer }))
     }
 
     /// Remembers that `account`'s request `id` with inputs `fingerprint` answered `answer`,
     /// forgetting requests older than a week. A request already remembered keeps its answer.
-    pub async fn remember(&self, account: AccountId, id: &str, fingerprint: &str, answer: &str, now: Timestamp) -> Result<(), StorageError> {
+    pub async fn remember(
+        &self,
+        account: AccountId,
+        id: &str,
+        fingerprint: &str,
+        answer: &str,
+        now: Timestamp,
+    ) -> Result<(), StorageError> {
         sqlx::query("DELETE FROM agent_requests WHERE created_at < ?").bind(now.0 - REQUEST_ID_SECONDS).execute(&self.pool).await?;
         sqlx::query(
             "INSERT INTO agent_requests (account_id, request_id, fingerprint, answer, created_at) VALUES (?, ?, ?, ?, ?) \

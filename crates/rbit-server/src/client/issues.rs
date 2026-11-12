@@ -188,22 +188,7 @@ pub async fn issues(api: &Api, repo: &Repo, command: IssueCommand, out: &Output)
             let taken = api.json(Method::POST, &format!("repos/{repo}/issues/{number}/take"), Some(&json!({}))).await?;
             report(out, "rbit.issue-taken/1", json!({ "issue": number, "title": taken["title"] }), &format!("#{number} is yours"));
         }
-        IssueCommand::Search { words, state } => {
-            let query = format!("q={}&state={}", encode(&words.join(" ")), encode(&state));
-            let mut found = api.get(&format!("repos/{repo}/agent/issues?{query}")).await?;
-            if out.json {
-                if let Some(object) = found.as_object_mut() {
-                    object.remove("schema");
-                }
-                agent::print("rbit.issue-search/1", found);
-                return Ok(0);
-            }
-            for item in found["items"].as_array().into_iter().flatten() {
-                let kind = if item["pull_request"] == true { "PR" } else { "issue" };
-                println!("#{:<6} {:<6} {:<7} {}", item["number"], text(item, "state"), kind, clip(text(item, "title"), 80));
-            }
-            println!("{} found", found["total"]);
-        }
+        IssueCommand::Search { words, state } => search(api, repo, &words, &state, out).await?,
         IssueCommand::Close { number, reason } => {
             let request = json!({ "state": "closed", "state_reason": reason });
             api.json(Method::PATCH, &format!("repos/{repo}/issues/{number}"), Some(&request)).await?;
@@ -240,4 +225,23 @@ mod tests {
         assert_eq!(body(Some("given".to_owned()), None).unwrap(), "given");
         assert_eq!(body(None, None).unwrap(), "");
     }
+}
+
+/// `issue search`: the issues whose title or body has every word.
+async fn search(api: &Api, repo: &Repo, words: &[String], state: &str, out: &Output) -> anyhow::Result<()> {
+    let query = format!("q={}&state={}", encode(&words.join(" ")), encode(state));
+    let mut found = api.get(&format!("repos/{repo}/agent/issues?{query}")).await?;
+    if out.json {
+        if let Some(object) = found.as_object_mut() {
+            object.remove("schema");
+        }
+        agent::print("rbit.issue-search/1", found);
+        return Ok(());
+    }
+    for item in found["items"].as_array().into_iter().flatten() {
+        let kind = if item["pull_request"] == true { "PR" } else { "issue" };
+        println!("#{:<6} {:<6} {:<7} {}", item["number"], text(item, "state"), kind, clip(text(item, "title"), 80));
+    }
+    println!("{} found", found["total"]);
+    Ok(())
 }

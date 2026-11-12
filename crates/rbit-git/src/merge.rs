@@ -13,11 +13,9 @@
 //! 2. The merge is computed **without a working tree**: `git merge-tree --write-tree`
 //!    merges trees in memory and writes the result's objects into the scratch repository;
 //!    `git commit-tree` makes the commits. No file of the pull request is ever checked
-//!    out, so `.gitattributes` filters, line-ending conversion, hooks and editors never
-//!    come into play.
+//!    out, so `.gitattributes` filters, line-ending conversion, hooks and editors never come into play.
 //!    * **merge**: one commit with the base tip and the head as parents;
-//!    * **squash**: one commit with the base tip as parent and the merge's tree, authored
-//!      by the pull request's author;
+//!    * **squash**: one commit with the base tip as parent and the merge's tree, authored by the pull request's author;
 //!    * **rebase**: every non-merge commit of the head that the base lacks, oldest first,
 //!      replayed with `merge-tree --merge-base=<its parent>` onto the moving tip; each
 //!      keeps its author and message, the merger becomes the committer; commits that
@@ -184,9 +182,13 @@ pub async fn trial(env: &MergeEnvironment, repo: &Path, base: &str, head: &str) 
 }
 
 async fn merge_inner(env: &MergeEnvironment, spec: &MergeSpec<'_>) -> Result<Merged, MergeError> {
+    build(env, spec, &branch_ref(spec.base_branch)?, spec.base_tip, "rbit: merge pull request").await
+}
+
+/// The merge of `spec`, handed to ref `target` of `spec.repo` if it still is `expected`.
+async fn build(env: &MergeEnvironment, spec: &MergeSpec<'_>, target: &str, expected: &str, reason: &str) -> Result<Merged, MergeError> {
     validate_id(spec.base_tip)?;
     validate_id(spec.head)?;
-    let target = branch_ref(spec.base_branch)?;
     let scratch = Overlay::create_in(&env.tmp_dir.join(MERGES_DIR), &[spec.repo]).await?;
     let git = Git { binary: &env.git_binary, dir: scratch.path() };
 
@@ -212,7 +214,7 @@ async fn merge_inner(env: &MergeEnvironment, spec: &MergeSpec<'_>) -> Result<Mer
 
     // Hand the result to the base repository: objects first, then the atomic ref update.
     let base = Git { binary: &env.git_binary, dir: spec.repo };
-    hand_over(&git, &base, &target, &commit, spec.base_tip, "rbit: merge pull request").await?;
+    hand_over(&git, &base, target, &commit, expected, reason).await?;
     drop(scratch);
     Ok(Merged { commit })
 }
@@ -466,6 +468,9 @@ pub(crate) fn failure(output: &Output, what: &str) -> MergeError {
     let message: String = stderr.trim().chars().filter(|c| !c.is_control() || *c == '\n').take(500).collect();
     MergeError::Failed(format!("{what} ({}): {message}", output.status))
 }
+
+// Agent loop: merge queue candidates.
+pub mod candidate;
 
 #[cfg(test)]
 mod tests {
