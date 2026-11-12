@@ -115,7 +115,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A push that updates more than 16 branches and tags starts runs for the first 16 only, as
   before, but no longer leaves the rest waiting in silence: their commits read
   `none_expected` with the reason, so `rbit status` and the watch answer at once, and the
-  server logs how many were left out.
+  server logs how many were left out (migration `0083_actions_decisions_too_many_refs.sql`
+  lets the decision table hold that reason).
 - A job-level `if: failure()` now holds when a job further up its chain failed, even
   through needs that were skipped because of it, as GitHub documents ("if any ancestor job
   fails"): a notification job after a chain did not run. `needs.<id>.result` still says

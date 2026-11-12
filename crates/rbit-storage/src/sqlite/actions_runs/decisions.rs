@@ -9,7 +9,7 @@ use rbit_core::{RepoId, Timestamp};
 pub struct CommitDecision {
     pub workflows: i64,
     pub started: i64,
-    /// `started`, `skip_marker`, `no_workflows` or `filtered`.
+    /// `started`, `skip_marker`, `no_workflows`, `filtered` or `too_many_refs`.
     pub reason: String,
 }
 
