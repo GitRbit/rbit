@@ -6,11 +6,19 @@ use serde_json::Value;
 use super::{
     Api, Repo, agent,
     commands::Output,
-    util::{encode, short, text},
+    util::{encode, git, short, text},
 };
 
+/// `reference` as the checkout knows it (`origin/main`, `HEAD~5`, a short id): its full
+/// commit id, which the server knows by that name too; otherwise as given, for the server's
+/// own branch and tag names.
+fn local_commit(reference: &str) -> String {
+    git(&["rev-parse", "--verify", "--quiet", &format!("{reference}^{{commit}}")]).unwrap_or_else(|| reference.to_owned())
+}
+
 pub async fn bisect(api: &Api, repo: &Repo, good: &str, bad: &str, workflow: Option<&str>, out: &Output) -> anyhow::Result<i32> {
-    let mut query = format!("good={}&bad={}", encode(good), encode(bad));
+    let (good, bad) = (local_commit(good), local_commit(bad));
+    let mut query = format!("good={}&bad={}", encode(&good), encode(&bad));
     if let Some(workflow) = workflow {
         query = format!("{query}&workflow={}", encode(workflow));
     }

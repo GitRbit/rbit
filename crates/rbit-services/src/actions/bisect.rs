@@ -75,6 +75,9 @@ impl ActionsService {
         self.require_pages(repo).await?;
         let good_sha = repo.reader.commit_id(good.to_owned()).await?;
         let bad_sha = repo.reader.commit_id(bad.to_owned()).await?;
+        if good_sha == bad_sha {
+            return Err(ServiceError::Invalid("good and bad are the same commit: there is nothing between them".to_owned()));
+        }
         let (mut newest_first, truncated) = repo.reader.first_parent_range(good_sha.clone(), bad_sha.clone()).await?;
         newest_first.reverse();
         let recorded = self.ctx().database.actions_runs().finished_runs_of(repo.repo.repo.id, &newest_first, workflow).await?;

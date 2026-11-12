@@ -54,12 +54,11 @@ async fn open_pull(state: &AppState, caller: &Caller, owner: &str, repo: &str, n
 
 // ------------------------------------------------------------------ change classes (5.3)
 
-/// Whether `path` is documentation.
+/// Whether `path` is documentation: under a `docs/` directory, or a markup file. Plain text
+/// elsewhere is often data or a fixture, so it is not.
 fn is_docs(path: &str) -> bool {
     let lower = path.to_ascii_lowercase();
-    lower.starts_with("docs/")
-        || lower.contains("/docs/")
-        || [".md", ".markdown", ".rst", ".adoc", ".txt"].iter().any(|end| lower.ends_with(end))
+    lower.starts_with("docs/") || lower.contains("/docs/") || [".md", ".markdown", ".rst", ".adoc"].iter().any(|end| lower.ends_with(end))
 }
 
 /// Whether `path` is a test.
@@ -253,5 +252,7 @@ mod tests {
         assert_eq!(classes(&[file(".rbit/workflows/ci.yml"), file("Cargo.lock")]), ["workflows", "dependencies"]);
         assert_eq!(classes(&[file("src/main.rs"), file("docs/a.md")]), Vec::<&str>::new());
         assert_eq!(classes(&[]), Vec::<&str>::new());
+        assert_eq!(classes(&[file("src/fixture.txt")]), Vec::<&str>::new(), "text outside docs/ may be data");
+        assert_eq!(classes(&[file("docs/notes.txt")]), ["docs_only"]);
     }
 }
