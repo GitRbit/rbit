@@ -50,6 +50,12 @@ pub fn considered_refs<'u, T>(updates: &'u [T], view: impl Fn(&'u T) -> PushedRe
     updates.iter().filter(|update| view(update).considered()).take(MAX_REF_UPDATES).collect()
 }
 
+/// The live branch and tag updates of one push beyond [`MAX_REF_UPDATES`]: they start no
+/// run, and their commits are told so rather than left waiting.
+pub fn dropped_refs<'u, T>(updates: &'u [T], view: impl Fn(&'u T) -> PushedRef<'u>) -> Vec<&'u T> {
+    updates.iter().filter(|update| view(update).considered()).skip(MAX_REF_UPDATES).collect()
+}
+
 /// The new head of the default branch among `refs`, which refreshes the schedule.
 pub fn default_branch_head<'a>(refs: impl IntoIterator<Item = PushedRef<'a>>, default_branch: &str) -> Option<&'a str> {
     refs.into_iter().find(|update| update.branch() == Some(default_branch)).and_then(|update| update.after)

@@ -16,6 +16,7 @@ fn pushes_consider_live_branches_and_tags_in_order_up_to_the_cap() {
     assert_eq!(names, ["refs/tags/v1", "refs/heads/main"]);
     updates = (0..MAX_REF_UPDATES + 4).map(|_| ("refs/heads/x", None, Some("f"))).collect();
     assert_eq!(considered_refs(&updates, |(n, b, a)| pushed(n, *b, *a)).len(), MAX_REF_UPDATES);
+    assert_eq!(dropped_refs(&updates, |(n, b, a)| pushed(n, *b, *a)).len(), 4, "the rest are said to be left out");
 }
 
 #[test]

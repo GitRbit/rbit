@@ -136,6 +136,26 @@ impl ActionsService {
         Ok(())
     }
 
+    /// Tells the commits of `dropped` updates (beyond the cap of one push) that no run comes,
+    /// unless a `kept` update of the same push has the same commit; rather than leaving
+    /// their status at `not_started` for ever.
+    async fn tell_dropped(&self, owned: &OwnedRepository, kept: &[RefUpdate], dropped: &[RefUpdate]) {
+        if dropped.is_empty() {
+            return;
+        }
+        let (repo, cap) = (owned.full_name(), decide::MAX_REF_UPDATES);
+        tracing::warn!(%repo, dropped = dropped.len(), "a push updated more than {cap} branches and tags; the rest start no runs");
+        for update in dropped {
+            let Some(after) = pushed(update).after else { continue };
+            if kept.iter().any(|kept| pushed(kept).after == Some(after)) {
+                continue;
+            }
+            if let Err(error) = self.record_decision(owned.repo.id, after, 0, 0, Some("too_many_refs")).await {
+                tracing::warn!(%error, %repo, "cannot record that a pushed commit starts no run");
+            }
+        }
+    }
+
     /// Starts the runs a push asks for and returns them. Public so tests can drive it without the subscriber.
     pub async fn handle_push(&self, repo: RepoId, source: PushSource, updates: &[RefUpdate]) -> Result<Vec<Run>, ServiceError> {
         if !source.starts_runs() {
@@ -146,7 +166,9 @@ impl ActionsService {
             return Ok(Vec::new());
         }
         let Some(owned) = database.admin().find_repository(repo).await? else { return Ok(Vec::new()) };
+        let dropped: Vec<RefUpdate> = decide::dropped_refs(updates, pushed).into_iter().cloned().collect();
         let updates: Vec<RefUpdate> = decide::considered_refs(updates, pushed).into_iter().cloned().collect();
+        self.tell_dropped(&owned, &updates, &dropped).await;
         if updates.is_empty() {
             return Ok(Vec::new());
         }
