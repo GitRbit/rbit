@@ -177,19 +177,14 @@ jobs:
         with:
           name: app-css
           path: crates/rbit-web/assets
-      # `main` builds the shipping profile (whole-program LTO, about 8 minutes); branches
-      # build `ci-release`, the same code generation without LTO, in about 3. Only `main`'s
-      # binaries are ever installed: BUILD-PROFILE in the artifact says which this is.
+      # The shipping profile on every push (whole-program LTO): what is tested is what ships.
       # rbit-runner is not a default member: name both, as the release does.
       - name: Build
         run: |
-          profile=ci-release
-          if [ "$GITHUB_REF" = refs/heads/main ]; then profile=release; fi
-          cargo build --profile "$profile" --locked --package rbit-server --package rbit-runner
+          cargo build --release --locked --package rbit-server --package rbit-runner
           mkdir -p dist
           # Without holes: older runners pack holes as sparse entries that a download dropped.
-          cp --sparse=never "target/$profile/rbit" "target/$profile/rbit-runner" dist/
-          echo "$profile" > dist/BUILD-PROFILE
+          cp --sparse=never target/release/rbit target/release/rbit-runner dist/
       - run: ./dist/rbit --version && ./dist/rbit-runner --version
       - run: node scripts/release-rehearsal.mjs --candidate dist/rbit
       # Upgrade rehearsal's own tests (fast mode, docs/upgrade-rehearsal.md), on this binary.
@@ -207,7 +202,6 @@ jobs:
           path: |
             dist/rbit
             dist/rbit-runner
-            dist/BUILD-PROFILE
             dist/SHA256SUMS
           retention-days: 14
 

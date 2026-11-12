@@ -38,7 +38,7 @@ rustfmt and clippy, cargo-nextest, Node.js 24, git, curl, a C toolchain). Jobs:
 | Licenses and advisories | `cargo deny` from a pinned, checksum-verified release |
 | Front-end build | `npm ci`, `npm run build`, `npm test`, no change to committed assets |
 | Tests | `cargo nextest run --workspace` (its `JUnit` report uploaded as `rbit-test-report`), doc tests |
-| Release build | the binaries (profile `release` on `main`, `ci-release` elsewhere), the upgrade rehearsal and its tests on them, `SHA256SUMS`, uploaded as `rbit-linux-x86_64` with `BUILD-PROFILE` |
+| Release build | the binaries (profile `release`, whole-program LTO, on every push), the upgrade rehearsal and its tests on them, `SHA256SUMS`, uploaded as `rbit-linux-x86_64` |
 | Candidate | the candidate check below, run on the uploaded artifact after verifying its checksums |
 | CI required | the one status branch protection requires; fails unless every job succeeded |
 
@@ -47,11 +47,9 @@ never cancelled. Tests run unsharded: shards only pay off with several runners.
 
 One runner takes the jobs one at a time, in file order, so the file lists them by how soon
 they find a mistake: the repository's rules, format and clippy first (a minute), tests by
-minute seven, the feature-contract builds and the binaries last. Branches build the
-`ci-release` profile, release code generation without whole-program LTO (about 3 minutes
-instead of 8); `main` builds `release`, and a promotion installs only an artifact whose
-`BUILD-PROFILE` says `release`. A push to a branch takes about 13 minutes, one to `main`
-about 18.
+minute seven, the feature-contract builds and the binaries last. Every push builds the
+shipping `release` profile, so the binaries tested are the binaries that ship. A push takes
+about 18 minutes.
 
 Pull request events are not a trigger. A pull request's head commit gets its statuses
 from the branch push, so one push costs one run, and the required check is
