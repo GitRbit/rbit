@@ -112,6 +112,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A run whose matrix `fail-fast` stopped after one job failed reads `failure`, as on
+  GitHub, instead of `cancelled`; a run cancelled as a whole (by a person, a newer push,
+  its concurrency group or the abandoned-job sweep) stays `cancelled` even when a job had
+  failed before, until it runs again.
 - Limited tokens are held to their limits everywhere: one given the `admin` scope can no
   longer change protection, hooks, secrets, runners or the repository; Git LFS now applies
   the limit (it read and wrote other repositories' objects, and uploaded without `push`);

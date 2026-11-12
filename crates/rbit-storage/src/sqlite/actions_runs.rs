@@ -1088,6 +1088,7 @@ impl ActionsRunStore {
             .bind(run.0)
             .execute(&mut *tx)
             .await?;
+        sqlx::query("UPDATE actions_runs SET cancel_requested = 1 WHERE id = ?").bind(run.0).execute(&mut *tx).await?;
         let settled = settle(&mut tx, run, Vec::new(), now).await?;
         tx.commit().await?;
         Ok(Some(settled))
@@ -1105,6 +1106,7 @@ impl ActionsRunStore {
                 .await?;
         let mut settled = Vec::new();
         for run in runs.into_iter().collect::<BTreeSet<_>>() {
+            sqlx::query("UPDATE actions_runs SET cancel_requested = 1 WHERE id = ?").bind(run).execute(&mut *tx).await?;
             settled.push(settle(&mut tx, RunId(run), Vec::new(), now).await?);
         }
         tx.commit().await?;
@@ -1252,7 +1254,7 @@ impl ActionsRunStore {
         }
         // A new attempt starts its own clock, as GitHub times each attempt; the first job it
         // starts sets `started_at` again.
-        sqlx::query("UPDATE actions_runs SET attempt = attempt + 1, status = ?, started_at = NULL, finished_at = NULL WHERE id = ?")
+        sqlx::query("UPDATE actions_runs SET attempt = attempt + 1, status = ?, started_at = NULL, finished_at = NULL, cancel_requested = 0              WHERE id = ?")
             .bind(placeholder_status(start).code())
             .bind(run.0)
             .execute(&mut *tx)
@@ -1675,7 +1677,8 @@ macro_rules! a_need_failed {
 /// others in turn. A job with its own `if:` stays blocked and is listed in
 /// [`Settled::to_decide`] for the caller to evaluate (§12.4).
 async fn settle(tx: &mut SqliteConnection, run: RunId, mut now_waiting: Vec<i64>, now: Timestamp) -> Result<Settled, StorageError> {
-    let run_status: i64 = sqlx::query_scalar("SELECT status FROM actions_runs WHERE id = ?").bind(run.0).fetch_one(&mut *tx).await?;
+    let (run_status, cancel_requested): (i64, bool) =
+        sqlx::query_as("SELECT status, cancel_requested FROM actions_runs WHERE id = ?").bind(run.0).fetch_one(&mut *tx).await?;
     let held = matches!(status(run_status)?, Status::Blocked | Status::AwaitingApproval);
     let mut to_decide = Vec::new();
     if !held {
@@ -1737,6 +1740,9 @@ async fn settle(tx: &mut SqliteConnection, run: RunId, mut now_waiting: Vec<i64>
         // Every job blocked on a decision (its own `if:`) is not a run held for its group:
         // a blocked run status would stop the next settle from unblocking anything.
         Status::Blocked if !held => Status::Waiting,
+        // Jobs cancelled while the run was not (`fail-fast` stopping a failed job's matrix
+        // siblings) leave the failure to decide it, as on GitHub.
+        Status::Cancelled if !cancel_requested && statuses.contains(&Status::Failure) => Status::Failure,
         other => other,
     };
     let started = statuses.contains(&Status::Running);
