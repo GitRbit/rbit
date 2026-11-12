@@ -40,8 +40,8 @@ pub use window::{
     LogLimits, LogRange, LogWindow, ReadWork, STEP_VIEW_BYTES, STEP_VIEW_LINES, WindowPlan, WindowRequest, durable_extent, plan,
 };
 
-/// Most lines one append may carry.
-pub const MAX_LINES_PER_CALL: usize = 10_000;
+/// Most lines one append may carry: the protocol's limit, which runners batch to.
+pub const MAX_LINES_PER_CALL: usize = rbit_workflow::protocol::MAX_LOG_BATCH_LINES;
 
 /// An append body as lines: split on `\n`, a final newline ending the last line rather than
 /// starting an empty one. `Err` when it carries more than [`MAX_LINES_PER_CALL`].

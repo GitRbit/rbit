@@ -102,6 +102,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A step that prints more than 10,000 short lines at once no longer loses the rest of its
+  job's log: the runner sent up to 1 MiB per log append, the server refuses more than
+  10,000 lines per append, and the runner then stopped sending. Batches now stay within
+  both limits, and the line limit is part of the runner protocol.
 - A required Actions check no longer holds a pull request forever when every workflow left
   its head commit out (`branches`/`paths` filters, a skip marker): the trigger now records
   its decision per pushed commit, `rbit status` says `none_expected` with the reason, and
