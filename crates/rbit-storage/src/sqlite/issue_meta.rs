@@ -683,6 +683,23 @@ impl IssueMetaStore {
         Ok(added > 0)
     }
 
+    // Agent loop: taking an issue.
+    /// Assigns `user` to `issue` only while nobody is assigned, in one statement; `false`
+    /// when someone (`user` included) already is.
+    pub async fn add_assignee_if_unassigned(&self, issue: IssueId, user: AccountId, by: AccountId, at: Timestamp) -> Result<bool, StorageError> {
+        let added = sqlx::query(
+            "INSERT INTO issue_assignees (issue_id, user_id, assigned_by, created_at) SELECT ?1, ?2, ?3, ?4              WHERE NOT EXISTS (SELECT 1 FROM issue_assignees WHERE issue_id = ?1)",
+        )
+        .bind(issue.0)
+        .bind(user.0)
+        .bind(by.0)
+        .bind(at.0)
+        .execute(&self.pool)
+        .await?
+        .rows_affected();
+        Ok(added > 0)
+    }
+
     /// Unassigns `user`; `false` when they were not assigned.
     pub async fn remove_assignee(&self, issue: IssueId, user: AccountId) -> Result<bool, StorageError> {
         let removed = sqlx::query("DELETE FROM issue_assignees WHERE issue_id = ? AND user_id = ?")

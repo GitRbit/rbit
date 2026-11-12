@@ -190,6 +190,8 @@ pub fn table(config: &Config) -> Vec<ApiRoute> {
     }
     // Milestone 2 wave B: each area owns its routes and its `openapi/<area>.json` fragment.
     routes.extend(issues::routes());
+    // Agent loop: taking and finding issues.
+    routes.extend(issues::take::routes());
     routes.extend(notifications::routes());
     routes.extend(pulls::routes());
     routes.extend(protection::routes());

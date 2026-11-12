@@ -1491,6 +1491,124 @@
           }
         }
       }
+    },
+    "/repos/{owner}/{repo}/issues/{number}/take": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "number",
+          "in": "path",
+          "required": true,
+          "description": "The issue or pull request number",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ],
+      "post": {
+        "operationId": "takeIssue",
+        "tags": [
+          "issues"
+        ],
+        "summary": "rbit's own: take an issue only if nobody holds it",
+        "description": "Assigns the issue to the caller only while nobody is assigned, as one conditional write, so two agents taking the same issue get one success and one `409` with code `conflict` naming the holder. Taking an issue one already holds succeeds. Answers the issue. Needs a `write` token.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The issue, now the caller's",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/agent/issues": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "searchIssuesAgent",
+        "tags": [
+          "issues"
+        ],
+        "summary": "rbit's own: find issues by their words, in one short answer",
+        "description": "`schema: rbit.issue-search/1`: issues and pull requests of the repository whose title or body has every word of `q` (at most 10 words), best first, at most 20, one short row each (`number`, `title`, `state`, `pull_request`, `labels`, `assignees`, `updated_at`), and the `total` that match. For asking \"is there already an issue about this\" before filing one.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "description": "The words to look for.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "description": "`open`, `closed` or `all` (the default).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The matching issues",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
     }
   },
   "components": {

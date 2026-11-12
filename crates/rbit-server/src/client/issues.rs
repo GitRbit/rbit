@@ -63,6 +63,16 @@ pub enum IssueCommand {
         body_file: Option<std::path::PathBuf>,
     },
     /// Close an issue (`--reason not_planned` for one that will not be done).
+    /// Take an issue: assign it to yourself only if nobody holds it (exit 5, `conflict`,
+    /// naming the holder, otherwise).
+    Take { number: u64 },
+    /// Issues and pull requests whose title or body has every word, best first.
+    Search {
+        #[arg(required = true)]
+        words: Vec<String>,
+        #[arg(short, long, default_value = "all")]
+        state: String,
+    },
     Close {
         number: u64,
         #[arg(long, default_value = "completed")]
@@ -173,6 +183,26 @@ pub async fn issues(api: &Api, repo: &Repo, command: IssueCommand, out: &Output)
             let request = json!({ "body": body(text_body, body_file)? });
             let comment = api.json(Method::POST, &format!("repos/{repo}/issues/{number}/comments"), Some(&request)).await?;
             report(out, "rbit.comment/1", json!({ "issue": number, "id": comment["id"] }), &format!("Commented on #{number}"));
+        }
+        IssueCommand::Take { number } => {
+            let taken = api.json(Method::POST, &format!("repos/{repo}/issues/{number}/take"), Some(&json!({}))).await?;
+            report(out, "rbit.issue-taken/1", json!({ "issue": number, "title": taken["title"] }), &format!("#{number} is yours"));
+        }
+        IssueCommand::Search { words, state } => {
+            let query = format!("q={}&state={}", encode(&words.join(" ")), encode(&state));
+            let mut found = api.get(&format!("repos/{repo}/agent/issues?{query}")).await?;
+            if out.json {
+                if let Some(object) = found.as_object_mut() {
+                    object.remove("schema");
+                }
+                agent::print("rbit.issue-search/1", found);
+                return Ok(0);
+            }
+            for item in found["items"].as_array().into_iter().flatten() {
+                let kind = if item["pull_request"] == true { "PR" } else { "issue" };
+                println!("#{:<6} {:<6} {:<7} {}", item["number"], text(item, "state"), kind, clip(text(item, "title"), 80));
+            }
+            println!("{} found", found["total"]);
         }
         IssueCommand::Close { number, reason } => {
             let request = json!({ "state": "closed", "state_reason": reason });
