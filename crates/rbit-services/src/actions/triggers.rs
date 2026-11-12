@@ -205,8 +205,13 @@ impl ActionsService {
         let mut allowance = self.allowance();
         for outcome in outcomes {
             let Some(after) = outcome.update.after.clone() else { continue };
-            self.record_decision(repo, &after, outcome.workflows, outcome.candidates.len(), outcome.skipped).await?;
-            if outcome.candidates.is_empty() {
+            let offered = !outcome.candidates.is_empty();
+            // A scratch ref's `Rbit-CI-Jobs` subset may leave no job at all: say so, rather
+            // than recording runs as started that never come.
+            let candidates = Self::scratch_run(&outcome.update, &outcome.head, outcome.candidates);
+            let skipped = if offered && candidates.is_empty() { Some("no_jobs") } else { outcome.skipped };
+            self.record_decision(repo, &after, outcome.workflows, candidates.len(), skipped).await?;
+            if candidates.is_empty() {
                 continue;
             }
             let commits = pushed_commits(&reader, &outcome.update, &after).await;
@@ -226,7 +231,7 @@ impl ActionsService {
                 payload: &payload,
                 inputs: None,
             };
-            for candidate in Self::scratch_run(&outcome.update, &outcome.head, outcome.candidates) {
+            for candidate in candidates {
                 started.extend(self.start_run(&trigger, candidate, &mut allowance).await?);
             }
         }

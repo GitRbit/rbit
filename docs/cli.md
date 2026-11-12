@@ -148,7 +148,8 @@ leaves out stays out) through a temporary index, pushes it to `refs/scratch/<log
 and watches its run like `rbit run watch --sha`, with the same exit codes. `--commit` tests
 an existing commit instead. `--jobs` runs only the named jobs and the jobs they `needs`, by
 adding an `Rbit-CI-Jobs: lint, tests` trailer to the commit it builds; a workflow with none
-of them starts no run. The push uses Git's credentials for the instance (`rbit auth
+of them starts no run, and when no workflow has any of them the commit reads `none_expected`
+at once (the watch ends with exit 0) instead of waiting for runs that never come. The push uses Git's credentials for the instance (`rbit auth
 setup-git`).
 
 Scratch refs are not branches: no branch list shows them and no pull request comes from

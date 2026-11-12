@@ -129,6 +129,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Promoting an artifact with two files of one name (`linux/app`, `macos/app`) is refused;
   one overwrote the other. `agent/branch-update` answers 422 for an id that is not a full
   commit id, not 500.
+- A scratch commit whose `Rbit-CI-Jobs` trailer names no job of its workflows (`rbit ci
+  run --jobs nope`) reads `none_expected` with the reason at once. Its decision was
+  recorded as runs started, so the watch said `not_started` ("runs were started for this
+  commit and are gone") until its timeout, an hour by default. Migration
+  `0084_actions_decisions_no_jobs.sql` lets the decision table hold the reason `no_jobs`.
 - `rbit run failure --sha` no longer reads a skipped run (every job's `if` false) as a
   failure: it printed "0 failed job(s)" and exited 1 while `status` and the watch said
   `success`; `run view --exit-status` and `run watch RUN --exit-status` count it as passed

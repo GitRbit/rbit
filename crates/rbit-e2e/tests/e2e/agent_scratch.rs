@@ -74,6 +74,26 @@ async fn a_scratch_commit_runs_the_jobs_it_asks_for_and_is_no_branch() {
     let listed: Vec<&str> = branches.as_array().unwrap().iter().map(|branch| branch["name"].as_str().unwrap()).collect();
     assert_eq!(listed, ["main"], "{branches}");
 
+    // A trailer that names no job starts no run, and the commit says so at once rather than
+    // waiting for runs that never come.
+    let message = "Try nothing\n\nRbit-CI-Jobs: nope\n";
+    let none = git.ok(&sample.dir, &["commit-tree", &tree, "-p", "HEAD", "-m", message]).trim().to_owned();
+    git.ok(&sample.dir, &["push", "--quiet", &url, &format!("{none}:refs/scratch/alice/none")]);
+    let mut watched = Value::Null;
+    for _ in 0..100 {
+        watched = get(format!("agent/watch?sha={none}&timeout=1")).await;
+        if watched["state"] == "none_expected" {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert_eq!(
+        (watched["state"].as_str(), watched["done"].as_bool(), watched["reason"].as_str()),
+        (Some("none_expected"), Some(true), Some("no job of the workflows is named by the commit's Rbit-CI-Jobs trailer")),
+        "{watched}"
+    );
+    assert_eq!(get(format!("actions/runs?head_sha={none}")).await["total_count"], 0);
+
     // Only under one's own name.
     let refused = git.fails(&sample.dir, &["push", &url, &format!("{sha}:refs/scratch/bob/try")]);
     assert!(refused.contains("own scratch"), "{refused}");

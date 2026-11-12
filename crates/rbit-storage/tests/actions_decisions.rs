@@ -28,7 +28,7 @@ async fn every_trigger_reason_is_recorded_and_a_start_is_never_forgotten() {
     let store = db.actions_runs();
     let decided = |started: i64, reason: &str| CommitDecision { workflows: 1, started, reason: reason.to_owned() };
 
-    for (index, reason) in ["started", "skip_marker", "no_workflows", "filtered", "too_many_refs"].into_iter().enumerate() {
+    for (index, reason) in ["started", "skip_marker", "no_workflows", "filtered", "too_many_refs", "no_jobs"].into_iter().enumerate() {
         let sha = format!("{index:040}");
         store.record_decision(repo, &sha, &decided(i64::from(reason == "started"), reason), Timestamp(1)).await.unwrap();
         assert_eq!(store.decision(repo, &sha).await.unwrap().map(|found| found.reason), Some(reason.to_owned()));
