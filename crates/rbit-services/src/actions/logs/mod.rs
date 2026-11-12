@@ -47,7 +47,7 @@ pub use batch::JobLogDetail;
 pub use digest::{DIGEST_ANNOTATIONS, DigestAnnotation, FailedJob, FailureDigest};
 pub use masking::{MASK, MIN_MASKED_CHARS, Masker};
 pub use sections::{Sections, has_log, sections};
-pub use types::{LogLimits, LogRange, LogWindow, MAX_LINES_PER_CALL, RawLog, STEP_VIEW_BYTES, STEP_VIEW_LINES};
+pub use types::{LogLimits, LogRange, LogWindow, MAX_LINES_PER_CALL, RawLog, STEP_VIEW_BYTES, STEP_VIEW_LINES, readable_line};
 
 #[cfg(test)]
 mod tests;

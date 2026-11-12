@@ -20,7 +20,13 @@ async fn scratch_refs_are_recorded_counted_and_expired() {
         is_admin: false,
     };
     let alice = db.accounts().create_user(user).await.unwrap().id();
-    let new = NewRepository { owner_id: alice, name: "rocket".parse().unwrap(), description: None, visibility: Visibility::Public, default_branch: "main".to_owned() };
+    let new = NewRepository {
+        owner_id: alice,
+        name: "rocket".parse().unwrap(),
+        description: None,
+        visibility: Visibility::Public,
+        default_branch: "main".to_owned(),
+    };
     let repo: RepoId = db.repositories().create(new).await.unwrap().id;
     let store = db.actions_runs();
 
@@ -32,7 +38,10 @@ async fn scratch_refs_are_recorded_counted_and_expired() {
     // A newer push to `one` restarts its lifetime: only `two` is past it.
     store.record_scratch(repo, "refs/scratch/alice/one", Some(alice), B, Timestamp(300)).await.unwrap();
     let expired = store.expired_scratch(Timestamp(250), 10).await.unwrap();
-    assert_eq!(expired.iter().map(|scratch| (scratch.name.as_str(), scratch.sha.as_str())).collect::<Vec<_>>(), [("refs/scratch/alice/two", A)]);
+    assert_eq!(
+        expired.iter().map(|scratch| (scratch.name.as_str(), scratch.sha.as_str())).collect::<Vec<_>>(),
+        [("refs/scratch/alice/two", A)]
+    );
 
     // Forgetting at a commit the ref no longer has leaves it.
     store.forget_scratch(repo, "refs/scratch/alice/one", A).await.unwrap();

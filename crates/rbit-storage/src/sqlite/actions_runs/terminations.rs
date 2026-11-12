@@ -9,6 +9,9 @@ use rbit_core::{
     actions::{TaskId, Termination, TerminationReason},
 };
 
+/// A task's id, termination reason, step and exit code, log state and whether it was cut short.
+type EndRow = (i64, Option<String>, Option<i64>, Option<i32>, String, bool);
+
 impl ActionsRunStore {
     /// Records how `task` ended, unless a record exists: the first word on a task stands.
     /// Whether this call recorded it.
@@ -34,8 +37,9 @@ impl ActionsRunStore {
             return Ok(BTreeMap::new());
         }
         let ids = format!("[{}]", tasks.iter().map(|task| task.0.to_string()).collect::<Vec<_>>().join(","));
-        let rows: Vec<(i64, Option<String>, Option<i64>, Option<i32>, String, bool)> = sqlx::query_as(
-            "SELECT t.id, x.reason, x.step, x.exit_code, t.log_state, t.log_truncated FROM actions_tasks t              LEFT JOIN actions_terminations x ON x.task_id = t.id WHERE t.id IN (SELECT value FROM json_each(?))",
+        let rows: Vec<EndRow> = sqlx::query_as(
+            "SELECT t.id, x.reason, x.step, x.exit_code, t.log_state, t.log_truncated FROM actions_tasks t \
+             LEFT JOIN actions_terminations x ON x.task_id = t.id WHERE t.id IN (SELECT value FROM json_each(?))",
         )
         .bind(ids)
         .fetch_all(&self.pool)

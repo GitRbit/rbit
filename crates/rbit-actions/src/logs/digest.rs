@@ -103,9 +103,9 @@ mod tests {
         lines.extend(std::iter::repeat_n("2026-11-11T10:00:01.000Z warning: again".to_owned(), 50));
         lines.push("2026-11-11T10:00:02.000Z error: the end".to_owned());
         lines.push(String::new());
-        let excerpt = excerpt(&lines, 3);
-        assert_eq!(excerpt.lines, ["line 99", "warning: again … (repeated 50 times)", "error: the end"]);
-        assert_eq!(excerpt.covered, 52);
+        let kept = excerpt(&lines, 3);
+        assert_eq!(kept.lines, ["line 99", "warning: again … (repeated 50 times)", "error: the end"]);
+        assert_eq!(kept.covered, 52);
         assert!(excerpt(&[], 30).lines.is_empty());
     }
 }

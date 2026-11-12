@@ -15,7 +15,14 @@ pub struct ScratchRef {
 impl ActionsRunStore {
     /// Records that `name` of `repo` now points at `sha`, pushed by `owner`; a push to an
     /// existing scratch ref starts its lifetime again.
-    pub async fn record_scratch(&self, repo: RepoId, name: &str, owner: Option<AccountId>, sha: &str, now: Timestamp) -> Result<(), StorageError> {
+    pub async fn record_scratch(
+        &self,
+        repo: RepoId,
+        name: &str,
+        owner: Option<AccountId>,
+        sha: &str,
+        now: Timestamp,
+    ) -> Result<(), StorageError> {
         sqlx::query(
             "INSERT INTO actions_scratch_refs (repo_id, name, owner_id, sha, created_at) VALUES (?1, ?2, ?3, ?4, ?5) \
              ON CONFLICT (repo_id, name) DO UPDATE SET sha = excluded.sha, created_at = excluded.created_at",
@@ -54,7 +61,12 @@ impl ActionsRunStore {
 
     /// Forgets a scratch ref, unless a newer push moved it to another commit meanwhile.
     pub async fn forget_scratch(&self, repo: RepoId, name: &str, sha: &str) -> Result<(), StorageError> {
-        sqlx::query("DELETE FROM actions_scratch_refs WHERE repo_id = ? AND name = ? AND sha = ?").bind(repo.0).bind(name).bind(sha).execute(&self.pool).await?;
+        sqlx::query("DELETE FROM actions_scratch_refs WHERE repo_id = ? AND name = ? AND sha = ?")
+            .bind(repo.0)
+            .bind(name)
+            .bind(sha)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 }

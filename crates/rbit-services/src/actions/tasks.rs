@@ -26,6 +26,7 @@ use rbit_core::{
     Timestamp,
     actions::{Status, TaskId, Termination, TerminationReason},
 };
+pub use rbit_storage::sqlite::actions_runs::{QueuePlace, TaskEnd};
 use rbit_storage::sqlite::actions_runs::StepUpdate;
 use rbit_workflow::protocol::{MAX_OUTPUT_BYTES, StepStatus, TaskResult, TaskStateRequest, TaskStateResponse, TaskTermination};
 

@@ -139,7 +139,8 @@ pub fn matches(workflow: &Workflow, event: &Event<'_>, changed: &mut dyn Changed
 fn push_matches(filters: &PushFilters, reference: &str, changed: &mut dyn ChangedPaths) -> bool {
     // A scratch ref (`refs/scratch/<owner>/<name>`, a commit on no branch pushed for CI) is
     // pushed like a branch named `scratch/<owner>/<name>`.
-    let branch = reference.strip_prefix("refs/heads/").or_else(|| reference.strip_prefix("refs/").filter(|rest| rest.starts_with("scratch/")));
+    let branch =
+        reference.strip_prefix("refs/heads/").or_else(|| reference.strip_prefix("refs/").filter(|rest| rest.starts_with("scratch/")));
     let tag = reference.strip_prefix("refs/tags/");
     let ref_filter = match (filters.branches.is_absent(), filters.tags.is_absent()) {
         (true, true) => branch.is_some() || tag.is_some(),

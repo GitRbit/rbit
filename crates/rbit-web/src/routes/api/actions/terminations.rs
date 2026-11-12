@@ -10,7 +10,7 @@
 use std::collections::BTreeMap;
 
 use rbit_core::actions::{Job, Status, TaskId, Termination, TerminationReason};
-use rbit_storage::sqlite::actions_runs::{QueuePlace, TaskEnd};
+use rbit_services::actions::tasks::{QueuePlace, TaskEnd};
 use serde_json::{Value, json};
 
 /// Adds `job`'s termination record to `item`, its JSON, once the job has ended.

@@ -88,7 +88,11 @@ fn working_tree_commit(jobs: &[String]) -> anyhow::Result<String> {
     let top = git(&["rev-parse", "--show-toplevel"]).ok_or_else(|| agent::outcome("usage", "run `rbit ci run` inside a clone", None))?;
     let base = git(&["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
     let branch = git(&["symbolic-ref", "--quiet", "--short", "HEAD"]);
-    let index = TemporaryIndex(PathBuf::from(git_with(&["rev-parse", "--path-format=absolute", "--git-path", &format!("rbit-ci-index-{}", std::process::id())], &[], None)?));
+    let index = TemporaryIndex(PathBuf::from(git_with(
+        &["rev-parse", "--path-format=absolute", "--git-path", &format!("rbit-ci-index-{}", std::process::id())],
+        &[],
+        None,
+    )?));
     let envs = [("GIT_INDEX_FILE", index.0.as_os_str())];
     match &base {
         Some(base) => git_with(&["read-tree", base], &envs, None)?,

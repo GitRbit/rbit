@@ -148,7 +148,7 @@ pub async fn step_log(
     let limit = limit.clamp(1, MAX_TAIL.min(MAX_LINES_PER_CALL));
     let window = actions.step_log(&ctx, task, number - 1, range, limit, MAX_LOG_BYTES).await?;
     let lines: Vec<String> =
-        if query.raw { window.lines } else { window.lines.iter().map(|line| rbit_actions::logs::readable_line(line)).collect() };
+        if query.raw { window.lines } else { window.lines.iter().map(|line| rbit_services::actions::logs::readable_line(line)).collect() };
     Ok(Json(json!({
         "schema": "rbit.log/1",
         "job_id": job.0,
@@ -183,7 +183,7 @@ pub async fn annotations(
     let items: Vec<Value> = stored
         .iter()
         .map(|annotation| {
-            let text = rbit_actions::logs::annotation_text(&annotation.text);
+            let text = rbit_services::actions::annotations::annotation_text(&annotation.text);
             json!({ "level": annotation.level, "path": text.file, "line": text.line, "message": text.message, "log_line": annotation.line })
         })
         .collect();

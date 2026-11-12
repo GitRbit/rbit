@@ -236,21 +236,34 @@ impl ProtectionService {
     /// [`SCRATCH_REFS_PER_OWNER`] in the repository. Deleting one's own is always allowed.
     /// An allowed update is recorded here, so the sweep expires it even if Actions is off; a
     /// push that then fails leaves a record whose ref the sweep finds gone.
-    async fn check_scratch(&self, repo: &RepoContext, actor: &PushActor<'_>, updates: &[RefUpdate], verdict: &mut PushVerdict) -> Result<(), ServiceError> {
+    async fn check_scratch(
+        &self,
+        repo: &RepoContext,
+        actor: &PushActor<'_>,
+        updates: &[RefUpdate],
+        verdict: &mut PushVerdict,
+    ) -> Result<(), ServiceError> {
         for update in updates.iter().filter(|update| update.name.starts_with(rbit_git::scratch::PREFIX)) {
             let owner = rbit_git::scratch::owner(&update.name);
             let reason = match actor.user {
                 Some(user) if owner == Some(user.name().as_str()) => {
                     let new = update.before.is_none() && update.after.is_some();
-                    let held = if new { self.ctx.database.actions_runs().count_scratch(repo.repo.repo.id, user.id(), &update.name).await? } else { 0 };
-                    (held >= SCRATCH_REFS_PER_OWNER).then(|| format!("you have {held} scratch refs here; delete one or wait for them to expire"))
+                    let held = if new {
+                        self.ctx.database.actions_runs().count_scratch(repo.repo.repo.id, user.id(), &update.name).await?
+                    } else {
+                        0
+                    };
+                    (held >= SCRATCH_REFS_PER_OWNER)
+                        .then(|| format!("you have {held} scratch refs here; delete one or wait for them to expire"))
                 }
                 _ => Some("refs/scratch/<you>/… is for your own scratch commits".to_owned()),
             };
             let store = self.ctx.database.actions_runs();
             match (reason, &update.after, &update.before) {
                 (Some(reason), _, _) => verdict.refusals.push(Refusal { name: update.name.clone(), reason }),
-                (None, Some(after), _) => store.record_scratch(repo.repo.repo.id, &update.name, actor.user.map(User::id), after, Timestamp::now()).await?,
+                (None, Some(after), _) => {
+                    store.record_scratch(repo.repo.repo.id, &update.name, actor.user.map(User::id), after, Timestamp::now()).await?
+                }
                 (None, None, Some(before)) => store.forget_scratch(repo.repo.repo.id, &update.name, before).await?,
                 (None, None, None) => {}
             }

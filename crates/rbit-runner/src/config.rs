@@ -537,9 +537,8 @@ max_bytes = 10737418240
 
     #[test]
     fn labels_parse_with_images_that_have_colons() {
-        let label = |name: &str, backend, image: Option<&str>| {
-            Label { name: name.into(), backend, image: image.map(Into::into), exclusive: false }
-        };
+        let label =
+            |name: &str, backend, image: Option<&str>| Label { name: name.into(), backend, image: image.map(Into::into), exclusive: false };
         let ubuntu = label("ubuntu-latest", Backend::Container, Some("docker.io/library/ubuntu:24.04"));
         assert_eq!(parse_label("ubuntu-latest:container:docker.io/library/ubuntu:24.04").unwrap(), ubuntu);
         assert_eq!(parse_label("self-hosted:host").unwrap(), label("self-hosted", Backend::Host, None));

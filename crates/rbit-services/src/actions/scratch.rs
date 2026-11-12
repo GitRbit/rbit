@@ -102,7 +102,10 @@ mod tests {
 
     #[test]
     fn the_trailer_names_the_jobs() {
-        assert_eq!(requested_jobs(&head(Some("Details\n\nRbit-CI-Jobs: lint, tests\n"))), Some(BTreeSet::from(["lint".to_owned(), "tests".to_owned()])));
+        assert_eq!(
+            requested_jobs(&head(Some("Details\n\nRbit-CI-Jobs: lint, tests\n"))),
+            Some(BTreeSet::from(["lint".to_owned(), "tests".to_owned()]))
+        );
         assert_eq!(requested_jobs(&head(Some("No trailer"))), None);
         assert_eq!(requested_jobs(&head(Some("Rbit-CI-Jobs: ,"))), None);
         assert_eq!(requested_jobs(&head(None)), None);
