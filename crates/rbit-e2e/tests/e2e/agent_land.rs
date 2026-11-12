@@ -56,9 +56,7 @@ async fn a_queued_pull_request_lands_exactly_the_commit_ci_passed() {
     alice.create_repo("alice", "rocket", "public").await;
     let api = Api::new(&server, alice.create_token("agent", "admin").await);
     let bobs = Api::new(&server, bob.create_token("agent", "write").await);
-    let (status, _) = api
-        .send(Method::PUT, "collaborators/bob", Some(json!({ "permission": "push" })))
-        .await;
+    let (status, _) = api.send(Method::PUT, "collaborators/bob", Some(json!({ "permission": "push" }))).await;
     assert_eq!(status, StatusCode::CREATED);
 
     // 5.4: an issue is taken once; the second taker hears who holds it.
@@ -66,7 +64,11 @@ async fn a_queued_pull_request_lands_exactly_the_commit_ci_passed() {
     let number = issue["number"].as_u64().unwrap();
     let (status, taken) = api.send(Method::POST, &format!("issues/{number}/take"), Some(json!({}))).await;
     assert_eq!((status, taken["assignees"][0]["login"].as_str()), (StatusCode::OK, Some("alice")), "{taken}");
-    assert_eq!(api.send(Method::POST, &format!("issues/{number}/take"), Some(json!({}))).await.0, StatusCode::OK, "taken again by its holder");
+    assert_eq!(
+        api.send(Method::POST, &format!("issues/{number}/take"), Some(json!({}))).await.0,
+        StatusCode::OK,
+        "taken again by its holder"
+    );
     let (status, refused) = bobs.send(Method::POST, &format!("issues/{number}/take"), Some(json!({}))).await;
     assert_eq!((status, refused["code"].as_str()), (StatusCode::CONFLICT, Some("conflict")), "{refused}");
     assert!(refused["message"].as_str().unwrap().contains("alice"), "{refused}");
@@ -89,7 +91,11 @@ async fn a_queued_pull_request_lands_exactly_the_commit_ci_passed() {
     // 4.3: ensuring twice gives one pull request; a request id replays; reused, it conflicts.
     let ensure = json!({ "head": "landing", "base": "main", "title": "Landing legs", "request_id": "r-1" });
     let (status, first) = api.send(Method::POST, "pulls/ensure", Some(ensure.clone())).await;
-    assert_eq!((status, first["outcome"].as_str(), first["pull"]["draft"].as_bool()), (StatusCode::CREATED, Some("created"), Some(true)), "{first}");
+    assert_eq!(
+        (status, first["outcome"].as_str(), first["pull"]["draft"].as_bool()),
+        (StatusCode::CREATED, Some("created"), Some(true)),
+        "{first}"
+    );
     let pull = first["number"].as_u64().unwrap();
     let (status, again) = api.send(Method::POST, "pulls/ensure", Some(ensure)).await;
     assert_eq!((status, again["outcome"].as_str(), again["number"].as_u64()), (StatusCode::OK, Some("replayed"), Some(pull)));

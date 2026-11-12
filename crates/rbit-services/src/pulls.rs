@@ -29,6 +29,8 @@ mod creation;
 // Agent loop: pr ensure.
 pub mod ensure;
 pub mod hooks;
+// Agent loop: diff manifest and review inbox.
+pub mod inbox;
 pub mod json;
 pub mod lifecycle;
 mod merging;
@@ -36,8 +38,8 @@ mod merging;
 pub mod queue;
 mod review_requests;
 // Agent loop: server-side writes.
-mod writes;
 mod reviews;
+mod writes;
 
 use std::{
     collections::HashMap,

@@ -34,15 +34,20 @@ impl IssueService {
         }
         let Some(actor) = run.trigger_actor.or(run.actor) else { return Ok(()) };
         let Some(user) = database.accounts().find_user(actor).await? else { return Ok(()) };
-        let repositories =
-            RepositoryService::new(Arc::clone(&self.ctx.config), database.repositories(), self.ctx.repositories.clone(), self.ctx.events.clone());
+        let repositories = RepositoryService::new(
+            Arc::clone(&self.ctx.config),
+            database.repositories(),
+            self.ctx.repositories.clone(),
+            self.ctx.events.clone(),
+        );
         let ctx = repositories.open(Some(&user), owned.owner.name.as_str(), owned.repo.name.as_str()).await?;
         let title = format!("CI is failing on `{branch}`: `{}`", run.workflow_name);
         let mut filter = SearchFilter::new(repo);
         filter.state = Some(IssueState::Open);
         filter.text = vec!["failing".to_owned()];
         let open = self.list(&ctx, filter, 1, 50).await?;
-        let existing = open.issues.iter().find(|issue| issue.kind == IssueKind::Issue && issue.title.as_str() == title).map(|issue| issue.number);
+        let existing =
+            open.issues.iter().find(|issue| issue.kind == IssueKind::Issue && issue.title.as_str() == title).map(|issue| issue.number);
         let base = self.ctx.config.server.base_url();
         let link = format!("{base}/{}/actions/runs/{}", owned.full_name(), run.number);
         let sha = &run.sha;
@@ -72,16 +77,13 @@ impl IssueService {
             if failed_jobs.is_empty() { "- (none recorded)".to_owned() } else { failed_jobs.join("\n") },
             run.id.0,
         );
-        match existing {
-            Some(number) => {
-                let thread = self.timeline.open(Some(&user), ctx, number).await?;
-                self.timeline.comment(&user, &thread, &format!("Still failing.\n\n{report}")).await?;
-            }
-            None => {
-                let input = NewIssueInput { title, body: report, labels: Vec::new(), assignees: Vec::new(), milestone: None };
-                let issue = self.create(&user, &ctx, input).await?;
-                tracing::info!(repo = %owned.full_name(), number = issue.number.get(), "red main issue opened");
-            }
+        if let Some(number) = existing {
+            let thread = self.timeline.open(Some(&user), ctx, number).await?;
+            self.timeline.comment(&user, &thread, &format!("Still failing.\n\n{report}")).await?;
+        } else {
+            let input = NewIssueInput { title, body: report, labels: Vec::new(), assignees: Vec::new(), milestone: None };
+            let issue = self.create(&user, &ctx, input).await?;
+            tracing::info!(repo = %owned.full_name(), number = issue.number.get(), "red main issue opened");
         }
         Ok(())
     }

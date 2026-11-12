@@ -1,0 +1,254 @@
+//! Review without a diff (agent plan steps 5.1 to 5.3): the diff manifest of a pull request
+//! and its change classes, one file or hunk on request, the review inbox, and resolving a
+//! thread from the API.
+
+use axum::{
+    Json,
+    extract::{Path, Query, State},
+    http::StatusCode,
+};
+use rbit_core::{
+    IssueNumber, TokenScope,
+    pull::{ReviewCommentId, ReviewSide},
+};
+use rbit_git::diff::{Hunk, LineKind};
+use rbit_services::pulls::{
+    PullContext,
+    inbox::{Anchor, ManifestFile},
+};
+use serde::Deserialize;
+use serde_json::{Value, json};
+
+use super::{
+    ApiMethod::{Get, Put},
+    ApiRoute,
+    auth::Caller,
+    error::{ApiError, ApiResult},
+    json::ApiJson,
+    route,
+};
+use crate::AppState;
+
+/// This area's endpoints, appended to [`super::table`].
+pub(super) fn routes() -> Vec<ApiRoute> {
+    let repo = |suffix: &str| format!("/repos/{{owner}}/{{repo}}{suffix}");
+    vec![
+        route(Get, repo("/pulls/{number}/manifest"), manifest),
+        route(Get, repo("/pulls/{number}/inbox"), inbox),
+        route(Put, repo("/pulls/{number}/comments/{id}/resolution"), resolve),
+    ]
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PullPath {
+    owner: String,
+    repo: String,
+    number: String,
+}
+
+async fn open_pull(state: &AppState, caller: &Caller, owner: &str, repo: &str, number: &str) -> ApiResult<PullContext> {
+    let repo = caller.open_repo(state, owner, repo).await?;
+    let number = IssueNumber::parse(number).map_err(|_| ApiError::not_found())?;
+    Ok(state.services.pulls.open(caller.user(), repo, number).await?)
+}
+
+// ------------------------------------------------------------------ change classes (5.3)
+
+/// Whether `path` is documentation.
+fn is_docs(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    lower.starts_with("docs/") || lower.contains("/docs/") || [".md", ".markdown", ".rst", ".adoc", ".txt"].iter().any(|end| lower.ends_with(end))
+}
+
+/// Whether `path` is a test.
+fn is_test(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    let name = lower.rsplit('/').next().unwrap_or(&lower);
+    lower.starts_with("tests/")
+        || lower.contains("/tests/")
+        || lower.contains("/test/")
+        || lower.contains("__tests__/")
+        || name.starts_with("test_")
+        || [".test.", ".spec.", "_test.", "_spec."].iter().any(|part| name.contains(part))
+}
+
+/// The change classes of `files`: `docs_only`, `tests_only`, `workflows` (CI definitions)
+/// and `dependencies` (lock and manifest files). Empty for no files.
+fn classes(files: &[ManifestFile]) -> Vec<&'static str> {
+    let paths: Vec<&str> = files.iter().flat_map(|file| std::iter::once(file.path.as_str()).chain(file.old_path.as_deref())).collect();
+    if paths.is_empty() {
+        return Vec::new();
+    }
+    let mut found = Vec::new();
+    if paths.iter().all(|path| is_docs(path)) {
+        found.push("docs_only");
+    }
+    if paths.iter().all(|path| is_test(path)) {
+        found.push("tests_only");
+    }
+    if paths.iter().any(|path| path.starts_with(".rbit/workflows/") || path.starts_with(".github/workflows/")) {
+        found.push("workflows");
+    }
+    let dependency = ["Cargo.lock", "Cargo.toml", "package.json", "package-lock.json", "go.mod", "go.sum", "requirements.txt", "poetry.lock"];
+    if paths.iter().any(|path| dependency.contains(&path.rsplit('/').next().unwrap_or(path))) {
+        found.push("dependencies");
+    }
+    found
+}
+
+// ------------------------------------------------------------------ manifest (5.1)
+
+#[derive(Debug, Default, Deserialize)]
+pub struct ManifestQuery {
+    #[serde(default)]
+    path: Option<String>,
+    #[serde(default)]
+    hunk: Option<usize>,
+}
+
+/// A hunk as unified-diff text.
+fn hunk_text(hunk: &Hunk) -> String {
+    let mut text = hunk.header.clone();
+    for line in &hunk.lines {
+        let sign = match line.kind {
+            LineKind::Context => ' ',
+            LineKind::Added => '+',
+            LineKind::Removed => '-',
+        };
+        text.push('\n');
+        text.push(sign);
+        text.push_str(&line.text);
+    }
+    text
+}
+
+/// `GET /repos/{owner}/{repo}/pulls/{number}/manifest[?path=<file>[&hunk=<n>]]`
+pub async fn manifest(
+    State(state): State<AppState>,
+    caller: Caller,
+    Path(path): Path<PullPath>,
+    Query(query): Query<ManifestQuery>,
+) -> ApiResult<Json<Value>> {
+    let ctx = open_pull(&state, &caller, &path.owner, &path.repo, &path.number).await?;
+    let pulls = &state.services.pulls;
+    if let Some(file) = query.path.filter(|file| !file.is_empty()) {
+        let hunks = pulls.file_hunks(&ctx, &file).await?.ok_or_else(ApiError::not_found)?;
+        let chosen: Vec<Value> = match query.hunk {
+            Some(index) => vec![json!({ "index": index, "text": hunk_text(hunks.get(index).ok_or_else(ApiError::not_found)?) })],
+            None => hunks.iter().enumerate().map(|(index, hunk)| json!({ "index": index, "text": hunk_text(hunk) })).collect(),
+        };
+        return Ok(Json(json!({ "schema": "rbit.hunks/1", "path": file, "hunks": hunks.len(), "items": chosen })));
+    }
+    let found = pulls.manifest(&ctx).await?;
+    let files: Vec<Value> = found
+        .files
+        .iter()
+        .map(|file| {
+            json!({
+                "path": file.path,
+                "old_path": file.old_path,
+                "status": file.status,
+                "additions": file.additions,
+                "deletions": file.deletions,
+                "stats_known": file.stats_known,
+                "binary": file.binary,
+                "old_blob": file.old_blob,
+                "new_blob": file.new_blob,
+            })
+        })
+        .collect();
+    Ok(Json(json!({
+        "schema": "rbit.manifest/1",
+        "base": found.base,
+        "head": found.head,
+        "classes": classes(&found.files),
+        "files": files,
+    })))
+}
+
+// ------------------------------------------------------------------ inbox (5.2)
+
+/// `GET /repos/{owner}/{repo}/pulls/{number}/inbox`: the unresolved threads, oldest first.
+pub async fn inbox(State(state): State<AppState>, caller: Caller, Path(path): Path<PullPath>) -> ApiResult<Json<Value>> {
+    let ctx = open_pull(&state, &caller, &path.owner, &path.repo, &path.number).await?;
+    let threads = state.services.pulls.inbox(caller.user(), &ctx).await?;
+    let items: Vec<Value> = threads
+        .iter()
+        .map(|thread| {
+            let root = &thread.root;
+            let (anchor, line) = match thread.anchor {
+                Anchor::Current => ("current", Some(root.line as usize)),
+                Anchor::Moved { line } => ("moved", Some(line)),
+                Anchor::Ambiguous => ("ambiguous", None),
+            };
+            json!({
+                "id": root.id.0,
+                "path": root.path,
+                "side": if root.side == ReviewSide::Left { "LEFT" } else { "RIGHT" },
+                "line": root.line,
+                "commit": root.commit_sha,
+                "anchor": anchor,
+                "head_line": line,
+                "author": thread.author,
+                "says": rbit_services::pulls::inbox::excerpt(&root.body),
+                "replies": thread.replies,
+                "last_reply": thread.last.as_ref().map(|(author, text)| json!({ "author": author, "says": text })),
+            })
+        })
+        .collect();
+    Ok(Json(json!({ "schema": "rbit.inbox/1", "number": ctx.issue().number.get(), "head": ctx.pull.head_sha, "threads": items })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CommentPath {
+    owner: String,
+    repo: String,
+    number: String,
+    id: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Resolution {
+    resolved: bool,
+}
+
+/// `PUT /repos/{owner}/{repo}/pulls/{number}/comments/{id}/resolution {"resolved": true}`
+pub async fn resolve(
+    State(state): State<AppState>,
+    caller: Caller,
+    Path(path): Path<CommentPath>,
+    ApiJson(request): ApiJson<Resolution>,
+) -> ApiResult<(StatusCode, Json<Value>)> {
+    let user = caller.require(TokenScope::Write)?;
+    let ctx = open_pull(&state, &caller, &path.owner, &path.repo, &path.number).await?;
+    let comment = state.services.pulls.set_thread_resolved(user, &ctx, ReviewCommentId(path.id), request.resolved).await?;
+    Ok((StatusCode::OK, Json(json!({ "schema": "rbit.resolution/1", "id": comment.id.0, "resolved": comment.resolved_at.is_some() }))))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn file(path: &str) -> ManifestFile {
+        ManifestFile {
+            path: path.to_owned(),
+            old_path: None,
+            status: "modified",
+            additions: 1,
+            deletions: 0,
+            stats_known: true,
+            binary: false,
+            old_blob: None,
+            new_blob: None,
+        }
+    }
+
+    #[test]
+    fn changes_are_classed_by_their_paths() {
+        assert_eq!(classes(&[file("docs/guide.md"), file("README.md")]), ["docs_only"]);
+        assert_eq!(classes(&[file("crates/a/tests/x.rs"), file("src/thing_test.go")]), ["tests_only"]);
+        assert_eq!(classes(&[file(".rbit/workflows/ci.yml"), file("Cargo.lock")]), ["workflows", "dependencies"]);
+        assert!(classes(&[file("src/main.rs"), file("docs/a.md")]).is_empty());
+        assert!(classes(&[]).is_empty());
+    }
+}

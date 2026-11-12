@@ -10,9 +10,7 @@ use std::path::Path;
 
 use rbit_core::{Timestamp, issue::MergeStrategy, pull::CommitIdentity};
 
-use super::{
-    Git, MERGES_DIR, MergeEnvironment, MergeError, MergeSpec, Merged, Overlay, Signature, build, hand_over, validate_id,
-};
+use super::{Git, MERGES_DIR, MergeEnvironment, MergeError, MergeSpec, Merged, Overlay, Signature, build, hand_over, validate_id};
 use crate::pull_refs::branch_ref;
 
 /// Merges `base_tip` into branch `head_branch` of `repo` if it still is `head_sha`, with a

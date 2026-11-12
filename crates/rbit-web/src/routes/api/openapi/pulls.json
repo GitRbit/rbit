@@ -1690,6 +1690,195 @@
           }
         }
       }
+    },
+    "/repos/{owner}/{repo}/pulls/{number}/manifest": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "number",
+          "in": "path",
+          "required": true,
+          "description": "The pull request number",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getPullManifest",
+        "tags": [
+          "pulls"
+        ],
+        "summary": "rbit's own: what a pull request changes, without patch text",
+        "description": "`schema: rbit.manifest/1`: the compared `base` and `head`, the change `classes` (`docs_only`, `tests_only`, `workflows`, `dependencies`), and every changed file with `path`, `old_path`, `status`, `additions`, `deletions`, `stats_known`, `binary` and the `old_blob` and `new_blob` ids. With `path`, that file's hunks as unified-diff text instead (`schema: rbit.hunks/1`); with `hunk` too, only that one.",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "description": "One changed file: its hunks.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "hunk",
+            "in": "query",
+            "description": "With `path`: only this hunk (from 0).",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The manifest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/pulls/{number}/inbox": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "number",
+          "in": "path",
+          "required": true,
+          "description": "The pull request number",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getPullInbox",
+        "tags": [
+          "pulls"
+        ],
+        "summary": "rbit's own: the unresolved review threads, in one short answer",
+        "description": "`schema: rbit.inbox/1`: the unresolved threads of submitted reviews, oldest first, at most 50: the root comment's `id`, `path`, `side`, `line` and `commit`, an excerpt of what it `says` and who wrote it, how many `replies` and the last one. `anchor` is `current` when the file did not change since, `moved` when the commented line is found exactly once in the head (`head_line`), and `ambiguous` when it is gone or several lines match. Reply with `POST …/pulls/{number}/comments` and `in_reply_to`; resolve with `PUT …/comments/{id}/resolution`.",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The inbox",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/pulls/{number}/comments/{id}/resolution": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "number",
+          "in": "path",
+          "required": true,
+          "description": "The pull request number",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "The thread's root comment id",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "put": {
+        "operationId": "resolvePullThread",
+        "tags": [
+          "pulls"
+        ],
+        "summary": "rbit's own: resolve or reopen a review thread",
+        "description": "`schema: rbit.resolution/1`. Body: `resolved` (`true` or `false`). Resolves the thread the comment roots (as the web page's button does), for the author of the thread or a writer. Needs a `write` token.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The thread's state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
     }
   },
   "components": {

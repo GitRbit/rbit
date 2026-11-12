@@ -76,11 +76,25 @@ impl PullService {
         let short = &commit[..commit.len().min(12)];
         let branch = format!("revert-{short}");
         self.may_write(repo, actor, &branch).await?;
-        let summary = repo.reader.history(commit.clone(), 0, 1).await.ok().and_then(|found| found.into_iter().next()).map(|found| found.summary).unwrap_or_default();
+        let summary = repo
+            .reader
+            .history(commit.clone(), 0, 1)
+            .await
+            .ok()
+            .and_then(|found| found.into_iter().next())
+            .map(|found| found.summary)
+            .unwrap_or_default();
         let pending = self.inner.pushes.begin(repo, PushSource::User(actor.id())).await;
         let lease = self.ctx().repositories.lease(repo.repo.repo.id).await;
-        let reverted =
-            writes::revert(&self.merge_environment(), &repo.disk_path, (&base_tip, &commit), &branch, &self.identity(actor), Timestamp::now()).await;
+        let reverted = writes::revert(
+            &self.merge_environment(),
+            &repo.disk_path,
+            (&base_tip, &commit),
+            &branch,
+            &self.identity(actor),
+            Timestamp::now(),
+        )
+        .await;
         drop(lease);
         match reverted {
             Ok(_) => {}
@@ -105,7 +119,14 @@ impl PullService {
 
     /// Moves branch `branch` of `repo` from `expected` to `commit` (both full ids), if a push
     /// by `actor` would be allowed to.
-    pub async fn set_branch(&self, actor: &User, repo: &RepoContext, branch: &str, commit: &str, expected: &str) -> Result<(), MergeFailure> {
+    pub async fn set_branch(
+        &self,
+        actor: &User,
+        repo: &RepoContext,
+        branch: &str,
+        commit: &str,
+        expected: &str,
+    ) -> Result<(), MergeFailure> {
         self.may_write(repo, actor, branch).await?;
         let commit = repo.reader.commit_id(commit.to_owned()).await.map_err(ServiceError::from)?;
         let pending = self.inner.pushes.begin(repo, PushSource::User(actor.id())).await;

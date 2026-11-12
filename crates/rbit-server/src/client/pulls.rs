@@ -46,7 +46,9 @@ pub async fn pulls(api: &Api, repo: &Repo, command: PrCommand, out: &Output) -> 
                 println!("{}", text(&created, "html_url"));
             }
         }
-        PrCommand::Ensure { title, body, base, head, ready, request_id } => ensure(api, repo, (title, body, base, head), (ready, request_id), out).await?,
+        PrCommand::Ensure { title, body, base, head, ready, request_id } => {
+            ensure(api, repo, (title, body, base, head), (ready, request_id), out).await?
+        }
         PrCommand::Queue { number, head, squash, rebase, watch, timeout } => {
             let method = if squash {
                 "squash"
@@ -59,7 +61,9 @@ pub async fn pulls(api: &Api, repo: &Repo, command: PrCommand, out: &Output) -> 
             let place = api.json(Method::POST, &format!("repos/{repo}/pulls/{number}/queue"), Some(&request)).await?;
             return queue_wait(api, repo, number, place, (watch, timeout), out).await;
         }
-        PrCommand::UpdateBranch { number, head } => write(api, repo, &format!("pulls/{number}/update-branch"), json!({ "expected_head": head }), out).await?,
+        PrCommand::UpdateBranch { number, head } => {
+            write(api, repo, &format!("pulls/{number}/update-branch"), json!({ "expected_head": head }), out).await?
+        }
         PrCommand::Revert { commit, base } => write(api, repo, "agent/revert", json!({ "commit": commit, "base": base }), out).await?,
         PrCommand::Dequeue { number } => {
             api.json(Method::DELETE, &format!("repos/{repo}/pulls/{number}/queue"), None).await?;
