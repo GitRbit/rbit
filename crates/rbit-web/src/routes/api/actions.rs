@@ -111,6 +111,7 @@ pub(super) fn routes() -> Vec<ApiRoute> {
         route(Get, repo("/jobs/{job_id}/attempts"), agent_logs::attempts),
         route(Get, "/repos/{owner}/{repo}/agent/status".to_owned(), agent_status::status),
         route(Get, "/repos/{owner}/{repo}/agent/watch".to_owned(), agent_status::watch),
+        route(Get, "/repos/{owner}/{repo}/agent/bisect".to_owned(), agent_status::bisect),
         route(Get, repo("/supersede"), supersede::show),
         route(Put, repo("/supersede"), supersede::update),
         route(Post, repo("/jobs/{job_id}/rerun"), rerun_job),

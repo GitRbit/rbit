@@ -19,8 +19,12 @@ use std::{
 use axum::{
     Json,
     extract::{Path, Query, State},
+    http::StatusCode,
 };
-use rbit_services::{RepoContext, actions::status::CommitCi};
+use rbit_services::{
+    RepoContext, ServiceError,
+    actions::{bisect::Recorded, status::CommitCi},
+};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -115,7 +119,14 @@ pub async fn status(
     Query(query): Query<StatusQuery>,
 ) -> ApiResult<Json<Value>> {
     let ctx = path.open(&state, &caller).await?;
-    let status = actions(&state)?.branch_status(&ctx, query.branch.as_deref().filter(|branch| !branch.is_empty())).await?;
+    let asked = query.branch.as_deref().filter(|branch| !branch.is_empty());
+    let status = match actions(&state)?.branch_status(&ctx, asked).await {
+        Err(ServiceError::NotFound) => {
+            let branch = asked.unwrap_or(&ctx.repo.repo.default_branch);
+            return Err(ApiError::new(StatusCode::NOT_FOUND, format!("branch `{branch}` does not resolve to a commit")));
+        }
+        result => result?,
+    };
     let failed_run = status.ci.failed.first().map(|failed| failed.job.run_id.0);
     let pull = status.pull.as_ref().map(|pull| (pull.number, pull.draft));
     let next = next(status.ci.state, &status.head, failed_run, pull);
@@ -187,6 +198,48 @@ pub async fn watch(
         }
         tokio::time::sleep(LOOK_EVERY).await;
     }
+}
+
+
+/// The query of a bisection.
+#[derive(Debug, Deserialize)]
+pub struct BisectQuery {
+    good: String,
+    bad: String,
+    /// One workflow's results only (its path, `.rbit/workflows/ci.yml`).
+    #[serde(default)]
+    workflow: Option<String>,
+}
+
+/// Untested commits a bisection lists by id.
+const BISECT_LISTED: usize = 50;
+
+/// `GET …/agent/bisect?good=<rev>&bad=<rev>[&workflow=<path>]`: what CI already recorded
+/// between two commits, narrowed to the commits left to test (agent plan step 4.9).
+pub async fn bisect(
+    State(state): State<AppState>,
+    caller: Caller,
+    Path(path): Path<RepoPath>,
+    Query(query): Query<BisectQuery>,
+) -> ApiResult<Json<Value>> {
+    let ctx = path.open(&state, &caller).await?;
+    let workflow = query.workflow.as_deref().filter(|workflow| !workflow.is_empty());
+    let found = actions(&state)?.bisect(&ctx, &query.good, &query.bad, workflow).await?;
+    let count = |wanted: Recorded| found.commits.iter().filter(|(_, recorded)| *recorded == wanted).count();
+    Ok(Json(json!({
+        "schema": "rbit.bisect/1",
+        "commits": found.commits.len(),
+        "passed": count(Recorded::Passed),
+        "failed": count(Recorded::Failed),
+        "untested": count(Recorded::Untested),
+        "truncated": found.truncated,
+        "last_good": found.last_good,
+        "first_bad": found.first_bad,
+        "culprit": found.next.is_none().then_some(&found.first_bad),
+        "next": found.next,
+        "remaining": found.remaining.len(),
+        "remaining_shas": found.remaining.iter().take(BISECT_LISTED).collect::<Vec<_>>(),
+    })))
 }
 
 #[cfg(test)]

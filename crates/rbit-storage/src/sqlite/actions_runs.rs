@@ -434,6 +434,7 @@ pub enum Rerun {
 mod annotations;
 mod decisions;
 pub use decisions::CommitDecision;
+mod outcomes;
 mod queue;
 mod scratch;
 pub use queue::QueuePlace;

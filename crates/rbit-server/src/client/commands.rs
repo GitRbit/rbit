@@ -90,6 +90,23 @@ pub enum ClientCommand {
         #[command(flatten)]
         target: Target,
     },
+    /// What CI already recorded between a good and a bad commit, and the one to test next.
+    Bisect {
+        good: String,
+        bad: String,
+        /// Only this workflow's results, by path (`.rbit/workflows/ci.yml`).
+        #[arg(long)]
+        workflow: Option<String>,
+        #[command(flatten)]
+        target: Target,
+    },
+    /// Tasks: take an issue into its own branch and worktree, resume it, finish it.
+    Task {
+        #[command(subcommand)]
+        command: super::task::TaskCommand,
+        #[command(flatten)]
+        target: Target,
+    },
     /// Pull requests: create, list, view, merge and their checks.
     Pr {
         #[command(subcommand)]
@@ -377,6 +394,8 @@ pub async fn run(command: ClientCommand) -> anyhow::Result<i32> {
         | ClientCommand::Pr { target, .. }
         | ClientCommand::Status { target, .. }
         | ClientCommand::Ci { target, .. }
+        | ClientCommand::Task { target, .. }
+        | ClientCommand::Bisect { target, .. }
         | ClientCommand::Issue { target, .. }
         | ClientCommand::Api { target, .. } => target.output.json,
         ClientCommand::Auth { .. } => false,
@@ -420,6 +439,14 @@ async fn dispatch(command: ClientCommand) -> anyhow::Result<i32> {
         ClientCommand::Ci { command: CiCommand::Run(options), target } => {
             let (api, repo) = connect(&target, true)?;
             super::ci::run(&api, &repo.expect("a repository"), target.remote.as_deref(), options, &target.output).await
+        }
+        ClientCommand::Bisect { good, bad, workflow, target } => {
+            let (api, repo) = connect(&target, true)?;
+            super::bisect::bisect(&api, &repo.expect("a repository"), &good, &bad, workflow.as_deref(), &target.output).await
+        }
+        ClientCommand::Task { command, target } => {
+            let (api, repo) = connect(&target, true)?;
+            super::task::task(&api, &repo.expect("a repository"), target.remote.as_deref(), command, &target.output).await
         }
         ClientCommand::Api { path, method, raw_fields, fields, input, target } => {
             let needs_repo = path.contains("{owner}") || path.contains("{repo}");

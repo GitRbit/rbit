@@ -44,6 +44,8 @@ mod archive_files;
 // Actions: run page.
 mod artifact_ports;
 pub mod artifacts;
+// Agent loop: bisection from recorded results.
+pub mod bisect;
 pub mod trigger_details;
 // Actions: shared cache.
 pub mod browse;

@@ -3981,6 +3981,73 @@
           }
         }
       }
+    },
+    "/repos/{owner}/{repo}/agent/bisect": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "getAgentBisect",
+        "tags": [
+          "actions"
+        ],
+        "summary": "rbit's own: what CI already recorded between a good and a bad commit",
+        "description": "`schema: rbit.bisect/1`: walks `bad`'s first-parent line down to `good` (at most 1,000 commits, `truncated` beyond) and reads the finished runs already recorded for each commit (of `workflow` only, when given). A commit `passed` with a successful run and no failed one, `failed` with a failed one, and is `untested` otherwise. Answers the newest commit that passed before the first that failed (`last_good`), that failure (`first_bad`), how many untested commits lie between them (`remaining`, the first 50 in `remaining_shas`), the one to test next (`next`, the middle), and `culprit` when none is left to test.",
+        "parameters": [
+          {
+            "name": "good",
+            "in": "query",
+            "required": true,
+            "description": "A commit, branch or tag known to pass.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bad",
+            "in": "query",
+            "required": true,
+            "description": "A commit, branch or tag known to fail.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "workflow",
+            "in": "query",
+            "description": "Only this workflow's runs, by path (`.rbit/workflows/ci.yml`).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The bisection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
     }
   },
   "components": {

@@ -15,6 +15,7 @@
 //! platform, so it always speaks the API of the server it ships with.
 
 mod agent;
+mod bisect;
 mod ci;
 mod commands;
 mod failure;
@@ -25,6 +26,7 @@ mod pulls;
 mod runs;
 mod runs_view;
 mod status;
+mod task;
 mod util;
 
 use std::time::Duration;

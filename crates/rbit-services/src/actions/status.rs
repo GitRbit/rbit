@@ -67,7 +67,14 @@ impl ActionsService {
     /// The status of `branch` of `repo` (the default branch when `None`).
     pub async fn branch_status(&self, repo: &RepoContext, branch: Option<&str>) -> Result<BranchStatus, ServiceError> {
         let branch = branch.map_or_else(|| repo.repo.repo.default_branch.clone(), str::to_owned);
-        let head = repo.reader.commit_id(format!("refs/heads/{branch}")).await?;
+        let head = match repo.reader.commit_id(format!("refs/heads/{branch}")).await {
+            Ok(head) => head,
+            Err(error) => {
+                // Logged with Git's own words: a branch just pushed should always resolve.
+                tracing::info!(%error, branch, repo = %repo.repo.full_name(), "status asked for a branch that does not resolve");
+                return Err(error.into());
+            }
+        };
         let database = &self.ctx().database;
         let pull = database
             .pulls()

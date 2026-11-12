@@ -16,6 +16,8 @@
 //! Git configuration is consulted, which keeps behaviour deterministic and closes a
 //! class of configuration-injection attacks.
 
+// Agent loop: ancestry and bisection ranges.
+pub mod ancestry;
 pub mod archive;
 pub mod blame;
 pub mod changes;
