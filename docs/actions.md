@@ -145,7 +145,10 @@ A job's `name`, `runs-on`, `strategy` (a matrix from `fromJSON(needs.setup.outpu
 `timeout-minutes`, `continue-on-error`, `concurrency`, `container`, `services` and
 `environment` may read `needs`, as on GitHub: such a job is planned when the jobs it needs are
 done, with their outputs, and a plan that cannot be made (a matrix that is not JSON) fails it.
-A called workflow's jobs cannot do this yet.
+A called workflow's jobs cannot do this yet. A matrix that leaves no combination (a dimension
+with no values and no `include`, or an `exclude` that removes every one) is an error, as on
+GitHub: a job planned from its needs fails, and a matrix known when the run starts fails the
+run's workflow. It never runs one job without a matrix.
 
 A job without its own `if:` runs only when every job it needs succeeded (`success()`);
 `if: always()`, `failure()` and `cancelled()` change that. The server decides a job's `if:`

@@ -11,8 +11,9 @@
 //!   runs only: the adapter passes none otherwise), `matrix`, `strategy` and `needs`, with
 //!   the status functions reading the needed jobs' results ([`condition_contexts`]).
 //!   `secrets` are never evaluated on the server.
-//! * A job planned from its needs whose matrix is empty is skipped; one that cannot be
-//!   planned, or would pass the run's job limit, fails ([`deferred_verdict`]).
+//! * A job planned from its needs whose plan has no job is skipped; one that cannot be
+//!   planned (a matrix with no combination is a plan error, as on GitHub), or would pass the
+//!   run's job limit, fails ([`deferred_verdict`]).
 //! * Once a matrix job fails, its unfinished siblings (same job key) are cancelled unless
 //!   the job's strategy turned `fail-fast` off ([`fail_fast_candidates`], [`fail_fast_applies`]).
 use std::collections::{BTreeMap, BTreeSet};

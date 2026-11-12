@@ -87,7 +87,31 @@ fn evaluate_strings(value: &Value, contexts: &dyn Contexts) -> Result<Value, cra
     })
 }
 
-/// Expands a matrix within `limits` (see the module documentation for the rules).
+/// The combinations of job `job_id`'s `strategy.matrix`, resolved with `contexts`. A matrix
+/// that leaves no combination (a dimension without values and no `include`, or an `exclude`
+/// that removes them all) is an error, as on GitHub: it never runs one job without a matrix.
+pub fn expand(
+    matrix: &Matrix,
+    contexts: &dyn Contexts,
+    job_id: &str,
+    limits: &Limits,
+    deadline: &Deadline,
+) -> Result<Vec<Combination>, WorkflowError> {
+    let axes = Axes::resolve(matrix, contexts, job_id)?;
+    let found = combinations(&axes, limits, deadline)?;
+    if found.is_empty() {
+        let why = match axes.dimensions.iter().find(|(_, values)| values.is_empty()) {
+            Some((key, _)) => format!("`{key}` has no values"),
+            None => "`exclude` removes every combination".to_owned(),
+        };
+        let message = format!("job `{job_id}`: `strategy.matrix`: {why}, so the job has nothing to run");
+        return Err(WorkflowError::plan(message, Some(matrix.at)));
+    }
+    Ok(found)
+}
+
+/// Expands a matrix within `limits` (see the module documentation for the rules); an empty
+/// list when nothing is left (see [`expand`]).
 pub fn combinations(axes: &Axes, limits: &Limits, deadline: &Deadline) -> Result<Vec<Combination>, WorkflowError> {
     let too_many = || WorkflowError::limit(format!("a matrix may have at most {} combinations", limits.max_combinations), axes.at);
     let product = axes.dimensions.iter().try_fold(1usize, |count, (_, values)| count.checked_mul(values.len()));
@@ -130,9 +154,6 @@ pub fn combinations(axes: &Axes, limits: &Limits, deadline: &Deadline) -> Result
     combinations.extend(extra);
     if combinations.len() > limits.max_combinations {
         return Err(too_many());
-    }
-    if combinations.is_empty() {
-        combinations.push(Combination::new());
     }
     combinations.sort_by_cached_key(matrix_name);
     Ok(combinations)

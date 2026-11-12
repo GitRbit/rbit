@@ -198,7 +198,7 @@ sweeper's zombie and timeout passes; this slice owns the rest of what the first 
 | A job's own `if:`: true runs, false skips, unevaluable fails | `conditions::evaluate_condition` | `scheduling::jobs::condition_verdict` |
 | The contexts an `if:` reads (`github` without any token, `inputs`, `vars`, `matrix`, `strategy`, `needs` and the needs-derived status) | `conditions::condition_contexts` | `jobs::condition_contexts` (services read the parts in the same order) |
 | The calls' own `if:`, outermost first, each level with its outer inputs, and the failure message naming the call | `calls::call_conditions` | `jobs::calls_allow`; `jobs::calls_verdict` maps it to skip or fail |
-| A job planned from its needs: an empty matrix skips, a failed plan fails | `conditions::expand_deferred` | `jobs::deferred_verdict` |
+| A job planned from its needs: a failed plan fails it, an empty matrix included (an empty matrix is a plan error, as on GitHub) | `conditions::expand_deferred` | `jobs::deferred_verdict` |
 | Fail-fast: failed keys in key order, only with unfinished siblings, only for a real matrix with `fail-fast` on | `conditions::fail_fast` | `jobs::{fail_fast_candidates, fail_fast_applies}` |
 | `needs.<id>.result` names | `conditions::result_name`, `calls::result_name` (two copies) | `jobs::result_name` |
 | Cancel, rerun and approval rules and messages | `runs.rs` | `scheduling::requests::{check_rerun, check_approval, ALREADY_FINISHED, NO_MATCHING_JOB, NOT_AWAITING_APPROVAL}` |

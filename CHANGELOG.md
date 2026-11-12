@@ -129,6 +129,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Promoting an artifact with two files of one name (`linux/app`, `macos/app`) is refused;
   one overwrote the other. `agent/branch-update` answers 422 for an id that is not a full
   commit id, not 500.
+- A matrix that leaves no combination, such as a dimension with no values
+  (`fromJSON(needs.gen.outputs.m)` giving `{"item": []}`) or an `exclude` that removes
+  every combination, is a plan error, as on GitHub: the job fails. It ran once with an
+  empty `matrix` and succeeded.
 - A scratch commit whose `Rbit-CI-Jobs` trailer names no job of its workflows (`rbit ci
   run --jobs nope`) reads `none_expected` with the reason at once. Its decision was
   recorded as runs started, so the watch said `not_started` ("runs were started for this

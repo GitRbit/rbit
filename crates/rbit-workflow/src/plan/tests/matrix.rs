@@ -33,8 +33,10 @@ fn matrix_expansion_table() {
         ),
         // Only includes: each is a combination.
         ("        include:\n          - {os: a}\n          - {os: b, v: 1}", &["os=a", "os=b,v=1"]),
-        // An empty dimension leaves nothing but the includes, or one empty combination.
-        ("        os: []", &[""]),
+        // An empty dimension leaves nothing but the includes, or nothing at all (which
+        // planning refuses: see `an_empty_matrix_is_an_error`).
+        ("        os: []", &[]),
+        ("        os: [a, b]\n        exclude:\n          - {os: a}\n          - {os: b}", &[]),
         ("        os: []\n        include:\n          - {os: z}", &["os=z"]),
         // Values compare as data: 1.10 equals 1.1, 1 does not equal '1'.
         ("        v: [1.10, 2]\n        exclude:\n          - {v: 1.1}", &["v=2"]),
@@ -60,7 +62,8 @@ fn evaluated_matrices_are_checked() {
         ("{os: '${{ inputs.target }}'}", "`os` must be a list"),
         ("{os: [a], include: '${{ fromJSON(''[1]'') }}'}", "`include` must be a list of mappings"),
         ("{os: [a], exclude: '${{ fromJSON(''[{\"v\": 1}]'') }}'}", "`v` is not a matrix dimension"),
-        ("{os: '${{ fromJSON(''[]'') }}', include: []}", ""),
+        ("{os: '${{ fromJSON(''[]'') }}', include: [{os: z}]}", ""),
+        ("{os: '${{ fromJSON(''[]'') }}', include: []}", "`os` has no values"),
         ("'${{ fromJSON(inputs.target) }}'", "fromJSON"),
     ];
     for (matrix, message) in cases {
@@ -92,6 +95,38 @@ fn matrix_limits() {
     assert_eq!(error.kind, crate::ErrorKind::Limit);
     let expired = Deadline::at(std::time::Instant::now().checked_sub(std::time::Duration::from_secs(1)).unwrap());
     assert_eq!(plan(&workflow(source), &run_context(), &Limits::default(), &expired).unwrap_err().kind, crate::ErrorKind::Timeout);
+}
+
+#[test]
+fn an_empty_matrix_is_an_error() {
+    // GitHub fails such a job; it never runs once with an empty `matrix`.
+    let job = |strategy: &str| format!("on: push\njobs:\n  j:\n    runs-on: x\n    strategy: {strategy}\n    steps: [{{run: x}}]\n");
+    let cases = [
+        ("{matrix: {os: []}}", "`os` has no values"),
+        ("{matrix: {os: [a, b], exclude: [{os: a}, {os: b}]}}", "`exclude` removes every combination"),
+        ("{matrix: {os: [a], v: [], include: []}}", "`v` has no values"),
+    ];
+    for (strategy, message) in cases {
+        let error = plan(&workflow(&job(strategy)), &run_context(), &Limits::default(), &Deadline::NONE).unwrap_err();
+        assert_eq!(error.kind, crate::ErrorKind::Plan, "{strategy}");
+        assert!(error.message.starts_with("job `j`: `strategy.matrix`: ") && error.message.contains(message), "{strategy}: {error}");
+    }
+    // A job without a matrix still runs once.
+    assert_eq!(planned("on: push\njobs:\n  j:\n    runs-on: x\n    steps: [{run: x}]\n").len(), 1);
+
+    // A matrix from a need's output that turns out empty: the job's plan fails, so the job
+    // fails rather than running without a matrix.
+    let source = "on: push\njobs:\n  gen:\n    runs-on: x\n    steps: [{run: x}]\n  use:\n    needs: gen\n    runs-on: x\n    strategy: {matrix: '${{ fromJSON(needs.gen.outputs.m) }}'}\n    steps: [{run: x}]\n";
+    let needs = |m: &str| json!({ "gen": { "result": "success", "outputs": { "m": m } } });
+    let deferred = |m: &str| {
+        let contexts = run_context().contexts().with("needs", needs(m));
+        super::super::planning::plan_deferred(&workflow(source), "use", &contexts, 2, &Limits::default(), &Deadline::NONE)
+    };
+    let error = deferred(r#"{"item": []}"#).unwrap_err();
+    assert!(error.message.contains("`item` has no values"), "{error}");
+    let error = deferred(r#"{"item": [1], "exclude": [{"item": 1}]}"#).unwrap_err();
+    assert!(error.message.contains("`exclude` removes every combination"), "{error}");
+    assert_eq!(deferred(r#"{"item": [1, 2]}"#).unwrap().len(), 2);
 }
 
 #[test]
