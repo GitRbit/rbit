@@ -54,8 +54,13 @@ pub async fn failure(api: &Api, repo: &Repo, run: Option<i64>, sha: Option<Strin
         return Err(agent::outcome("pending", message, Some(format!("rbit run watch --sha {sha}"))));
     }
     let mut digests = Vec::new();
-    for run in runs.iter().filter(|run| run["status"] == "completed" && run["conclusion"] != "success") {
-        digests.push(api.get(&format!("repos/{repo}/actions/runs/{}/failure", run["id"])).await?);
+    // A run still going counts as soon as one of its jobs failed, as `status` and the watch
+    // say `failure` then: its digest already names the job.
+    for run in runs.iter().filter(|run| run["conclusion"] != "success") {
+        let digest = api.get(&format!("repos/{repo}/actions/runs/{}/failure", run["id"])).await?;
+        if run["status"] == "completed" || failed(&digest) {
+            digests.push(digest);
+        }
     }
     let pending = runs.iter().any(|run| run["status"] != "completed");
     let state = if !digests.is_empty() {

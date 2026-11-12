@@ -99,8 +99,9 @@ rbit run log JOB --step N [--tail K | --from LINE [--lines K]] [--attempt A] [--
 ended (the reason, the step and its exit code, whether its log is complete), its error
 annotations (`path:line: message`) and the last 30 lines of the step that ended it, cleaned
 of timestamps and colours, with repeated lines folded. Without an id it covers every failed
-run of `--sha` or `HEAD`. It exits with 1 when something failed, 0 when nothing did, 8
-while a run has not finished, and 9 when a failure's log is incomplete or nobody recorded
+run of `--sha` or `HEAD`, including a run still going once one of its jobs failed (as
+`status` and `run watch` report it). It exits with 1 when something failed, 0 when nothing
+did, 8 while a run has not finished and nothing failed yet, and 9 when a failure's log is incomplete or nobody recorded
 its cause (a lost runner): then the answer is not the whole story. `run log` reads one
 step's lines, the last 100 by default, of any attempt.
 
@@ -118,7 +119,8 @@ newer commit (`head_changed`, exit 5, naming it; watching `HEAD` follows the cur
 branch. `--log-failed` prints the logs of the jobs that did not succeed (failed, timed out
 or cancelled), each line prefixed with its job's name. `rerun --job` wins over `--failed`
 when both are given; `rerun` without a run id reruns every failed or cancelled run of `--sha`
-or `HEAD`.
+or `HEAD`; while its run has not finished it says so (`pending`, exit 8) rather than that
+nothing failed.
 
 A job that uploads its JUnit report as an artifact named `rbit-test-report` (with
 `actions/upload-artifact`, `if: always()`) gets its failed tests in `run failure`: the test,

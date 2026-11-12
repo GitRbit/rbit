@@ -69,6 +69,27 @@ async fn workflow_file(api: &Api, repo: &Repo, workflow: &str) -> anyhow::Result
     Ok(path.rsplit('/').next().unwrap_or(&path).to_owned())
 }
 
+/// The runs `rerun` starts again: `run`, or the ended runs of `sha` that did not succeed. A
+/// failed job in a run still going (the watch stops at the first failure) is no "nothing to
+/// rerun": the run is rerun once it ended.
+async fn rerun_targets(api: &Api, repo: &Repo, run: Option<i64>, sha: Option<String>) -> anyhow::Result<Vec<i64>> {
+    if let Some(run) = run {
+        return Ok(vec![run]);
+    }
+    let found = resolve(api, repo, None, sha).await?;
+    let ended: Vec<i64> = found
+        .iter()
+        .filter(|found| matches!(found["conclusion"].as_str(), Some("failure" | "cancelled" | "timed_out")))
+        .filter_map(|found| found["id"].as_i64())
+        .collect();
+    if let Some(going) = found.iter().find(|found| found["status"] != "completed").filter(|_| ended.is_empty()) {
+        let sha = text(going, "head_sha");
+        let message = format!("run {} of {} has not finished; rerun it once it has", going["id"], short(sha));
+        return Err(agent::outcome("pending", message, Some(format!("rbit run watch --sha {sha}"))));
+    }
+    Ok(ended)
+}
+
 pub async fn runs(api: &Api, repo: &Repo, command: RunCommand, out: &Output) -> anyhow::Result<i32> {
     match command {
         RunCommand::List { workflow, branch, event, status, sha, limit } => {
@@ -128,15 +149,7 @@ pub async fn runs(api: &Api, repo: &Repo, command: RunCommand, out: &Output) -> 
                 );
                 return Ok(0);
             }
-            let runs: Vec<i64> = match run {
-                Some(run) => vec![run],
-                None => resolve(api, repo, None, sha)
-                    .await?
-                    .iter()
-                    .filter(|found| matches!(found["conclusion"].as_str(), Some("failure" | "cancelled" | "timed_out")))
-                    .filter_map(|found| found["id"].as_i64())
-                    .collect(),
-            };
+            let runs = rerun_targets(api, repo, run, sha).await?;
             for run in &runs {
                 let path = if failed { format!("runs/{run}/rerun-failed-jobs") } else { format!("runs/{run}/rerun") };
                 api.json(Method::POST, &actions(repo, &path), Some(&json!({}))).await?;

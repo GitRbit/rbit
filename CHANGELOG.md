@@ -106,6 +106,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `rbit run failure --sha` reads a failure as soon as a job failed, as `status` and the
+  watch do; it answered `pending` until every job of the run had ended. `rbit run rerun`
+  on a commit whose failed run is still going says it has not finished (exit 8) instead of
+  "No failed run to rerun".
 - A failed matrix leg no longer shows as passing: legs under one fixed `name:` share a
   commit status context, and each leg posted its own state there, so whichever finished
   last won. A passing leg after a failed one made the context, the combined status and any
