@@ -13,6 +13,7 @@
 //!
 //! Everything is read with the caller's rights, as the GitHub-shaped endpoints are.
 
+use rbit_services::tokens::Right;
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -62,6 +63,7 @@ impl AgentPath {
 
 /// `GET …/actions/runs/{run_id}/failure`
 pub async fn failure(State(state): State<AppState>, caller: Caller, Path(path): Path<AgentPath>) -> ApiResult<Json<Value>> {
+    caller.require_right(Right::ReadLogs)?;
     let ctx = path.repo(&state, &caller).await?;
     let digest = actions(&state)?.failure_digest(&ctx, RunId(AgentPath::number(path.run_id.as_deref())?)).await?;
     let run = &digest.run;
@@ -150,6 +152,7 @@ pub async fn step_log(
     Path(path): Path<AgentPath>,
     Query(query): Query<StepLogQuery>,
 ) -> ApiResult<Json<Value>> {
+    caller.require_right(Right::ReadLogs)?;
     let ctx = path.repo(&state, &caller).await?;
     let job = JobId(AgentPath::number(path.job_id.as_deref())?);
     let number = AgentPath::number(path.step.as_deref())?;

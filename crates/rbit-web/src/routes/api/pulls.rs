@@ -1,11 +1,9 @@
-//! REST API: Pull requests, reviews, review comments, requested reviewers and merging:
-//! `/repos/{owner}/{repo}/pulls…`.
+//! REST API: Pull requests, reviews, review comments, requested reviewers and merging: `/repos/{owner}/{repo}/pulls…`.
 //!
 //! Milestone 2 workstream P (pull requests) owns this file and `openapi/pulls.json`, the `OpenAPI`
 //! fragment documenting exactly these routes (merged into the served document).
 //!
-//! A child of `api`, so it can use the parent's private `route()` helper, `Caller`,
-//! `Pager`, `ApiError` and `ApiJson`.
+//! A child of `api`, so it can use the parent's private `route()` helper, `Caller`, `Pager`, `ApiError` and `ApiJson`.
 //!
 //! Reads need read access; every change needs a token with the `write` scope (merging
 //! also write access to the base repository). Repositories and pull request numbers the
@@ -24,6 +22,7 @@ use rbit_core::{
 use rbit_git::{ChangeStatus, DiffLimits, FileDiffBody, diff::LineKind};
 use rbit_services::{
     RepoContext, ServiceError,
+    tokens::Right,
     pulls::{
         LineComment, MergeFailure, MergeInput, NewPullInput, PullContext, PullFilter, PullSort, PullStateFilter, ReviewVerdict,
         json as pull_json,
@@ -330,6 +329,7 @@ pub async fn merge(
     Path((owner, name, number)): Path<(String, String, String)>,
     ApiJson(request): ApiJson<MergeRequest>,
 ) -> ApiResult<Json<Value>> {
+    caller.require_right(Right::Merge)?;
     let ctx = open(&state, &caller, &owner, &name, &number).await?;
     let user = writer(&caller)?;
     let method = request.merge_method.as_deref().unwrap_or("merge");

@@ -65,6 +65,33 @@ fn stored_files<R: Read>(source: R, mut each: impl FnMut(File<'_, flate2::read::
     Ok(())
 }
 
+// Agent loop: promoting an artifact.
+/// Writes the files of the stored tar.gz `source` into directory `dir` (flattened to their
+/// file names), at most `max_files`; each file's name and path, in order.
+///
+/// # Errors
+///
+/// What reading `source` or writing a file fails with, and [`io::ErrorKind::InvalidData`]
+/// for more than `max_files` files.
+pub fn extract_files<R: Read>(source: R, dir: &std::path::Path, max_files: usize) -> io::Result<Vec<(String, std::path::PathBuf)>> {
+    let mut written = Vec::new();
+    stored_files(source, |mut file| {
+        if written.len() == max_files {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, format!("the artifact has more than {max_files} files")));
+        }
+        let name = String::from_utf8_lossy(&file.name).rsplit('/').next().unwrap_or_default().to_owned();
+        if name.is_empty() || name.starts_with('.') {
+            return Ok(());
+        }
+        let path = dir.join(&name);
+        let mut out = std::fs::File::create(&path)?;
+        io::copy(&mut file.data, &mut out)?;
+        written.push((name, path));
+        Ok(())
+    })?;
+    Ok(written)
+}
+
 /// Reads the stored tar.gz `source` and writes its files as a zip to `out`.
 ///
 /// # Errors

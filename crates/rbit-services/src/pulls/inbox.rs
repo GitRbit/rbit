@@ -64,7 +64,7 @@ pub struct InboxThread {
     pub anchor: Anchor,
 }
 
-fn status_name(status: &ChangeStatus) -> &'static str {
+fn status_name(status: ChangeStatus) -> &'static str {
     match status {
         ChangeStatus::Added => "added",
         ChangeStatus::Deleted => "removed",
@@ -110,7 +110,7 @@ impl PullService {
             .map(|(index, file)| ManifestFile {
                 path: file.path.clone(),
                 old_path: file.old_path.clone(),
-                status: status_name(&file.status),
+                status: status_name(file.status),
                 additions: file.additions,
                 deletions: file.deletions,
                 stats_known: file.stats_known,

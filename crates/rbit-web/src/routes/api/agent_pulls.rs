@@ -9,6 +9,7 @@
 //! * `GET …/agent/compare`, `…/agent/contains` and `…/agent/commits/{sha}/pulls` answer
 //!   ancestry questions without a diff.
 
+use rbit_services::tokens::Right;
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -100,6 +101,7 @@ pub async fn ensure(
     Path(path): Path<RepoPath>,
     ApiJson(request): ApiJson<EnsurePull>,
 ) -> ApiResult<(StatusCode, Json<Value>)> {
+    caller.require_right(Right::Push)?;
     let base = caller.open_repo(&state, &path.owner, &path.repo).await?;
     let user = caller.require(TokenScope::Write)?;
     if request.request_id.as_ref().is_some_and(|id| id.is_empty() || id.len() > 200) {
@@ -228,6 +230,7 @@ pub async fn ready(
     Path(path): Path<PullPath>,
     ApiJson(request): ApiJson<ReadyRequest>,
 ) -> ApiResult<Json<Value>> {
+    caller.require_right(Right::Merge)?;
     let user = caller.require(TokenScope::Write)?;
     let ctx = open_pull(&state, &caller, &path).await?;
     same_head(&ctx, request.head.as_deref())?;
@@ -275,6 +278,7 @@ pub async fn enqueue(
     Path(path): Path<PullPath>,
     ApiJson(request): ApiJson<QueueRequest>,
 ) -> ApiResult<(StatusCode, Json<Value>)> {
+    caller.require_right(Right::Merge)?;
     let user = caller.require(TokenScope::Write)?;
     let ctx = open_pull(&state, &caller, &path).await?;
     let method = request.merge_method.as_deref().unwrap_or("merge");
@@ -300,6 +304,7 @@ pub async fn queue_place(State(state): State<AppState>, caller: Caller, Path(pat
 /// `DELETE /repos/{owner}/{repo}/pulls/{number}/queue`: takes it out of line (`204`), `404`
 /// when it was not in line.
 pub async fn dequeue(State(state): State<AppState>, caller: Caller, Path(path): Path<PullPath>) -> ApiResult<StatusCode> {
+    caller.require_right(Right::Merge)?;
     let user = caller.require(TokenScope::Write)?;
     let ctx = open_pull(&state, &caller, &path).await?;
     if state.services.pulls.dequeue(user, &ctx).await? { Ok(StatusCode::NO_CONTENT) } else { Err(ApiError::not_found()) }

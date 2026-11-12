@@ -612,6 +612,138 @@
           }
         }
       }
+    },
+    "/repos/{owner}/{repo}/agent/artifacts": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "getArtifactOfCommit",
+        "tags": [
+          "releases"
+        ],
+        "summary": "rbit's own: the artifact a commit's CI built, by name",
+        "description": "`schema: rbit.artifact/1`: the newest artifact named `name` from a run of commit `sha` (a full id or a prefix of at least 7 digits): `id`, `name`, `size_in_bytes`, `run_id` and its `archive_download_url`. `404` when Actions is off or no run of the commit kept one.",
+        "parameters": [
+          {
+            "name": "sha",
+            "in": "query",
+            "required": true,
+            "description": "The commit (7 digits or more).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "description": "The artifact's name.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The artifact",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/releases/{release_id}/assets/from-artifact": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "release_id",
+          "in": "path",
+          "required": true,
+          "description": "The release id",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ],
+      "post": {
+        "operationId": "promoteArtifact",
+        "tags": [
+          "releases"
+        ],
+        "summary": "rbit's own: attach a built artifact's files to a release",
+        "description": "`schema: rbit.promoted/1`. Body: `artifact_id`. Attaches every file of the artifact (at most 20) to the release as it was built, under its file name, so the release ships what CI tested instead of a rebuild. Release limits apply per file. Answers the `artifact` and the `assets` made.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The assets attached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
     }
   },
   "components": {

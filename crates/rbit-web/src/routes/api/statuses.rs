@@ -6,8 +6,7 @@
 //! `openapi/statuses.json`, the `OpenAPI` fragment documenting exactly these routes
 //! (merged into the served document).
 //!
-//! A child of `api`, so it can use the parent's private `route()` helper, `Caller`,
-//! `Pager`, `ApiError` and `ApiJson`.
+//! A child of `api`, so it can use the parent's private `route()` helper, `Caller`, `Pager`, `ApiError` and `ApiJson`.
 //!
 //! Creating needs a token with the `write` scope and write access; reading needs read
 //! access. Repositories the caller may not see are 404, unknown references too.
@@ -24,7 +23,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use rbit_core::{TokenScope, status::CommitStatus};
-use rbit_services::{RepoContext, ServiceError, statuses::NewStatus, statuses::hooks};
+use rbit_services::{RepoContext, ServiceError, statuses::NewStatus, statuses::hooks, tokens::Right};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -104,6 +103,7 @@ pub async fn create(
     Path((owner, name, sha)): Path<(String, String, String)>,
     ApiJson(body): ApiJson<StatusBody>,
 ) -> ApiResult<Response> {
+    caller.require_right(Right::Statuses)?;
     let ctx = caller.open_repo(&state, &owner, &name).await?;
     let input = NewStatus { state: body.state, target_url: body.target_url, description: body.description, context: body.context };
     // Actions: task tokens. A workflow's status is rbit Actions', not a person's.

@@ -32,7 +32,11 @@ use axum::{
     http::{HeaderValue, Method, header, request::Parts},
 };
 use rbit_core::{RepoAccess, TokenScope, User};
-use rbit_services::{RepoContext, ServiceError, ThrottleScope, actions::tokens::TaskGrant};
+use rbit_services::{
+    RepoContext, ServiceError, ThrottleScope,
+    actions::tokens::TaskGrant,
+    tokens::{Right, TokenLimit},
+};
 
 use super::{
     ApiMethod, PREFIX,
@@ -49,6 +53,8 @@ pub struct Caller {
     // Actions: S.
     /// A workflow task, and what the endpoint it calls needs of it.
     task: Option<(TaskGrant, TaskNeed)>,
+    /// A scoped token's limit: one repository, some rights (agent plan step 4.8).
+    token_limit: Option<TokenLimit>,
     /// The request being answered, for redirects from old repository names.
     request: Arc<RequestTarget>,
 }
@@ -117,6 +123,22 @@ impl Caller {
         }
     }
 
+    // Agent loop: scoped tokens.
+    /// Refuses (403) a limited token without `right`; any other caller passes.
+    pub fn require_right(&self, right: Right) -> ApiResult<()> {
+        match &self.token_limit {
+            Some(limit) if !limit.allows(right) => {
+                Err(ApiError::forbidden(format!("This token is limited and does not have the `{}` right", right.as_str())))
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// Whether the caller's token is limited to a repository or some rights.
+    pub fn is_limited(&self) -> bool {
+        self.token_limit.is_some()
+    }
+
     /// Caps what the caller may do with a repository to the token's scope.
     pub fn limit(&self, access: RepoAccess) -> RepoAccess {
         self.scope.map_or(access, |scope| scope.limit(access))
@@ -140,7 +162,11 @@ impl Caller {
         }
         let repositories = &state.services.repositories;
         match repositories.open(self.user(), owner, name).await {
+            // A limited token sees only its repository; the rest is not there for it.
             Ok(mut ctx) => {
+                if self.token_limit.as_ref().is_some_and(|limit| !limit.reaches(ctx.repo.repo.id)) {
+                    return Err(ApiError::not_found());
+                }
                 ctx.access = self.limit(ctx.access);
                 Ok(ctx)
             }
@@ -222,12 +248,12 @@ impl FromRequestParts<AppState> for Caller {
             return Ok(Self { task: Some((grant, need)), request, ..Self::default() });
         }
         throttle.check_client(ThrottleScope::ApiAuth, &address)?;
-        let Some((user, scope)) = state.services.tokens.authenticate(token).await? else {
+        let Some((user, scope, token_limit)) = state.services.tokens.authenticate_limited(token).await? else {
             throttle.record_client_failure(ThrottleScope::ApiAuth, &address);
             return Err(ApiError::unauthorized("Bad credentials"));
         };
         throttle.check(ThrottleScope::ApiRequest, &user.id().0.to_string())?;
-        Ok(Self { user: Some(Arc::new(user)), scope: Some(scope), task: None, request })
+        Ok(Self { user: Some(Arc::new(user)), scope: Some(scope), task: None, token_limit, request })
     }
 }
 

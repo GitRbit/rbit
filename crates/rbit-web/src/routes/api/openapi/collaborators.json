@@ -253,6 +253,124 @@
           }
         }
       }
+    },
+    "/user/tokens": {
+      "get": {
+        "operationId": "listUserTokens",
+        "tags": [
+          "users"
+        ],
+        "summary": "rbit's own: your personal access tokens",
+        "description": "`schema: rbit.tokens/1`: the caller's tokens, newest first, with `scope`, `expires_at`, `last_used_at`, and for a limited token its `repository_id` and `rights`; never a secret. Needs an unlimited `admin` token.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The tokens",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createUserToken",
+        "tags": [
+          "users"
+        ],
+        "summary": "rbit's own: create a personal access token, optionally limited",
+        "description": "`schema: rbit.token/1`. Body: `name`, `scope` (`read`, `write`, `admin`), `expires_in_days` (7, 30, 90, 365, or none), and to limit it: `repository` (`owner/name`, the only repository it reaches; others answer 404, and Git refuses them) and `rights` (`push`, `statuses`, `merge`, `dispatch`, `approve`, `read_logs`; all of them when a repository is given without rights). The secret is in `token`, shown this once. Needs an unlimited `admin` token, so a limited token never makes a broader one.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/user/tokens/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "The token id",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ],
+      "delete": {
+        "operationId": "revokeUserToken",
+        "tags": [
+          "users"
+        ],
+        "summary": "rbit's own: revoke a personal access token",
+        "description": "Revokes one of the caller's tokens; it stops working at once. Needs an unlimited `admin` token.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
     }
   },
   "components": {

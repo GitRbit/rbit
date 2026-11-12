@@ -34,6 +34,7 @@
 //! * `actions/cache` entries are listed and deleted as on GitHub (`…/actions/caches`,
 //!   `…/actions/cache/usage`); deleting needs `write` and write access.
 
+use rbit_services::tokens::Right;
 use std::collections::BTreeMap;
 
 use axum::{
@@ -347,6 +348,7 @@ pub async fn job_logs(
     headers: HeaderMap,
     Path(path): Path<ActionsPath>,
 ) -> ApiResult<Response> {
+    caller.require_right(Right::ReadLogs)?;
     let ctx = path.repo(&state, &caller).await?;
     let actions = actions(&state)?;
     let detail = actions.job_detail(&ctx, path.job()?).await?;
@@ -360,6 +362,7 @@ pub async fn job_logs(
 /// `GET /repos/{owner}/{repo}/actions/runs/{run_id}/logs`: a zip with each job's log as
 /// `<n>_<job name>.txt`, sent itself rather than through GitHub's redirect.
 pub async fn run_logs(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Response> {
+    caller.require_right(Right::ReadLogs)?;
     let ctx = path.repo(&state, &caller).await?;
     let actions = actions(&state)?;
     let run = actions.run_by_id(&ctx, path.run()?).await?.run;
@@ -437,17 +440,20 @@ async fn rerun_jobs(state: &AppState, caller: &Caller, path: &ActionsPath, run: 
 /// `POST /repos/{owner}/{repo}/actions/runs/{run_id}/rerun`: `201 Created`; every job
 /// runs again as a new attempt.
 pub async fn rerun(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Response> {
+    caller.require_right(Right::Approve)?;
     rerun_jobs(&state, &caller, &path, path.run()?, Rerun::All).await
 }
 
 /// `POST /repos/{owner}/{repo}/actions/runs/{run_id}/rerun-failed-jobs`: failed and
 /// cancelled jobs and the jobs that need them.
 pub async fn rerun_failed(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Response> {
+    caller.require_right(Right::Approve)?;
     rerun_jobs(&state, &caller, &path, path.run()?, Rerun::Failed).await
 }
 
 /// `POST /repos/{owner}/{repo}/actions/jobs/{job_id}/rerun`: the job and the jobs that need it.
 pub async fn rerun_job(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Response> {
+    caller.require_right(Right::Approve)?;
     let ctx = path.repo(&state, &caller).await?;
     let job = actions(&state)?.job_detail(&ctx, path.job()?).await?.job;
     rerun_jobs(&state, &caller, &path, job.run_id, Rerun::Job(job.id)).await
@@ -456,6 +462,7 @@ pub async fn rerun_job(State(state): State<AppState>, caller: Caller, Path(path)
 /// `POST /repos/{owner}/{repo}/actions/runs/{run_id}/approve`: `201 Created`; a pull
 /// request run waiting for approval starts (still read-only, without secrets).
 pub async fn approve(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Response> {
+    caller.require_right(Right::Approve)?;
     let ctx = path.repo(&state, &caller).await?;
     let actions = actions(&state)?;
     let run = actions.run_by_id(&ctx, path.run()?).await?.run;
@@ -570,6 +577,7 @@ pub async fn dispatch(
     Path(path): Path<ActionsPath>,
     ApiJson(body): ApiJson<DispatchBody>,
 ) -> ApiResult<StatusCode> {
+    caller.require_right(Right::Dispatch)?;
     let ctx = path.repo(&state, &caller).await?;
     let actions = actions(&state)?;
     if !ctx.access.can_read() || !actions.enabled_for(ctx.repo.repo.id).await? {
@@ -692,6 +700,7 @@ pub async fn show_artifact(State(state): State<AppState>, caller: Caller, Path(p
 /// `GET /repos/{owner}/{repo}/actions/artifacts/{artifact_id}/{archive_format}`: the file
 /// itself, as a `zip` (GitHub's format) or the `tar.gz` it is stored as.
 pub async fn download_artifact(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Response> {
+    caller.require_right(Right::ReadLogs)?;
     let ctx = path.repo(&state, &caller).await?;
     let id = path.artifact()?;
     let format = path
