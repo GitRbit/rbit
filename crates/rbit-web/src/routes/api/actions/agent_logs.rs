@@ -4,7 +4,8 @@
 //!   that did not succeed, its termination record, its error annotations and a cleaned
 //!   excerpt of the step that ended it, with a `more` command for the rest.
 //! * `GET …/actions/jobs/{job_id}/steps/{step}/log`: one step's lines (`rbit.log/1`), the
-//!   last `tail` (default 100, at most 1,000) or `lines` from line `from`, of attempt
+//!   last `tail` (default 100, at most 1,000; `0` gives none, only where the log ends) or
+//!   `lines` from line `from`, of attempt
 //!   `attempt` (default the current one). Lines are cleaned of timestamps and colours
 //!   unless `raw=true`.
 //! * `GET …/actions/jobs/{job_id}/annotations`: the annotations of an attempt.
@@ -168,7 +169,13 @@ pub async fn step_log(
         None => (LogRange::Tail, query.tail.unwrap_or(DEFAULT_TAIL)),
     };
     let limit = limit.clamp(1, MAX_TAIL.min(MAX_LINES_PER_CALL));
-    let window = actions.step_log(&ctx, task, number - 1, range, limit, MAX_LOG_BYTES).await?;
+    let mut window = actions.step_log(&ctx, task, number - 1, range, limit, MAX_LOG_BYTES).await?;
+    // `tail=0` asks for no line: only where the log stands (the read takes at least one).
+    if query.from.is_none() && query.tail == Some(0) {
+        window.more_before |= !window.lines.is_empty();
+        window.lines.clear();
+        window.first_line = window.next_line;
+    }
     let lines: Vec<String> =
         if query.raw { window.lines } else { window.lines.iter().map(|line| rbit_services::actions::logs::readable_line(line)).collect() };
     Ok(Json(json!({

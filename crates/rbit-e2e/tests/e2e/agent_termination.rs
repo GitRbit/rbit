@@ -130,6 +130,11 @@ async fn a_failed_job_says_which_step_ended_it_and_with_what_exit_code() {
     assert_eq!(tail["schema"], "rbit.log/1");
     assert_eq!(tail["lines"].as_array().unwrap().len(), 1);
     assert_eq!(tail["more_before"], true, "the step wrote more than one line");
+    let none = get(format!("jobs/{}/steps/{}/log?tail=0", failed["id"], ended["step"])).await;
+    assert_eq!(
+        (none["lines"].as_array().map(Vec::len), none["more_before"].as_bool(), &none["first_line"]),
+        (Some(0), Some(true), &tail["next_line"])
+    );
     let attempts = get(format!("jobs/{}/attempts", failed["id"])).await;
     assert_eq!(attempts["attempts"].as_array().unwrap().len(), 1);
     assert_eq!(

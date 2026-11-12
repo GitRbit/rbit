@@ -129,6 +129,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Promoting an artifact with two files of one name (`linux/app`, `macos/app`) is refused;
   one overwrote the other. `agent/branch-update` answers 422 for an id that is not a full
   commit id, not 500.
+- `GET …/steps/{n}/log?tail=0` (and `rbit run log --tail 0`) answers no line, with
+  `next_line` where the log ends; it answered the last line.
 - A step's own `timeout-minutes` that fails its job now ends it with termination reason
   `timeout` (naming the step), as the job's `timeout-minutes` does, and the job reads
   `conclusion: timed_out`; it read `step_failed`. Needs an updated runner.
