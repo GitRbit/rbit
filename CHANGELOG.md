@@ -112,6 +112,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A job-level `if: failure()` now holds when a job further up its chain failed, even
+  through needs that were skipped because of it, as GitHub documents ("if any ancestor job
+  fails"): a notification job after a chain did not run. `needs.<id>.result` still says
+  `skipped`, and `success()` stays false there.
 - A token limited to one repository could still use account-wide endpoints: it listed
   every repository of its owner, private ones included, and created new (public)
   repositories. It could also cancel runs, create releases and tags without `push`, send

@@ -29,6 +29,10 @@ fn status_functions_follow_the_status() {
     assert_eq!(of_needs(&[JobResult::Skipped, JobResult::Cancelled]), Status::Cancelled);
     assert_eq!(of_needs(&[JobResult::Failure, JobResult::Cancelled, JobResult::Skipped]), Status::Failure);
     assert_eq!(of_needs(&[JobResult::Cancelled, JobResult::Failure]), Status::Failure);
+    // A need skipped because a job before it failed: `failure()` holds, as on GitHub.
+    assert_eq!(of_needs(&[JobResult::Skipped]).with_failed_ancestor(true), Status::Failure);
+    assert_eq!(of_needs(&[JobResult::Skipped]).with_failed_ancestor(false), Status::Skipped);
+    assert_eq!(of_needs(&[JobResult::Success]).with_failed_ancestor(true), Status::Success, "the needs alone decide then");
 }
 
 #[test]

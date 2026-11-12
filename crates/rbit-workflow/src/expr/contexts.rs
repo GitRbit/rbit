@@ -16,7 +16,8 @@ pub enum Status {
     /// The run was cancelled: `cancelled()` is true.
     Cancelled,
     /// A needed job was skipped: `success()`, `failure()` and `cancelled()` are all false,
-    /// so the job is skipped too unless its condition says `always()`.
+    /// so the job is skipped too unless its condition says `always()` (or `failure()` when a
+    /// job further up failed: see [`Status::with_failed_ancestor`]).
     Skipped,
 }
 
@@ -34,6 +35,17 @@ impl Status {
             };
         }
         status
+    }
+
+    /// The status a job's `if` sees when, in addition, a job further up its chain failed:
+    /// a need skipped because of that failure makes `failure()` true, as on GitHub ("if any
+    /// ancestor job fails"); otherwise the needs alone decide.
+    #[must_use]
+    pub const fn with_failed_ancestor(self, failed: bool) -> Self {
+        match self {
+            Self::Skipped if failed => Self::Failure,
+            other => other,
+        }
     }
 }
 

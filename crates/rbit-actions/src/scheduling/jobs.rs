@@ -89,16 +89,17 @@ pub fn deferred_verdict<T, E>(planned: &Result<Vec<T>, E>) -> Option<Verdict> {
 
 /// The contexts a job-level `if:` may read (§12.4, second row of the table). `github` is
 /// the task's context; any `token` key is dropped. `inputs` are the run's, or the called
-/// workflow's for a called job.
+/// workflow's for a called job. `failed_ancestor`: a job further up the needs failed.
 pub fn condition_contexts(
     mut github: Map<String, Value>,
     inputs: Map<String, Value>,
     vars: Map<String, Value>,
     template: &JobTemplate,
     needs: BTreeMap<String, Needed>,
+    failed_ancestor: bool,
 ) -> ContextMap {
     github.retain(|key, _| !key.eq_ignore_ascii_case("token"));
-    let status = Status::of_needs(needs.values().map(|needed| needed.result));
+    let status = Status::of_needs(needs.values().map(|needed| needed.result)).with_failed_ancestor(failed_ancestor);
     let needs: Map<String, Value> =
         needs.into_iter().map(|(key, needed)| (key, json!({ "result": result_name(needed.result), "outputs": needed.outputs }))).collect();
     let strategy = template.strategy;

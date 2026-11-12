@@ -26,7 +26,10 @@
 //!
 //! The server side of the runner protocol (stream S) owns this file.
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use rbit_actions::{
     claims::RunnerClaims,
@@ -232,6 +235,28 @@ impl ActionsService {
             actions_policy: actions_policy(&self.effective_policies(run.repo_id).await?),
         };
         Ok(spec.validate().map(|()| spec).map_err(|error| format!("this job cannot be handed to a runner: {error}")))
+    }
+
+    /// Whether a job anywhere up `template`'s needs failed (any instance), so `failure()` holds
+    /// through needs skipped because of it, as on GitHub. Jobs of called workflows say no.
+    pub(super) async fn failed_ancestor(&self, run: &Run, template: &JobTemplate) -> Result<bool, ServiceError> {
+        if !template.calls.is_empty() || !template.need_names.is_empty() || template.needs.is_empty() {
+            return Ok(false);
+        }
+        let jobs = self.ctx().database.actions_runs().jobs(run.id).await?;
+        let (mut seen, mut todo) = (BTreeSet::new(), template.needs.iter().map(String::as_str).collect::<Vec<_>>());
+        while let Some(key) = todo.pop() {
+            if !seen.insert(key) {
+                continue;
+            }
+            for job in jobs.iter().filter(|job| job.key == key) {
+                if job.status == Status::Failure {
+                    return Ok(true);
+                }
+                todo.extend(job.needs.iter().map(String::as_str));
+            }
+        }
+        Ok(false)
     }
 
     /// The `needs` context: for every needed job, its result over all its matrix instances
