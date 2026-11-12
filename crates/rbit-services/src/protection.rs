@@ -303,6 +303,13 @@ impl ProtectionService {
         Ok(ProtectionGate::new(&store).branch_update_refusal(repo.repo.repo.id, actor.id(), repo.access, branch).await?)
     }
 
+    /// Whether a rule keeps `actor` from rewriting `branch`, as a force push to it would be
+    /// refused. `repo` is opened for the actor.
+    pub async fn denies_force_push(&self, repo: &RepoContext, actor: &User, branch: &str) -> Result<bool, ServiceError> {
+        let store = self.store();
+        Ok(ProtectionGate::new(&store).denies_force_push(repo.repo.repo.id, actor.id(), repo.access, branch).await?)
+    }
+
     /// The names of the repository's existing branches that some rule protects.
     pub async fn protected_branches(&self, repo: &RepoContext) -> Result<Vec<String>, ServiceError> {
         let store = self.store();

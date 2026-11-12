@@ -208,6 +208,8 @@ fn the_gate_loads_teams_only_when_a_rule_names_them() {
     assert_eq!(ready(gate.check_push(1, key, &update)).unwrap().verdict.refusals[0].reason, reasons::RESTRICTED);
     assert_eq!(ready(gate.branch_update_refusal(1, 6, RepoAccess::Write, "main")).unwrap().as_deref(), Some(reasons::RESTRICTED));
     assert!(!ready(gate.may_delete(1, 5, RepoAccess::Write, "main")).unwrap());
+    assert!(ready(gate.denies_force_push(1, 5, RepoAccess::Write, "main")).unwrap(), "a rule keeps `main` from being rewritten");
+    assert!(!ready(gate.denies_force_push(1, 5, RepoAccess::Write, "dev")).unwrap(), "no rule covers `dev`");
     assert!(ready(gate.merge(1, 5, RepoAccess::Write, "main")).unwrap().merger_may_push);
     assert!(!ready(gate.merge(1, 5, RepoAccess::Write, "dev")).unwrap().is_protected());
 }

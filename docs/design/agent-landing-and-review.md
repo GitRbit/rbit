@@ -52,7 +52,7 @@ is made with the merge machinery and handed over by compare-and-swap, and is rep
 push: `POST …/pulls/{n}/update-branch {expected_head}` (merge the base into a same-repository
 head branch), `POST …/agent/revert {commit, base}` (branch `revert-<commit>` with one commit
 undoing it, and a pull request; never merged on its own), `POST …/agent/branch-update
-{branch, sha, expected}`. `rbit pr update-branch`, `rbit pr revert`. Left out: a conditional
+{branch, sha, expected}` (a move that drops commits is a force push: refused where denied). `rbit pr update-branch`, `rbit pr revert`. Left out: a conditional
 change of one file over the API (the web editor's path).
 
 ## 4.5 Queries

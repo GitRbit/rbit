@@ -118,7 +118,8 @@ impl PullService {
     }
 
     /// Moves branch `branch` of `repo` from `expected` to `commit` (both full ids), if a push
-    /// by `actor` would be allowed to.
+    /// by `actor` would be allowed to: a move that drops commits is a force push, refused
+    /// where the branch's protection denies those.
     pub async fn set_branch(
         &self,
         actor: &User,
@@ -129,6 +130,10 @@ impl PullService {
     ) -> Result<(), MergeFailure> {
         self.may_write(repo, actor, branch).await?;
         let commit = repo.reader.commit_id(commit.to_owned()).await.map_err(ServiceError::from)?;
+        let keeps_tip = repo.reader.is_ancestor(expected.to_owned(), commit.clone()).await.unwrap_or(false);
+        if !keeps_tip && self.inner.protection.denies_force_push(repo, actor, branch).await? {
+            return Err(MergeFailure::Blocked("force pushes denied".to_owned()));
+        }
         let pending = self.inner.pushes.begin(repo, PushSource::User(actor.id())).await;
         let lease = self.ctx().repositories.lease(repo.repo.repo.id).await;
         let moved = land(&self.merge_environment(), &repo.disk_path, branch, &commit, expected).await;

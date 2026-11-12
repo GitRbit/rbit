@@ -112,6 +112,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `POST …/agent/branch-update` no longer rewrites a branch whose protection denies force
+  pushes: a move to a commit that does not contain the current tip is refused as `blocked`
+  ("force pushes denied"), as `git push` refuses it. It moved protected `main` to an
+  unrelated commit.
 - A push that updates more than 16 branches and tags starts runs for the first 16 only, as
   before, but no longer leaves the rest waiting in silence: their commits read
   `none_expected` with the reason, so `rbit status` and the watch answer at once, and the
