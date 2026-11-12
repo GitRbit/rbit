@@ -49,7 +49,6 @@ impl Api {
 }
 
 #[tokio::test]
-#[expect(clippy::too_many_lines, reason = "one scenario, told in order")]
 async fn a_queued_pull_request_lands_exactly_the_commit_ci_passed() {
     let server = TestServer::start();
     let alice = server.sign_up("alice").await;

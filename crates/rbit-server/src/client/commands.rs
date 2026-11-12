@@ -396,6 +396,18 @@ pub enum PrCommand {
     },
     /// Take a pull request out of the merge queue.
     Dequeue { number: u64 },
+    /// Merge the base into a pull request's head branch, if the head is still `--head`.
+    UpdateBranch {
+        number: u64,
+        #[arg(long)]
+        head: String,
+    },
+    /// Revert a commit into a new branch and a pull request (never merged on its own).
+    Revert {
+        commit: String,
+        #[arg(short = 'B', long)]
+        base: Option<String>,
+    },
     /// Open pull requests.
     List {
         #[arg(short, long, default_value = "open")]

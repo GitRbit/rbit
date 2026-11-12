@@ -209,24 +209,6 @@ pub async fn issues(api: &Api, repo: &Repo, command: IssueCommand, out: &Output)
     Ok(0)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rows_are_short_and_bodies_bounded() {
-        let issue = json!({ "number": 7, "title": "Fix it", "state": "open", "labels": [{ "name": "bug" }], "assignee": { "login": "ada" }, "updated_at": "x", "body": "long" });
-        assert_eq!(
-            row(&issue),
-            json!({ "number": 7, "title": "Fix it", "state": "open", "labels": ["bug"], "assignee": "ada", "updated": "x" })
-        );
-        assert_eq!(bounded("abcdef", 3), ("abc".to_owned(), true));
-        assert_eq!(bounded("ab", 3), ("ab".to_owned(), false));
-        assert_eq!(body(Some("given".to_owned()), None).unwrap(), "given");
-        assert_eq!(body(None, None).unwrap(), "");
-    }
-}
-
 /// `issue search`: the issues whose title or body has every word.
 async fn search(api: &Api, repo: &Repo, words: &[String], state: &str, out: &Output) -> anyhow::Result<()> {
     let query = format!("q={}&state={}", encode(&words.join(" ")), encode(state));
@@ -244,4 +226,22 @@ async fn search(api: &Api, repo: &Repo, words: &[String], state: &str, out: &Out
     }
     println!("{} found", found["total"]);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rows_are_short_and_bodies_bounded() {
+        let issue = json!({ "number": 7, "title": "Fix it", "state": "open", "labels": [{ "name": "bug" }], "assignee": { "login": "ada" }, "updated_at": "x", "body": "long" });
+        assert_eq!(
+            row(&issue),
+            json!({ "number": 7, "title": "Fix it", "state": "open", "labels": ["bug"], "assignee": "ada", "updated": "x" })
+        );
+        assert_eq!(bounded("abcdef", 3), ("abc".to_owned(), true));
+        assert_eq!(bounded("ab", 3), ("ab".to_owned(), false));
+        assert_eq!(body(Some("given".to_owned()), None).unwrap(), "given");
+        assert_eq!(body(None, None).unwrap(), "");
+    }
 }

@@ -23,6 +23,8 @@ mod assignee_attachments;
 mod creation;
 mod deletion;
 mod reader;
+// Agent loop: red main.
+mod red_main;
 pub use reader::IssueReader;
 pub mod hooks;
 pub mod json;
@@ -268,6 +270,7 @@ impl IssueService {
                 action: IssueAction::Closed { reason: StateReason::Merged },
                 ..
             } => self.close_by_merge(*issue, *number, *actor).await,
+            DomainEvent::ActionsRun { repo, run, action: crate::actions::hooks::RunAction::Completed } => self.red_main(*repo, *run).await,
             _ => Ok(()),
         }
     }

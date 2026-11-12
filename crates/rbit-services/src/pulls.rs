@@ -35,6 +35,8 @@ mod merging;
 // Agent loop: the merge queue.
 pub mod queue;
 mod review_requests;
+// Agent loop: server-side writes.
+mod writes;
 mod reviews;
 
 use std::{

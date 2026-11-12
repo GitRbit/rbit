@@ -46,23 +46,7 @@ pub async fn pulls(api: &Api, repo: &Repo, command: PrCommand, out: &Output) -> 
                 println!("{}", text(&created, "html_url"));
             }
         }
-        PrCommand::Ensure { title, body, base, head, ready, request_id } => {
-            let head = head.or_else(current_branch).ok_or_else(|| agent::outcome("usage", "which branch? pass --head", None))?;
-            let base = match base {
-                Some(base) => base,
-                None => api.get(&format!("repos/{repo}")).await?["default_branch"].as_str().unwrap_or("main").to_owned(),
-            };
-            let request = json!({ "title": title, "body": body, "base": base, "head": head, "draft": !ready, "request_id": request_id });
-            let ensured = api.json(Method::POST, &format!("repos/{repo}/pulls/ensure"), Some(&request)).await?;
-            if out.json {
-                agent::print(
-                    "rbit.pr-ensure/1",
-                    json!({ "number": ensured["number"], "outcome": ensured["outcome"], "pull": compact(&ensured["pull"]) }),
-                );
-            } else {
-                println!("{} ({})", text(&ensured["pull"], "html_url"), text(&ensured, "outcome"));
-            }
-        }
+        PrCommand::Ensure { title, body, base, head, ready, request_id } => ensure(api, repo, (title, body, base, head), (ready, request_id), out).await?,
         PrCommand::Queue { number, head, squash, rebase, watch, timeout } => {
             let method = if squash {
                 "squash"
@@ -75,6 +59,8 @@ pub async fn pulls(api: &Api, repo: &Repo, command: PrCommand, out: &Output) -> 
             let place = api.json(Method::POST, &format!("repos/{repo}/pulls/{number}/queue"), Some(&request)).await?;
             return queue_wait(api, repo, number, place, (watch, timeout), out).await;
         }
+        PrCommand::UpdateBranch { number, head } => write(api, repo, &format!("pulls/{number}/update-branch"), json!({ "expected_head": head }), out).await?,
+        PrCommand::Revert { commit, base } => write(api, repo, "agent/revert", json!({ "commit": commit, "base": base }), out).await?,
         PrCommand::Dequeue { number } => {
             api.json(Method::DELETE, &format!("repos/{repo}/pulls/{number}/queue"), None).await?;
             report(out, "rbit.dequeued/1", json!({ "number": number }), &format!("#{number} left the merge queue"));
@@ -184,20 +170,6 @@ async fn checks(api: &Api, repo: &Repo, number: u64, watch: bool, interval: u64,
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_merged_pull_request_reads_merged() {
-        let pull = json!({ "number": 3, "state": "closed", "merged": true, "draft": false, "head": { "ref": "x", "sha": "abc" }, "base": { "ref": "main" } });
-        assert_eq!(compact(&pull)["state"], "merged");
-        assert_eq!(compact(&pull)["head_sha"], "abc");
-        let open = json!({ "number": 4, "state": "open", "merged": false });
-        assert_eq!(compact(&open)["state"], "open");
-    }
-}
-
 /// `pr ready`: the readiness of `number` (marked ready first with `mark`), waited on with
 /// `watch` until it is ready or a required check failed, at most `timeout` seconds.
 async fn ready(
@@ -292,5 +264,62 @@ async fn queue_wait(
         }
         tokio::time::sleep(std::time::Duration::from_secs(10)).await;
         place = api.get(&format!("repos/{repo}/pulls/{number}/queue")).await?;
+    }
+}
+
+/// `pr ensure`: the pull request for a branch, created or recovered.
+async fn ensure(
+    api: &Api,
+    repo: &Repo,
+    (title, body, base, head): (String, String, Option<String>, Option<String>),
+    (ready, request_id): (bool, Option<String>),
+    out: &Output,
+) -> anyhow::Result<()> {
+    let head = head.or_else(current_branch).ok_or_else(|| agent::outcome("usage", "which branch? pass --head", None))?;
+    let base = match base {
+        Some(base) => base,
+        None => api.get(&format!("repos/{repo}")).await?["default_branch"].as_str().unwrap_or("main").to_owned(),
+    };
+    let request = json!({ "title": title, "body": body, "base": base, "head": head, "draft": !ready, "request_id": request_id });
+    let ensured = api.json(Method::POST, &format!("repos/{repo}/pulls/ensure"), Some(&request)).await?;
+    if out.json {
+        agent::print(
+            "rbit.pr-ensure/1",
+            json!({ "number": ensured["number"], "outcome": ensured["outcome"], "pull": compact(&ensured["pull"]) }),
+        );
+    } else {
+        println!("{} ({})", text(&ensured["pull"], "html_url"), text(&ensured, "outcome"));
+    }
+    Ok(())
+}
+
+/// A server-side write (`update-branch`, `revert`): its answer, as JSON or one line.
+async fn write(api: &Api, repo: &Repo, path: &str, body: Value, out: &Output) -> anyhow::Result<()> {
+    let mut answer = api.json(Method::POST, &format!("repos/{repo}/{path}"), Some(&body)).await?;
+    let schema = text(&answer, "schema").to_owned();
+    if out.json {
+        if let Some(object) = answer.as_object_mut() {
+            object.remove("schema");
+        }
+        agent::print(&schema, answer);
+    } else if let Some(number) = answer["number"].as_u64().filter(|_| schema == "rbit.revert/1") {
+        println!("opened #{number} reverting it");
+    } else {
+        println!("{}", text(&answer, "head"));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_merged_pull_request_reads_merged() {
+        let pull = json!({ "number": 3, "state": "closed", "merged": true, "draft": false, "head": { "ref": "x", "sha": "abc" }, "base": { "ref": "main" } });
+        assert_eq!(compact(&pull)["state"], "merged");
+        assert_eq!(compact(&pull)["head_sha"], "abc");
+        let open = json!({ "number": 4, "state": "open", "merged": false });
+        assert_eq!(compact(&open)["state"], "open");
     }
 }

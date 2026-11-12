@@ -18,8 +18,7 @@
 //!    * **squash**: one commit with the base tip as parent and the merge's tree, authored by the pull request's author;
 //!    * **rebase**: every non-merge commit of the head that the base lacks, oldest first,
 //!      replayed with `merge-tree --merge-base=<its parent>` onto the moving tip; each
-//!      keeps its author and message, the merger becomes the committer; commits that
-//!      become empty are dropped (like `git rebase`).
+//!      keeps its author and message, the merger becomes the committer; commits that become empty are dropped (like `git rebase`).
 //!
 //!    A conflict ends the merge with the conflicting paths.
 //! 3. The base repository fetches the result's objects from the scratch repository and
@@ -469,8 +468,9 @@ pub(crate) fn failure(output: &Output, what: &str) -> MergeError {
     MergeError::Failed(format!("{what} ({}): {message}", output.status))
 }
 
-// Agent loop: merge queue candidates.
+// Agent loop: merge queue candidates and server-side branch writes.
 pub mod candidate;
+pub mod writes;
 
 #[cfg(test)]
 mod tests {

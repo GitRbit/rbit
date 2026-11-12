@@ -1512,6 +1512,184 @@
           }
         }
       }
+    },
+    "/repos/{owner}/{repo}/pulls/{number}/update-branch": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "number",
+          "in": "path",
+          "required": true,
+          "description": "The pull request number",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ],
+      "post": {
+        "operationId": "updatePullBranch",
+        "tags": [
+          "pulls"
+        ],
+        "summary": "rbit's own: merge the base into a pull request's head branch",
+        "description": "`schema: rbit.update-branch/1`. Body: `expected_head`, the head the caller saw (`409 head_changed` otherwise). Merges the base tip into the head branch with a merge commit by the caller, through branch protection as a push would (`405` with the reason when refused), and reports it as a push. Answers the new `head` and whether it moved (`updated`; an up-to-date head is left alone). Only head branches in the same repository.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The head after the update",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/agent/revert": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "post": {
+        "operationId": "revertCommit",
+        "tags": [
+          "pulls"
+        ],
+        "summary": "rbit's own: revert a commit into a ready-made pull request",
+        "description": "`schema: rbit.revert/1`. Body: `commit` and `base` (the default branch when not given). Makes branch `revert-<first 12 digits of the commit>` from the base tip with one commit that undoes the commit, and opens a pull request for it into the base; it never merges on its own. `405` with the reason when the revert conflicts, the change is no longer there, or the branch exists.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The pull request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/agent/branch-update": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "post": {
+        "operationId": "updateBranchRef",
+        "tags": [
+          "pulls"
+        ],
+        "summary": "rbit's own: move a branch by compare-and-swap",
+        "description": "`schema: rbit.branch-update/1`. Body: `branch`, `sha` and `expected` (full commit ids). Moves the branch from `expected` to `sha` if a push by the caller would be allowed (`405` with the reason otherwise), atomically: `409 head_changed` when the branch is no longer `expected`. Reported as a push.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The branch moved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
     }
   },
   "components": {
