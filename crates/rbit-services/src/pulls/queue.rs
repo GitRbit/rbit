@@ -126,7 +126,8 @@ impl PullService {
         }
         let store = self.ctx().database.actions_runs();
         let Some(entry) = store.queue_of_pull(ctx.issue().id).await? else { return Ok(false) };
-        let removed = store.queue_finish(entry.id, "removed", Some(&format!("taken out of line by {}", actor.name())), Timestamp::now()).await?;
+        let removed =
+            store.queue_finish(entry.id, "removed", Some(&format!("taken out of line by {}", actor.name())), Timestamp::now()).await?;
         if removed {
             self.forget_candidate(ctx.repo(), &entry).await;
             self.nudge(entry.repo, entry.base_branch);

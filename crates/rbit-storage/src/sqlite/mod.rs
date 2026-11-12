@@ -318,8 +318,6 @@ impl Database {
         actions_runs::ActionsRunStore::new(self.pool.clone())
     }
 
-
-
     pub fn actions_secrets(&self) -> actions_secrets::ActionsSecretStore {
         actions_secrets::ActionsSecretStore::new(self.pool.clone())
     }
