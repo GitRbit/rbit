@@ -73,6 +73,7 @@ fn ci_json(ci: &CommitCi) -> Value {
         "jobs": { "success": success, "failure": failure, "running": running, "queued": queued },
         "failed": ci.failed.iter().map(agent_logs::failed_job).collect::<Vec<_>>(),
         "superseded_by": ci.superseded_by,
+        "waits_for": ci.waits_for,
         "queue": ci.queue.map(|place| json!({
             "position": place.ahead + 1,
             "expected_start_seconds": place.mean_seconds.map(|mean| mean.saturating_mul(place.ahead)),
@@ -132,7 +133,8 @@ pub async fn status(
     };
     let failed_run = status.ci.failed.first().map(|failed| failed.job.run_id.0);
     let pull = status.pull.as_ref().map(|pull| (pull.number, pull.draft));
-    let next = next(status.ci.state, &status.head, failed_run, pull);
+    // A job no runner can take waits for ever: watching it is no next step.
+    let next = if status.ci.waits_for.is_some() { None } else { next(status.ci.state, &status.head, failed_run, pull) };
     let divergence = status
         .divergence
         .as_ref()
@@ -268,6 +270,7 @@ mod tests {
             failed: Vec::new(),
             superseded_by: None,
             queue: None,
+            waits_for: None,
         };
         assert_eq!(cursor(&ci("running", [1, 0, 1, 0])), cursor(&ci("running", [1, 0, 1, 0])));
         assert_ne!(cursor(&ci("running", [1, 0, 1, 0])), cursor(&ci("running", [2, 0, 0, 0])));

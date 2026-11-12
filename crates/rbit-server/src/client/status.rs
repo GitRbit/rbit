@@ -6,7 +6,8 @@
 //! happen is not mistaken for one that did. `watch` long-polls the server: it returns as
 //! soon as a job fails (exit 1), when the runs succeed (0), when the branch moves on
 //! (`head_changed`, exit 5), when no run will come (`none_expected`, 0), when nobody can
-//! say why a job failed (`indeterminate`, 9), or at `--timeout` (`timeout`, 8).
+//! say why a job failed (`indeterminate`, 9), when a job waits for labels no runner of the
+//! repository has (`no_runner`, 8: it would never start), or at `--timeout` (`timeout`, 8).
 
 use std::time::Duration;
 
@@ -115,6 +116,11 @@ pub async fn watch_commit(api: &Api, repo: &Repo, wait: CommitWait, out: &Output
             let message =
                 format!("{} moved on to {} while {} was watched", branch.as_deref().unwrap_or("the branch"), short(&newer), short(&sha));
             return Err(agent::outcome("head_changed", message, Some(format!("rbit run watch --sha {newer}"))));
+        }
+        if let Some(labels) = answer["waits_for"].as_array() {
+            let labels: Vec<&str> = labels.iter().filter_map(Value::as_str).collect();
+            let message = format!("a job of {} waits for `{}`, which no runner of this repository has", short(&sha), labels.join(", "));
+            return Err(agent::outcome("no_runner", message, None));
         }
         let early_failure = matches!(state.as_str(), "failure" | "indeterminate");
         if answer["done"] == true || early_failure {

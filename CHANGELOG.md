@@ -9,6 +9,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- A job that waits for `runs-on` labels no runner of its repository has is named: `rbit
+  status` reads reason `no_runner` with the labels in `waits_for` and no longer suggests
+  watching, and `rbit run watch` stops at once with `no_runner` (exit 8) instead of waiting
+  for its timeout. Mirrored projects whose workflows ask for `ubuntu-latest` hit this.
 - Merge queue: `POST …/pulls/{n}/queue` (and `rbit pr queue`) lands a pull request only
   after its merge on the current base passed every required check; the tested commit
   becomes the base by compare-and-swap, and a base that moved means a new candidate and a

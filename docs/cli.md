@@ -110,7 +110,9 @@ current checkout's `HEAD`: never on "the newest run" of the repository, which ma
 branch's. A commit with no run yet is `pending` (exit 8) with a hint to watch it. `watch` on a
 commit long-polls the server: it returns as soon as a job fails (exit 1 with
 `--exit-status`), when everything passed (0), when no run will come (`none_expected`, 0),
-when nobody can say why a job failed (`indeterminate`, 9), when the branch moves on to a
+when nobody can say why a job failed (`indeterminate`, 9), when a job waits for `runs-on`
+labels no runner of the repository has (`no_runner`, 8: it would never start; `rbit status`
+gives the reason `no_runner` and the labels in `waits_for`), when the branch moves on to a
 newer commit (`head_changed`, exit 5, naming it; watching `HEAD` follows the current branch,
 `--branch` names another), or after `--timeout` seconds (exit 8). `--branch` also matches the runs of pull requests from that
 branch. `--log-failed` prints the logs of the jobs that did not succeed (failed, timed out

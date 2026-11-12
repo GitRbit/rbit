@@ -9,11 +9,13 @@
 //! but no run has appeared), `queued`, `running`, `failure` (as soon as one job failed,
 //! even while others run), `indeterminate` (every failed job's account is incomplete: a
 //! lost runner, an unexplained failure, a log cut short), `cancelled`, `superseded` (a
-//! newer push cancelled every run, naming the newer commit) and `success`.
+//! newer push cancelled every run, naming the newer commit) and `success`. A `queued`
+//! commit whose waiting job no runner of the repository can take reads reason `no_runner`,
+//! with the labels it waits for: it would wait for ever.
 
 use rbit_core::{
     RepoId, Timestamp,
-    actions::{Job, Run, Status, TerminationReason},
+    actions::{Job, Run, RunnerLabel, Status, TerminationReason, runs_on},
 };
 use rbit_git::divergence::Divergence;
 use rbit_storage::sqlite::actions_runs::{CommitDecision, QueuePlace};
@@ -36,6 +38,8 @@ pub struct CommitCi {
     pub superseded_by: Option<String>,
     /// While jobs wait: the place in line of the one nearest the front.
     pub queue: Option<QueuePlace>,
+    /// The `runs-on` labels of a waiting job no runner of the repository has.
+    pub waits_for: Option<Vec<String>>,
 }
 
 /// A branch's open pull request.
@@ -140,6 +144,7 @@ impl ActionsService {
                 failed: Vec::new(),
                 superseded_by: None,
                 queue: None,
+                waits_for: None,
             });
         }
         let mut jobs: Vec<Job> = Vec::new();
@@ -166,7 +171,24 @@ impl ActionsService {
             page.runs.iter().all(|run| superseded.contains_key(&run.id)).then(|| superseded.values().next().cloned()).flatten();
         let state = if superseded_by.is_some() { "superseded" } else { ci_state(&page.runs, &counts, &failed) };
         let queue = self.queue_places(&jobs).await?.into_values().min_by_key(|place| place.ahead);
-        Ok(CommitCi { state, reason: None, runs: page.runs, counts, failed, superseded_by, queue })
+        let waits_for = if state == "queued" { self.stranded(repo, &jobs).await? } else { None };
+        let reason = waits_for.is_some().then_some("no_runner");
+        Ok(CommitCi { state, reason, runs: page.runs, counts, failed, superseded_by, queue, waits_for })
+    }
+
+    /// The labels of the first waiting job of `jobs` that no runner the repository may use
+    /// has, as the scheduler matches them: such a job never starts.
+    async fn stranded(&self, repo: &RepoContext, jobs: &[Job]) -> Result<Option<Vec<String>>, ServiceError> {
+        let waiting: Vec<&Job> = jobs.iter().filter(|job| job.status == Status::Waiting).collect();
+        if waiting.is_empty() {
+            return Ok(None);
+        }
+        let runners = self.runners_for_repository(repo).await?;
+        Ok(waiting.into_iter().find_map(|job| {
+            let labels: Vec<RunnerLabel> = job.runs_on.iter().filter_map(|label| label.parse().ok()).collect();
+            let served = labels.len() == job.runs_on.len() && runners.iter().any(|runner| runs_on(&labels, &runner.labels));
+            (!served).then(|| job.runs_on.clone())
+        }))
     }
 }
 

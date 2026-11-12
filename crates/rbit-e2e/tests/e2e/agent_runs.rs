@@ -158,7 +158,11 @@ async fn an_agent_finds_the_runs_of_its_commit_and_reads_codes_not_prose() {
     assert_eq!(status["ci"]["state"], "queued", "no runner takes the jobs: {status}");
     assert_eq!((status["head"]["divergence"]["ahead"].as_u64(), status["head"]["divergence"]["behind"].as_u64()), (Some(1), Some(0)));
     assert_eq!(status["pr"]["number"], pull["number"]);
-    assert_eq!(status["next"], format!("rbit run watch --sha {head}"));
+    // No runner is registered at all: the jobs would wait for ever, so it says so and
+    // suggests no watch.
+    let waits = (status["ci"]["reason"].as_str(), status["ci"]["waits_for"][0].as_str());
+    assert_eq!(waits, (Some("no_runner"), Some("nobody-has-this-label")), "{status}");
+    assert_eq!(status["next"], Value::Null, "{status}");
     // Nothing takes the jobs, so the branch's push job waits behind main's.
     assert_eq!(status["ci"]["queue"]["position"], 2, "{status}");
     let (_, runs) = agent.get(&format!("repos/alice/rocket/actions/runs?head_sha={head}&event=push")).await;

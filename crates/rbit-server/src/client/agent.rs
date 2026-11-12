@@ -108,7 +108,7 @@ pub fn exit_code(error: &anyhow::Error) -> i32 {
         "unauthenticated" | "forbidden" => 3,
         "not_found" => 4,
         "head_changed" | "base_changed" | "conflict" => 5,
-        "pending" | "timeout" => 8,
+        "pending" | "timeout" | "no_runner" => 8,
         "log_incomplete" | "unavailable" | "internal" | "rate_limited" | "indeterminate" => 9,
         _ => 1,
     }
@@ -175,6 +175,7 @@ mod tests {
         assert_eq!(exit_code(&api(422, "invalid")), 2);
         assert_eq!(exit_code(&api(503, "unavailable")), 9);
         assert_eq!(exit_code(&outcome("pending", "no run yet", None)), 8);
+        assert_eq!(exit_code(&outcome("no_runner", "no runner has `gpu`", None)), 8);
         assert_eq!(exit_code(&outcome("log_incomplete", "cut", None)), 9);
         assert_eq!(exit_code(&anyhow::anyhow!("anything else")), 1);
     }
