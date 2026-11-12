@@ -419,20 +419,20 @@ async fn runs_are_paged_by_offset_counted_and_filtered_by_several_statuses() {
 
     let numbers = |runs: Vec<rbit_core::actions::Run>| runs.iter().map(|run| run.number).collect::<Vec<_>>();
     let page = RunFilter { limit: 2, offset: 1, ..RunFilter::default() };
-    assert_eq!(numbers(store.list_runs(fx.rocket, &page).await.unwrap()), [4, 3]);
-    assert_eq!(store.count_runs(fx.rocket, &page).await.unwrap(), 5, "the count ignores the page");
+    let (listed, total) = store.page_runs(fx.rocket, &page).await.unwrap();
+    assert_eq!((numbers(listed), total), (vec![4, 3], 5), "the count ignores the page");
     let past = RunFilter { limit: 2, offset: 5, ..RunFilter::default() };
     assert_eq!(store.list_runs(fx.rocket, &past).await.unwrap(), []);
 
     let done = [Status::Success, Status::Failure, Status::Cancelled, Status::Skipped];
     let finished = RunFilter { statuses: &done, limit: 10, ..RunFilter::default() };
     assert_eq!(numbers(store.list_runs(fx.rocket, &finished).await.unwrap()), [5, 1]);
-    assert_eq!(store.count_runs(fx.rocket, &finished).await.unwrap(), 2);
+    assert_eq!(store.page_runs(fx.rocket, &finished).await.unwrap().1, 2);
     let both = RunFilter { status: Some(Status::Cancelled), ..finished.clone() };
     assert_eq!(numbers(store.list_runs(fx.rocket, &both).await.unwrap()), [1], "status and statuses apply together");
     let schedule = RunFilter { event: Some(RunEvent::Schedule), ..finished };
-    assert_eq!(store.count_runs(fx.rocket, &schedule).await.unwrap(), 0);
-    assert_eq!(store.count_runs(fx.other, &RunFilter::default()).await.unwrap(), 1);
+    assert_eq!(store.page_runs(fx.rocket, &schedule).await.unwrap().1, 0);
+    assert_eq!(store.page_runs(fx.other, &RunFilter::default()).await.unwrap().1, 1);
 }
 
 async fn sqlx_delete_runs(fx: &Fixture) {

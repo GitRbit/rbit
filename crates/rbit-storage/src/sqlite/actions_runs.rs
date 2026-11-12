@@ -546,12 +546,19 @@ impl ActionsRunStore {
     }
 
     // Actions: integration (I).
-    /// How many runs of the repository [`Self::list_runs`] pages through with `filter`
-    /// (its `limit` and `offset` aside).
-    pub async fn count_runs(&self, repo: RepoId, filter: &RunFilter<'_>) -> Result<u64, StorageError> {
+    /// [`Self::list_runs`] with `filter`, and how many runs it pages through in all (its
+    /// `limit` and `offset` aside). Both are read from one snapshot, so a run created
+    /// meanwhile cannot make the total disagree with the page.
+    pub async fn page_runs(&self, repo: RepoId, filter: &RunFilter<'_>) -> Result<(Vec<Run>, u64), StorageError> {
+        let mut snapshot = self.pool.begin().await?;
+        let query = sqlx::query_as(select_run!(concat!(runs_where!(), " ORDER BY id DESC LIMIT ?11 OFFSET ?12")));
+        let rows: Vec<RunRow> =
+            bind_run_filter!(query, repo, filter).bind(filter.limit).bind(filter.offset).fetch_all(&mut *snapshot).await?;
         let query = sqlx::query_scalar(concat!("SELECT COUNT(*) FROM actions_runs ", runs_where!()));
-        let count: i64 = bind_run_filter!(query, repo, filter).fetch_one(&self.pool).await?;
-        Ok(u64::try_from(count).unwrap_or_default())
+        let count: i64 = bind_run_filter!(query, repo, filter).fetch_one(&mut *snapshot).await?;
+        snapshot.rollback().await?;
+        let runs = rows.into_iter().map(Run::try_from).collect::<Result<_, _>>()?;
+        Ok((runs, u64::try_from(count).unwrap_or_default()))
     }
 
     // Actions: step summaries.

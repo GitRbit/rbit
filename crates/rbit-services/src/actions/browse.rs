@@ -318,7 +318,7 @@ impl ActionsService {
         };
         let store = database.actions_runs();
         let repo_id = repo.repo.repo.id;
-        let (runs, total) = (store.list_runs(repo_id, &filter).await?, store.count_runs(repo_id, &filter).await?);
+        let (runs, total) = store.page_runs(repo_id, &filter).await?;
         let people = self.people(runs.iter().flat_map(|run| [run.actor, run.trigger_actor])).await?;
         Ok(RunPage { runs, people, total })
     }
