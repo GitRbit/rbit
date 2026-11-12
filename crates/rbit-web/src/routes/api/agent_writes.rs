@@ -197,7 +197,7 @@ pub async fn promote_artifact(
     let (artifact, _dir, files) = actions(&state)?.artifact_files(&repo, ArtifactId(request.artifact_id)).await?;
     let mut assets = Vec::new();
     for (name, file) in files {
-        let body = tokio::fs::File::open(&file).await.map_err(rbit_services::ServiceError::internal)?;
+        let body = tokio::fs::File::open(&file).await.map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "cannot read the artifact"))?;
         let asset = state.services.releases.upload_asset(&repo, user, ReleaseId(path.release_id), &name, "application/octet-stream", body).await?;
         assets.push(json!({ "id": asset.id.0, "name": asset.name, "size": asset.size }));
     }

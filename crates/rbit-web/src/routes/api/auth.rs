@@ -285,7 +285,7 @@ mod tests {
             created_at: Timestamp(0),
         };
         let user = User { account, email: "ada@example.com".parse().unwrap(), is_admin: false };
-        Caller { user: Some(Arc::new(user)), scope, task: None, request: Arc::default() }
+        Caller { user: Some(Arc::new(user)), scope, task: None, token_limit: None, request: Arc::default() }
     }
 
     #[test]
