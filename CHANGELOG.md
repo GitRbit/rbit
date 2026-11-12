@@ -102,6 +102,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- The command-line client no longer sends another host's repository path to rbit: in a clone
+  whose `origin` is on GitHub and another remote is on rbit, it used `origin`'s path and
+  answered a bare 404, and with no instance named it took GitHub for the instance. It now
+  picks the remote on an instance you are logged in to, and `ci run` and `task` push and
+  fetch through that remote rather than always `origin`.
 - A step that prints more than 10,000 short lines at once no longer loses the rest of its
   job's log: the runner sent up to 1 MiB per log append, the server refuses more than
   10,000 lines per append, and the runner then stopped sending. Batches now stay within

@@ -102,6 +102,40 @@ pub fn parse_remote(url: &str) -> Option<(String, Repo)> {
     Some((format!("{base}{prefix}"), Repo::parse(&format!("{owner}/{name}")).ok()?))
 }
 
+/// A Git remote: its name, and its instance and repository when its URL names them.
+pub type Remote = (String, Option<(String, Repo)>);
+
+/// The remote [`choose_remote`] picked (its name, instance and repository), or why none.
+pub type Chosen<'a> = Result<Option<(&'a str, &'a (String, Repo))>, String>;
+
+/// The remote that names the repository: `named` when given; otherwise `origin` when it is on
+/// a known instance (one `known` accepts), else the one remote on a known instance. With no
+/// instance known at all (`any_known` false, a token in the environment only), `origin`.
+/// `Err` when instances are known but no remote is on one, or several are, since sending
+/// another host's path (`origin` on GitHub, say) to an rbit instance only finds nothing.
+pub fn choose_remote<'a>(named: Option<&str>, remotes: &'a [Remote], known: &dyn Fn(&str) -> bool, any_known: bool) -> Chosen<'a> {
+    let parsed = |remote: &'a Remote| remote.1.as_ref().map(|found| (remote.0.as_str(), found));
+    if let Some(name) = named {
+        return Ok(remotes.iter().find(|remote| remote.0 == name).and_then(parsed));
+    }
+    let origin = remotes.iter().find(|remote| remote.0 == "origin").and_then(parsed);
+    if !any_known || origin.is_some_and(|(_, (host, _))| known(host)) {
+        return Ok(origin);
+    }
+    let on_known: Vec<_> = remotes.iter().filter_map(parsed).filter(|(_, (host, _))| known(host)).collect();
+    match (on_known.as_slice(), origin) {
+        ([one], _) => Ok(Some(*one)),
+        ([], None) => Ok(None),
+        ([], Some((_, (host, _)))) => {
+            Err(format!("`origin` is on {host}, not on an rbit instance you are logged in to: pass --remote NAME or --repo owner/name"))
+        }
+        (several, _) => {
+            let listed: Vec<&str> = several.iter().map(|(name, _)| *name).collect();
+            Err(format!("remotes {} are all on rbit instances you know: pass --remote NAME", listed.join(", ")))
+        }
+    }
+}
+
 impl Api {
     pub fn new(base: &str, token: Option<String>) -> anyhow::Result<Self> {
         let http = reqwest::Client::builder()
@@ -193,5 +227,24 @@ mod tests {
             assert_eq!(parse_remote(url), None, "{url}");
         }
         assert!(Repo::parse("alice").is_err() && Repo::parse("a/b c").is_err());
+    }
+
+    #[test]
+    fn the_remote_on_a_known_instance_names_the_repository() {
+        fn name(chosen: Chosen<'_>) -> Result<Option<String>, String> {
+            chosen.map(|found| found.map(|(name, _)| name.to_owned()))
+        }
+        let remote = |name: &str, url: &str| (name.to_owned(), parse_remote(url));
+        let (github, home) = (remote("origin", "https://github.com/up/rocket"), remote("home", "https://git.example.com/alice/rocket"));
+        let known = |host: &str| host == "https://git.example.com";
+        let mirror = [github.clone(), home.clone()];
+        assert_eq!(name(choose_remote(None, &mirror, &known, true)), Ok(Some("home".to_owned())));
+        assert_eq!(name(choose_remote(Some("origin"), &mirror, &known, true)), Ok(Some("origin".to_owned())));
+        assert_eq!(name(choose_remote(None, &mirror, &known, false)), Ok(Some("origin".to_owned())), "nothing known: origin");
+        let elsewhere = choose_remote(None, std::slice::from_ref(&github), &known, true).unwrap_err();
+        assert!(elsewhere.contains("github.com") && elsewhere.contains("--remote"), "{elsewhere}");
+        let both = [home.clone(), ("fork".to_owned(), home.1.clone())];
+        assert!(choose_remote(None, &both, &known, true).unwrap_err().contains("home, fork"));
+        assert_eq!(name(choose_remote(None, &[], &known, true)), Ok(None));
     }
 }

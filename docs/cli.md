@@ -29,10 +29,14 @@ a password prompt: without a login the helper tells Git to stop at once
 
 ## Which repository
 
-Commands work on `--repo owner/name` (`-R`), or on the repository the current directory's
-`origin` remote points to, on the instance of that remote. `--remote NAME` (or
-`RBIT_REMOTE`) reads another remote instead, for a clone whose `origin` is elsewhere.
-`--hostname` (or `RBIT_HOST`) picks the instance otherwise; with one login, it is that one.
+Commands work on `--repo owner/name` (`-R`), or on the repository a Git remote of the
+current directory points to, on the instance of that remote: `origin` when it is on an
+instance you are logged in to (or the one `--hostname` names), otherwise the one remote that
+is, as in a mirror whose `origin` is on GitHub. When no remote is on such an instance, or
+several are, the command says so instead of asking for another host's path. `--remote NAME`
+(or `RBIT_REMOTE`) names the remote; `rbit ci run` and `rbit task` push and fetch through
+the remote chosen. `--hostname` (or `RBIT_HOST`) picks the instance otherwise; with one
+login, it is that one.
 
 ## Output for programs
 

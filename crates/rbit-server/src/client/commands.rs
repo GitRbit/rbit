@@ -499,16 +499,16 @@ async fn dispatch(command: ClientCommand) -> anyhow::Result<i32> {
             super::status::status(&api, &repo.expect("a repository"), branch, &target.output).await
         }
         ClientCommand::Ci { command: CiCommand::Run(options), target } => {
-            let (api, repo) = connect(&target, true)?;
-            super::ci::run(&api, &repo.expect("a repository"), target.remote.as_deref(), options, &target.output).await
+            let (api, repo, remote) = connect_through(&target, true)?;
+            super::ci::run(&api, &repo.expect("a repository"), remote.as_deref(), options, &target.output).await
         }
         ClientCommand::Bisect { good, bad, workflow, target } => {
             let (api, repo) = connect(&target, true)?;
             super::bisect::bisect(&api, &repo.expect("a repository"), &good, &bad, workflow.as_deref(), &target.output).await
         }
         ClientCommand::Task { command, target } => {
-            let (api, repo) = connect(&target, true)?;
-            super::task::task(&api, &repo.expect("a repository"), target.remote.as_deref(), command, &target.output).await
+            let (api, repo, remote) = connect_through(&target, true)?;
+            super::task::task(&api, &repo.expect("a repository"), remote.as_deref(), command, &target.output).await
         }
         ClientCommand::Api { path, method, raw_fields, fields, input, target } => {
             let needs_repo = path.contains("{owner}") || path.contains("{repo}");
@@ -520,18 +520,34 @@ async fn dispatch(command: ClientCommand) -> anyhow::Result<i32> {
 
 // ------------------------------------------------------------------ where and as whom
 
-/// The URL of `remote` (`origin` by default) of the Git repository in the current directory.
-fn remote_url(remote: Option<&str>) -> Option<String> {
-    git(&["remote", "get-url", remote.unwrap_or("origin")])
+/// Every Git remote of the repository in the current directory, with what its URL names.
+fn remotes() -> Vec<super::Remote> {
+    let names = git(&["remote"]).unwrap_or_default();
+    names.lines().map(|name| (name.to_owned(), git(&["remote", "get-url", name]).and_then(|url| parse_remote(&url)))).collect()
 }
 
 /// The API of the instance `target` names, with its token, and the repository when
 /// `need_repo` (an error when there is none).
 fn connect(target: &Target, need_repo: bool) -> anyhow::Result<(Api, Option<Repo>)> {
-    let remote = remote_url(target.remote.as_deref()).and_then(|url| parse_remote(&url));
-    if let (Some(name), None) = (&target.remote, &remote) {
+    connect_through(target, need_repo).map(|(api, repo, _)| (api, repo))
+}
+
+/// [`connect`], and the name of the remote that named the repository, which commands that
+/// push or fetch use: `--remote`, else the one [`super::choose_remote`] picked.
+fn connect_through(target: &Target, need_repo: bool) -> anyhow::Result<(Api, Option<Repo>, Option<String>)> {
+    let stored = hosts::Hosts::load()?;
+    let named = target.hostname.as_deref().map(hosts::normalize);
+    let known = |host: &str| named.as_deref() == Some(host) || stored.hosts.contains_key(host);
+    let all = remotes();
+    let chosen = match super::choose_remote(target.remote.as_deref(), &all, &known, named.is_some() || !stored.hosts.is_empty()) {
+        Ok(chosen) => chosen,
+        Err(_) if target.repo.is_some() => None,
+        Err(problem) => bail!("{problem}"),
+    };
+    if let (Some(name), None) = (&target.remote, &chosen) {
         bail!("no Git remote `{name}` with an rbit URL here");
     }
+    let remote = chosen.map(|(_, found)| found.clone());
     let repo = match &target.repo {
         Some(repo) => Some(Repo::parse(repo)?),
         None => remote.as_ref().map(|(_, repo)| repo.clone()),
@@ -539,9 +555,8 @@ fn connect(target: &Target, need_repo: bool) -> anyhow::Result<(Api, Option<Repo
     if need_repo && repo.is_none() {
         bail!("no repository: pass --repo owner/name or --remote NAME, or run inside a clone whose `origin` is on rbit");
     }
-    let stored = hosts::Hosts::load()?;
-    let host = match (&target.hostname, &target.repo, &remote) {
-        (Some(host), ..) => hosts::normalize(host),
+    let host = match (named, &target.repo, &remote) {
+        (Some(host), ..) => host,
         (None, None, Some((host, _))) => host.clone(),
         _ => match (&stored.default, stored.hosts.len()) {
             (Some(default), _) => default.clone(),
@@ -554,7 +569,7 @@ fn connect(target: &Target, need_repo: bool) -> anyhow::Result<(Api, Option<Repo
         .or_else(|| std::env::var("GH_TOKEN").ok())
         .filter(|token| !token.trim().is_empty())
         .or_else(|| stored.hosts.get(&host).map(|login| login.token.clone()));
-    Ok((Api::new(&host, token)?, repo))
+    Ok((Api::new(&host, token)?, repo, chosen.map(|(name, _)| name.to_owned())))
 }
 
 async fn auth(command: AuthCommand) -> anyhow::Result<i32> {
