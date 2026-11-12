@@ -283,6 +283,11 @@ async fn the_push_gate_applies_rules_to_each_kind_of_pusher() {
     assert_eq!(bypassed.len(), 1);
     assert_eq!(bypassed[0].detail, format!("refs/heads/main (otherwise refused: {})", reasons::RESTRICTED));
     assert_eq!(bypassed[0].actor_name.as_deref(), Some("olga"));
+    // A server-side write for her is audited the same way; asking whether she may is not.
+    assert_eq!(protection.branch_update_refusal(&admin, &fixture.olga, "main").await.unwrap(), None);
+    assert_eq!(protection.authorize_branch_write(&admin, &fixture.olga, "main").await.unwrap(), None);
+    let bypassed = fixture.audit(AuditAction::BranchProtectionBypassed).await;
+    assert!(bypassed.len() == 2 && bypassed[1].detail == bypassed[0].detail, "{bypassed:?}");
     // Others still cannot.
     assert_eq!(fixture.push(&fixture.rita, vec![main]).await.refusals[0].reason, reasons::NO_WRITE);
 }

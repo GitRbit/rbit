@@ -23,12 +23,13 @@ impl PullService {
         CommitIdentity::noreply(user.name().as_str(), user.account.display_name.as_deref(), &domain)
     }
 
-    /// Refuses a write of `branch` of `repo` by `actor` that a push would be refused.
+    /// Refuses a write of `branch` of `repo` by `actor` that a push would be refused, and
+    /// audits an administrator's bypass as a push's.
     async fn may_write(&self, repo: &RepoContext, actor: &User, branch: &str) -> Result<(), MergeFailure> {
         if !repo.can_write_content() {
             return Err(ServiceError::Forbidden.into());
         }
-        if let Some(reason) = self.inner.protection.branch_update_refusal(repo, actor, branch).await? {
+        if let Some(reason) = self.inner.protection.authorize_branch_write(repo, actor, branch).await? {
             return Err(MergeFailure::Blocked(reason));
         }
         Ok(())

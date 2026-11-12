@@ -314,6 +314,27 @@ impl ProtectionService {
         Ok(ProtectionGate::new(&store).branch_update_refusal(repo.repo.repo.id, actor.id(), repo.access, branch).await?)
     }
 
+    /// Why the server may not add commits to `branch` for `actor`, or `None` when it may:
+    /// the decision a push updating it gets. Unlike [`Self::branch_update_refusal`] this is
+    /// for a write about to happen, so an administrator's bypass is audited as a push's is.
+    /// `repo` is opened for the actor.
+    pub async fn authorize_branch_write(&self, repo: &RepoContext, actor: &User, branch: &str) -> Result<Option<String>, ServiceError> {
+        if let Err(archived) = repo.ensure_writable() {
+            return Ok(Some(archived.to_string()));
+        }
+        let store = self.store();
+        let decision = ProtectionGate::new(&store).branch_update(repo.repo.repo.id, actor.id(), repo.access, branch).await?;
+        if let Some(refusal) = decision.verdict.refusals.into_iter().next() {
+            return Ok(Some(refusal.reason));
+        }
+        for bypass in &decision.bypasses {
+            tracing::info!(repo = %repo.repo.full_name(), r#ref = %bypass.name, by = %actor.name(), "branch protection bypassed");
+            let detail = format!("{} (otherwise {})", bypass.name, bypass.instead);
+            self.record(AuditAction::BranchProtectionBypassed, actor, repo, detail).await;
+        }
+        Ok(None)
+    }
+
     /// Whether a rule keeps `actor` from rewriting `branch`, as a force push to it would be
     /// refused. `repo` is opened for the actor.
     pub async fn denies_force_push(&self, repo: &RepoContext, actor: &User, branch: &str) -> Result<bool, ServiceError> {
