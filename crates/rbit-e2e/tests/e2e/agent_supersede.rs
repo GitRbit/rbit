@@ -46,7 +46,7 @@ async fn a_newer_push_supersedes_a_branchs_older_run_only_when_the_repository_as
     let server = TestServer::start_with(|config| config.actions.enabled = true);
     let alice = server.sign_up("alice").await;
     alice.create_repo("alice", "rocket", "public").await;
-    alice.post("/alice/rocket/settings/actions", &[("enabled", "on"), ("token_permission", "read")]).await;
+    crate::enable_actions(&alice, "alice", "rocket").await;
     let api = Api {
         http: reqwest::Client::builder().no_proxy().build().unwrap(),
         base: server.base_url().to_owned(),

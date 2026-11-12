@@ -31,7 +31,7 @@ async fn a_scratch_commit_runs_the_jobs_it_asks_for_and_is_no_branch() {
     let server = TestServer::start_with(|config| config.actions.enabled = true);
     let alice = server.sign_up("alice").await;
     alice.create_repo("alice", "rocket", "public").await;
-    alice.post("/alice/rocket/settings/actions", &[("enabled", "on"), ("token_permission", "read")]).await;
+    crate::enable_actions(&alice, "alice", "rocket").await;
     let token = alice.create_token("agent", "admin").await;
     let http = reqwest::Client::builder().no_proxy().build().unwrap();
     let get = |path: String| {

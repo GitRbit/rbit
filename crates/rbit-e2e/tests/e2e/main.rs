@@ -54,3 +54,12 @@ mod imports;
 mod slots;
 // Frontend wave: partial responses and preloading (P).
 mod navigation;
+
+/// Turns Actions on for `owner/repo` through its settings form (read-only task token),
+/// and fails here, with the answer, when the form was not taken: otherwise every later
+/// Actions call answers a bare 404 that says nothing of why.
+async fn enable_actions(client: &rbit_e2e::Client, owner: &str, repo: &str) {
+    let response = client.post(&format!("/{owner}/{repo}/settings/actions"), &[("enabled", "on"), ("token_permission", "read")]).await;
+    let excerpt: String = response.body.chars().take(400).collect();
+    assert!(response.status.is_redirection() || response.status.is_success(), "enabling Actions: {} {excerpt}", response.status);
+}

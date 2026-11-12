@@ -52,7 +52,7 @@ async fn a_failed_job_says_which_step_ended_it_and_with_what_exit_code() {
     let server = TestServer::start_with(|config| config.actions.enabled = true);
     let alice = server.sign_up("alice").await;
     alice.create_repo("alice", "rocket", "public").await;
-    alice.post("/alice/rocket/settings/actions", &[("enabled", "on"), ("token_permission", "read")]).await;
+    crate::enable_actions(&alice, "alice", "rocket").await;
 
     let page = alice.post("/alice/rocket/settings/actions/runners", &[("action", "create")]).await;
     let token = attribute_after(&page.body, r#"id="issued-token""#, "value").expect("the page shows the new token");

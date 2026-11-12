@@ -24,7 +24,7 @@ async fn a_docs_only_change_needs_no_ci_and_still_merges() {
     let server = TestServer::start_with(|config| config.actions.enabled = true);
     let alice = server.sign_up("alice").await;
     alice.create_repo("alice", "rocket", "public").await;
-    alice.post("/alice/rocket/settings/actions", &[("enabled", "on"), ("token_permission", "read")]).await;
+    crate::enable_actions(&alice, "alice", "rocket").await;
     let token = alice.create_token("agent", "admin").await;
     let http = reqwest::Client::builder().no_proxy().build().unwrap();
     let call = |method: reqwest::Method, path: String, body: Option<Value>| {

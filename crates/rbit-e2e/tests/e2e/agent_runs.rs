@@ -76,7 +76,7 @@ async fn an_agent_finds_the_runs_of_its_commit_and_reads_codes_not_prose() {
     let server = TestServer::start_with(|config| config.actions.enabled = true);
     let alice = server.sign_up("alice").await;
     alice.create_repo("alice", "rocket", "public").await;
-    alice.post("/alice/rocket/settings/actions", &[("enabled", "on"), ("token_permission", "read")]).await;
+    crate::enable_actions(&alice, "alice", "rocket").await;
     let token = alice.create_token("agent", "write").await;
     let agent = Agent {
         server: &server,
