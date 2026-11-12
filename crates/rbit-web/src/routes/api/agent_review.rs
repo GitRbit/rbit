@@ -217,10 +217,10 @@ pub async fn inbox(State(state): State<AppState>, caller: Caller, Path(path): Pa
         .iter()
         .map(|thread| {
             let root = &thread.root;
-            let (anchor, line) = match thread.anchor {
-                Anchor::Current => ("current", Some(root.line as usize)),
-                Anchor::Moved { line } => ("moved", Some(line)),
-                Anchor::Ambiguous => ("ambiguous", None),
+            let (anchor, line, head_path) = match &thread.anchor {
+                Anchor::Current => ("current", Some(root.line as usize), Some(&root.path)),
+                Anchor::Moved { line, path } => ("moved", Some(*line), Some(path.as_ref().unwrap_or(&root.path))),
+                Anchor::Ambiguous => ("ambiguous", None, None),
             };
             json!({
                 "id": root.id.0,
@@ -230,6 +230,8 @@ pub async fn inbox(State(state): State<AppState>, caller: Caller, Path(path): Pa
                 "commit": root.commit_sha,
                 "anchor": anchor,
                 "head_line": line,
+                // Where the line is in the head: `path`, or the file's new name after a rename.
+                "head_path": head_path,
                 "author": thread.author,
                 "says": rbit_services::pulls::inbox::excerpt(&root.body),
                 "replies": thread.replies,

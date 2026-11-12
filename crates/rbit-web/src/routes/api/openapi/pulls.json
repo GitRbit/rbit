@@ -1783,7 +1783,7 @@
           "pulls"
         ],
         "summary": "rbit's own: the unresolved review threads, in one short answer",
-        "description": "`schema: rbit.inbox/1`: the unresolved threads of submitted reviews, oldest first, at most 50: the root comment's `id`, `path`, `side`, `line` and `commit`, an excerpt of what it `says` and who wrote it, how many `replies` and the last one. `anchor` is `current` when the file did not change since, `moved` when the commented line is found exactly once in the head (`head_line`), and `ambiguous` when it is gone or several lines match. Reply with `POST …/pulls/{number}/comments` and `in_reply_to`; resolve with `PUT …/comments/{id}/resolution`.",
+        "description": "`schema: rbit.inbox/1`: the unresolved threads of submitted reviews, oldest first, at most 50: the root comment's `id`, `path`, `side`, `line` and `commit`, an excerpt of what it `says` and who wrote it, how many `replies` and the last one. `anchor` is `current` when the file did not change since, `moved` when the commented line, unique in its file then, is found exactly once in the head (`head_line`, in `head_path`, the new name when the pull request renamed the file), and `ambiguous` when it is gone, several lines match or it had identical twins. Reply with `POST …/pulls/{number}/comments` and `in_reply_to`; resolve with `PUT …/comments/{id}/resolution`.",
         "security": [
           {},
           {

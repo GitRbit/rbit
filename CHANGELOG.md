@@ -129,6 +129,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Promoting an artifact with two files of one name (`linux/app`, `macos/app`) is refused;
   one overwrote the other. `agent/branch-update` answers 422 for an id that is not a full
   commit id, not 500.
+- Review inbox anchors follow a file the pull request renamed: the commented line is
+  looked up at the new path (`head_path` names it) instead of reading `ambiguous` because
+  the old path is gone. A line that had identical twins in the commented file (a `}`, a
+  `return;`) is `ambiguous` rather than `moved` to whichever copy is left.
 - Pull request change classes: `workflows` covers `.forgejo/workflows/` and
   `.gitea/workflows/`; `dependencies` covers `yarn.lock`, `pnpm-lock.yaml`,
   `pyproject.toml`, `Pipfile.lock`, `uv.lock`, `Gemfile.lock`, `composer.lock`, `pom.xml`,

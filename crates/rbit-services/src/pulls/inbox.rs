@@ -5,8 +5,9 @@
 //!   status and line counts, and no patch text; one file's hunks, or one hunk, on request.
 //! * The review inbox lists the unresolved threads a viewer can see, each with its anchor
 //!   and short excerpts. An anchor on a file that changed since the comment is looked up in
-//!   the head: the commented line found exactly once is `moved` there, otherwise the anchor
-//!   is `ambiguous` (the line is gone, or several lines match).
+//!   the head, at its new path when the pull request renamed the file: the commented line,
+//!   unique in its file then and found exactly once now, is `moved` there; otherwise the
+//!   anchor is `ambiguous` (the line is gone, several lines match, or it had twins).
 
 use rbit_core::pull::{ReviewComment, ReviewSide};
 use rbit_git::{ChangeStatus, DiffLimits, FileDiffBody, diff::Hunk};
@@ -48,8 +49,9 @@ pub struct Manifest {
 pub enum Anchor {
     /// The file did not change since the comment.
     Current,
-    /// The commented line is on `line` of the head now.
-    Moved { line: usize },
+    /// The commented line is on `line` of the head now, in file `path` when the file was
+    /// renamed since the comment.
+    Moved { line: usize, path: Option<String> },
     /// The commented line cannot be found once in the head.
     Ambiguous,
 }
@@ -85,17 +87,27 @@ pub fn excerpt(text: &str) -> String {
     }
 }
 
-/// Where line `line` (1-based) of `old` is in `new`: once exactly, or not at all.
+/// Where line `line` (1-based) of `old` is in `new`: once exactly, or not at all. A line
+/// that was not unique in `old` (a `}`, a `return;`) cannot be told from its twins, so it
+/// is ambiguous even when one copy is left in `new`.
 fn map_line(old: &str, line: u32, new: &str) -> Anchor {
     let Some(wanted) = old.lines().nth(line.saturating_sub(1) as usize) else { return Anchor::Ambiguous };
-    if wanted.trim().is_empty() {
+    if wanted.trim().is_empty() || old.lines().filter(|candidate| *candidate == wanted).count() > 1 {
         return Anchor::Ambiguous;
     }
     let mut found = new.lines().enumerate().filter(|(_, candidate)| *candidate == wanted);
     match (found.next(), found.next()) {
-        (Some((index, _)), None) => Anchor::Moved { line: index + 1 },
+        (Some((index, _)), None) => Anchor::Moved { line: index + 1, path: None },
         _ => Anchor::Ambiguous,
     }
+}
+
+/// The `(old path, new path)` of each file a pull request renamed.
+type Renames = Vec<(String, String)>;
+
+/// The path `path` was renamed to, from the `(old path, path)` of each changed file.
+fn renamed_path<'a>(changed: impl IntoIterator<Item = (Option<&'a str>, &'a str)>, path: &str) -> Option<String> {
+    changed.into_iter().find(|(old, new)| *old == Some(path) && *new != path).map(|(_, new)| new.to_owned())
 }
 
 impl PullService {
@@ -146,29 +158,48 @@ impl PullService {
             })
             .collect();
         let mut threads = Vec::new();
+        // The pull request's renames, read once and only if an anchor needs them.
+        let mut renames = None;
         for (root, author) in
             comments.iter().filter(|(comment, _)| comment.in_reply_to.is_none() && comment.resolved_at.is_none()).take(INBOX_THREADS)
         {
             let replies: Vec<&(ReviewComment, Option<String>)> =
                 comments.iter().filter(|(comment, _)| comment.in_reply_to == Some(root.id)).collect();
             let last = replies.last().map(|(comment, author)| (author.clone(), excerpt(&comment.body)));
-            let anchor = if root.outdated { self.map_anchor(ctx, root).await } else { Anchor::Current };
+            let anchor = if root.outdated { self.map_anchor(ctx, root, &mut renames).await } else { Anchor::Current };
             threads.push(InboxThread { root: root.clone(), author: author.clone(), replies: replies.len(), last, anchor });
         }
         Ok(threads)
     }
 
-    /// Where outdated `root` points in the head now.
-    async fn map_anchor(&self, ctx: &PullContext, root: &ReviewComment) -> Anchor {
+    /// Where outdated `root` points in the head now. `renames` caches the pull request's
+    /// renamed files across the threads of one inbox.
+    async fn map_anchor(&self, ctx: &PullContext, root: &ReviewComment, renames: &mut Option<Renames>) -> Anchor {
         if root.side != ReviewSide::Right {
             return Anchor::Ambiguous;
         }
         let reader = &ctx.repo().reader;
-        let old = reader.blob(root.commit_sha.clone(), root.path.clone(), ANCHOR_BLOB_BYTES).await;
-        let new = reader.blob(ctx.pull.head_sha.clone(), root.path.clone(), ANCHOR_BLOB_BYTES).await;
-        match (old.ok().and_then(|blob| blob.data), new.ok().and_then(|blob| blob.data)) {
-            (Some(old), Some(new)) => map_line(&String::from_utf8_lossy(&old), root.line, &String::from_utf8_lossy(&new)),
-            _ => Anchor::Ambiguous,
+        let read = |commit: &str, path: &str| reader.blob(commit.to_owned(), path.to_owned(), ANCHOR_BLOB_BYTES);
+        let Some(old) = read(&root.commit_sha, &root.path).await.ok().and_then(|blob| blob.data) else { return Anchor::Ambiguous };
+        let mut new_path = None;
+        let mut new = read(&ctx.pull.head_sha, &root.path).await.ok().and_then(|blob| blob.data);
+        if new.is_none() {
+            // The file may have been renamed in the head: the pull request's diff knows to what.
+            if renames.is_none() {
+                let comparison = self.changes(ctx, DiffLimits::default()).await;
+                let files = comparison.map(|comparison| comparison.files).unwrap_or_default();
+                *renames = Some(files.into_iter().filter_map(|file| Some((file.old_path?, file.path))).collect());
+            }
+            let changed = renames.iter().flatten().map(|(old, new)| (Some(old.as_str()), new.as_str()));
+            new_path = renamed_path(changed, &root.path);
+            if let Some(path) = &new_path {
+                new = read(&ctx.pull.head_sha, path).await.ok().and_then(|blob| blob.data);
+            }
+        }
+        let Some(new) = new else { return Anchor::Ambiguous };
+        match map_line(&String::from_utf8_lossy(&old), root.line, &String::from_utf8_lossy(&new)) {
+            Anchor::Moved { line, .. } => Anchor::Moved { line, path: new_path },
+            other => other,
         }
     }
 }
@@ -180,10 +211,26 @@ mod tests {
     #[test]
     fn an_outdated_anchor_moves_only_to_a_line_found_once() {
         let old = "a\nlet x = 1;\nb\n";
-        assert_eq!(map_line(old, 2, "new\na\nlet x = 1;\nb\n"), Anchor::Moved { line: 3 });
+        assert_eq!(map_line(old, 2, "new\na\nlet x = 1;\nb\n"), Anchor::Moved { line: 3, path: None });
         assert_eq!(map_line(old, 2, "a\nb\n"), Anchor::Ambiguous, "the line is gone");
         assert_eq!(map_line(old, 2, "let x = 1;\nlet x = 1;\n"), Anchor::Ambiguous, "two lines match");
         assert_eq!(map_line(old, 9, "a\n"), Anchor::Ambiguous, "no such line");
         assert_eq!(excerpt(&"word ".repeat(200)).chars().count(), EXCERPT_CHARS);
+    }
+
+    #[test]
+    fn a_line_repeated_in_the_old_file_is_ambiguous_even_if_one_copy_is_left() {
+        let old = "fn a() {\n    return;\n}\nfn b() {\n    return;\n}\n";
+        // The comment was on b's `return;`; a's was deleted, so one `return;` is left.
+        assert_eq!(map_line(old, 5, "fn b() {\n    return;\n}\n"), Anchor::Ambiguous);
+        assert_eq!(map_line(old, 4, "// b\nfn b() {\n    return;\n}\n"), Anchor::Moved { line: 2, path: None }, "a unique line moves");
+    }
+
+    #[test]
+    fn a_renamed_file_is_found_at_its_new_path() {
+        let changed = [(None, "src/new.rs"), (Some("src/old.rs"), "src/moved.rs"), (Some("src/same.rs"), "src/same.rs")];
+        assert_eq!(renamed_path(changed, "src/old.rs").as_deref(), Some("src/moved.rs"));
+        assert_eq!(renamed_path(changed, "src/same.rs"), None, "not a rename");
+        assert_eq!(renamed_path(changed, "src/gone.rs"), None);
     }
 }

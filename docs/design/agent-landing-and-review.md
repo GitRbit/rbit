@@ -108,7 +108,8 @@ no patch text, with the change `classes` (`docs_only`: markup anywhere and other
 of Cargo, npm, Yarn, pnpm, Go, pip, Poetry, uv, Pipenv, Bundler, Composer, Maven and
 Gradle); `?path=` gives that file's hunks, `&hunk=` one. `GET …/pulls/{n}/inbox` lists
 unresolved threads of submitted reviews with excerpts; an anchor is `current`, `moved`
-to the one head line that still matches, or `ambiguous`. `PUT …/comments/{id}/resolution`
+to the one head line that still matches (`head_path` names the file after a rename), or
+`ambiguous` (also for a line that had identical twins). `PUT …/comments/{id}/resolution`
 resolves a thread; replies use `POST …/comments` with `in_reply_to`. Left out: review rules
 that act on the change classes.
 
