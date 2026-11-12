@@ -129,6 +129,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Promoting an artifact with two files of one name (`linux/app`, `macos/app`) is refused;
   one overwrote the other. `agent/branch-update` answers 422 for an id that is not a full
   commit id, not 500.
+- `rbit run failure --sha` no longer reads a skipped run (every job's `if` false) as a
+  failure: it printed "0 failed job(s)" and exited 1 while `status` and the watch said
+  `success`; `run view --exit-status` and `run watch RUN --exit-status` count it as passed
+  too. `rbit run failure RUN` on a run that has not finished and has no failed job yet exits
+  8 (pending), as documented, instead of 0.
 - A token limited to one repository can no longer fork it (a fork is a new repository; the
   fork was made and the token then answered 404), and resolving a review thread needs the
   `approve` right, as the other review acts do.

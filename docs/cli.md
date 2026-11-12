@@ -133,7 +133,8 @@ where it failed and its message, and `flaky` when the same test passed at the sa
 another attempt or run. Each failed job also says whether its failures are `new` or
 `recurring` against the previous run of the workflow on that ref, and whether the default
 branch fails the same way (`also_failing_on_base`): then the failure is not yours. `--exit-status` exits with 1 when a run did not succeed and 8 while one
-has not finished.
+has not finished; a skipped run (every job's `if` was false) counts as passed, here and in
+`run failure`.
 
 ## CI without a branch
 

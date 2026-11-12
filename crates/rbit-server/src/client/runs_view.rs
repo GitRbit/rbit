@@ -58,15 +58,13 @@ pub async fn view(api: &Api, repo: &Repo, runs: &[Value], show: &Show, out: &Out
     if out.json {
         agent::print("rbit.run/1", json!({ "runs": shown }));
     }
-    if show.exit_status {
-        if runs.iter().any(|run| run["status"].as_str() != Some("completed")) {
-            return Ok(8);
-        }
-        if runs.iter().any(|run| run["conclusion"].as_str() != Some("success")) {
-            return Ok(1);
-        }
-    }
-    Ok(0)
+    Ok(if show.exit_status { exit_status(runs) } else { 0 })
+}
+
+/// `--exit-status`: 8 while a run has not finished, 1 when one did not succeed. A skipped run
+/// (every job's `if` was false) passed, as `status` and the watch say.
+fn exit_status(runs: &[Value]) -> i32 {
+    if runs.iter().any(|run| run["status"].as_str() != Some("completed")) { 8 } else { i32::from(runs.iter().any(unsuccessful)) }
 }
 
 /// A job for programs: its state and the steps that did not succeed.
@@ -107,6 +105,15 @@ mod tests {
         assert!(!unsuccessful(&json!({ "status": "completed", "conclusion": "success" })));
         assert!(!unsuccessful(&json!({ "status": "completed", "conclusion": "skipped" })));
         assert!(!unsuccessful(&json!({ "status": "in_progress", "conclusion": null })));
+    }
+
+    #[test]
+    fn exit_status_counts_a_skipped_run_as_passed() {
+        let run = |status: &str, conclusion: Value| json!({ "status": status, "conclusion": conclusion });
+        assert_eq!(exit_status(&[run("completed", json!("skipped")), run("completed", json!("success"))]), 0);
+        assert_eq!(exit_status(&[run("completed", json!("skipped")), run("completed", json!("failure"))]), 1);
+        assert_eq!(exit_status(&[run("completed", json!("cancelled"))]), 1);
+        assert_eq!(exit_status(&[run("completed", json!("failure")), run("in_progress", Value::Null)]), 8);
     }
 
     #[test]

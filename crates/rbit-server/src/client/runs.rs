@@ -223,7 +223,7 @@ async fn watch(api: &Api, repo: &Repo, run: Option<i64>, sha: Option<String>, wa
         }
         let done = !runs.is_empty() && runs.iter().all(|run| run["status"].as_str() == Some("completed"));
         if done {
-            let green = runs.iter().all(|run| run["conclusion"].as_str() == Some("success"));
+            let green = runs.iter().all(|run| matches!(run["conclusion"].as_str(), Some("success" | "skipped")));
             if out.json {
                 let state = if green { "success" } else { "failure" };
                 agent::print("rbit.watch/1", json!({ "sha": sha, "state": state, "runs": runs.iter().map(compact).collect::<Vec<_>>() }));

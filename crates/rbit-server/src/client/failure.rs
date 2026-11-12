@@ -30,6 +30,21 @@ fn failed(digest: &Value) -> bool {
     digest["jobs"].as_array().is_some_and(|jobs| !jobs.is_empty()) || digest["workflow_error"].is_string()
 }
 
+/// Whether a run (by its REST conclusion) passed: success, or every job skipped.
+fn passed(run: &Value) -> bool {
+    matches!(run["conclusion"].as_str(), Some("success" | "skipped"))
+}
+
+/// The exit code of one run's digest: 8 while the run has not finished and nothing failed
+/// yet, as for a commit.
+fn digest_exit(digest: &Value) -> i32 {
+    let finished = matches!(digest["status"].as_str(), Some("success" | "failure" | "cancelled" | "skipped"));
+    if !failed(digest) && !finished {
+        return 8;
+    }
+    exit_for(failed(digest), untrusted(digest))
+}
+
 fn exit_for(failed: bool, untrusted: bool) -> i32 {
     match (failed, untrusted) {
         (true, true) => 9,
@@ -42,7 +57,7 @@ pub async fn failure(api: &Api, repo: &Repo, run: Option<i64>, sha: Option<Strin
     if let Some(run) = run {
         let digest = api.get(&format!("repos/{repo}/actions/runs/{run}/failure")).await?;
         show(&digest, out);
-        return Ok(exit_for(failed(&digest), untrusted(&digest)));
+        return Ok(digest_exit(&digest));
     }
     let Some(sha) = sha.or_else(|| git(&["rev-parse", "HEAD"])) else {
         return Err(agent::outcome("usage", "pass a run id or --sha, or run inside a clone", None));
@@ -55,8 +70,9 @@ pub async fn failure(api: &Api, repo: &Repo, run: Option<i64>, sha: Option<Strin
     }
     let mut digests = Vec::new();
     // A run still going counts as soon as one of its jobs failed, as `status` and the watch
-    // say `failure` then: its digest already names the job.
-    for run in runs.iter().filter(|run| run["conclusion"] != "success") {
+    // say `failure` then: its digest already names the job. A skipped run (every job's `if`
+    // was false) passed, as `status` and the watch say.
+    for run in runs.iter().filter(|run| !passed(run)) {
         let digest = api.get(&format!("repos/{repo}/actions/runs/{}/failure", run["id"])).await?;
         if run["status"] == "completed" || failed(&digest) {
             digests.push(digest);
@@ -197,5 +213,23 @@ mod tests {
         assert!(failed(&json!({ "jobs": [], "workflow_error": "line 3: unknown key `foo`" })));
         assert!(!failed(&json!({ "jobs": [], "workflow_error": null })));
         assert!(failed(&json!({ "jobs": [{ "termination": {} }] })));
+    }
+
+    #[test]
+    fn a_skipped_run_passed() {
+        assert!(passed(&json!({ "status": "completed", "conclusion": "skipped" })));
+        assert!(passed(&json!({ "status": "completed", "conclusion": "success" })));
+        assert!(!passed(&json!({ "status": "completed", "conclusion": "cancelled" })));
+        assert!(!passed(&json!({ "status": "in_progress", "conclusion": null })));
+    }
+
+    #[test]
+    fn a_running_run_with_nothing_failed_is_pending() {
+        assert_eq!(digest_exit(&json!({ "status": "running", "jobs": [] })), 8);
+        assert_eq!(digest_exit(&json!({ "status": "waiting", "jobs": [] })), 8);
+        assert_eq!(digest_exit(&json!({ "status": "running", "jobs": [{ "termination": {} }] })), 1);
+        assert_eq!(digest_exit(&json!({ "status": "success", "jobs": [] })), 0);
+        assert_eq!(digest_exit(&json!({ "status": "skipped", "jobs": [] })), 0);
+        assert_eq!(digest_exit(&json!({ "status": "failure", "jobs": [], "workflow_error": "bad" })), 1);
     }
 }
