@@ -124,7 +124,7 @@ branch. `--log-failed` prints the logs of the jobs that did not succeed (failed,
 or cancelled), each line prefixed with its job's name. `rerun --job` wins over `--failed`
 when both are given; `rerun` without a run id reruns every failed or cancelled run of `--sha`
 or `HEAD`; while its run has not finished it says so (`pending`, exit 8) rather than that
-nothing failed.
+nothing failed, and so does `rerun RUN` for a run that has not finished.
 
 A job that uploads its JUnit report as an artifact named `rbit-test-report`, or that name
 with a suffix such as `rbit-test-report-${{ matrix.os }}` since a run's artifact names are

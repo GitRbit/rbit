@@ -71,9 +71,14 @@ async fn workflow_file(api: &Api, repo: &Repo, workflow: &str) -> anyhow::Result
 
 /// The runs `rerun` starts again: `run`, or the ended runs of `sha` that did not succeed. A
 /// failed job in a run still going (the watch stops at the first failure) is no "nothing to
-/// rerun": the run is rerun once it ended.
+/// rerun": the run is rerun once it ended. A run named by id that has not finished is
+/// `pending` too, as the server only reruns finished runs.
 async fn rerun_targets(api: &Api, repo: &Repo, run: Option<i64>, sha: Option<String>) -> anyhow::Result<Vec<i64>> {
     if let Some(run) = run {
+        let found = api.get(&actions(repo, &format!("runs/{run}"))).await?;
+        if found["status"] != "completed" {
+            return Err(not_finished(&found));
+        }
         return Ok(vec![run]);
     }
     let found = resolve(api, repo, None, sha).await?;
@@ -83,11 +88,16 @@ async fn rerun_targets(api: &Api, repo: &Repo, run: Option<i64>, sha: Option<Str
         .filter_map(|found| found["id"].as_i64())
         .collect();
     if let Some(going) = found.iter().find(|found| found["status"] != "completed").filter(|_| ended.is_empty()) {
-        let sha = text(going, "head_sha");
-        let message = format!("run {} of {} has not finished; rerun it once it has", going["id"], short(sha));
-        return Err(agent::outcome("pending", message, Some(format!("rbit run watch --sha {sha}"))));
+        return Err(not_finished(going));
     }
     Ok(ended)
+}
+
+/// The `pending` outcome of rerunning `run` (its REST object), which has not finished.
+fn not_finished(run: &Value) -> anyhow::Error {
+    let sha = text(run, "head_sha");
+    let message = format!("run {} of {} has not finished; rerun it once it has", run["id"], short(sha));
+    agent::outcome("pending", message, Some(format!("rbit run watch --sha {sha}")))
 }
 
 pub async fn runs(api: &Api, repo: &Repo, command: RunCommand, out: &Output) -> anyhow::Result<i32> {
@@ -241,5 +251,18 @@ async fn watch(api: &Api, repo: &Repo, run: Option<i64>, sha: Option<String>, wa
             return Err(agent::outcome("timeout", message, None));
         }
         tokio::time::sleep(Duration::from_secs(wait.interval.max(1))).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rerunning_a_run_that_has_not_finished_is_pending() {
+        let error = not_finished(&json!({ "id": 582, "status": "in_progress", "head_sha": "a".repeat(40) }));
+        assert_eq!(agent::exit_code(&error), 8, "as the --sha form answers");
+        let said = format!("{error:#}");
+        assert!(said.contains("run 582") && said.contains("has not finished"), "{said}");
     }
 }
