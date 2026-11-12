@@ -26,6 +26,9 @@ pub struct StoredReport {
     pub items: Vec<StoredTest>,
 }
 
+/// A failed test's task, id, path, line and message, as read.
+type TestRow = (i64, String, Option<String>, Option<i64>, String);
+
 /// Failed tests kept per attempt, whatever the caller passes.
 const MAX_STORED_TESTS: usize = 100;
 
@@ -73,7 +76,7 @@ impl ActionsRunStore {
                 (TaskId(task), StoredReport { total: count(total), failed: count(failed), items: Vec::new() })
             })
             .collect();
-        let tests: Vec<(i64, String, Option<String>, Option<i64>, String)> = sqlx::query_as(
+        let tests: Vec<TestRow> = sqlx::query_as(
             "SELECT task_id, test_id, path, line, message FROM actions_test_failures \
              WHERE task_id IN (SELECT value FROM json_each(?)) ORDER BY task_id, ordinal",
         )

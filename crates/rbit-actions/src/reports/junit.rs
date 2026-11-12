@@ -270,8 +270,8 @@ assertion `left == right` failed
         for input in ["<", "<testcase", "<testcase name=\"a", "&#xFFFFFFFF;", "<![CDATA[", "<!--", "<testcase name='a'><failure>&bogus;"] {
             parse_junit(input, &mut report);
         }
-        let many: String =
-            (0..200).map(|n| format!("<testcase name=\"t{n}\"><failure message=\"{}\"/></testcase>", "x".repeat(2000))).collect();
+        let case = format!("<testcase name=\"t\"><failure message=\"{}\"/></testcase>", "x".repeat(2000));
+        let many = case.repeat(200);
         let mut report = TestReport::default();
         parse_junit(&many, &mut report);
         assert_eq!((report.total, report.failed, report.items.len()), (200, 200, MAX_FAILED_TESTS));
