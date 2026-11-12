@@ -136,6 +136,20 @@ pub fn choose_remote<'a>(named: Option<&str>, remotes: &'a [Remote], known: &dyn
     }
 }
 
+/// The token a request to an instance carries: one from the environment (`env`) only when
+/// the instance is `trusted` (named with `--hostname`, or one with a stored login), never a
+/// host only a Git remote suggested; otherwise the instance's `stored` login. `Err` when an
+/// environment token would go to such a host: it may be meant for another instance.
+pub fn token_for(env: Option<String>, trusted: bool, host: &str, stored: Option<String>) -> Result<Option<String>, String> {
+    match env {
+        Some(_) if !trusted => Err(format!(
+            "the token in RBIT_TOKEN or GH_TOKEN is not sent to {host}, which only a Git remote names: set RBIT_HOST (or pass --hostname)"
+        )),
+        Some(token) => Ok(Some(token)),
+        None => Ok(stored),
+    }
+}
+
 /// Times a throttled read is tried again.
 const RATE_LIMIT_RETRIES: u32 = 3;
 /// The longest `Retry-After` waited for; a longer one is the caller's to decide.
@@ -253,6 +267,16 @@ mod tests {
             assert_eq!(parse_remote(url), None, "{url}");
         }
         assert!(Repo::parse("alice").is_err() && Repo::parse("a/b c").is_err());
+    }
+
+    #[test]
+    fn an_environment_token_goes_only_to_an_instance_the_user_named() {
+        let env = || Some("t".to_owned());
+        assert_eq!(token_for(env(), true, "https://git.example.com", None), Ok(env()));
+        let refused = token_for(env(), false, "http://127.0.0.1:18080", None).unwrap_err();
+        assert!(refused.contains("127.0.0.1:18080") && refused.contains("RBIT_HOST"), "{refused}");
+        assert_eq!(token_for(None, false, "https://git.example.com", None), Ok(None), "no token, nothing sent");
+        assert_eq!(token_for(None, true, "https://git.example.com", Some("s".to_owned())), Ok(Some("s".to_owned())));
     }
 
     #[test]

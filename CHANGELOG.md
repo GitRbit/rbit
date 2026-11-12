@@ -112,6 +112,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A token limited to one repository can no longer fork it (a fork is a new repository; the
+  fork was made and the token then answered 404), and resolving a review thread needs the
+  `approve` right, as the other review acts do.
+- The command-line client sends a token from `RBIT_TOKEN` or `GH_TOKEN` only to the instance
+  `--hostname`/`RBIT_HOST` names or one with a stored login. With neither, it sent the token
+  to whatever host the clone's `origin` pointed at; it now refuses and asks for `RBIT_HOST`.
+- Watching or reading the status of a commit the repository does not have (yet) answers
+  `not_started`, not `none_expected`: the watch kept saying no run would come and stopped.
+- A push updating more than 16 branches still refreshes the default branch's schedule when
+  that branch is past the cap, and the red main issue of a workflow is found among every
+  open issue, not only the first 50.
 - `POST …/agent/branch-update` no longer rewrites a branch whose protection denies force
   pushes: a move to a commit that does not contain the current tip is refused as `blocked`
   ("force pushes denied"), as `git push` refuses it. It moved protected `main` to an

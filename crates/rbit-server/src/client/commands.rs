@@ -555,6 +555,7 @@ fn connect_through(target: &Target, need_repo: bool) -> anyhow::Result<(Api, Opt
     if need_repo && repo.is_none() {
         bail!("no repository: pass --repo owner/name or --remote NAME, or run inside a clone whose `origin` is on rbit");
     }
+    let named_host = named.is_some();
     let host = match (named, &target.repo, &remote) {
         (Some(host), ..) => host,
         (None, None, Some((host, _))) => host.clone(),
@@ -564,11 +565,10 @@ fn connect_through(target: &Target, need_repo: bool) -> anyhow::Result<(Api, Opt
             _ => bail!("which instance? pass --hostname, or log in with `rbit auth login`"),
         },
     };
-    let token = std::env::var("RBIT_TOKEN")
-        .ok()
-        .or_else(|| std::env::var("GH_TOKEN").ok())
-        .filter(|token| !token.trim().is_empty())
-        .or_else(|| stored.hosts.get(&host).map(|login| login.token.clone()));
+    let env = std::env::var("RBIT_TOKEN").ok().or_else(|| std::env::var("GH_TOKEN").ok()).filter(|token| !token.trim().is_empty());
+    let trusted = named_host || stored.hosts.contains_key(&host);
+    let login = stored.hosts.get(&host).map(|login| login.token.clone());
+    let token = super::token_for(env, trusted, &host, login).map_err(|problem| anyhow!(problem))?;
     Ok((Api::new(&host, token)?, repo, chosen.map(|(name, _)| name.to_owned())))
 }
 

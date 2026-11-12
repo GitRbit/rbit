@@ -127,9 +127,13 @@ impl ActionsService {
         if page.runs.is_empty() {
             let enabled = self.require_pages(repo).await.is_ok();
             let decided = self.ctx().database.actions_runs().decision(repo.repo.repo.id, sha).await?;
-            let none = !enabled || self.workflow_paths_at(repo, sha).await?.is_empty();
+            // A commit not (yet) in the repository has no workflow files to read either; that
+            // says nothing of the runs it will get once pushed.
+            let known = repo.reader.commit_id(sha.to_owned()).await.is_ok();
+            let none = !enabled || (known && self.workflow_paths_at(repo, sha).await?.is_empty());
             let (state, reason) = match decided.as_ref().map(|decision| decision.reason.as_str()) {
                 _ if !enabled => ("none_expected", "Actions is off for this repository"),
+                None if !known => ("not_started", "the commit is not in this repository (yet)"),
                 Some("filtered") => ("none_expected", "the workflows' `branches` or `paths` filters leave this commit out"),
                 Some("skip_marker") => ("none_expected", "the head commit asks to skip CI"),
                 Some("too_many_refs") => ("none_expected", "its push updated more than 16 branches and tags; only the first 16 start runs"),

@@ -180,6 +180,9 @@ async fn an_agent_finds_the_runs_of_its_commit_and_reads_codes_not_prose() {
     assert_eq!((first["changed"].as_bool(), first["state"].as_str(), first["done"].as_bool()), (Some(true), Some("queued"), Some(false)));
     let (_, again) = agent.get(&format!("{watch}&cursor={}", first["cursor"].as_str().unwrap())).await;
     assert_eq!(again["changed"], false);
+    // A commit the repository does not have (yet) is not "no run will come".
+    let (_, unknown) = agent.get(&format!("repos/alice/rocket/agent/watch?sha={}&timeout=1", "2".repeat(40))).await;
+    assert_eq!((unknown["state"].as_str(), unknown["done"].as_bool()), (Some("not_started"), Some(false)), "{unknown}");
     // A newer push to the branch ends the watch of the older commit.
     let newer = git.commit_file(&sample.dir, "more.txt", "more\n");
     git.ok(&sample.dir, &["push", "--quiet", &url, "agent-change"]);

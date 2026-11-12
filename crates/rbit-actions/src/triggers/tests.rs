@@ -17,6 +17,13 @@ fn pushes_consider_live_branches_and_tags_in_order_up_to_the_cap() {
     updates = (0..MAX_REF_UPDATES + 4).map(|_| ("refs/heads/x", None, Some("f"))).collect();
     assert_eq!(considered_refs(&updates, |(n, b, a)| pushed(n, *b, *a)).len(), MAX_REF_UPDATES);
     assert_eq!(dropped_refs(&updates, |(n, b, a)| pushed(n, *b, *a)).len(), 4, "the rest are said to be left out");
+    // The default branch past the cap still refreshes the schedule: it is looked for in both.
+    updates[MAX_REF_UPDATES] = ("refs/heads/main", Some("a"), Some("m"));
+    let view = |(n, b, a): &(&'static str, Option<&'static str>, Option<&'static str>)| pushed(n, *b, *a);
+    let kept = considered_refs(&updates, view);
+    assert_eq!(default_branch_head(kept.iter().copied().map(view), "main"), None);
+    let every = kept.into_iter().chain(dropped_refs(&updates, view)).map(view);
+    assert_eq!(default_branch_head(every, "main"), Some("m"));
 }
 
 #[test]

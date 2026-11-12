@@ -85,6 +85,8 @@ pub async fn create(
     Path((owner, name)): Path<(String, String)>,
     body: Bytes,
 ) -> ApiResult<Response> {
+    // A fork is a new repository, outside what a token limited to one repository reaches.
+    caller.require_unlimited()?;
     let ctx = caller.open_repo(&state, &owner, &name).await?;
     let user = caller.require(TokenScope::Write)?;
     let body: ForkBody = if body.iter().all(u8::is_ascii_whitespace) {

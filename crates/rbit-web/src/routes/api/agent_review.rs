@@ -221,6 +221,7 @@ pub async fn resolve(
     Path(path): Path<CommentPath>,
     ApiJson(request): ApiJson<Resolution>,
 ) -> ApiResult<(StatusCode, Json<Value>)> {
+    caller.require_right(rbit_services::tokens::Right::Approve)?;
     let user = caller.require(TokenScope::Write)?;
     let ctx = open_pull(&state, &caller, &path.owner, &path.repo, &path.number).await?;
     let comment = state.services.pulls.set_thread_resolved(user, &ctx, ReviewCommentId(path.id), request.resolved).await?;

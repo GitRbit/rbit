@@ -172,7 +172,9 @@ impl ActionsService {
         if updates.is_empty() {
             return Ok(Vec::new());
         }
-        let default_head = decide::default_branch_head(updates.iter().map(pushed), &owned.repo.default_branch).map(str::to_owned);
+        // The schedule follows the default branch even when its update is past the cap.
+        let every = updates.iter().chain(dropped.iter()).map(pushed);
+        let default_head = decide::default_branch_head(every, &owned.repo.default_branch).map(str::to_owned);
         if let Some(head) = default_head
             && let Err(error) = self.refresh_schedules(&owned, &head, Timestamp::now()).await
         {

@@ -70,6 +70,12 @@ async fn a_limited_token_reaches_one_repository_with_its_rights_only() {
     let release = json!({ "tag_name": "v9", "target_commitish": "main" });
     let (status, body) = send(&server, &reader, Method::POST, "repos/alice/rocket/releases", Some(release)).await;
     assert_eq!(status, StatusCode::FORBIDDEN, "a release makes a tag, which needs `push`: {body}");
+    let resolution = "repos/alice/rocket/pulls/1/comments/1/resolution";
+    let (status, body) = send(&server, &reader, Method::PUT, resolution, Some(json!({ "resolved": true }))).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "resolving a review thread needs `approve`: {body}");
+    let (status, _) = send(&server, &agent, Method::POST, "repos/alice/rocket/forks", Some(json!({ "name": "copy" }))).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "a fork is a new repository");
+    assert_eq!(send(&server, &admin, Method::GET, "repos/alice/copy", None).await.0, StatusCode::NOT_FOUND, "and none was made");
 
     // A limited token makes no tokens, even with the admin scope.
     let wide = json!({ "name": "wide", "scope": "admin", "repository": "alice/rocket" });

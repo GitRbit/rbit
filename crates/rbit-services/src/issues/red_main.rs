@@ -21,6 +21,8 @@ use crate::{RepositoryService, ServiceError, issues::NewIssueInput, timeline::St
 
 /// Failed jobs named in an issue or comment.
 const NAMED_JOBS: usize = 10;
+/// Pages of 50 open issues searched for a workflow's red main issue.
+const RED_MAIN_PAGES: u32 = 20;
 
 impl IssueService {
     /// Files, updates or closes the red-main issue of run `run` of `repo`, if it was a push
@@ -47,9 +49,17 @@ impl IssueService {
         let mut filter = SearchFilter::new(repo);
         filter.state = Some(IssueState::Open);
         filter.text = vec!["failing".to_owned()];
-        let open = self.list(&ctx, filter, 1, 50).await?;
-        let existing =
-            open.issues.iter().find(|issue| issue.kind == IssueKind::Issue && issue.title.as_str() == title).map(|issue| issue.number);
+        // Every page of open matching issues: with more than one page, the first alone could
+        // miss the issue and open a second one for the same workflow.
+        let mut existing = None;
+        for page in 1..=RED_MAIN_PAGES {
+            let open = self.list(&ctx, filter.clone(), page, 50).await?;
+            existing =
+                open.issues.iter().find(|issue| issue.kind == IssueKind::Issue && issue.title.as_str() == title).map(|issue| issue.number);
+            if existing.is_some() || open.issues.len() < 50 {
+                break;
+            }
+        }
         let base = self.ctx.config.server.base_url();
         let link = format!("{base}/{}/actions/runs/{}", owned.full_name(), run.number);
         let sha = &run.sha;

@@ -18,7 +18,9 @@ rbit auth status
 Logins are kept in `hosts.toml` in your configuration directory (`$XDG_CONFIG_HOME/rbit`,
 `~/.config/rbit`, or `%APPDATA%\rbit` on Windows; `RBIT_CONFIG_DIR` overrides it), readable
 only by you on Unix. `RBIT_TOKEN` (or `GH_TOKEN`) in the environment wins over a stored
-login, which suits CI. `rbit auth token` prints a stored token for scripts, and
+login, which suits CI; it is sent only to the instance `--hostname` (or `RBIT_HOST`) names or
+one with a stored login, never to a host only the clone's remote names, so CI sets
+`RBIT_HOST` too. `rbit auth token` prints a stored token for scripts, and
 `rbit auth logout --hostname …` forgets it.
 
 `rbit auth setup-git --hostname https://git.example.com` makes Git use that login for the
