@@ -17,7 +17,9 @@ moment a job fails or the branch moves on.
 - `GET /repos/{owner}/{repo}/agent/watch?sha=&branch=&cursor=&timeout=` (`rbit.watch/1`):
   answers when the CI's fingerprint (state, counts, run statuses, failed jobs) differs from
   `cursor`, when `branch` no longer points at `sha` (`head_changed` with the newer commit
-  and a `next` command), or after `timeout` (default and at most 30 s). It looks once a
+  and a `next` command), at once when the commit is `done` and all its runs finished, or
+  after `timeout` (default and at most 25 s, below the API's 30 s request timeout, which
+  otherwise answered an empty 408 first). It looks once a
   second and opens the repository with the caller's rights on every look.
 - CLI: `rbit status [--branch]` (adds `local.pushed`: whether the checkout's `HEAD` is the
   server's head). `rbit run watch` on a commit uses the long-poll; exit 0, 1, 5

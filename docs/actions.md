@@ -501,8 +501,10 @@ running end as `superseded`.
 `GET /repos/{owner}/{repo}/agent/status?branch=` answers "where am I" in one object (see
 `rbit status` in [the client's guide](cli.md)), and `GET /repos/{owner}/{repo}/agent/watch?
 sha=&branch=&cursor=&timeout=` is a long-poll on the CI of one commit: it answers when that
-CI changes from what `cursor` saw, when `branch` moves on (`head_changed`), or after at most
-30 seconds, and checks the caller's rights again before every answer.
+CI changes from what `cursor` saw, when `branch` moves on (`head_changed`), at once when the
+commit is `done` and every run of it has finished (nothing can change), or after at most
+25 seconds (below the API's 30 second request timeout), and checks the caller's rights again
+before every answer. A malformed query (`timeout=abc`) answers 422 with the usual JSON error.
 
 ## Differences from GitHub Actions
 

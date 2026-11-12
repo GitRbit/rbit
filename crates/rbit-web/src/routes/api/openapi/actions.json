@@ -3834,7 +3834,7 @@
           "actions"
         ],
         "summary": "rbit's own: wait until the CI of a commit changes",
-        "description": "`schema: rbit.watch/1`, a long-poll. Answers at once when the CI of `sha` differs from what `cursor` saw (the first answer always does), when `branch` no longer points at `sha` (`head_changed` with the newer commit), or after `timeout` seconds (default and at most 30) with `changed: false`. `done` is true for a state that will not change by itself. The body has the same `state`, `jobs` and `failed` as the status, and the `cursor` for the next call.",
+        "description": "`schema: rbit.watch/1`, a long-poll. Answers at once when the CI of `sha` differs from what `cursor` saw (the first answer always does), when `branch` no longer points at `sha` (`head_changed` with the newer commit), at once when a `done` commit has no run left going, or after `timeout` seconds (default and at most 25, below the request timeout) with `changed: false`. `done` is true for a state that will not change by itself. The body has the same `state`, `jobs` and `failed` as the status, and the `cursor` for the next call.",
         "parameters": [
           {
             "name": "sha",
@@ -3866,7 +3866,7 @@
             "schema": {
               "type": "integer",
               "minimum": 0,
-              "maximum": 30
+              "maximum": 25
             }
           }
         ],

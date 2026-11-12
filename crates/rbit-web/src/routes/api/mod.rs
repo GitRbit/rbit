@@ -72,7 +72,7 @@ use crate::AppState;
 
 /// Every route is under this prefix.
 pub const PREFIX: &str = "/api/v1";
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_BODY_BYTES: usize = 1024 * 1024;
 
 /// The HTTP methods the API uses.

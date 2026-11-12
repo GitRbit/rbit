@@ -7,9 +7,10 @@
 //! * `GET /repos/{owner}/{repo}/agent/watch?sha=&branch=&cursor=&timeout=` (`rbit.watch/1`):
 //!   a long-poll. It answers at once when the CI of `sha` differs from what `cursor` saw (a
 //!   job failed, a run finished, …), when `branch` no longer points at `sha`
-//!   (`head_changed`, naming the newer commit), or after `timeout` seconds (at most 30) with
-//!   `changed: false`. Each answer carries the `cursor` for the next call. The caller's
-//!   rights are checked again before every answer.
+//!   (`head_changed`, naming the newer commit), at once when every run of a `done` commit
+//!   has finished (nothing can change), or after `timeout` seconds (at most 25, below the
+//!   API's request timeout) with `changed: false`. Each answer carries the `cursor` for the
+//!   next call. The caller's rights are checked again before every answer.
 
 use std::{
     hash::{DefaultHasher, Hash, Hasher},
@@ -18,7 +19,7 @@ use std::{
 
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, Query, State, rejection::QueryRejection},
     http::StatusCode,
 };
 use rbit_services::{
@@ -37,8 +38,11 @@ use crate::{
     },
 };
 
-/// The longest a watch waits before answering `changed: false`.
-const MAX_WAIT_SECONDS: u64 = 30;
+/// The longest a watch waits before answering `changed: false`: well below the API's 30
+/// second request timeout, which would otherwise answer an empty 408 first.
+const MAX_WAIT_SECONDS: u64 = 25;
+// A full wait plus a last look must end before the request timeout cuts the answer off.
+const _: () = assert!(MAX_WAIT_SECONDS + 3 <= crate::routes::api::REQUEST_TIMEOUT.as_secs());
 /// How often a waiting watch looks again.
 const LOOK_EVERY: Duration = Duration::from_secs(1);
 
@@ -187,8 +191,10 @@ pub async fn watch(
     State(state): State<AppState>,
     caller: Caller,
     Path(path): Path<RepoPath>,
-    Query(query): Query<WatchQuery>,
+    query: Result<Query<WatchQuery>, QueryRejection>,
 ) -> ApiResult<Json<Value>> {
+    // A malformed query (`timeout=abc`) gets the API's JSON error, not axum's plain text.
+    let Query(query) = query?;
     let sha = query.sha.trim().to_ascii_lowercase();
     if sha.len() != 40 || !sha.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err(ApiError::invalid("sha", "give the full id of the commit to watch"));
@@ -205,8 +211,10 @@ pub async fn watch(
             None => None,
         };
         let changed = query.cursor.as_deref() != Some(seen.as_str());
-        if changed || moved.is_some() || Instant::now() >= deadline {
-            let done = matches!(ci.state, "success" | "failure" | "cancelled" | "superseded" | "indeterminate" | "none_expected");
+        let done = matches!(ci.state, "success" | "failure" | "cancelled" | "superseded" | "indeterminate" | "none_expected");
+        // Nothing can change a settled commit (every run finished): waiting is pointless.
+        let settled = done && ci.runs.iter().all(|run| run.status.is_done());
+        if changed || moved.is_some() || settled || Instant::now() >= deadline {
             let mut body = ci_json(&ci);
             without_logs_unless(&caller, &mut body);
             body["schema"] = json!("rbit.watch/1");

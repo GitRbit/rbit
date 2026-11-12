@@ -201,6 +201,18 @@ async fn an_agent_finds_the_runs_of_its_commit_and_reads_codes_not_prose() {
         (quiet["ci"]["state"].as_str(), quiet["ci"]["reason"].as_str()),
         (Some("none_expected"), Some("the commit has no workflow files"))
     );
+    // Nothing can change a settled commit, so a watch with its current cursor answers at once
+    // rather than after its timeout.
+    let quiet_sha = quiet["head"]["sha"].as_str().unwrap().to_owned();
+    let (_, first) = agent.get(&format!("repos/alice/rocket/agent/watch?sha={quiet_sha}&timeout=1")).await;
+    let started = std::time::Instant::now();
+    let settled = format!("repos/alice/rocket/agent/watch?sha={quiet_sha}&timeout=20&cursor={}", first["cursor"].as_str().unwrap());
+    let (_, again) = agent.get(&settled).await;
+    assert_eq!((again["changed"].as_bool(), again["done"].as_bool()), (Some(false), Some(true)), "{again}");
+    assert!(started.elapsed() < std::time::Duration::from_secs(10), "answered at once, not after the timeout");
+    // A malformed query gets the API's JSON error.
+    let (code, malformed) = agent.get(&format!("repos/alice/rocket/agent/watch?sha={quiet_sha}&timeout=abc")).await;
+    assert_eq!((code, malformed["code"].as_str()), (422, Some("invalid")), "{malformed}");
 
     // Issues as the task queue: one object per command, pull requests left out of lists.
     let (code, created) = agent.cli(&["issue", "create", "--title", "Watch by commit", "--body", "Details"]);

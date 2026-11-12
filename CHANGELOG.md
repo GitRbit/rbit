@@ -129,6 +129,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Promoting an artifact with two files of one name (`linux/app`, `macos/app`) is refused;
   one overwrote the other. `agent/branch-update` answers 422 for an id that is not a full
   commit id, not 500.
+- `GET …/agent/watch` waits at most 25 seconds: with `timeout` of 30 or more it raced the
+  API's 30 second request timeout and often answered an empty 408. A commit that is done
+  with every run finished is answered at once even with the current cursor, as nothing can
+  change it (it waited out the whole timeout), and a malformed query (`timeout=abc`) gets
+  the JSON error (422 `invalid`) instead of axum's plain-text 400.
 - `rbit bisect` (and `GET …/agent/bisect`) refuses bounds where `GOOD` is not on `BAD`'s
   first-parent line, such as reversed arguments: it answered a culprit with nothing
   checked. A `GOOD` with a recorded failure or a `BAD` with only recorded passes now comes
