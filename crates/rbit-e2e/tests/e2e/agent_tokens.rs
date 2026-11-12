@@ -57,7 +57,7 @@ async fn a_limited_token_reaches_one_repository_with_its_rights_only() {
 
     // Git: pushing to the other repository is refused.
     let denied = git.fails(&sample.dir, &["push", &url("vault", &agent), "main"]);
-    assert!(!denied.is_empty());
+    assert_ne!(denied, "");
 
     // A limited token makes no tokens, even with the admin scope.
     let wide = json!({ "name": "wide", "scope": "admin", "repository": "alice/rocket" });

@@ -101,8 +101,8 @@ async fn a_queued_pull_request_lands_exactly_the_commit_ci_passed() {
     assert_eq!((status, again["outcome"].as_str(), again["number"].as_u64()), (StatusCode::OK, Some("replayed"), Some(pull)));
     let (_, existing) = api.send(Method::POST, "pulls/ensure", Some(json!({ "head": "landing", "base": "main" }))).await;
     assert_eq!((existing["outcome"].as_str(), existing["number"].as_u64()), (Some("existing"), Some(pull)));
-    let reused = json!({ "head": "landing", "base": "main", "title": "Other", "request_id": "r-1" });
-    assert_eq!(api.send(Method::POST, "pulls/ensure", Some(reused)).await.0, StatusCode::CONFLICT);
+    let other_inputs = json!({ "head": "landing", "base": "main", "title": "Other", "request_id": "r-1" });
+    assert_eq!(api.send(Method::POST, "pulls/ensure", Some(other_inputs)).await.0, StatusCode::CONFLICT);
 
     // 4.2: a draft is not ready; marked ready for its head, it waits only on `ci/test`.
     let (_, readiness) = api.send(Method::GET, &format!("pulls/{pull}/readiness"), None).await;
