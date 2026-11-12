@@ -70,7 +70,8 @@ most 20) to the release as built, so what ships is what CI tested.
 ## 4.7 Red `main`
 
 A failed push run of a workflow on the default branch opens one issue "CI is failing on
-`<branch>`: `<workflow>`" (by whoever triggered the run) with the run, its commit, the
+`<branch>`: `<workflow file>`" (by whoever triggered the run; the file, since a workflow that
+cannot be read has no name) with the run, its commit, the
 failed jobs and the commands that find the culprit and propose a revert; while it keeps
 failing, each failure is a comment on that one issue; the next success closes it as
 completed. Nothing is reverted on its own.

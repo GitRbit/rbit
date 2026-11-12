@@ -1,11 +1,13 @@
 //! Red `main` (agent plan step 4.7): one issue per failing workflow on the default branch.
 //!
 //! A push run of a workflow on the default branch that fails opens an issue titled
-//! "CI is failing on `<branch>`: `<workflow>`" with the run, its commit and its failed jobs,
+//! "CI is failing on `<branch>`: `<workflow file>`" with the run, its commit and its failed jobs,
 //! by whoever triggered the run, unless one is open already; then the failure is added to it
 //! as a comment. The next successful run of that workflow there closes the issue as
-//! completed, saying which commit is green. Nothing is ever reverted on its own: the issue
-//! names the commands that find the culprit and propose its revert.
+//! completed, saying which commit is green. The workflow is named by its file, which stays
+//! the same while its `name:` may not: a workflow that cannot be read has only its file, so a
+//! title by name would never match the run that is green again. Nothing is ever reverted on
+//! its own: the issue names the commands that find the culprit and propose its revert.
 
 use std::sync::Arc;
 
@@ -41,7 +43,7 @@ impl IssueService {
             self.ctx.events.clone(),
         );
         let ctx = repositories.open(Some(&user), owned.owner.name.as_str(), owned.repo.name.as_str()).await?;
-        let title = format!("CI is failing on `{branch}`: `{}`", run.workflow_name);
+        let title = format!("CI is failing on `{branch}`: `{}`", run.workflow_path);
         let mut filter = SearchFilter::new(repo);
         filter.state = Some(IssueState::Open);
         filter.text = vec!["failing".to_owned()];
