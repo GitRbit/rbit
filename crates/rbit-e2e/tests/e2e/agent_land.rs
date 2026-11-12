@@ -81,6 +81,7 @@ async fn a_queued_pull_request_lands_exactly_the_commit_ci_passed() {
     assert!(refused["message"].as_str().unwrap().contains("alice"), "{refused}");
     let (_, found) = api.send(Method::GET, "agent/issues?q=rockets+land", None).await;
     assert_eq!(found["items"][0]["number"].as_u64(), Some(number), "{found}");
+    assert_eq!(api.send(Method::GET, "agent/issues?q=%25+--", None).await.0, StatusCode::UNPROCESSABLE_ENTITY, "no word, no search");
 
     // main needs pull requests and a passing `ci/test`.
     let git = Git::new();

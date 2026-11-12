@@ -47,8 +47,10 @@ pub(super) async fn search(
 ) -> ApiResult<Json<Value>> {
     let ctx = caller.open_repo(&state, &path.owner, &path.repo).await?;
     let words: Vec<String> = query.q.split_whitespace().take(10).map(str::to_owned).collect();
-    if words.is_empty() {
-        return Err(ApiError::invalid("q", "q must have at least one word"));
+    // Search terms are made of letters and digits: punctuation alone (`%`, `--`) would
+    // leave no term, and no term matches every issue.
+    if !words.iter().any(|word| word.chars().any(char::is_alphanumeric)) {
+        return Err(ApiError::invalid("q", "q must have at least one word of letters or digits"));
     }
     let mut filter = SearchFilter::new(ctx.repo.repo.id);
     filter.text = words;
