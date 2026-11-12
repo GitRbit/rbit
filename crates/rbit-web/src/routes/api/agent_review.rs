@@ -57,7 +57,9 @@ async fn open_pull(state: &AppState, caller: &Caller, owner: &str, repo: &str, n
 /// Whether `path` is documentation.
 fn is_docs(path: &str) -> bool {
     let lower = path.to_ascii_lowercase();
-    lower.starts_with("docs/") || lower.contains("/docs/") || [".md", ".markdown", ".rst", ".adoc", ".txt"].iter().any(|end| lower.ends_with(end))
+    lower.starts_with("docs/")
+        || lower.contains("/docs/")
+        || [".md", ".markdown", ".rst", ".adoc", ".txt"].iter().any(|end| lower.ends_with(end))
 }
 
 /// Whether `path` is a test.
@@ -89,7 +91,8 @@ fn classes(files: &[ManifestFile]) -> Vec<&'static str> {
     if paths.iter().any(|path| path.starts_with(".rbit/workflows/") || path.starts_with(".github/workflows/")) {
         found.push("workflows");
     }
-    let dependency = ["Cargo.lock", "Cargo.toml", "package.json", "package-lock.json", "go.mod", "go.sum", "requirements.txt", "poetry.lock"];
+    let dependency =
+        ["Cargo.lock", "Cargo.toml", "package.json", "package-lock.json", "go.mod", "go.sum", "requirements.txt", "poetry.lock"];
     if paths.iter().any(|path| dependency.contains(&path.rsplit('/').next().unwrap_or(path))) {
         found.push("dependencies");
     }
@@ -248,7 +251,7 @@ mod tests {
         assert_eq!(classes(&[file("docs/guide.md"), file("README.md")]), ["docs_only"]);
         assert_eq!(classes(&[file("crates/a/tests/x.rs"), file("src/thing_test.go")]), ["tests_only"]);
         assert_eq!(classes(&[file(".rbit/workflows/ci.yml"), file("Cargo.lock")]), ["workflows", "dependencies"]);
-        assert!(classes(&[file("src/main.rs"), file("docs/a.md")]).is_empty());
-        assert!(classes(&[]).is_empty());
+        assert_eq!(classes(&[file("src/main.rs"), file("docs/a.md")]), Vec::<&str>::new());
+        assert_eq!(classes(&[]), Vec::<&str>::new());
     }
 }

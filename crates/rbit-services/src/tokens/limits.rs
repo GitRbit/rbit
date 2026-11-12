@@ -76,7 +76,12 @@ fn from_stored(stored: StoredLimit) -> TokenLimit {
 impl AccessTokenService {
     /// [`Self::create`] with `limit` stored beside the token. A limit that cannot be stored
     /// revokes the token again, so no unlimited token is left behind.
-    pub async fn create_limited(&self, owner: &User, input: CreateAccessToken, limit: &TokenLimit) -> Result<(AccessToken, String), ServiceError> {
+    pub async fn create_limited(
+        &self,
+        owner: &User,
+        input: CreateAccessToken,
+        limit: &TokenLimit,
+    ) -> Result<(AccessToken, String), ServiceError> {
         let (token, secret) = self.create(owner, input).await?;
         let stored = StoredLimit { repo: limit.repo, rights: limit.rights.iter().map(|right| right.as_str().to_owned()).collect() };
         if let Err(error) = self.store.set_limit(token.id, &stored).await {
@@ -93,7 +98,10 @@ impl AccessTokenService {
     }
 
     /// [`Self::authenticate`] with the token's limit.
-    pub async fn authenticate_limited(&self, secret: &str) -> Result<Option<(User, rbit_core::TokenScope, Option<TokenLimit>)>, ServiceError> {
+    pub async fn authenticate_limited(
+        &self,
+        secret: &str,
+    ) -> Result<Option<(User, rbit_core::TokenScope, Option<TokenLimit>)>, ServiceError> {
         match self.application().authenticate(secret).await.map_err(map)? {
             TokenAuthentication::Accepted { user, scope, token, bookkeeping } => {
                 if let Err(error) = bookkeeping {

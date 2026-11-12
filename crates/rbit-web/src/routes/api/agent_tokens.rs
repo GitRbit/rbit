@@ -44,7 +44,7 @@ fn owner(caller: &Caller) -> ApiResult<&rbit_core::User> {
     Ok(user)
 }
 
-fn token_json(token: &AccessToken, limit: Option<&TokenLimit>, repository: Option<String>) -> Value {
+fn token_json(token: &AccessToken, limit: Option<&TokenLimit>, repository: Option<&str>) -> Value {
     json!({
         "id": token.id.0,
         "name": token.name,
@@ -86,13 +86,18 @@ pub struct NewToken {
 }
 
 /// `POST /user/tokens`: `201` with the new token's `token` (shown this once).
-pub async fn create(State(state): State<AppState>, caller: Caller, ApiJson(new): ApiJson<NewToken>) -> ApiResult<(StatusCode, Json<Value>)> {
+pub async fn create(
+    State(state): State<AppState>,
+    caller: Caller,
+    ApiJson(new): ApiJson<NewToken>,
+) -> ApiResult<(StatusCode, Json<Value>)> {
     let user = owner(&caller)?;
     let scope = TokenScope::parse(&new.scope).ok_or_else(|| ApiError::invalid("scope", "scope must be read, write or admin"))?;
     let input = CreateAccessToken { name: new.name, scope, expires_in_days: new.expires_in_days };
     let repository = match new.repository.as_deref().filter(|name| !name.is_empty()) {
         Some(full) => {
-            let (owner_name, repo_name) = full.split_once('/').ok_or_else(|| ApiError::invalid("repository", "repository must be owner/name"))?;
+            let (owner_name, repo_name) =
+                full.split_once('/').ok_or_else(|| ApiError::invalid("repository", "repository must be owner/name"))?;
             let repo = caller.open_repo(&state, owner_name, repo_name).await?;
             Some((repo.repo.repo.id, repo.repo.full_name()))
         }
@@ -107,13 +112,15 @@ pub async fn create(State(state): State<AppState>, caller: Caller, ApiJson(new):
     };
     let limit = match (&repository, rights) {
         (None, None) => None,
-        (repository, rights) => Some(TokenLimit { repo: repository.as_ref().map(|(id, _)| *id), rights: rights.unwrap_or_else(|| Right::ALL.to_vec()) }),
+        (repository, rights) => {
+            Some(TokenLimit { repo: repository.as_ref().map(|(id, _)| *id), rights: rights.unwrap_or_else(|| Right::ALL.to_vec()) })
+        }
     };
     let (token, secret) = match &limit {
         Some(limit) => state.services.tokens.create_limited(user, input, limit).await?,
         None => state.services.tokens.create(user, input).await?,
     };
-    let mut value = token_json(&token, limit.as_ref(), repository.map(|(_, name)| name));
+    let mut value = token_json(&token, limit.as_ref(), repository.as_ref().map(|(_, name)| name.as_str()));
     value["token"] = json!(secret);
     value["schema"] = json!("rbit.token/1");
     Ok((StatusCode::CREATED, Json(value)))

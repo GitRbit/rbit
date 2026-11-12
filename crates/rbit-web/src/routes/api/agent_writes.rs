@@ -2,7 +2,6 @@
 //! its base, revert a commit into a pull request, move a branch by compare-and-swap. Each
 //! takes the commit the caller saw and answers `409 head_changed` when it moved.
 
-use rbit_services::tokens::Right;
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -15,6 +14,7 @@ use rbit_core::{
 };
 use rbit_services::ActionsService;
 use rbit_services::pulls::MergeFailure;
+use rbit_services::tokens::Right;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -197,8 +197,10 @@ pub async fn promote_artifact(
     let (artifact, _dir, files) = actions(&state)?.artifact_files(&repo, ArtifactId(request.artifact_id)).await?;
     let mut assets = Vec::new();
     for (name, file) in files {
-        let body = tokio::fs::File::open(&file).await.map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "cannot read the artifact"))?;
-        let asset = state.services.releases.upload_asset(&repo, user, ReleaseId(path.release_id), &name, "application/octet-stream", body).await?;
+        let body =
+            tokio::fs::File::open(&file).await.map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "cannot read the artifact"))?;
+        let asset =
+            state.services.releases.upload_asset(&repo, user, ReleaseId(path.release_id), &name, "application/octet-stream", body).await?;
         assets.push(json!({ "id": asset.id.0, "name": asset.name, "size": asset.size }));
     }
     Ok((

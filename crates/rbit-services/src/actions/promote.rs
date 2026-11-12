@@ -34,7 +34,11 @@ impl ActionsService {
 
     /// The files of artifact `id` of `repo`, written into a new directory under the
     /// server's temporary directory (deleted when the returned guard drops).
-    pub async fn artifact_files(&self, repo: &RepoContext, id: ArtifactId) -> Result<(Artifact, Unpacked, Vec<(String, PathBuf)>), ServiceError> {
+    pub async fn artifact_files(
+        &self,
+        repo: &RepoContext,
+        id: ArtifactId,
+    ) -> Result<(Artifact, Unpacked, Vec<(String, PathBuf)>), ServiceError> {
         let (artifact, file) = self.open_artifact(repo, id).await?;
         let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |since| since.as_nanos());
         let dir = self.ctx().config.storage.tmp_dir().join(format!("rbit-promote-{}-{}-{nanos:x}", artifact.id.0, std::process::id()));

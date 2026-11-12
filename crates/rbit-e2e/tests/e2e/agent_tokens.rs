@@ -40,7 +40,11 @@ async fn a_limited_token_reaches_one_repository_with_its_rights_only() {
 
     // The API: rocket only; statuses need a right it lacks.
     assert_eq!(send(&server, &agent, Method::GET, "repos/alice/rocket", None).await.0, StatusCode::OK);
-    assert_eq!(send(&server, &agent, Method::GET, "repos/alice/vault", None).await.0, StatusCode::NOT_FOUND, "the other repository is not there");
+    assert_eq!(
+        send(&server, &agent, Method::GET, "repos/alice/vault", None).await.0,
+        StatusCode::NOT_FOUND,
+        "the other repository is not there"
+    );
     let git = Git::new();
     let sample = git.sample();
     let url = |repo: &str, token: &str| server.git_url_as("alice", repo, "alice", token);

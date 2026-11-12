@@ -13,12 +13,12 @@
 //!
 //! Everything is read with the caller's rights, as the GitHub-shaped endpoints are.
 
-use rbit_services::tokens::Right;
 use axum::{
     Json,
     extract::{Path, Query, State},
 };
 use rbit_core::actions::{JobId, RunId, TerminationReason};
+use rbit_services::tokens::Right;
 use rbit_services::{
     RepoContext,
     actions::logs::{FailedJob, LogRange, MAX_LINES_PER_CALL},

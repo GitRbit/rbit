@@ -22,12 +22,12 @@ use rbit_core::{
 use rbit_git::{ChangeStatus, DiffLimits, FileDiffBody, diff::LineKind};
 use rbit_services::{
     RepoContext, ServiceError,
-    tokens::Right,
     pulls::{
         LineComment, MergeFailure, MergeInput, NewPullInput, PullContext, PullFilter, PullSort, PullStateFilter, ReviewVerdict,
         json as pull_json,
     },
     timeline::StateChange,
+    tokens::Right,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};

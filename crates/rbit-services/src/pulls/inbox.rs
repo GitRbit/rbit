@@ -78,7 +78,11 @@ fn status_name(status: ChangeStatus) -> &'static str {
 #[must_use]
 pub fn excerpt(text: &str) -> String {
     let text = text.trim();
-    if text.chars().count() <= EXCERPT_CHARS { text.to_owned() } else { format!("{}…", text.chars().take(EXCERPT_CHARS - 1).collect::<String>()) }
+    if text.chars().count() <= EXCERPT_CHARS {
+        text.to_owned()
+    } else {
+        format!("{}…", text.chars().take(EXCERPT_CHARS - 1).collect::<String>())
+    }
 }
 
 /// Where line `line` (1-based) of `old` is in `new`: once exactly, or not at all.
@@ -137,11 +141,16 @@ impl PullService {
         let comments: Vec<(ReviewComment, Option<String>)> = data
             .reviews
             .iter()
-            .flat_map(|entry| entry.comments.iter().map(|(comment, author)| (comment.clone(), author.as_ref().map(|account| account.name.to_string()))))
+            .flat_map(|entry| {
+                entry.comments.iter().map(|(comment, author)| (comment.clone(), author.as_ref().map(|account| account.name.to_string())))
+            })
             .collect();
         let mut threads = Vec::new();
-        for (root, author) in comments.iter().filter(|(comment, _)| comment.in_reply_to.is_none() && comment.resolved_at.is_none()).take(INBOX_THREADS) {
-            let replies: Vec<&(ReviewComment, Option<String>)> = comments.iter().filter(|(comment, _)| comment.in_reply_to == Some(root.id)).collect();
+        for (root, author) in
+            comments.iter().filter(|(comment, _)| comment.in_reply_to.is_none() && comment.resolved_at.is_none()).take(INBOX_THREADS)
+        {
+            let replies: Vec<&(ReviewComment, Option<String>)> =
+                comments.iter().filter(|(comment, _)| comment.in_reply_to == Some(root.id)).collect();
             let last = replies.last().map(|(comment, author)| (author.clone(), excerpt(&comment.body)));
             let anchor = if root.outdated { self.map_anchor(ctx, root).await } else { Anchor::Current };
             threads.push(InboxThread { root: root.clone(), author: author.clone(), replies: replies.len(), last, anchor });
