@@ -131,7 +131,7 @@ fn golden_poll_state_and_logs() {
     assert!(done.is_final());
     golden(&done, r#"{"steps":[],"outputs":{},"result":"cancelled"}"#);
     // Actions: step summaries. Older servers read the call the same way; newer ones keep them.
-    let summarised = TaskStateRequest { summaries: BTreeMap::from([(0, "# Done\n".to_owned())]), ..done };
+    let summarised = TaskStateRequest { summaries: BTreeMap::from([(0, "# Done\n".to_owned())]), ..done.clone() };
     golden(&summarised, r##"{"steps":[],"outputs":{},"result":"cancelled","summaries":{"0":"# Done\n"}}"##);
     let old: TaskStateRequest = serde_json::from_str(r#"{"steps":[],"outputs":{},"result":null}"#).unwrap();
     assert!(old.summaries.is_empty());
@@ -139,7 +139,7 @@ fn golden_poll_state_and_logs() {
     assert!(old.termination.is_none());
     let ended = TaskStateRequest {
         termination: Some(TaskTermination { reason: "step_failed".to_owned(), step: Some(1), exit_code: Some(2) }),
-        ..done.clone()
+        ..done
     };
     ended.validate().unwrap();
     golden(&ended, r#"{"steps":[],"outputs":{},"result":"cancelled","termination":{"reason":"step_failed","step":1,"exit_code":2}}"#);

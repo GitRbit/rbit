@@ -262,9 +262,11 @@ impl ProtectionService {
             match (reason, &update.after, &update.before) {
                 (Some(reason), _, _) => verdict.refusals.push(Refusal { name: update.name.clone(), reason }),
                 (None, Some(after), _) => {
-                    store.record_scratch(repo.repo.repo.id, &update.name, actor.user.map(User::id), after, Timestamp::now()).await?
+                    store.record_scratch(repo.repo.repo.id, &update.name, actor.user.map(User::id), after, Timestamp::now()).await?;
                 }
-                (None, None, Some(before)) => store.forget_scratch(repo.repo.repo.id, &update.name, before).await?,
+                (None, None, Some(before)) => {
+                    store.forget_scratch(repo.repo.repo.id, &update.name, before).await?;
+                }
                 (None, None, None) => {}
             }
         }

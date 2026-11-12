@@ -106,6 +106,6 @@ mod tests {
         let kept = excerpt(&lines, 3);
         assert_eq!(kept.lines, ["line 99", "warning: again … (repeated 50 times)", "error: the end"]);
         assert_eq!(kept.covered, 52);
-        assert!(excerpt(&[], 30).lines.is_empty());
+        assert_eq!(excerpt(&[], 30).lines, Vec::<String>::new());
     }
 }
