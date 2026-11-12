@@ -16,6 +16,7 @@ mod agent_runs;
 mod agent_scratch;
 mod agent_supersede;
 mod agent_termination;
+mod agent_tokens;
 mod api;
 mod api_workflow;
 mod archives;

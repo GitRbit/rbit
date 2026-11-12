@@ -144,6 +144,53 @@ branch `scratch/<login>/<id>`, so `on: push` with `branches: ["**"]` or no filte
 and `branches: [main]` does not. A subset run reports only its jobs, so it never stands in
 for the full set of required checks.
 
+## Bisecting from recorded results
+
+```bash
+rbit bisect GOOD BAD [--workflow .rbit/workflows/ci.yml]
+```
+
+Reads what CI already recorded for the commits on `BAD`'s first-parent line down to `GOOD`
+(at most 1,000) before anything runs: a commit passed (a successful run, no failed one),
+failed, or is untested. It answers the newest commit that passed before the first that
+failed, that failure, how many untested commits lie between them and the one to test next
+(the middle); with none left, the commit that broke it. `--workflow` counts one workflow's
+runs only.
+
+## Landing
+
+```bash
+rbit pr ensure [--head BRANCH] [--base main] [--title T] [--ready] [--request-id ID]
+rbit pr ready N [--head SHA] [--mark] [--watch]
+rbit pr queue N [--head SHA] [--squash | --rebase] [--watch]
+rbit pr dequeue N
+rbit pr update-branch N --head SHA
+rbit pr revert COMMIT [--base main]
+```
+
+`ensure` returns the pull request for the branch or opens a draft; with `--request-id`, a
+retry gets the first answer. `ready` evaluates the head with the merge's own rules (exit 0
+ready, 1 a required check failed, 8 still expected or running) and `--mark` makes a draft
+ready. `queue` lands the pull request only after its merge on the current base passed the
+required checks, exactly that commit; `--watch` waits (exit 0 landed, 1 failed, 5 taken
+out). `update-branch` merges the base into the head branch if it is still `--head`; `revert`
+opens a pull request that undoes a commit.
+
+## Tasks
+
+```bash
+rbit task start ISSUE|BRANCH [--base main] [--dir PATH]
+rbit task resume BRANCH
+rbit task finish BRANCH
+```
+
+`start 31` takes issue 31 (it fails with `conflict`, naming the holder, when someone else
+has it), fetches the base and adds a Git worktree beside the current checkout on a new
+branch `feature/31-<title>` from exactly that commit. `start NAME` does the same for a
+branch without an issue. `resume` reports the worktree's head, its uncommitted changes,
+whether the server has that head and its CI. `finish` removes the worktree and refuses
+while it has uncommitted changes; the branch stays.
+
 ## Issues
 
 ```bash
@@ -153,11 +200,15 @@ rbit issue create --title "…" [--body "…" | --body-file FILE] [--label NAME]
 rbit issue comment NUMBER [--body "…" | --body-file FILE]
 rbit issue close NUMBER [--reason completed|not_planned]
 rbit issue label NUMBER LABEL... [--remove]
+rbit issue take NUMBER
+rbit issue search WORD... [--state open|closed|all]
 ```
 
 `list` leaves pull requests out and gives one short row per issue; `view` gives the body
 and the three newest comments, each cut at 4,000 characters with `--json`. `--body-file -`
-reads standard input.
+reads standard input. `take` assigns the issue to you only if nobody holds it, and fails
+with `conflict` (exit 5) naming the holder otherwise. `search` finds issues and pull
+requests whose title or body has every word, before you file another.
 
 ## Workflows and artifacts
 

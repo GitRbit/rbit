@@ -9,6 +9,26 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Merge queue: `POST …/pulls/{n}/queue` (and `rbit pr queue`) lands a pull request only
+  after its merge on the current base passed every required check; the tested commit
+  becomes the base by compare-and-swap, and a base that moved means a new candidate and a
+  new test. Candidates live under `refs/merge-queue/`, which clients cannot push to.
+- Readiness by the merge's own rules (`GET …/pulls/{n}/readiness`, `rbit pr ready`), and
+  marking a draft ready for an exact head (`POST …/pulls/{n}/ready`).
+- `POST …/pulls/ensure` and `rbit pr ensure`: one pull request for a pair of branches,
+  returned when it exists, with request ids that make retries safe.
+- Server-side writes: update a pull request's branch from its base, revert a commit into a
+  pull request, move a branch by compare-and-swap, each through branch protection.
+- Commit queries: compare, contains, and the pull requests of a commit.
+- Artifacts by commit and name, and releases that attach a built artifact's files.
+- A failing workflow on the default branch keeps one issue open until it passes again.
+- Scoped tokens: limited to one repository and some rights, enforced over the API and Git;
+  `/user/tokens` lists, creates and revokes tokens.
+- `rbit bisect` and `GET …/agent/bisect`: what CI already recorded between two commits.
+- Pull request manifests with blob ids and change classes, a review inbox with anchors that
+  follow the code or say they are ambiguous, and resolving threads from the API.
+- `rbit issue take` (only if nobody holds it) and `rbit issue search`; `rbit task
+  start|resume|finish` for one issue in one worktree.
 - Test reports: a job that uploads its JUnit files as the artifact `rbit-test-report` gets
   its failed tests (id, place, message) in the failure digest and `rbit run failure`. A
   test that failed and passed at the same commit is marked `flaky`.
