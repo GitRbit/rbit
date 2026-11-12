@@ -49,6 +49,7 @@ use rbit_core::{
 use rbit_services::{
     RepoContext, ServiceError,
     releases::{ReleaseActor, ReleaseDetail, ReleaseInput, human_bytes},
+    tokens::Right,
     webhooks::payloads,
 };
 use serde::Deserialize;
@@ -134,12 +135,11 @@ async fn asset_value(state: &AppState, ctx: &RepoContext, release: &ReleaseDetai
 }
 
 // Actions: releases from workflows.
-/// Who writes: a workflow task (its route and permission were checked when it was
-/// authenticated), or a person with the `write` scope.
+/// Who writes: a workflow task (checked when authenticated), or a person with `write` (and `push`, when limited: tags).
 fn writer(caller: &Caller) -> ApiResult<ReleaseActor<'_>> {
     match caller.task() {
         Some(grant) => Ok(ReleaseActor::Task(grant)),
-        None => caller.require(TokenScope::Write).map(ReleaseActor::User),
+        None => caller.require_right(Right::Push).and_then(|()| caller.require(TokenScope::Write)).map(ReleaseActor::User),
     }
 }
 

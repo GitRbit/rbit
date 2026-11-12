@@ -134,6 +134,12 @@ impl Caller {
         }
     }
 
+    /// Refuses (403) a limited token: for writes no right covers (switching workflows,
+    /// deleting artifacts and caches); any other caller passes.
+    pub fn require_unlimited(&self) -> ApiResult<()> {
+        if self.is_limited() { Err(ApiError::forbidden("A limited token cannot do this")) } else { Ok(()) }
+    }
+
     /// Whether the caller's token is limited to a repository or some rights.
     pub fn is_limited(&self) -> bool {
         self.token_limit.is_some()
@@ -253,8 +259,26 @@ impl FromRequestParts<AppState> for Caller {
             return Err(ApiError::unauthorized("Bad credentials"));
         };
         throttle.check(ThrottleScope::ApiRequest, &user.id().0.to_string())?;
+        // A token limited to one repository reaches that repository's endpoints (where
+        // `open_repo` checks which repository) and who it belongs to, nothing account-wide:
+        // no repository list naming the others, no new repositories.
+        if token_limit.is_some() {
+            let route = parts.extensions.get::<MatchedPath>().and_then(|matched| matched.as_str().strip_prefix(PREFIX));
+            let allowed = route.zip(api_method(&parts.method)).is_some_and(|(path, method)| limited_route(method, path));
+            if !allowed {
+                return Err(ApiError::forbidden("A token limited to one repository cannot use this endpoint"));
+            }
+        }
         Ok(Self { user: Some(Arc::new(user)), scope: Some(scope), task: None, token_limit, request })
     }
+}
+
+/// Whether a token limited to one repository may call `path`: the repository's own
+/// endpoints, and reading who it belongs to.
+fn limited_route(method: ApiMethod, path: &str) -> bool {
+    path == "/repos/{owner}/{repo}"
+        || path.starts_with("/repos/{owner}/{repo}/")
+        || (method == ApiMethod::Get && matches!(path, "/user" | "/version"))
 }
 
 // Actions: S.
@@ -286,6 +310,18 @@ mod tests {
         };
         let user = User { account, email: "ada@example.com".parse().unwrap(), is_admin: false };
         Caller { user: Some(Arc::new(user)), scope, task: None, token_limit: None, request: Arc::default() }
+    }
+
+    #[test]
+    fn a_limited_token_reaches_its_repository_endpoints_only() {
+        assert!(limited_route(ApiMethod::Get, "/repos/{owner}/{repo}"));
+        assert!(limited_route(ApiMethod::Post, "/repos/{owner}/{repo}/pulls/{number}/queue"));
+        assert!(limited_route(ApiMethod::Get, "/user"));
+        assert!(!limited_route(ApiMethod::Get, "/user/repos"), "it would name every repository");
+        assert!(!limited_route(ApiMethod::Post, "/user/repos"));
+        assert!(!limited_route(ApiMethod::Patch, "/user"));
+        assert!(!limited_route(ApiMethod::Get, "/search/repositories"));
+        assert!(!limited_route(ApiMethod::Get, "/repos/{owner}/{repo}s"), "a prefix is not the repository");
     }
 
     #[test]

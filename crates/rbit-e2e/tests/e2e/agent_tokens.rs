@@ -59,6 +59,18 @@ async fn a_limited_token_reaches_one_repository_with_its_rights_only() {
     let denied = git.fails(&sample.dir, &["push", &url("vault", &agent), "main"]);
     assert_ne!(denied, "");
 
+    // Nothing account-wide: no list naming the other repositories, no new repository; and
+    // writes its rights do not name are refused before anything is looked up.
+    assert_eq!(send(&server, &agent, Method::GET, "user/repos", None).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(send(&server, &agent, Method::POST, "user/repos", Some(json!({ "name": "evil" }))).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(send(&server, &agent, Method::GET, "user", None).await.0, StatusCode::OK, "who it belongs to");
+    let logs = json!({ "name": "logs", "scope": "write", "repository": "alice/rocket", "rights": ["read_logs"] });
+    let (_, reader) = send(&server, &admin, Method::POST, "user/tokens", Some(logs)).await;
+    let reader = reader["token"].as_str().unwrap().to_owned();
+    let release = json!({ "tag_name": "v9", "target_commitish": "main" });
+    let (status, body) = send(&server, &reader, Method::POST, "repos/alice/rocket/releases", Some(release)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "a release makes a tag, which needs `push`: {body}");
+
     // A limited token makes no tokens, even with the admin scope.
     let wide = json!({ "name": "wide", "scope": "admin", "repository": "alice/rocket" });
     let (_, wide) = send(&server, &admin, Method::POST, "user/tokens", Some(wide)).await;

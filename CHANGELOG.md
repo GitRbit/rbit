@@ -106,6 +106,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A token limited to one repository could still use account-wide endpoints: it listed
+  every repository of its owner, private ones included, and created new (public)
+  repositories. It could also cancel runs, create releases and tags without `push`, send
+  repository dispatches without `dispatch`, disable workflows and delete artifacts and
+  caches. It now reaches only its repository's endpoints and `GET /user`, cancel needs
+  `approve`, releases `push`, repository dispatch `dispatch`, and the other writes an
+  unlimited token.
 - `rbit run failure --sha` reads a failure as soon as a job failed, as `status` and the
   watch do; it answered `pending` until every job of the run had ended. `rbit run rerun`
   on a commit whose failed run is still going says it has not finished (exit 8) instead of

@@ -78,8 +78,12 @@ completed. Nothing is reverted on its own.
 ## 4.8 Scoped tokens
 
 A personal access token may be limited to one repository and to rights within its scope:
-`push`, `statuses`, `merge` (merge, queue, ready), `dispatch`, `approve` (approve, rerun),
-`read_logs` (logs, failure digests, artifacts). The limit lives in its own table beside the
+`push` (also releases, which make tags), `statuses`, `merge` (merge, queue, ready),
+`dispatch` (also repository dispatch), `approve` (approve, rerun, cancel), `read_logs` (logs,
+failure digests, artifacts). Such a token reaches only its repository's endpoints and
+`GET /user`: nothing account-wide, so no repository list naming the others and no new
+repository. Writes no right names (switching workflows, deleting artifacts and caches) need
+an unlimited token. The limit lives in its own table beside the
 token (migration `0082_token_limits.sql`), so the credential table and its writer protocol
 are unchanged. Every API repository lookup refuses other repositories with 404; Git over
 HTTP refuses them, and pushes without `push`. `GET`, `POST`, `DELETE /user/tokens` list,

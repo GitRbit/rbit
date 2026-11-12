@@ -419,6 +419,7 @@ async fn fail_archive(sender: &tokio::sync::mpsc::Sender<std::io::Result<axum::b
 /// `POST /repos/{owner}/{repo}/actions/runs/{run_id}/cancel`: `202 Accepted`; running jobs
 /// stop when their runners next report.
 pub async fn cancel(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Response> {
+    caller.require_right(Right::Approve)?;
     let ctx = path.repo(&state, &caller).await?;
     let actions = actions(&state)?;
     let run = actions.run_by_id(&ctx, path.run()?).await?.run;
@@ -518,6 +519,7 @@ pub async fn enable_workflow(State(state): State<AppState>, caller: Caller, Path
 }
 
 async fn switch_workflow(state: &AppState, caller: &Caller, path: &ActionsPath, disabled: bool) -> ApiResult<StatusCode> {
+    caller.require_unlimited()?;
     let ctx = path.repo(state, caller).await?;
     let actions = actions(state)?;
     let workflow = path.workflow_id.as_deref().unwrap_or_default();
@@ -607,6 +609,7 @@ pub async fn repository_dispatch(
     Path(path): Path<ActionsPath>,
     ApiJson(body): ApiJson<RepositoryDispatchBody>,
 ) -> ApiResult<StatusCode> {
+    caller.require_right(Right::Dispatch)?;
     let ctx = path.repo(&state, &caller).await?;
     let user = require_writer(&caller, &ctx)?;
     let event_type = body.event_type.ok_or_else(|| ApiError::invalid("event_type", "event_type is required"))?;
@@ -714,6 +717,7 @@ pub async fn download_artifact(State(state): State<AppState>, caller: Caller, Pa
 
 /// `DELETE /repos/{owner}/{repo}/actions/artifacts/{artifact_id}`: `204`; the file goes too.
 pub async fn delete_artifact(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<StatusCode> {
+    caller.require_unlimited()?;
     let ctx = path.repo(&state, &caller).await?;
     let actions = actions(&state)?;
     let artifact = actions.artifact(&ctx, path.artifact()?).await?;
@@ -793,6 +797,7 @@ pub async fn delete_caches_by_key(
     Path(path): Path<ActionsPath>,
     Query(query): Query<CachesQuery>,
 ) -> ApiResult<Json<Value>> {
+    caller.require_unlimited()?;
     let ctx = path.repo(&state, &caller).await?;
     let user = require_writer(&caller, &ctx)?;
     let key = non_empty(&query.key).ok_or_else(|| ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, "key is required"))?;
@@ -806,6 +811,7 @@ pub async fn delete_caches_by_key(
 
 /// `DELETE /repos/{owner}/{repo}/actions/caches/{cache_id}`: `204`; the file goes too.
 pub async fn delete_cache(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<StatusCode> {
+    caller.require_unlimited()?;
     let ctx = path.repo(&state, &caller).await?;
     let id = path.cache()?;
     let user = require_writer(&caller, &ctx)?;
