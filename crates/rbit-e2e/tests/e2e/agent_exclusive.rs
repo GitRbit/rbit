@@ -81,8 +81,10 @@ async fn an_exclusive_job_has_the_runner_to_itself() {
     std::fs::create_dir_all(sample.dir.join(".rbit/workflows")).unwrap();
     let sha = git.commit_file(&sample.dir, ".rbit/workflows/ci.yml", WORKFLOW);
     git.ok(&sample.dir, &["push", "--quiet", &server.git_url_as("alice", "rocket", "alice", PASSWORD), "main"]);
-    let _runner =
-        Running(Command::new(&binary).args(["--config", &config_arg, "run"]).stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap());
+    // The runner's own log is kept, so a run that never finishes says why.
+    let log_path = home.path().join("runner.log");
+    let log = std::fs::File::create(&log_path).unwrap();
+    let _runner = Running(Command::new(&binary).args(["--config", &config_arg, "run"]).stdout(Stdio::null()).stderr(log).spawn().unwrap());
 
     let api = reqwest::Client::builder().no_proxy().build().unwrap();
     let get = |path: String| {
@@ -95,7 +97,12 @@ async fn an_exclusive_job_has_the_runner_to_itself() {
         if let Some(run) = runs["workflow_runs"].as_array().and_then(|runs| runs.first()).filter(|run| run["status"] == "completed") {
             break run.clone();
         }
-        assert!(Instant::now() < deadline, "the run did not finish: {runs}");
+        if Instant::now() >= deadline {
+            let jobs = get(format!("runs/{}/jobs", runs["workflow_runs"][0]["id"])).await;
+            let log = std::fs::read_to_string(&log_path).unwrap_or_default();
+            let tail: Vec<&str> = log.lines().rev().take(40).collect::<Vec<_>>().into_iter().rev().collect();
+            panic!("the run did not finish: {runs}\njobs: {jobs}\nrunner log:\n{}", tail.join("\n"));
+        }
         tokio::time::sleep(Duration::from_millis(250)).await;
     };
     assert_eq!(run["conclusion"], "success", "{run}");

@@ -28,10 +28,16 @@ impl Api {
         (status, if text.is_empty() { Value::Null } else { serde_json::from_str(&text).unwrap() })
     }
 
-    /// The run of `sha` on `branch`.
+    /// The run of `sha` on `branch`, waiting for the event subscriber to start it.
     async fn run_of(&self, branch: &str, sha: &str) -> Value {
-        let (_, runs) = self.call(reqwest::Method::GET, &format!("actions/runs?branch={branch}&per_page=20"), None).await;
-        runs["workflow_runs"].as_array().unwrap().iter().find(|run| run["head_sha"] == sha).cloned().expect("a run of the commit")
+        for _ in 0..100 {
+            let (_, runs) = self.call(reqwest::Method::GET, &format!("actions/runs?branch={branch}&per_page=20"), None).await;
+            if let Some(run) = runs["workflow_runs"].as_array().unwrap().iter().find(|run| run["head_sha"] == sha) {
+                return run.clone();
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        panic!("no run of {sha} on {branch}")
     }
 }
 
@@ -58,16 +64,20 @@ async fn a_newer_push_supersedes_a_branchs_older_run_only_when_the_repository_as
     git.ok(&sample.dir, &["checkout", "--quiet", "-b", "topic"]);
     let first = git.commit_file(&sample.dir, "one.txt", "1\n");
     git.ok(&sample.dir, &["push", "--quiet", &url, "topic"]);
-    let second = git.commit_file(&sample.dir, "two.txt", "2\n");
+    let before = git.commit_file(&sample.dir, "two.txt", "2\n");
     git.ok(&sample.dir, &["push", "--quiet", &url, "topic"]);
     assert_eq!(api.run_of("topic", &first).await["status"], "queued");
+    assert_eq!(api.run_of("topic", &before).await["status"], "queued");
 
-    // On: the next push cancels the branch's older run and names itself.
+    // On: a run started since then is cancelled by the next push, which names itself. Runs
+    // from before the setting are in no group and stay.
     let (status, _) = api.call(reqwest::Method::PUT, "actions/supersede", Some(json!({ "enabled": true }))).await;
     assert_eq!(status, 204);
-    let third = git.commit_file(&sample.dir, "three.txt", "3\n");
+    let second = git.commit_file(&sample.dir, "three.txt", "3\n");
     git.ok(&sample.dir, &["push", "--quiet", &url, "topic"]);
-    // Pushes start their runs through the event subscriber: wait for the newer one to land.
+    assert_eq!(api.run_of("topic", &second).await["status"], "queued");
+    let third = git.commit_file(&sample.dir, "four.txt", "4\n");
+    git.ok(&sample.dir, &["push", "--quiet", &url, "topic"]);
     let mut older = api.run_of("topic", &second).await;
     for _ in 0..100 {
         if older["conclusion"] == "cancelled" {
@@ -78,6 +88,7 @@ async fn a_newer_push_supersedes_a_branchs_older_run_only_when_the_repository_as
     }
     assert_eq!((older["conclusion"].as_str(), older["superseded_by"].as_str()), (Some("cancelled"), Some(third.as_str())), "{older}");
     assert_eq!(api.run_of("topic", &third).await["status"], "queued", "the newest run goes on");
+    assert_eq!(api.run_of("topic", &before).await["status"], "queued", "a run from before the setting is in no group");
     let (_, watched) = api.call(reqwest::Method::GET, &format!("agent/watch?sha={second}&timeout=0"), None).await;
     assert_eq!((watched["state"].as_str(), watched["superseded_by"].as_str()), (Some("superseded"), Some(third.as_str())));
 

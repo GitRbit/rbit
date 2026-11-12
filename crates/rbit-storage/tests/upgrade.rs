@@ -739,6 +739,48 @@ async fn actions_checks_refuse_inconsistent_rows(db: &Upgraded) {
     sqlx::query("DELETE FROM actions_runs").execute(&db.raw).await.unwrap();
 }
 
+/// Every Actions table an upgraded database has, by name.
+const ACTIONS_TABLES: [&str; 35] = [
+    // Actions: annotations.
+    "actions_annotations",
+    "actions_artifacts",
+    // Actions: shared cache.
+    "actions_caches",
+    "actions_commit_decisions",
+    "actions_deployment_reviews",
+    // Actions: disabled workflows.
+    "actions_disabled_workflows",
+    "actions_environment_reviewers",
+    "actions_environment_secrets",
+    "actions_environment_variables",
+    "actions_environments",
+    "actions_job_labels",
+    "actions_job_outputs",
+    "actions_jobs",
+    "actions_owner_enabled_repositories",
+    "actions_owner_policies",
+    "actions_owner_settings",
+    "actions_registration_tokens",
+    "actions_repositories",
+    "actions_run_numbers",
+    "actions_runners",
+    "actions_runs",
+    "actions_schedules",
+    "actions_scratch_refs",
+    "actions_secret_repositories",
+    "actions_secrets",
+    "actions_step_summaries",
+    "actions_steps",
+    "actions_supersede_settings",
+    "actions_supersessions",
+    "actions_tasks",
+    "actions_terminations",
+    "actions_test_failures",
+    "actions_test_reports",
+    "actions_trusted_users",
+    "actions_variables",
+];
+
 // Actions: foundation (F).
 #[tokio::test]
 async fn actions_tables_start_empty_with_their_checks_and_cascades() {
@@ -748,49 +790,7 @@ async fn actions_tables_start_empty_with_their_checks_and_cascades() {
             .fetch_all(&db.raw)
             .await
             .unwrap();
-    assert_eq!(
-        tables,
-        [
-            // Actions: annotations.
-            "actions_annotations",
-            "actions_artifacts",
-            // Actions: shared cache.
-            "actions_caches",
-            "actions_commit_decisions",
-            "actions_deployment_reviews",
-            // Actions: disabled workflows.
-            "actions_disabled_workflows",
-            "actions_environment_reviewers",
-            "actions_environment_secrets",
-            "actions_environment_variables",
-            "actions_environments",
-            "actions_job_labels",
-            "actions_job_outputs",
-            "actions_jobs",
-            "actions_owner_enabled_repositories",
-            "actions_owner_policies",
-            "actions_owner_settings",
-            "actions_registration_tokens",
-            "actions_repositories",
-            "actions_run_numbers",
-            "actions_runners",
-            "actions_runs",
-            "actions_schedules",
-            "actions_scratch_refs",
-            "actions_secret_repositories",
-            "actions_secrets",
-            "actions_step_summaries",
-            "actions_steps",
-            "actions_supersede_settings",
-            "actions_supersessions",
-            "actions_tasks",
-            "actions_terminations",
-            "actions_test_failures",
-            "actions_test_reports",
-            "actions_trusted_users",
-            "actions_variables",
-        ]
-    );
+    assert_eq!(tables, ACTIONS_TABLES);
     for table in &tables {
         assert_eq!(db.count(&format!("SELECT COUNT(*) FROM {table}")).await, 0, "{table}");
     }
