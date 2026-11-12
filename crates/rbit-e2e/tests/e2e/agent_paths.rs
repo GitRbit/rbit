@@ -56,7 +56,15 @@ async fn a_docs_only_change_needs_no_ci_and_still_merges() {
     std::fs::create_dir_all(sample.dir.join("docs")).unwrap();
     let docs = git.commit_file(&sample.dir, "docs/guide.md", "# Guide\n");
     git.ok(&sample.dir, &["push", "--quiet", &url, "docs-change"]);
-    let (_, state) = call(reqwest::Method::GET, "agent/status?branch=docs-change".to_owned(), None).await;
+    // What the push started is recorded just after git answers: wait for that decision.
+    let mut state = Value::Null;
+    for _ in 0..50 {
+        state = call(reqwest::Method::GET, "agent/status?branch=docs-change".to_owned(), None).await.1;
+        if !state["ci"]["state"].is_null() && state["ci"]["state"] != "not_started" {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
     assert_eq!(state["ci"]["state"], "none_expected", "{state}");
     assert!(state["ci"]["reason"].as_str().unwrap().contains("filters"), "{state}");
 
