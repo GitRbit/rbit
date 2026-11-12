@@ -91,7 +91,7 @@ fn dirty(dir: &Path) -> anyhow::Result<usize> {
 pub async fn task(api: &Api, repo: &Repo, remote: Option<&str>, command: TaskCommand, out: &Output) -> anyhow::Result<i32> {
     match command {
         TaskCommand::Start { what, base, dir } => start(api, repo, remote.unwrap_or("origin"), &what, &base, dir, out).await,
-        TaskCommand::Resume { name } => resume(api, repo, &name, out).await,
+        TaskCommand::Resume { name } => resume(api, repo, remote.unwrap_or("origin"), &name, out).await,
         TaskCommand::Finish { name } => {
             let path =
                 worktree_of(&name).ok_or_else(|| agent::outcome("not_found", format!("no worktree has `{name}` checked out"), None))?;
@@ -137,12 +137,24 @@ async fn start(api: &Api, repo: &Repo, remote: &str, what: &str, base: &str, dir
     Ok(0)
 }
 
-async fn resume(api: &Api, repo: &Repo, name: &str, out: &Output) -> anyhow::Result<i32> {
+/// The issue a branch name carries, as the server reads it: `feature/31-run-watch`, `31-fix`.
+fn issue_of(name: &str) -> Option<u64> {
+    let last = name.rsplit('/').next()?;
+    let digits: String = last.chars().take_while(char::is_ascii_digit).collect();
+    let rest = &last[digits.len()..];
+    (!digits.is_empty() && (rest.is_empty() || rest.starts_with('-'))).then(|| digits.parse().ok()).flatten()
+}
+
+async fn resume(api: &Api, repo: &Repo, remote: &str, name: &str, out: &Output) -> anyhow::Result<i32> {
     let path = worktree_of(name).ok_or_else(|| agent::outcome("not_found", format!("no worktree has `{name}` checked out"), None))?;
     let head = git_in(&path, &["rev-parse", "HEAD"]).unwrap_or_default();
     let changed = dirty(&path)?;
     let server: Value = api.get(&format!("repos/{repo}/agent/status?branch={}", encode(name))).await.unwrap_or(Value::Null);
     let pushed = server["head"]["sha"].as_str() == Some(head.as_str());
+    // The server knows a branch only once it is pushed; the name still says the issue.
+    let issue = server["task"]["issue"].as_u64().or_else(|| issue_of(name));
+    let push = format!("git -C {} push --set-upstream {remote} {name}", path.display());
+    let next = if pushed { server["next"].clone() } else { json!(push) };
     let body = json!({
         "name": name,
         "path": path,
@@ -150,16 +162,16 @@ async fn resume(api: &Api, repo: &Repo, name: &str, out: &Output) -> anyhow::Res
         "uncommitted": changed,
         "pushed": pushed,
         "ci": server["ci"]["state"],
-        "issue": server["issue"],
+        "issue": issue,
         "pr": server["pr"],
-        "next": server["next"],
+        "next": next,
     });
     if out.json {
         agent::print("rbit.task/1", body);
     } else {
         println!("{name} at {}: {} @ {}", path.display(), if changed == 0 { "clean" } else { "uncommitted changes" }, short(&head));
         println!("  pushed: {pushed}; CI: {}", server["ci"]["state"].as_str().unwrap_or("unknown"));
-        if let Some(next) = server["next"].as_str() {
+        if let Some(next) = next.as_str() {
             println!("  next: {next}");
         }
     }
@@ -173,6 +185,8 @@ mod tests {
     #[test]
     fn titles_become_short_branch_slugs() {
         assert_eq!(slug("Fix: `rbit status` 404 right after a push!"), "fix-rbit-status-404-right-after-a-push");
+        assert_eq!((issue_of("feature/12-stress-task"), issue_of("31-fix"), issue_of("fix/7")), (Some(12), Some(31), Some(7)));
+        assert_eq!((issue_of("main"), issue_of("v2-release"), issue_of("feature/2024edition")), (None, None, None));
         assert_eq!(slug("feature/12-x"), "feature-12-x");
         assert!(slug(&"word ".repeat(30)).len() <= 40);
         assert_eq!(slug("¿¿??"), "");
