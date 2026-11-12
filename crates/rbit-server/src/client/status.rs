@@ -95,10 +95,10 @@ pub async fn watch_commit(api: &Api, repo: &Repo, wait: CommitWait, out: &Output
         let remaining = deadline.saturating_duration_since(tokio::time::Instant::now()).as_secs().clamp(1, 25);
         let mut query = format!("sha={sha}&timeout={remaining}");
         if let Some(branch) = &branch {
-            query.push_str(&format!("&branch={}", encode(branch)));
+            query = format!("{query}&branch={}", encode(branch));
         }
         if let Some(cursor) = &cursor {
-            query.push_str(&format!("&cursor={}", encode(cursor)));
+            query = format!("{query}&cursor={}", encode(cursor));
         }
         let answer = api.get(&format!("repos/{repo}/agent/watch?{query}")).await?;
         let state = text(&answer, "state").to_owned();

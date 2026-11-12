@@ -111,11 +111,11 @@ pub async fn issues(api: &Api, repo: &Repo, command: IssueCommand, out: &Output)
         IssueCommand::List { state, label, mine, limit } => {
             let mut query = format!("state={}&per_page={}", encode(&state), limit.clamp(1, 100));
             if !label.is_empty() {
-                query.push_str(&format!("&labels={}", encode(&label.join(","))));
+                query = format!("{query}&labels={}", encode(&label.join(",")));
             }
             if mine {
                 let me = api.get("user").await?;
-                query.push_str(&format!("&assignee={}", encode(text(&me, "login"))));
+                query = format!("{query}&assignee={}", encode(text(&me, "login")));
             }
             let listed = api.get(&format!("repos/{repo}/issues?{query}")).await?;
             let issues: Vec<&Value> = listed.as_array().into_iter().flatten().filter(|issue| issue.get("pull_request").is_none()).collect();

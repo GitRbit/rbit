@@ -40,9 +40,8 @@ pub async fn failure(api: &Api, repo: &Repo, run: Option<i64>, sha: Option<Strin
         show(&digest, out);
         return Ok(exit_for(failed, untrusted(&digest)));
     }
-    let sha = match sha.or_else(|| git(&["rev-parse", "HEAD"])) {
-        Some(sha) => sha,
-        None => return Err(agent::outcome("usage", "pass a run id or --sha, or run inside a clone", None)),
+    let Some(sha) = sha.or_else(|| git(&["rev-parse", "HEAD"])) else {
+        return Err(agent::outcome("usage", "pass a run id or --sha, or run inside a clone", None));
     };
     let listed = api.get(&format!("repos/{repo}/actions/runs?head_sha={}&per_page=50", encode(&sha))).await?;
     let runs = listed["workflow_runs"].as_array().cloned().unwrap_or_default();

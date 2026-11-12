@@ -71,6 +71,7 @@ fn shas(runs: &Value) -> Vec<(String, String)> {
 }
 
 #[tokio::test]
+#[expect(clippy::too_many_lines, reason = "one scenario, told in order")]
 async fn an_agent_finds_the_runs_of_its_commit_and_reads_codes_not_prose() {
     let server = TestServer::start_with(|config| config.actions.enabled = true);
     let alice = server.sign_up("alice").await;

@@ -69,7 +69,7 @@ fn message(base: Option<&str>, branch: Option<&str>, jobs: &[String]) -> String 
     };
     let mut message = format!("rbit ci run: the working tree on {on}\n");
     if !jobs.is_empty() {
-        message.push_str(&format!("\nRbit-CI-Jobs: {}\n", jobs.join(", ")));
+        message = format!("{message}\nRbit-CI-Jobs: {}\n", jobs.join(", "));
     }
     message
 }

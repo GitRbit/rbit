@@ -9,7 +9,7 @@
 //!   prompting: a missing login fails at once with a clear error. A token the server refuses
 //!   fails the push the same way (`Authentication failed`); the helper never prompts.
 
-use std::io::{BufRead as _, Write as _};
+use std::io::Write as _;
 
 use anyhow::{Context as _, bail};
 

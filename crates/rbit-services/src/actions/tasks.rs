@@ -134,6 +134,11 @@ impl ActionsService {
         }
         self.forget_masks(id);
         self.finalise_log(id).await?;
+        // Agent loop: exclusive labels. While busy, its polls left out the jobs that need it
+        // alone and then waited for new work; now it may take them, so they look again.
+        if !runner.exclusive_labels.is_empty() {
+            self.bump_tasks_version();
+        }
         if runner.ephemeral && self.ctx().database.actions_runners().delete_ephemeral(runner.id).await? {
             self.runner_cache().await?.remove(runner.id);
             tracing::info!(runner = runner.id.0, name = %runner.name, "ephemeral runner removed after its task");
