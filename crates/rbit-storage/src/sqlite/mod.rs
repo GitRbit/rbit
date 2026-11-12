@@ -15,6 +15,8 @@ pub mod actions_schedules;
 pub mod actions_secrets;
 pub mod actions_settings;
 pub mod admin;
+// Agent loop: request ids.
+pub mod agent_requests;
 pub mod audit;
 // `rbit backup` and `rbit restore`: snapshot, inventory, pruning and the wiki catalog.
 pub mod backup;
@@ -316,6 +318,11 @@ impl Database {
 
     pub fn actions_runs(&self) -> actions_runs::ActionsRunStore {
         actions_runs::ActionsRunStore::new(self.pool.clone())
+    }
+
+    // Agent loop: request ids.
+    pub fn agent_requests(&self) -> agent_requests::AgentRequestStore {
+        agent_requests::AgentRequestStore::new(self.pool.clone())
     }
 
     pub fn actions_secrets(&self) -> actions_secrets::ActionsSecretStore {

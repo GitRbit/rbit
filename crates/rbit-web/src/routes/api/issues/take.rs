@@ -2,8 +2,8 @@
 //! by its words before filing another.
 
 use super::{
-    ApiError, ApiResult, AppState, Caller, Deserialize, IssueState, IssuePath, Json, Path, Query, RepoPath, SearchFilter, State, StatusCode,
-    TokenScope, Value, issue_value, json, open_thread, reopen,
+    ApiError, ApiResult, AppState, Caller, Deserialize, IssuePath, IssueState, Json, Path, Query, RepoPath, SearchFilter, State,
+    StatusCode, TokenScope, Value, issue_value, json, open_thread, reopen,
 };
 
 /// This file's endpoints, appended to the API table beside the issues area's own.
@@ -64,14 +64,15 @@ pub(super) async fn search(
         .iter()
         .map(|issue| {
             let metadata = found.metadata.get(&issue.id);
-            let labels: Vec<&str> = metadata.map(|metadata| metadata.labels.iter().map(|label| label.name.as_str()).collect()).unwrap_or_default();
+            let labels: Vec<&str> =
+                metadata.map(|metadata| metadata.labels.iter().map(|label| label.name.as_str()).collect()).unwrap_or_default();
             let assignees: Vec<&str> =
                 metadata.map(|metadata| metadata.assignees.iter().map(|account| account.name.as_str()).collect()).unwrap_or_default();
             json!({
                 "number": issue.number.get(),
                 "title": issue.title.as_str(),
                 "state": issue.state.as_str(),
-                "pull_request": issue.kind == super::IssueKind::PullRequest,
+                "pull_request": issue.kind == super::IssueKind::Pull,
                 "labels": labels,
                 "assignees": assignees,
                 "updated_at": super::timestamp(issue.updated_at),

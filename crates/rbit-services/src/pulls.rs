@@ -26,6 +26,8 @@
 
 mod background;
 mod creation;
+// Agent loop: pr ensure.
+pub mod ensure;
 pub mod hooks;
 pub mod json;
 pub mod lifecycle;

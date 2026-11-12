@@ -124,6 +124,7 @@ impl PullService {
             mergeable,
             conflict_paths: if mergeable == Mergeability::Conflict { ctx.pull.conflict_paths.clone() } else { Vec::new() },
             statuses,
+            required,
             head_branch_exists,
             can_merge: merges_as_writer(viewer.is_some(), ctx.repo().can_write_content()),
             can_delete_head,

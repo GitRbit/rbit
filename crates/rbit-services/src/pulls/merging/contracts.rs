@@ -18,6 +18,9 @@ pub struct MergeBox {
     pub conflict_paths: Vec<String>,
     /// The latest status of each context on the head commit, by context (milestone 3, S).
     pub statuses: Vec<CommitStatus>,
+    /// The contexts required of this head: the rules' ones, without those no workflow will
+    /// report for it (agent plan steps 2.2 and 4.2).
+    pub required: Vec<String>,
     pub head_branch_exists: bool,
     /// The viewer may press the button (write access to the base repository).
     pub can_merge: bool,

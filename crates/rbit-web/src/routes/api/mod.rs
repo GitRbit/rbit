@@ -24,6 +24,8 @@
 //! compression; their handlers bound size and time themselves.
 
 mod accounts;
+// Agent loop: ensure, readiness and commit queries.
+mod agent_pulls;
 mod auth;
 mod collaborators;
 mod error;
@@ -194,6 +196,8 @@ pub fn table(config: &Config) -> Vec<ApiRoute> {
     routes.extend(issues::take::routes());
     routes.extend(notifications::routes());
     routes.extend(pulls::routes());
+    // Agent loop: ensure, readiness and commit queries.
+    routes.extend(agent_pulls::routes());
     routes.extend(protection::routes());
     // Milestone 3: REST API continuation (A).
     routes.extend(collaborators::routes());

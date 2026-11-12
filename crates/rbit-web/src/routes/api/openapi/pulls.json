@@ -1035,6 +1035,360 @@
           }
         ]
       }
+    },
+    "/repos/{owner}/{repo}/pulls/ensure": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "post": {
+        "operationId": "ensurePull",
+        "tags": [
+          "pulls"
+        ],
+        "summary": "rbit's own: publish or recover one pull request for a pair of branches",
+        "description": "`schema: rbit.pr-ensure/1`. Body: `head` (branch or `owner:branch`), `base`, optional `title`, `body`, `draft` (default `true`) and `request_id`. An open pull request from the same head into the same base is returned (`200`, `outcome: existing`) instead of refused. With `request_id`, the answer is remembered for a week: a retry with the same inputs returns the same pull request (`200`, `outcome: replayed`), even if the first call's response was lost; reusing the id with other inputs is `409 conflict`. A new pull request is `201`, `outcome: created`. Answers `number`, `outcome` and the `pull` as `GET …/pulls/{number}` shows it.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "A new pull request (an existing or replayed one answers 200)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/pulls/{number}/readiness": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "number",
+          "in": "path",
+          "required": true,
+          "description": "The pull request number",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getPullReadiness",
+        "tags": [
+          "pulls"
+        ],
+        "summary": "rbit's own: whether the head can merge, by the merge's own rules",
+        "description": "`schema: rbit.readiness/1`: the evaluation the merge itself runs (and the merge box shows), for the current head: `ready`, `blocked` (a protection rule is unmet), `may_bypass`, each requirement (`name`, `met`, `says`, `protection`), and each status context: the required ones as `expected` (nothing reported yet), `running`, `failed` or `passed`, and the others with `required: false`. A required check no workflow will report for this head (filtered out, skip marker) is not required. With `head`, a different current head is `409 head_changed`.",
+        "parameters": [
+          {
+            "name": "head",
+            "in": "query",
+            "description": "The head the caller expects (a full id or a prefix).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The readiness",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/pulls/{number}/ready": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "number",
+          "in": "path",
+          "required": true,
+          "description": "The pull request number",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ],
+      "post": {
+        "operationId": "markPullReady",
+        "tags": [
+          "pulls"
+        ],
+        "summary": "rbit's own: mark a draft ready for review, for an exact head",
+        "description": "Body: `head`, the head the caller expects. A draft is marked ready for review (as the web page's button does); a pull request already ready is left alone. A different current head is `409 head_changed`. Answers the readiness, as `GET …/readiness` does. Needs a `write` token, and the author or a writer.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The readiness after marking it ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/agent/compare": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "getAgentCompare",
+        "tags": [
+          "pulls"
+        ],
+        "summary": "rbit's own: merge base, ahead and behind, without a diff",
+        "description": "`schema: rbit.compare/1`: the full ids of `base` and `head`, their best common ancestor (`null` for unrelated histories), and the commits each has that the other has not (`ahead`, `behind`, counted up to 10,000).",
+        "parameters": [
+          {
+            "name": "base",
+            "in": "query",
+            "required": true,
+            "description": "A branch, tag or commit.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "head",
+            "in": "query",
+            "required": true,
+            "description": "A branch, tag or commit.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The comparison",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/agent/contains": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "getAgentContains",
+        "tags": [
+          "pulls"
+        ],
+        "summary": "rbit's own: whether a branch contains a commit",
+        "description": "`schema: rbit.contains/1`: whether `ref` (the default branch when not given) is `commit` or has it as an ancestor, with the commit's full id.",
+        "parameters": [
+          {
+            "name": "commit",
+            "in": "query",
+            "required": true,
+            "description": "A commit (or branch, or tag).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ref",
+            "in": "query",
+            "description": "The branch, tag or commit that may contain it; the default branch when not given.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Whether it is contained",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/agent/commits/{sha}/pulls": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "sha",
+          "in": "path",
+          "required": true,
+          "description": "A commit id, branch or tag",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getAgentCommitPulls",
+        "tags": [
+          "pulls"
+        ],
+        "summary": "rbit's own: the pull requests a commit belongs to",
+        "description": "`schema: rbit.commit-pulls/1`: the pull requests whose head is the commit, that merged as it, or that merged it as their head, open, closed or merged, newest first, at most 50: `number`, `title`, `state` (`open`, `closed`, `merged`), `role` (`head`, `merge_commit`, `merged_head`), `base` and `head_branch`.",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The pull requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
     }
   },
   "components": {
