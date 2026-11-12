@@ -3536,7 +3536,7 @@
           "actions"
         ],
         "summary": "rbit's own: what failed in a run, small enough to read",
-        "description": "The failure digest (`schema: rbit.failure/1`): for each job that did not succeed, its termination record, up to 10 error annotations (`path`, `line`, `message`) and an excerpt of the last 30 lines of the step that ended it, with timestamps and colours removed and repeated lines folded. A cut excerpt says `truncated`, how many lines it shows of how many, and a `more` command. A job that uploaded an `rbit-test-report` artifact lists its failed `tests` (`id`, `path`, `line`, `message`, `flaky` when it also passed at this commit). Each job says whether its failures are `new` or `recurring` against the previous run of the workflow and ref, and `also_failing_on_base`; `resolved` names the previous run's failures that are gone. A run without failed jobs has an empty `jobs`.",
+        "description": "A run that failed before any job, because its workflow could not be read or planned, says why in `workflow_error`. The failure digest (`schema: rbit.failure/1`): for each job that did not succeed, its termination record, up to 10 error annotations (`path`, `line`, `message`) and an excerpt of the last 30 lines of the step that ended it, with timestamps and colours removed and repeated lines folded. A cut excerpt says `truncated`, how many lines it shows of how many, and a `more` command. A job that uploaded an `rbit-test-report` artifact lists its failed `tests` (`id`, `path`, `line`, `message`, `flaky` when it also passed at this commit). Each job says whether its failures are `new` or `recurring` against the previous run of the workflow and ref, and `also_failing_on_base`; `resolved` names the previous run's failures that are gone. A run without failed jobs has an empty `jobs`.",
         "security": [
           {},
           {
@@ -3785,7 +3785,7 @@
           "actions"
         ],
         "summary": "rbit's own: where a branch stands, in one answer",
-        "description": "`schema: rbit.status/1`: the branch's head and where it stands against its base (merge base, ahead, behind), the CI of exactly that commit (`state`: `none_expected` with a reason, `not_started`, `queued`, `running`, `failure` as soon as a job failed, `indeterminate` when every failed job's account is incomplete, `cancelled`, `success`; job counts; the failed jobs with their termination records and excerpts), the base's CI, the open pull request from the branch, the issue a `feature/<n>-…` branch names, and `next`, a command worth running.",
+        "description": "`schema: rbit.status/1`: the branch's head and where it stands against its base (merge base, ahead, behind), the CI of exactly that commit (`state`: `none_expected` with a reason, `not_started`, `queued`, `running`, `failure` as soon as a job failed, `indeterminate` when every failed job's account is incomplete, `cancelled`, `success`; job counts; the failed jobs with their termination records and excerpts; each run with its `error` when its workflow could not run), the base's CI, the open pull request from the branch, the issue a `feature/<n>-…` branch names, and `next`, a command worth running.",
         "parameters": [
           {
             "name": "branch",

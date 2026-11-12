@@ -25,6 +25,11 @@ fn untrusted(digest: &Value) -> bool {
     })
 }
 
+/// Whether a digest's run failed: a job failed, or its workflow could not run at all.
+fn failed(digest: &Value) -> bool {
+    digest["jobs"].as_array().is_some_and(|jobs| !jobs.is_empty()) || digest["workflow_error"].is_string()
+}
+
 fn exit_for(failed: bool, untrusted: bool) -> i32 {
     match (failed, untrusted) {
         (true, true) => 9,
@@ -36,9 +41,8 @@ fn exit_for(failed: bool, untrusted: bool) -> i32 {
 pub async fn failure(api: &Api, repo: &Repo, run: Option<i64>, sha: Option<String>, out: &Output) -> anyhow::Result<i32> {
     if let Some(run) = run {
         let digest = api.get(&format!("repos/{repo}/actions/runs/{run}/failure")).await?;
-        let failed = digest["jobs"].as_array().is_some_and(|jobs| !jobs.is_empty());
         show(&digest, out);
-        return Ok(exit_for(failed, untrusted(&digest)));
+        return Ok(exit_for(failed(&digest), untrusted(&digest)));
     }
     let Some(sha) = sha.or_else(|| git(&["rev-parse", "HEAD"])) else {
         return Err(agent::outcome("usage", "pass a run id or --sha, or run inside a clone", None));
@@ -87,6 +91,9 @@ fn show(digest: &Value, out: &Output) {
     }
     let jobs = digest["jobs"].as_array().cloned().unwrap_or_default();
     println!("run {} (#{}) at {}: {} failed job(s)", digest["run"], digest["number"], short(text(digest, "sha")), jobs.len());
+    if let Some(error) = digest["workflow_error"].as_str() {
+        println!("  the workflow did not run: {error}");
+    }
     for job in &jobs {
         let termination = &job["termination"];
         let step = termination["step_name"].as_str().map(|name| format!(" at step {} \"{name}\"", termination["step"])).unwrap_or_default();
@@ -178,5 +185,12 @@ mod tests {
         assert!(untrusted(&digest(json!({ "reason": "runner_lost", "log_complete": true }))));
         assert!(untrusted(&digest(json!({ "reason": "unknown", "log_complete": true }))));
         assert_eq!((exit_for(true, false), exit_for(true, true), exit_for(false, true)), (1, 9, 0));
+    }
+
+    #[test]
+    fn a_run_whose_workflow_could_not_run_failed() {
+        assert!(failed(&json!({ "jobs": [], "workflow_error": "line 3: unknown key `foo`" })));
+        assert!(!failed(&json!({ "jobs": [], "workflow_error": null })));
+        assert!(failed(&json!({ "jobs": [{ "termination": {} }] })));
     }
 }

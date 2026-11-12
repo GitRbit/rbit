@@ -102,6 +102,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A run that failed before any job, because its workflow could not be read or planned, now
+  says why outside the web page: the failure digest carries `workflow_error`, `rbit status`
+  gives each run its `error`, and `rbit run failure` prints it and exits 1. It exited 0, as
+  if nothing had failed, and every agent-facing answer showed a failure with no cause.
 - The command-line client no longer sends another host's repository path to rbit: in a clone
   whose `origin` is on GitHub and another remote is on rbit, it used `origin`'s path and
   answered a bare 404, and with no instance named it took GitHub for the instance. It now

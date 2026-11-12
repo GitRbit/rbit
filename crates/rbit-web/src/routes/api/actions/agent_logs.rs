@@ -75,6 +75,8 @@ pub async fn failure(State(state): State<AppState>, caller: Caller, Path(path): 
         "attempt": run.attempt,
         "sha": run.sha,
         "status": run.status.to_string(),
+        // Why a run failed before any job: its workflow could not be read or planned.
+        "workflow_error": run.error,
         "jobs": jobs,
         "resolved": digest.resolved,
     })))

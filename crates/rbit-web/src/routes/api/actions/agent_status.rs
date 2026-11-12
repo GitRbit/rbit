@@ -61,7 +61,10 @@ fn ci_json(ci: &CommitCi) -> Value {
     let runs: Vec<Value> = ci
         .runs
         .iter()
-        .map(|run| json!({ "id": run.id.0, "number": run.number, "workflow": run.workflow_name, "status": run.status.to_string() }))
+        .map(|run| {
+            let status = run.status.to_string();
+            json!({ "id": run.id.0, "number": run.number, "workflow": run.workflow_name, "status": status, "error": run.error })
+        })
         .collect();
     json!({
         "state": ci.state,
