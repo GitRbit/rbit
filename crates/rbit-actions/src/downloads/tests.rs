@@ -119,3 +119,26 @@ fn dos_times() {
     // 2023-11-14T22:13:20Z
     assert_eq!(dos_time(1_700_000_000), ((22 << 11) + (13 << 5) + 10, (43 << 9) + (11 << 5) + 14));
 }
+
+#[cfg(unix)]
+#[test]
+fn a_file_with_holes_packed_as_sparse_comes_out_whole() {
+    // Older runners packed files with `tar`'s default `sparse(true)`: a binary whose linker
+    // left holes became a GNU sparse entry, and converting the artifact dropped it.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("rbit");
+    let file = std::fs::File::create(&path).unwrap();
+    file.set_len(4 << 20).unwrap();
+    std::os::unix::fs::FileExt::write_all_at(&file, b"end", (4 << 20) - 3).unwrap();
+    let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast()));
+    builder.sparse(true);
+    builder.append_path_with_name(&path, "w/rbit").unwrap();
+    let tar = builder.into_inner().unwrap().finish().unwrap();
+    let mut zip = convert(&tar);
+    let mut entry = zip.by_name("rbit").unwrap();
+    let mut data = Vec::new();
+    std::io::Read::read_to_end(&mut entry, &mut data).unwrap();
+    assert_eq!(data.len(), 4 << 20);
+    assert_eq!(&data[data.len() - 3..], b"end");
+    assert!(data[..1024].iter().all(|byte| *byte == 0));
+}

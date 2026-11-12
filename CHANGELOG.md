@@ -87,8 +87,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   its decision per pushed commit, `rbit status` says `none_expected` with the reason, and
   the check is not required of that commit. A check from another CI is still required.
 - The runs API's `branch` filter now matches the runs of pull requests from that branch.
-### Fixed
-
+- Artifact downloads and cache restores no longer drop files with holes. Runners packed
+  such files (a freshly linked binary often has some) as GNU sparse entries, which the
+  server's conversion and the runner's restore skipped without a word; both now read them,
+  and runners write plain entries.
 - `rbit` started inside an rbit Actions job no longer refuses to start with "invalid
   configuration". The runner sets `RBIT_ACTIONS=true`, `RBIT_ACTOR`, `RBIT_SHA` and the
   other `RBIT_*` names of the run in every job, and the server read them as settings. It

@@ -7,8 +7,7 @@
 //! from the paths and the platform, and evicts. Otherwise the cache is local to the runner, and what follows describes it: entries live at
 //! `<work_dir>/cache/<repository id>/<scope>/<sha256(key)>.tar.gz` (tar and gzip), with a
 //! small `.json` beside each naming its key and paths, and are evicted least recently used
-//! once all of them together exceed `cache.max_bytes`. A restore touches the entry it
-//! uses, so "used" means read or written.
+//! once all of them together exceed `cache.max_bytes`. A restore touches the entry it uses, so "used" means read or written.
 //!
 //! Scopes come from the job specification and keep runs from poisoning each other's
 //! caches: a run reads its own ref's scope, then the default branch's, and writes only its
@@ -372,6 +371,7 @@ pub(super) fn write_archive_at(out: &Path, resolved: &[(Area, PathBuf)], roots: 
     let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::new(level.min(9)));
     let mut builder = tar::Builder::new(encoder);
     builder.follow_symlinks(false);
+    builder.sparse(false); // Plain entries: older servers drop sparse ones; gzip shrinks holes.
     for (area, relative) in resolved {
         let Some(base) = root(*area, roots) else { continue };
         let source = base.join(relative);
@@ -423,7 +423,7 @@ pub(super) fn extract(archive: &Path, roots: &Roots) -> io::Result<u64> {
         }
         match entry.header().entry_type() {
             tar::EntryType::Directory => fs::create_dir_all(&target)?,
-            tar::EntryType::Regular | tar::EntryType::Continuous => {
+            tar::EntryType::Regular | tar::EntryType::Continuous | tar::EntryType::GNUSparse => {
                 // Whatever a job left in the way (a link, a pipe, a device node) is replaced,
                 // never opened: writing into it would block, or reach the host.
                 let mut file = crate::untrusted::create(&target, false)?;

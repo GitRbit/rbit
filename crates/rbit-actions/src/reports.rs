@@ -83,7 +83,8 @@ pub fn read_report(archive: impl Read) -> Result<TestReport, ReportError> {
     let (mut report, mut budget, mut files) = (TestReport::default(), MAX_REPORT_BYTES, 0);
     for entry in tar.entries()? {
         let entry = entry?;
-        let is_xml = entry.header().entry_type().is_file() && entry.path()?.extension().is_some_and(|extension| extension == "xml");
+        let file = matches!(entry.header().entry_type(), tar::EntryType::Regular | tar::EntryType::Continuous | tar::EntryType::GNUSparse);
+        let is_xml = file && entry.path()?.extension().is_some_and(|extension| extension == "xml");
         if !is_xml {
             continue;
         }

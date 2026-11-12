@@ -44,11 +44,14 @@ fn stored_files<R: Read>(source: R, mut each: impl FnMut(File<'_, flate2::read::
     for entry in archive.entries()? {
         let entry = entry?;
         let header = entry.header();
-        if !matches!(header.entry_type(), tar::EntryType::Regular | tar::EntryType::Continuous) {
+        // A file with holes (a freshly linked binary often has some) is a GNU sparse entry
+        // when an older runner packed it; reading it yields the whole file.
+        if !matches!(header.entry_type(), tar::EntryType::Regular | tar::EntryType::Continuous | tar::EntryType::GNUSparse) {
             continue;
         }
         let Some(name) = entry_name(&entry.path_bytes()) else { continue };
-        let size = header.size()?;
+        // The file's size: for a sparse entry, larger than what the archive stores.
+        let size = entry.size();
         let mode = match header.mode()? & 0o777 {
             0 => 0o644,
             mode => mode,
