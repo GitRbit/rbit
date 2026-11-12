@@ -187,7 +187,7 @@ jobs:
           if [ "$GITHUB_REF" = refs/heads/main ]; then profile=release; fi
           cargo build --profile "$profile" --locked --package rbit-server --package rbit-runner
           mkdir -p dist
-          # Without holes: runners before 0.2.2 pack holes as sparse entries a download drops.
+          # Without holes: older runners pack holes as sparse entries that a download dropped.
           cp --sparse=never "target/$profile/rbit" "target/$profile/rbit-runner" dist/
           echo "$profile" > dist/BUILD-PROFILE
       - run: ./dist/rbit --version && ./dist/rbit-runner --version
