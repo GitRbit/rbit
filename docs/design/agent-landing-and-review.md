@@ -8,7 +8,8 @@ describes every one.
 
 - `POST …/pulls/{n}/queue {head, merge_method}` puts a pull request in line for its base
   branch when every requirement but its checks is met now (`405` naming what is not),
-  for the head the caller saw (`409 head_changed`). `GET` gives the entry and its place,
+  for the head the caller saw (`409 head_changed`); a conflict check still running does not
+  hold it, since building the candidate finds a conflict. `GET` gives the entry and its place,
   `DELETE` takes it out. Migration `0081_merge_queue.sql`; one live entry per pull request.
 - One entry per line is tested at a time. Its merge on the current base tip (by the chosen
   method, with the merge box's default message) is built into

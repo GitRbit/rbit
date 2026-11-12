@@ -23,7 +23,7 @@ use std::time::Duration;
 use rbit_core::{
     IssueNumber, PushSource, RepoId, StateReason, TimelineEvent, Timestamp, User,
     issue::MergeStrategy,
-    pull::{CommitIdentity, Requirement, noreply_domain},
+    pull::{CommitIdentity, Mergeability, Requirement, noreply_domain},
     status::StatusState,
 };
 use rbit_git::merge::{
@@ -67,8 +67,9 @@ fn strategy_of(name: &str) -> MergeStrategy {
 
 impl PullService {
     /// Queues `ctx` to land with `strategy` for head `expected_head` (the current one when
-    /// `None`). Every requirement but its checks must be met. Queuing a pull request that is
-    /// in line already reports its place.
+    /// `None`). Every requirement but its checks must be met; a conflict check still running
+    /// is no reason to wait, as building the candidate finds a conflict. Queuing a pull
+    /// request that is in line already reports its place.
     pub async fn enqueue(
         &self,
         actor: &User,
@@ -87,7 +88,13 @@ impl PullService {
             .evaluation
             .checks
             .iter()
-            .filter(|check| !check.met && !matches!(check.requirement, Requirement::RequiredChecks(_) | Requirement::Checks(_)))
+            .filter(|check| {
+                !check.met
+                    && !matches!(
+                        check.requirement,
+                        Requirement::RequiredChecks(_) | Requirement::Checks(_) | Requirement::NoConflicts(Mergeability::Unknown)
+                    )
+            })
             .map(|check| check.requirement.describe(false))
             .collect();
         if !unmet.is_empty() {
