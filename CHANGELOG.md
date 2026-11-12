@@ -106,6 +106,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A failed matrix leg no longer shows as passing: legs under one fixed `name:` share a
+  commit status context, and each leg posted its own state there, so whichever finished
+  last won. A passing leg after a failed one made the context, the combined status and any
+  required check green while the run failed. The context now reports the worst leg.
 - A run that failed before any job, because its workflow could not be read or planned, now
   says why outside the web page: the failure digest carries `workflow_error`, `rbit status`
   gives each run its `error`, and `rbit run failure` prints it and exits 1. It exited 0, as

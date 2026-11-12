@@ -5,7 +5,9 @@
 //!   ([`status_context`], at most 255 characters), the job page as `target_url`
 //!   ([`job_url`]: `/{owner}/{repo}/actions/runs/{run number}/jobs/{job id}`) and a
 //!   description by state ([`describe`]): "Waiting for approval", "Queued", "In progress",
-//!   "Successful in 1m 3s", "Failing after 12s", "Cancelled", "Skipped".
+//!   "Successful in 1m 3s", "Failing after 12s", "Cancelled", "Skipped". Jobs that share a
+//!   name (matrix legs under one fixed `name:`) share the context, which reports the worst
+//!   of them ([`worst_per_context`]), so a passing leg never hides a failed one.
 //! * They are posted as rbit Actions (`StatusService::create_as_system`: no creator,
 //!   `source = actions`, webhook sender `rbit-actions[bot]`) whenever a job is queued,
 //!   starts or finishes: [`ActionsService::report_statuses`] runs after every transition,
@@ -55,6 +57,30 @@ pub fn describe(job: &Job) -> (StatusState, String) {
     }
 }
 
+/// How bad a state is for a shared context: failure, then error, then pending, then success.
+fn badness(state: StatusState) -> u8 {
+    match state {
+        StatusState::Failure => 3,
+        StatusState::Error => 2,
+        StatusState::Pending => 1,
+        StatusState::Success => 0,
+    }
+}
+
+/// The job that speaks for each context of `jobs`, in the order the contexts first appear:
+/// the worst of the jobs with that name.
+pub fn worst_per_context(jobs: &[Job]) -> Vec<&Job> {
+    let mut chosen: Vec<&Job> = Vec::new();
+    for job in jobs {
+        match chosen.iter_mut().find(|other| other.name == job.name) {
+            Some(other) if badness(describe(job).0) > badness(describe(other).0) => *other = job,
+            Some(_) => {}
+            None => chosen.push(job),
+        }
+    }
+    chosen
+}
+
 /// `1h 2m`, `1m 3s` or `12s`.
 pub fn duration(seconds: i64) -> String {
     let seconds = seconds.max(0);
@@ -82,7 +108,7 @@ impl ActionsService {
         let jobs = database.actions_runs().jobs(run.id).await?;
         let current = database.commit_statuses().latest(run.repo_id, &run.sha).await?;
         let statuses = StatusService::new(self.ctx().clone());
-        for job in &jobs {
+        for job in worst_per_context(&jobs) {
             let Some(report) = self.report(&repo, &run, job) else { continue };
             let unchanged = current
                 .iter()
@@ -164,5 +190,18 @@ mod tests {
             assert_eq!(describe(&job), (state, description.to_owned()), "{:?}", job.status);
         }
         assert_eq!([duration(0), duration(59), duration(60), duration(3725), duration(-3)], ["0s", "59s", "1m 0s", "1h 2m", "0s"]);
+    }
+
+    #[test]
+    fn legs_that_share_a_context_report_the_worst() {
+        let leg = |id: i64, status: Status| Job { id: JobId(id), ..job(status, Some(1), Some(2)) };
+        let other = Job { name: "lint".into(), ..leg(9, Status::Success) };
+        let jobs = [leg(1, Status::Success), leg(2, Status::Failure), leg(3, Status::Success), other];
+        let ids: Vec<i64> = worst_per_context(&jobs).iter().map(|job| job.id.0).collect();
+        assert_eq!(ids, [2, 9], "the failed leg speaks for `build (linux)`, whatever finished last");
+        let running = [leg(1, Status::Success), leg(2, Status::Running)];
+        assert_eq!(worst_per_context(&running)[0].id, JobId(2), "pending until every leg is done");
+        let cancelled = [leg(1, Status::Cancelled), leg(2, Status::Failure)];
+        assert_eq!(worst_per_context(&cancelled)[0].id, JobId(2));
     }
 }
