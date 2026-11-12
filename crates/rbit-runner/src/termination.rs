@@ -5,7 +5,8 @@
 //! The job tells the [`Ending`] as it goes: the exit code of each step's process, the first
 //! step that failed (one `continue-on-error` let pass does not count), and whether the
 //! job's timeout fired. The reason follows from that and the task's result: `completed`,
-//! `step_failed` (with the step and its exit code), `timeout`, `cancelled`, or
+//! `step_failed` (with the step and its exit code), `timeout` (the job's `timeout-minutes`,
+//! or the step's own when that step failed the job), `cancelled`, or
 //! `setup_failed` for a failure before or outside any step.
 
 use std::sync::Mutex;
@@ -27,6 +28,10 @@ struct State {
     /// The first step that failed the job, with its exit code.
     failed: Option<(u32, Option<i32>)>,
     timed_out: bool,
+    /// The running step's own `timeout-minutes` ran out.
+    step_timed_out: bool,
+    /// The step that failed the job did so by its own `timeout-minutes`.
+    failed_by_timeout: bool,
 }
 
 impl Ending {
@@ -36,7 +41,14 @@ impl Ending {
 
     /// A step starts: no exit code yet.
     pub fn step_started(&self) {
-        self.state().exit_code = None;
+        let mut state = self.state();
+        state.exit_code = None;
+        state.step_timed_out = false;
+    }
+
+    /// The running step's `timeout-minutes` ran out: if it fails the job, the job timed out.
+    pub fn step_timed_out(&self) {
+        self.state().step_timed_out = true;
     }
 
     /// The running step's process exited with `code`.
@@ -57,6 +69,7 @@ impl Ending {
         if state.failed.is_none() {
             let code = state.exit_code;
             state.failed = Some((u32::try_from(index).unwrap_or(u32::MAX), code));
+            state.failed_by_timeout = state.step_timed_out;
         }
     }
 
@@ -73,6 +86,8 @@ impl Ending {
             _ if state.timed_out => ("timeout", state.failed),
             TaskResult::Cancelled => ("cancelled", None),
             TaskResult::Failure => match state.failed {
+                // A step's own `timeout-minutes` is a timeout, as the job's is.
+                Some(failed) if state.failed_by_timeout => ("timeout", Some(failed)),
                 Some(failed) => ("step_failed", Some(failed)),
                 None => ("setup_failed", None),
             },
@@ -118,6 +133,27 @@ mod tests {
         assert_eq!(ending.report(TaskResult::Cancelled).reason, "timeout");
         assert_eq!(Ending::default().report(TaskResult::Cancelled).reason, "cancelled");
         assert_eq!(Ending::default().report(TaskResult::Success).reason, "completed");
+    }
+
+    #[test]
+    fn a_step_timeout_that_fails_the_job_is_a_timeout() {
+        let ending = Ending::default();
+        ending.step_started();
+        ending.step_timed_out();
+        ending.step_failed(1);
+        let report = ending.report(TaskResult::Failure);
+        assert_eq!((report.reason.as_str(), report.step, report.exit_code), ("timeout", Some(1), None));
+
+        // A step that timed out but was let pass (`continue-on-error`) does not make a later
+        // step's failure a timeout.
+        let ending = Ending::default();
+        ending.step_started();
+        ending.step_timed_out();
+        ending.step_ended(0, StepStatus::Success);
+        ending.step_started();
+        ending.exited(2);
+        ending.step_failed(1);
+        assert_eq!(ending.report(TaskResult::Failure).reason, "step_failed");
     }
 
     #[test]

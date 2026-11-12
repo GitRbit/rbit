@@ -415,7 +415,7 @@ async fn a_step_that_runs_too_long_is_stopped_and_fails() {
     let (result, reporter, _work) = execute(host_job(steps)).await;
     let text = reporter.lines().join("\n");
     assert!(started.elapsed() < Duration::from_secs(18), "{:?}", started.elapsed());
-    assert_eq!(result, TaskResult::Failure, "{text}");
+    assert_eq!((result, reporter.ending.report(result).reason.as_str()), (TaskResult::Failure, "timeout"), "{text}");
     assert_eq!(statuses(&reporter), [StepStatus::Failure, StepStatus::Skipped, StepStatus::Success, StepStatus::Skipped], "{text}");
     assert!(text.contains("exceeded its timeout of 0.02 minutes") && text.contains("always ran"), "{text}");
     assert!(!reporter.lines().iter().any(|line| line == "after"), "the step was stopped: {text}");

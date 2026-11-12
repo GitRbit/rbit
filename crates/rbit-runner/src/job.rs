@@ -616,6 +616,7 @@ impl Job {
                 Outcome::cancelled()
             }
             StopReason::StepTimeout(timeout) => {
+                self.reporter.ending.step_timed_out();
                 self.fail(&format!("The step has exceeded its timeout of {} minutes", timeout.as_secs_f64() / 60.0))
             }
             StopReason::Budget => {

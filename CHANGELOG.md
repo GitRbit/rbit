@@ -129,6 +129,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Promoting an artifact with two files of one name (`linux/app`, `macos/app`) is refused;
   one overwrote the other. `agent/branch-update` answers 422 for an id that is not a full
   commit id, not 500.
+- A step's own `timeout-minutes` that fails its job now ends it with termination reason
+  `timeout` (naming the step), as the job's `timeout-minutes` does, and the job reads
+  `conclusion: timed_out`; it read `step_failed`. Needs an updated runner.
 - `GET …/agent/watch` waits at most 25 seconds: with `timeout` of 30 or more it raced the
   API's 30 second request timeout and often answered an empty 408. A commit that is done
   with every run finished is answered at once even with the current cursor, as nothing can

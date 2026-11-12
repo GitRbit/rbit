@@ -460,7 +460,8 @@ to `workflow_run` and `workflow_job`.
 Beside GitHub's fields, a job in the API carries rbit's own `termination` once it has
 ended: `{"reason", "step", "step_name", "exit_code", "log_complete"}`. The runner reports
 `completed`, `step_failed` (with the step, as numbered in `steps`, and its exit code),
-`timeout`, `cancelled` or `setup_failed` (a failure before or outside the steps); the server
+`timeout` (the job's `timeout-minutes`, or a step's own when that step failed the job, with the
+step), `cancelled` or `setup_failed` (a failure before or outside the steps); the server
 records `runner_lost` when a runner stops reporting for `zombie_timeout_seconds` (two
 minutes by default) and `timeout` when a task runs past `endless_timeout_seconds`. A job
 whose runner reported nothing (an older runner) reads `completed`, `cancelled` or, for a
