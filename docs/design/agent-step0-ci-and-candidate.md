@@ -33,17 +33,25 @@ rustfmt and clippy, cargo-nextest, Node.js 24, git, curl, a C toolchain). Jobs:
 
 | Job | What |
 |---|---|
-| Rewrite contracts | the script tests, `check.mjs`, the feature-contract builds of the GitHub Linux leg, `check-types.mjs` |
-| Format and clippy | `cargo fmt --check`, `cargo clippy --workspace --all-targets -D warnings` |
+| Format and clippy | the script tests and `check.mjs` (the repository's rules), `cargo fmt --check`, `cargo clippy --workspace --all-targets -D warnings` |
+| Rewrite contracts | the feature-contract builds of the GitHub Linux leg, `check-types.mjs` |
 | Licenses and advisories | `cargo deny` from a pinned, checksum-verified release |
 | Front-end build | `npm ci`, `npm run build`, `npm test`, no change to committed assets |
-| Tests | `cargo nextest run --workspace`, doc tests, the upgrade rehearsal |
-| Release build | release binaries, the rehearsal on them, `SHA256SUMS`, uploaded as `rbit-linux-x86_64` |
+| Tests | `cargo nextest run --workspace` (its `JUnit` report uploaded as `rbit-test-report`), doc tests |
+| Release build | the binaries (profile `release` on `main`, `ci-release` elsewhere), the upgrade rehearsal and its tests on them, `SHA256SUMS`, uploaded as `rbit-linux-x86_64` with `BUILD-PROFILE` |
 | Candidate | the candidate check below, run on the uploaded artifact after verifying its checksums |
 | CI required | the one status branch protection requires; fails unless every job succeeded |
 
 `concurrency` cancels a branch's older run when a newer push arrives; runs on `main` are
 never cancelled. Tests run unsharded: shards only pay off with several runners.
+
+One runner takes the jobs one at a time, in file order, so the file lists them by how soon
+they find a mistake: the repository's rules, format and clippy first (a minute), tests by
+minute seven, the feature-contract builds and the binaries last. Branches build the
+`ci-release` profile, release code generation without whole-program LTO (about 3 minutes
+instead of 8); `main` builds `release`, and a promotion installs only an artifact whose
+`BUILD-PROFILE` says `release`. A push to a branch takes about 13 minutes, one to `main`
+about 18.
 
 Pull request events are not a trigger. A pull request's head commit gets its statuses
 from the branch push, so one push costs one run, and the required check is

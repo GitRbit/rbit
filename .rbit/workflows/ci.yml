@@ -31,33 +31,8 @@ env:
   CARGO_PROFILE_TEST_DEBUG: "0"
 
 jobs:
-  contracts:
-    name: Rewrite contracts
-    runs-on: linux
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - run: node --version && cargo --version
-      - run: node scripts/workspace.mjs fetch --locked
-      - run: node --test scripts/tests/rewrite-*.test.mjs scripts/tests/identity-features.test.mjs scripts/tests/platform-boundary.test.mjs scripts/tests/workspace*.test.mjs
-      - run: node scripts/rewrite/check.mjs
-      # Separate invocations keep workspace feature unification from hiding a missing
-      # feature-gated dependency; the same list as the GitHub CI's Linux leg.
-      - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --locked
-      - run: node scripts/workspace.mjs test --package rbit-identity-models --no-default-features --locked
-      - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --features credentials --locked
-      - run: node scripts/workspace.mjs test --package rbit-credential-inventory --no-default-features --locked
-      - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --features session-tokens --locked
-      - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --features sessions --locked
-      - run: node scripts/workspace.mjs test --package rbit-collaboration --no-default-features --locked
-      - run: node scripts/workspace.mjs test --package rbit-collaboration --no-default-features --features applications --locked
-      - run: node scripts/workspace.mjs test --package rbit-contracts --package rbit-core --package rbit-repositories --package rbit-kernel --package rbit-localization --package rbit-identity-models --package rbit-identity --package rbit-collaboration --package rbit-auth --package rbit-rewrite-check --features rbit-identity/password-work,rbit-identity/sessions,rbit-collaboration/applications --locked
-      - run: node scripts/workspace.mjs test --package rbit-render-probe --no-default-features --features inheritance,segments,blocks,count-8 --locked
-      - run: node scripts/workspace.mjs clippy --package rbit-platform --all-targets --locked -- -D warnings
-      - run: node scripts/rewrite/check-types.mjs
-
+  # One runner takes these one at a time, oldest first: the quick checks that fail most
+  # often come first, so a mistake is reported minutes into the run, not at its end.
   lint:
     name: Format and clippy
     runs-on: linux
@@ -66,6 +41,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      # The repository's rules (file sizes, crate graph, scripts) take seconds: first. Like
+      # formatting, a failure here lets clippy run too, and fails the job at the end.
+      - name: Repository rules
+        id: rules
+        continue-on-error: true
+        run: |
+          set -e
+          node --test scripts/tests/rewrite-*.test.mjs scripts/tests/identity-features.test.mjs scripts/tests/platform-boundary.test.mjs scripts/tests/workspace*.test.mjs
+          node scripts/rewrite/check.mjs
       # A formatting failure leaves its fix behind as an artifact (`git apply fmt.patch`),
       # and clippy still runs, so one run reports both.
       - name: Format
@@ -89,19 +73,9 @@ jobs:
       - name: Formatting must pass
         if: ${{ steps.fmt.outcome == 'failure' }}
         run: exit 1
-
-  deny:
-    name: Licenses and advisories
-    runs-on: linux
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      # A prebuilt, checksum-pinned cargo-deny: compiling it would take longer than the check.
-      - name: Install cargo-deny
-        run: bash scripts/ci/install-cargo-deny.sh "$RUNNER_TEMP/cargo-deny"
-      - run: '"$RUNNER_TEMP/cargo-deny/cargo-deny" --locked check licenses advisories'
+      - name: Repository rules must pass
+        if: ${{ steps.rules.outcome == 'failure' }}
+        run: exit 1
 
   assets:
     name: Front-end build
@@ -151,11 +125,44 @@ jobs:
           retention-days: 7
       # nextest does not execute doctests, so documentation examples run here.
       - run: cargo test --workspace --doc --locked
-      # Upgrade rehearsal (fast mode): see docs/upgrade-rehearsal.md.
-      - run: cargo build --locked --package rbit-server
-      - run: node --test scripts/tests/release-rehearsal.test.mjs
-        env:
-          RBIT_REHEARSAL_CANDIDATE: target/debug/rbit
+
+  deny:
+    name: Licenses and advisories
+    runs-on: linux
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      # A prebuilt, checksum-pinned cargo-deny: compiling it would take longer than the check.
+      - name: Install cargo-deny
+        run: bash scripts/ci/install-cargo-deny.sh "$RUNNER_TEMP/cargo-deny"
+      - run: '"$RUNNER_TEMP/cargo-deny/cargo-deny" --locked check licenses advisories'
+
+  contracts:
+    name: Rewrite contracts
+    runs-on: linux
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: node --version && cargo --version
+      - run: node scripts/workspace.mjs fetch --locked
+      # Separate invocations keep workspace feature unification from hiding a missing
+      # feature-gated dependency; the same list as the GitHub CI's Linux leg.
+      - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --locked
+      - run: node scripts/workspace.mjs test --package rbit-identity-models --no-default-features --locked
+      - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --features credentials --locked
+      - run: node scripts/workspace.mjs test --package rbit-credential-inventory --no-default-features --locked
+      - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --features session-tokens --locked
+      - run: node scripts/workspace.mjs test --package rbit-identity --no-default-features --features sessions --locked
+      - run: node scripts/workspace.mjs test --package rbit-collaboration --no-default-features --locked
+      - run: node scripts/workspace.mjs test --package rbit-collaboration --no-default-features --features applications --locked
+      - run: node scripts/workspace.mjs test --package rbit-contracts --package rbit-core --package rbit-repositories --package rbit-kernel --package rbit-localization --package rbit-identity-models --package rbit-identity --package rbit-collaboration --package rbit-auth --package rbit-rewrite-check --features rbit-identity/password-work,rbit-identity/sessions,rbit-collaboration/applications --locked
+      - run: node scripts/workspace.mjs test --package rbit-render-probe --no-default-features --features inheritance,segments,blocks,count-8 --locked
+      - run: node scripts/workspace.mjs clippy --package rbit-platform --all-targets --locked -- -D warnings
+      - run: node scripts/rewrite/check-types.mjs
 
   release:
     name: Release build
@@ -170,22 +177,37 @@ jobs:
         with:
           name: app-css
           path: crates/rbit-web/assets
+      # `main` builds the shipping profile (whole-program LTO, about 8 minutes); branches
+      # build `ci-release`, the same code generation without LTO, in about 3. Only `main`'s
+      # binaries are ever installed: BUILD-PROFILE in the artifact says which this is.
       # rbit-runner is not a default member: name both, as the release does.
-      - run: cargo build --release --locked --package rbit-server --package rbit-runner
-      - run: ./target/release/rbit --version && ./target/release/rbit-runner --version
-      - run: node scripts/release-rehearsal.mjs --candidate target/release/rbit
+      - name: Build
+        run: |
+          profile=ci-release
+          if [ "$GITHUB_REF" = refs/heads/main ]; then profile=release; fi
+          cargo build --profile "$profile" --locked --package rbit-server --package rbit-runner
+          mkdir -p dist
+          cp "target/$profile/rbit" "target/$profile/rbit-runner" dist/
+          echo "$profile" > dist/BUILD-PROFILE
+      - run: ./dist/rbit --version && ./dist/rbit-runner --version
+      - run: node scripts/release-rehearsal.mjs --candidate dist/rbit
+      # Upgrade rehearsal's own tests (fast mode, docs/upgrade-rehearsal.md), on this binary.
+      - run: node --test scripts/tests/release-rehearsal.test.mjs
+        env:
+          RBIT_REHEARSAL_CANDIDATE: dist/rbit
       - name: Checksums
         run: |
-          cd target/release
+          cd dist
           sha256sum rbit rbit-runner | tee SHA256SUMS
       # The binaries of this exact commit: a promotion installs these, never a rebuild.
       - uses: actions/upload-artifact@v4
         with:
           name: rbit-linux-x86_64
           path: |
-            target/release/rbit
-            target/release/rbit-runner
-            target/release/SHA256SUMS
+            dist/rbit
+            dist/rbit-runner
+            dist/BUILD-PROFILE
+            dist/SHA256SUMS
           retention-days: 14
 
   candidate:

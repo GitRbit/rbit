@@ -209,6 +209,13 @@ codegen-units = 1
 panic = "abort"
 strip = "symbols"
 
+# Release code generation without whole-program optimisation: what CI builds on branches,
+# where the binaries are checked but never shipped. `main` builds `release` itself.
+[profile.ci-release]
+inherits = "release"
+lto = false
+codegen-units = 16
+
 [profile.dev]
 # File and line numbers for backtraces and panics, without the variable-level debug info
 # that makes rbit-web and every test binary slower to generate and link.
