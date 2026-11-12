@@ -292,6 +292,18 @@ pub async fn run_streaming(
         }
     }
     if let Some(escalation) = escalation {
+        // The leader has exited, so the grace period has nothing to wait for: a background
+        // process that ignores the polite signal would otherwise outlive the stop. One
+        // forceful signal to the group now; ESRCH when no member is left, which is ignored.
+        // A group id stays allocated while any member lives, so this cannot reach another
+        // group. Container steps keep their container for later steps, so they are not
+        // handled here.
+        #[cfg(unix)]
+        {
+            if status.is_some() && matches!(stopper, Stopper::Host) {
+                stopper.signal(pid, true).await;
+            }
+        }
         escalation.abort();
     }
     for reader in readers {
