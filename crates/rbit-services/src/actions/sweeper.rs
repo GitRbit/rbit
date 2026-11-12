@@ -116,6 +116,10 @@ impl ActionsService {
         };
         let stale = StaleTasks::sweep(&StaleTaskSession::new(self), &timeouts, now.0).await?;
         (swept.zombies, swept.endless, swept.abandoned) = (stale.zombies, stale.endless, stale.abandoned);
+        if stale.zombies + stale.endless + stale.abandoned > 0 {
+            // A freed runner may take jobs it had to leave out (exclusive labels): look again.
+            self.bump_tasks_version();
+        }
         // Actions: join (J).
         swept.decided = self.decide_stragglers().await?;
         // Actions: artifacts (A).
