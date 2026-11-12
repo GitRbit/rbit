@@ -1,8 +1,8 @@
 //! The merge queue (migration `0081_merge_queue.sql`, agent plan step 4.1): entries in line
 //! per repository and base branch, oldest first.
 use rbit_core::{AccountId, IssueId, RepoId, Timestamp};
-use sqlx::SqlitePool;
 
+use super::ActionsRunStore;
 use crate::StorageError;
 
 /// One entry of the queue.
@@ -89,19 +89,9 @@ pub struct NewEntry<'a> {
     pub queued_by: AccountId,
 }
 
-#[derive(Debug, Clone)]
-pub struct MergeQueueStore {
-    pool: SqlitePool,
-}
-
-impl MergeQueueStore {
-    #[must_use]
-    pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
-    }
-
+impl ActionsRunStore {
     /// Queues `new`; `None` when the pull request already has a live entry.
-    pub async fn enqueue(&self, new: &NewEntry<'_>, now: Timestamp) -> Result<Option<QueueEntry>, StorageError> {
+    pub async fn queue_pull(&self, new: &NewEntry<'_>, now: Timestamp) -> Result<Option<QueueEntry>, StorageError> {
         let inserted: Option<i64> = sqlx::query_scalar(
             "INSERT INTO merge_queue (repo_id, issue_id, number, base_branch, head_sha, strategy, queued_by, state, created_at, updated_at) \
              VALUES (?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?) ON CONFLICT DO NOTHING RETURNING id",
@@ -118,26 +108,26 @@ impl MergeQueueStore {
         .fetch_optional(&self.pool)
         .await?;
         match inserted {
-            Some(id) => self.find(id).await,
+            Some(id) => self.queue_entry(id).await,
             None => Ok(None),
         }
     }
 
     /// Entry `id`.
-    pub async fn find(&self, id: i64) -> Result<Option<QueueEntry>, StorageError> {
+    pub async fn queue_entry(&self, id: i64) -> Result<Option<QueueEntry>, StorageError> {
         let row: Option<Row> = sqlx::query_as(select_entries!("id = ?")).bind(id).fetch_optional(&self.pool).await?;
         Ok(row.map(QueueEntry::from))
     }
 
     /// The newest entry of pull request `issue`, live or not.
-    pub async fn of_pull(&self, issue: IssueId) -> Result<Option<QueueEntry>, StorageError> {
+    pub async fn queue_of_pull(&self, issue: IssueId) -> Result<Option<QueueEntry>, StorageError> {
         let row: Option<Row> =
             sqlx::query_as(select_entries!("issue_id = ? ORDER BY id DESC LIMIT 1")).bind(issue.0).fetch_optional(&self.pool).await?;
         Ok(row.map(QueueEntry::from))
     }
 
     /// The live entries of `repo`'s queue into `base`, oldest first.
-    pub async fn line(&self, repo: RepoId, base: &str) -> Result<Vec<QueueEntry>, StorageError> {
+    pub async fn queue_line(&self, repo: RepoId, base: &str) -> Result<Vec<QueueEntry>, StorageError> {
         let rows: Vec<Row> =
             sqlx::query_as(select_entries!("repo_id = ? AND base_branch = ? AND state IN ('waiting', 'testing') ORDER BY id"))
                 .bind(repo.0)
@@ -148,7 +138,7 @@ impl MergeQueueStore {
     }
 
     /// Every repository and base branch with a live entry.
-    pub async fn active_lines(&self) -> Result<Vec<(RepoId, String)>, StorageError> {
+    pub async fn queue_lines(&self) -> Result<Vec<(RepoId, String)>, StorageError> {
         let rows: Vec<(i64, String)> =
             sqlx::query_as("SELECT DISTINCT repo_id, base_branch FROM merge_queue WHERE state IN ('waiting', 'testing') ORDER BY repo_id")
                 .fetch_all(&self.pool)
@@ -157,7 +147,7 @@ impl MergeQueueStore {
     }
 
     /// Entry `id` is testing `candidate`, built on `base`.
-    pub async fn testing(&self, id: i64, candidate: &str, base: &str, now: Timestamp) -> Result<(), StorageError> {
+    pub async fn queue_testing(&self, id: i64, candidate: &str, base: &str, now: Timestamp) -> Result<(), StorageError> {
         sqlx::query(
             "UPDATE merge_queue SET state = 'testing', candidate_sha = ?, base_sha = ?, attempts = attempts + 1, updated_at = ? \
              WHERE id = ? AND state IN ('waiting', 'testing')",
@@ -173,7 +163,7 @@ impl MergeQueueStore {
 
     /// Entry `id` ends `state` (`landed`, `failed` or `removed`) for `reason`; `false` when it
     /// had ended already.
-    pub async fn finish(&self, id: i64, state: &str, reason: Option<&str>, now: Timestamp) -> Result<bool, StorageError> {
+    pub async fn queue_finish(&self, id: i64, state: &str, reason: Option<&str>, now: Timestamp) -> Result<bool, StorageError> {
         let done =
             sqlx::query("UPDATE merge_queue SET state = ?, reason = ?, updated_at = ? WHERE id = ? AND state IN ('waiting', 'testing')")
                 .bind(state)

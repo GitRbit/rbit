@@ -434,6 +434,11 @@ pub enum Rerun {
 mod annotations;
 mod decisions;
 pub use decisions::CommitDecision;
+// Agent loop: request ids and the merge queue.
+mod agent_requests;
+mod merge_queue;
+pub use agent_requests::{REQUEST_ID_SECONDS, Remembered};
+pub use merge_queue::{NewEntry, QueueEntry};
 mod outcomes;
 mod queue;
 mod scratch;

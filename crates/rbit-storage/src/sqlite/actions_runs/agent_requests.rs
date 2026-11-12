@@ -1,8 +1,8 @@
 //! Request ids of agent calls (migration `0080_agent_requests.sql`): what a call that named
 //! one answered, so its retry gets the same answer (agent plan step 4.3).
 use rbit_core::{AccountId, Timestamp};
-use sqlx::SqlitePool;
 
+use super::ActionsRunStore;
 use crate::StorageError;
 
 /// How long a request id is remembered.
@@ -15,19 +15,9 @@ pub struct Remembered {
     pub answer: String,
 }
 
-#[derive(Debug, Clone)]
-pub struct AgentRequestStore {
-    pool: SqlitePool,
-}
-
-impl AgentRequestStore {
-    #[must_use]
-    pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
-    }
-
+impl ActionsRunStore {
     /// What `account`'s request `id` answered, if it is remembered and younger than a week.
-    pub async fn find(&self, account: AccountId, id: &str, now: Timestamp) -> Result<Option<Remembered>, StorageError> {
+    pub async fn find_request(&self, account: AccountId, id: &str, now: Timestamp) -> Result<Option<Remembered>, StorageError> {
         let row: Option<(String, String)> =
             sqlx::query_as("SELECT fingerprint, answer FROM agent_requests WHERE account_id = ? AND request_id = ? AND created_at >= ?")
                 .bind(account.0)
@@ -40,7 +30,7 @@ impl AgentRequestStore {
 
     /// Remembers that `account`'s request `id` with inputs `fingerprint` answered `answer`,
     /// forgetting requests older than a week. A request already remembered keeps its answer.
-    pub async fn remember(
+    pub async fn remember_request(
         &self,
         account: AccountId,
         id: &str,

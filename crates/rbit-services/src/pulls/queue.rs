@@ -31,7 +31,7 @@ use rbit_git::merge::{
     candidate::{candidate, candidate_ref, drop_candidate, land},
 };
 use rbit_storage::sqlite::{
-    merge_queue::{NewEntry, QueueEntry},
+    actions_runs::{NewEntry, QueueEntry},
     pulls::MergeRecord,
 };
 
@@ -93,7 +93,7 @@ impl PullService {
         if !unmet.is_empty() {
             return Err(MergeFailure::Blocked(unmet.join("; ")));
         }
-        let store = self.ctx().database.merge_queue();
+        let store = self.ctx().database.actions_runs();
         let new = NewEntry {
             repo: ctx.repo().repo.repo.id,
             issue: ctx.issue().id,
@@ -103,7 +103,7 @@ impl PullService {
             strategy: strategy_name(strategy),
             queued_by: actor.id(),
         };
-        if store.enqueue(&new, Timestamp::now()).await?.is_some() {
+        if store.queue_pull(&new, Timestamp::now()).await?.is_some() {
             tracing::info!(repo = %ctx.repo().repo.full_name(), number = ctx.issue().number.get(), "pull request queued to land");
             self.nudge(ctx.repo().repo.repo.id, ctx.pull.base_branch.clone());
         }
@@ -112,9 +112,9 @@ impl PullService {
 
     /// Where `ctx` stands in its line: its newest entry, live or not.
     pub async fn queue_place(&self, ctx: &PullContext) -> Result<Option<QueuePlace>, ServiceError> {
-        let store = self.ctx().database.merge_queue();
-        let Some(entry) = store.of_pull(ctx.issue().id).await? else { return Ok(None) };
-        let line = store.line(entry.repo, &entry.base_branch).await?;
+        let store = self.ctx().database.actions_runs();
+        let Some(entry) = store.queue_of_pull(ctx.issue().id).await? else { return Ok(None) };
+        let line = store.queue_line(entry.repo, &entry.base_branch).await?;
         let position = line.iter().position(|live| live.id == entry.id).map(|index| index + 1);
         Ok(Some(QueuePlace { entry, position }))
     }
@@ -124,9 +124,9 @@ impl PullService {
         if !ctx.repo().can_write_content() {
             return Err(ServiceError::Forbidden);
         }
-        let store = self.ctx().database.merge_queue();
-        let Some(entry) = store.of_pull(ctx.issue().id).await? else { return Ok(false) };
-        let removed = store.finish(entry.id, "removed", Some(&format!("taken out of line by {}", actor.name())), Timestamp::now()).await?;
+        let store = self.ctx().database.actions_runs();
+        let Some(entry) = store.queue_of_pull(ctx.issue().id).await? else { return Ok(false) };
+        let removed = store.queue_finish(entry.id, "removed", Some(&format!("taken out of line by {}", actor.name())), Timestamp::now()).await?;
         if removed {
             self.forget_candidate(ctx.repo(), &entry).await;
             self.nudge(entry.repo, entry.base_branch);
@@ -146,7 +146,7 @@ impl PullService {
 
     /// Advances every line of `repo`.
     pub(super) async fn advance_repo(&self, repo: RepoId) {
-        let lines = self.ctx().database.merge_queue().active_lines().await;
+        let lines = self.ctx().database.actions_runs().queue_lines().await;
         for (line_repo, base) in lines.unwrap_or_default().into_iter().filter(|(line_repo, _)| *line_repo == repo) {
             if let Err(error) = self.advance(line_repo, &base).await {
                 tracing::warn!(%error, repo = repo.0, base, "cannot advance the merge queue");
@@ -161,7 +161,7 @@ impl PullService {
                 () = self.inner.shutdown.cancelled() => return,
                 () = tokio::time::sleep(QUEUE_SWEEP) => {}
             }
-            for (repo, base) in self.ctx().database.merge_queue().active_lines().await.unwrap_or_default() {
+            for (repo, base) in self.ctx().database.actions_runs().queue_lines().await.unwrap_or_default() {
                 if let Err(error) = self.advance(repo, &base).await {
                     tracing::warn!(%error, repo = repo.0, base, "cannot advance the merge queue");
                 }
@@ -173,8 +173,8 @@ impl PullService {
     async fn advance(&self, repo: RepoId, base: &str) -> Result<(), ServiceError> {
         let lock = merge_lock(&self.inner.merge_locks, repo);
         let _guard = lock.lock().await;
-        let store = self.ctx().database.merge_queue();
-        let Some(entry) = store.line(repo, base).await?.into_iter().next() else { return Ok(()) };
+        let store = self.ctx().database.actions_runs();
+        let Some(entry) = store.queue_line(repo, base).await?.into_iter().next() else { return Ok(()) };
         let database = &self.ctx().database;
         let Some(user) = database.accounts().find_user(entry.queued_by).await? else {
             return self.leave(&entry, "failed", "whoever queued it is gone").await;
@@ -246,7 +246,7 @@ impl PullService {
         drop(lease);
         match built {
             Ok(built) => {
-                self.ctx().database.merge_queue().testing(entry.id, &built.commit, base_tip, Timestamp::now()).await?;
+                self.ctx().database.actions_runs().queue_testing(entry.id, &built.commit, base_tip, Timestamp::now()).await?;
                 self.inner.pushes.complete(pending).await;
                 tracing::info!(number = entry.number, candidate = %built.commit, "merge queue candidate built");
                 Ok(())
@@ -296,7 +296,7 @@ impl PullService {
             self.inner.timeline.writer().close_as_system(ctx.issue().id, Some(user.id()), StateReason::Merged, event).await?;
         }
         self.inner.pushes.complete(pending).await;
-        self.ctx().database.merge_queue().finish(entry.id, "landed", None, Timestamp::now()).await?;
+        self.ctx().database.actions_runs().queue_finish(entry.id, "landed", None, Timestamp::now()).await?;
         self.forget_candidate(ctx.repo(), entry).await;
         tracing::info!(number = entry.number, commit = %candidate_sha, "merge queue candidate landed");
         self.nudge(entry.repo, entry.base_branch.clone());
@@ -305,7 +305,7 @@ impl PullService {
 
     /// Takes `entry` out of line as `state` for `reason`, and starts the next one.
     async fn leave(&self, entry: &QueueEntry, state: &str, reason: &str) -> Result<(), ServiceError> {
-        if self.ctx().database.merge_queue().finish(entry.id, state, Some(reason), Timestamp::now()).await? {
+        if self.ctx().database.actions_runs().queue_finish(entry.id, state, Some(reason), Timestamp::now()).await? {
             tracing::info!(number = entry.number, state, reason, "left the merge queue");
             if let Some(owned) = self.ctx().database.admin().find_repository(entry.repo).await? {
                 let target = candidate_ref(&entry.base_branch, entry.number);

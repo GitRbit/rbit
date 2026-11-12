@@ -15,8 +15,6 @@ pub mod actions_schedules;
 pub mod actions_secrets;
 pub mod actions_settings;
 pub mod admin;
-// Agent loop: request ids.
-pub mod agent_requests;
 pub mod audit;
 // `rbit backup` and `rbit restore`: snapshot, inventory, pruning and the wiki catalog.
 pub mod backup;
@@ -37,8 +35,6 @@ pub mod issue_meta;
 pub mod issue_search;
 pub mod issues;
 pub mod lfs;
-// Agent loop: the merge queue.
-pub mod merge_queue;
 pub mod mirrors;
 pub mod notification_email;
 pub mod notifications;
@@ -322,15 +318,7 @@ impl Database {
         actions_runs::ActionsRunStore::new(self.pool.clone())
     }
 
-    // Agent loop: the merge queue.
-    pub fn merge_queue(&self) -> merge_queue::MergeQueueStore {
-        merge_queue::MergeQueueStore::new(self.pool.clone())
-    }
 
-    // Agent loop: request ids.
-    pub fn agent_requests(&self) -> agent_requests::AgentRequestStore {
-        agent_requests::AgentRequestStore::new(self.pool.clone())
-    }
 
     pub fn actions_secrets(&self) -> actions_secrets::ActionsSecretStore {
         actions_secrets::ActionsSecretStore::new(self.pool.clone())

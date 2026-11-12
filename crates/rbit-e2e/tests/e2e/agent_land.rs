@@ -123,7 +123,7 @@ async fn a_queued_pull_request_lands_exactly_the_commit_ci_passed() {
     assert_eq!(testing["position"], 1);
 
     // Nobody but the server writes candidates.
-    let refused = git.fails(&sample.dir, &["push", &url, &format!("{head}:refs/merge-queue/main/pr-{pull}")]);
+    let refused = git.fails(&sample.dir, &["push", &url, &format!("+{head}:refs/merge-queue/main/pr-{pull}")]);
     assert!(refused.contains("managed by rbit"), "{refused}");
 
     // main moves before CI reports: the old candidate never lands; a new one is built.

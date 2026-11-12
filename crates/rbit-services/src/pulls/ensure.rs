@@ -67,10 +67,10 @@ impl PullService {
         input: NewPullInput,
         request_id: Option<&str>,
     ) -> Result<Ensured, ServiceError> {
-        let requests = self.ctx().database.agent_requests();
+        let requests = self.ctx().database.actions_runs();
         let print = fingerprint(base, head, &input);
         if let Some(id) = request_id
-            && let Some(seen) = requests.find(actor.id(), id, Timestamp::now()).await?
+            && let Some(seen) = requests.find_request(actor.id(), id, Timestamp::now()).await?
         {
             if seen.fingerprint != print {
                 return Err(ServiceError::Conflict("this request id was used for another request"));
@@ -89,7 +89,7 @@ impl PullService {
             None => Ensured::Created(self.create(actor, base, head, input).await?.0.number),
         };
         if let Some(id) = request_id {
-            requests.remember(actor.id(), id, &print, &ensured.number().get().to_string(), Timestamp::now()).await?;
+            requests.remember_request(actor.id(), id, &print, &ensured.number().get().to_string(), Timestamp::now()).await?;
         }
         Ok(ensured)
     }
