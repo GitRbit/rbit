@@ -29,7 +29,7 @@ pub async fn candidate(env: &MergeEnvironment, spec: &MergeSpec<'_>, target: &st
         return Err(MergeError::Failed(format!("`{target}` is not a merge-queue ref")));
     }
     let repo = Git { binary: &env.git_binary, dir: spec.repo };
-    let expected = repo.rev_parse(target).await?.unwrap_or_else(|| "0".repeat(spec.base_tip.len()));
+    let expected = ref_target(&repo, target).await?.unwrap_or_else(|| "0".repeat(spec.base_tip.len()));
     build(env, spec, target, &expected, "rbit: merge queue candidate").await
 }
 
@@ -54,7 +54,7 @@ pub async fn land(env: &MergeEnvironment, repo: &Path, base: &str, commit: &str,
     if output.status.success() {
         return Ok(());
     }
-    match git.rev_parse(&target).await? {
+    match ref_target(&git, &target).await? {
         Some(current) if current != expected => Err(MergeError::BaseMoved),
         None => Err(MergeError::BaseMoved),
         Some(_) => Err(failure(&output, "update-ref")),
@@ -71,10 +71,29 @@ pub async fn drop_candidate(env: &MergeEnvironment, repo: &Path, target: &str) -
         return Err(MergeError::Failed(format!("`{target}` is not a merge-queue ref")));
     }
     let git = Git { binary: &env.git_binary, dir: repo };
-    if git.rev_parse(target).await?.is_some() {
+    if ref_target(&git, target).await?.is_some() {
         git.run(["update-ref", "--no-deref", "-d", "--end-of-options", target]).await?;
     }
     Ok(())
+}
+
+/// Why a branch with a reserved name is refused.
+pub const RESERVED_BRANCH: &str = "branch names starting with `refs/` or `merge-queue/` are reserved";
+
+/// Whether full ref `name` is a branch named like a ref rbit manages (`refs/heads/refs/…`,
+/// `refs/heads/merge-queue/…`): loose name resolution would read it as that ref, and
+/// workflows would see a candidate's branch.
+#[must_use]
+pub fn reserved_branch(name: &str) -> bool {
+    name.strip_prefix("refs/heads/").is_some_and(|branch| branch.starts_with("refs/") || branch.starts_with("merge-queue/"))
+}
+
+/// The commit the full ref `name` (`refs/…`) points at, looked up exactly. `rev-parse`
+/// would also take a branch whose own name is `name` (`refs/heads/refs/…`), which anyone who
+/// may push can create.
+pub(super) async fn ref_target(git: &Git<'_>, name: &str) -> Result<Option<String>, MergeError> {
+    let output = git.command().args(["show-ref", "--verify", "--hash"]).arg(name).output().await?;
+    Ok(output.status.success().then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned()))
 }
 
 #[cfg(test)]
@@ -85,5 +104,13 @@ mod tests {
     fn candidates_live_under_their_own_prefix() {
         assert_eq!(candidate_ref("main", 12), "refs/merge-queue/main/pr-12");
         assert!(candidate_ref("release/1.0", 3).starts_with(CANDIDATE_PREFIX));
+    }
+
+    #[test]
+    fn branches_named_like_managed_refs_are_reserved() {
+        assert!(reserved_branch("refs/heads/refs/merge-queue/main/pr-1"), "read loosely as the candidate itself");
+        assert!(reserved_branch("refs/heads/merge-queue/main/pr-1"), "a candidate's branch name to workflows");
+        assert!(!reserved_branch("refs/heads/main") && !reserved_branch("refs/heads/feature/refs"));
+        assert!(!reserved_branch("refs/merge-queue/main/pr-1"), "the candidate ref itself is no branch");
     }
 }

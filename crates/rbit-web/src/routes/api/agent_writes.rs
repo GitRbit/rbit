@@ -128,6 +128,11 @@ pub async fn branch_update(
     ApiJson(request): ApiJson<BranchUpdate>,
 ) -> ApiResult<Json<Value>> {
     caller.require_right(Right::Push)?;
+    for (field, id) in [("sha", &request.sha), ("expected", &request.expected)] {
+        if !matches!(id.len(), 40 | 64) || !id.bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()) {
+            return Err(ApiError::invalid(field, "give a full commit id (all zeros in `expected` creates the branch)"));
+        }
+    }
     let user = caller.require(TokenScope::Write)?;
     let repo = caller.open_repo(&state, &path.owner, &path.repo).await?;
     state.services.pulls.set_branch(user, &repo, &request.branch, &request.sha, &request.expected).await.map_err(refused)?;
@@ -164,6 +169,7 @@ pub async fn artifact_of_commit(
     Path(path): Path<RepoPath>,
     Query(query): Query<ArtifactQuery>,
 ) -> ApiResult<Json<Value>> {
+    caller.require_right(Right::ReadLogs)?;
     let repo = caller.open_repo(&state, &path.owner, &path.repo).await?;
     let artifact = actions(&state)?.artifact_of_commit(&repo, &query.sha, &query.name).await?;
     let mut value = artifact_json(&path.owner, &path.repo, &artifact);
@@ -191,7 +197,10 @@ pub async fn promote_artifact(
     Path(path): Path<ReleasePath>,
     ApiJson(request): ApiJson<Promote>,
 ) -> ApiResult<(StatusCode, Json<Value>)> {
-    caller.require_right(Right::Merge)?;
+    // A release's files are a write, as every release write needs `push`; reading the
+    // artifact's bytes needs `read_logs`, as downloading it does.
+    caller.require_right(Right::Push)?;
+    caller.require_right(Right::ReadLogs)?;
     let user = caller.require(TokenScope::Write)?;
     let repo = caller.open_repo(&state, &path.owner, &path.repo).await?;
     let (artifact, _dir, files) = actions(&state)?.artifact_files(&repo, ArtifactId(request.artifact_id)).await?;

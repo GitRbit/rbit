@@ -142,3 +142,16 @@ fn a_file_with_holes_packed_as_sparse_comes_out_whole() {
     assert_eq!(&data[data.len() - 3..], b"end");
     assert!(data[..1024].iter().all(|byte| *byte == 0));
 }
+
+#[test]
+fn files_of_one_name_in_two_directories_are_refused_not_overwritten() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = tar::EntryType::Regular;
+    let clash = tar_gz(&[("w/linux/app", b"linux build", 0o755, file), ("w/macos/app", b"macos build", 0o755, file)]);
+    let refused = extract_files(Cursor::new(clash), dir.path(), 20).unwrap_err();
+    assert_eq!(refused.kind(), std::io::ErrorKind::InvalidData);
+    assert!(refused.to_string().contains("`app`"), "{refused}");
+    let apart = tar_gz(&[("w/linux/app-linux", b"linux build", 0o755, file), ("w/macos/app-macos", b"macos build", 0o755, file)]);
+    let names: Vec<String> = extract_files(Cursor::new(apart), dir.path(), 20).unwrap().into_iter().map(|(name, _)| name).collect();
+    assert_eq!(names, ["app-linux", "app-macos"]);
+}

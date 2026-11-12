@@ -72,7 +72,8 @@ fn stored_files<R: Read>(source: R, mut each: impl FnMut(File<'_, flate2::read::
 /// # Errors
 ///
 /// What reading `source` or writing a file fails with, and [`io::ErrorKind::InvalidData`]
-/// for more than `max_files` files.
+/// for more than `max_files` files, or for two files with one name (`linux/app` and
+/// `macos/app`): one would overwrite the other, and what ships would not be what was built.
 pub fn extract_files<R: Read>(source: R, dir: &std::path::Path, max_files: usize) -> io::Result<Vec<(String, std::path::PathBuf)>> {
     let mut written = Vec::new();
     stored_files(source, |mut file| {
@@ -82,6 +83,9 @@ pub fn extract_files<R: Read>(source: R, dir: &std::path::Path, max_files: usize
         let name = String::from_utf8_lossy(&file.name).rsplit('/').next().unwrap_or_default().to_owned();
         if name.is_empty() || name.starts_with('.') {
             return Ok(());
+        }
+        if written.iter().any(|(taken, _)| *taken == name) {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, format!("the artifact has two files named `{name}`")));
         }
         let path = dir.join(&name);
         let mut out = std::fs::File::create(&path)?;

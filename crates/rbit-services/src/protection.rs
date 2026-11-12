@@ -248,6 +248,11 @@ impl ProtectionService {
         for update in updates.iter().filter(|update| update.name.starts_with(rbit_git::merge::candidate::CANDIDATE_PREFIX)) {
             verdict.refusals.push(Refusal { name: update.name.clone(), reason: "refs/merge-queue/ is managed by rbit".to_owned() });
         }
+        // Branches named like those refs read as them where a name is resolved loosely, and
+        // look like candidates to workflows. Deleting one stays possible.
+        for update in updates.iter().filter(|update| update.after.is_some() && rbit_git::merge::candidate::reserved_branch(&update.name)) {
+            verdict.refusals.push(Refusal { name: update.name.clone(), reason: rbit_git::merge::candidate::RESERVED_BRANCH.to_owned() });
+        }
         for update in updates.iter().filter(|update| update.name.starts_with(rbit_git::scratch::PREFIX)) {
             let owner = rbit_git::scratch::owner(&update.name);
             let reason = match actor.user {
@@ -282,6 +287,12 @@ impl ProtectionService {
     pub async fn check_merge(&self, repo: &RepoContext, merger: &User, branch: &str) -> Result<MergeRules, ServiceError> {
         let store = self.store();
         Ok(ProtectionGate::new(&store).merge(repo.repo.repo.id, merger.id(), repo.access, branch).await?)
+    }
+
+    /// Why `branch` may not be written, when its name is reserved (`refs/…`, `merge-queue/…`).
+    #[must_use]
+    pub fn reserved_branch_refusal(branch: &str) -> Option<&'static str> {
+        rbit_git::merge::candidate::reserved_branch(&format!("refs/heads/{branch}")).then_some(rbit_git::merge::candidate::RESERVED_BRANCH)
     }
 
     /// Whether `actor` may delete `branch` (P's "delete head branch"): the same decision as

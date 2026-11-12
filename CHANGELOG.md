@@ -112,6 +112,23 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Limited tokens are held to their limits everywhere: one given the `admin` scope can no
+  longer change protection, hooks, secrets, runners or the repository; Git LFS now applies
+  the limit (it read and wrote other repositories' objects, and uploaded without `push`);
+  Git and an old repository name no longer tell such a token that another repository exists.
+  Opening a pull request needs `push`; approving or requesting changes, dismissing a review
+  and approving a deployment need `approve`; promoting an artifact to a release needs `push`
+  and `read_logs`, and finding an artifact by commit needs `read_logs`; status and watch
+  leave failure log lines out without `read_logs`.
+- The merge queue reads its candidate refs exactly: a branch named
+  `refs/merge-queue/<base>/pr-<n>` stopped the line for ever. Branches named `refs/…` or
+  `merge-queue/…` are refused. Before building and before landing, the queue checks again
+  that the repository is not archived, that whoever queued it may still write, and that
+  the pull request still meets its requirements; an entry it cannot look at leaves the line
+  instead of blocking it, and dequeuing works on an archived repository.
+- Promoting an artifact with two files of one name (`linux/app`, `macos/app`) is refused;
+  one overwrote the other. `agent/branch-update` answers 422 for an id that is not a full
+  commit id, not 500.
 - A token limited to one repository can no longer fork it (a fork is a new repository; the
   fork was made and the token then answered 404), and resolving a review thread needs the
   `approve` right, as the other review acts do.

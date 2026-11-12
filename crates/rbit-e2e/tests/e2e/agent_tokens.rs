@@ -9,7 +9,8 @@ use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
 
 async fn send(server: &TestServer, token: &str, method: Method, path: &str, body: Option<Value>) -> (StatusCode, Value) {
-    let http = reqwest::Client::builder().no_proxy().build().unwrap();
+    // Redirects are answers here: a limited token must not be sent to another name.
+    let http = reqwest::Client::builder().no_proxy().redirect(reqwest::redirect::Policy::none()).build().unwrap();
     let mut request = http.request(method, format!("{}/api/v1/{path}", server.base_url())).bearer_auth(token);
     if let Some(body) = body {
         request = request.header("Content-Type", "application/json").body(body.to_string());
@@ -76,6 +77,20 @@ async fn a_limited_token_reaches_one_repository_with_its_rights_only() {
     let (status, _) = send(&server, &agent, Method::POST, "repos/alice/rocket/forks", Some(json!({ "name": "copy" }))).await;
     assert_eq!(status, StatusCode::FORBIDDEN, "a fork is a new repository");
     assert_eq!(send(&server, &admin, Method::GET, "repos/alice/copy", None).await.0, StatusCode::NOT_FOUND, "and none was made");
+    // Each write its rights do not name is refused before anything is looked up.
+    for (method, path, body) in [
+        (Method::POST, "repos/alice/rocket/pulls", json!({ "title": "x", "head": "main", "base": "main" })),
+        (Method::POST, "repos/alice/rocket/pulls/1/reviews", json!({ "event": "APPROVE" })),
+        (Method::PUT, "repos/alice/rocket/pulls/1/reviews/1/dismissals", json!({ "message": "x" })),
+        (Method::POST, "repos/alice/rocket/releases/1/assets/from-artifact", json!({ "artifact_id": 1 })),
+    ] {
+        assert_eq!(send(&server, &reader, method, path, Some(body)).await.0, StatusCode::FORBIDDEN, "{path} needs its right");
+    }
+    let artifacts = "repos/alice/rocket/agent/artifacts?sha=0000000&name=dist";
+    assert_eq!(send(&server, &agent, Method::GET, artifacts, None).await.0, StatusCode::FORBIDDEN, "artifacts need `read_logs`");
+    // An old name of another repository is not followed for it: that would name the new one.
+    assert_eq!(send(&server, &admin, Method::PATCH, "repos/alice/vault", Some(json!({ "name": "vault-new" }))).await.0, StatusCode::OK);
+    assert_eq!(send(&server, &agent, Method::GET, "repos/alice/vault", None).await.0, StatusCode::NOT_FOUND);
 
     // A limited token makes no tokens, even with the admin scope.
     let wide = json!({ "name": "wide", "scope": "admin", "repository": "alice/rocket" });
@@ -83,6 +98,10 @@ async fn a_limited_token_reaches_one_repository_with_its_rights_only() {
     let wide = wide["token"].as_str().unwrap().to_owned();
     let (status, _) = send(&server, &wide, Method::POST, "user/tokens", Some(json!({ "name": "more", "scope": "admin" }))).await;
     assert_eq!(status, StatusCode::FORBIDDEN);
+    // Nor anything that needs the admin scope: the repository, its protection, its hooks.
+    let changed = json!({ "description": "changed by a limited token" });
+    assert_eq!(send(&server, &wide, Method::PATCH, "repos/alice/rocket", Some(changed)).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(send(&server, &wide, Method::GET, "repos/alice/rocket/branch_protections", None).await.0, StatusCode::FORBIDDEN);
 
     // Revoked, it stops at once.
     let id = row["id"].as_i64().unwrap();

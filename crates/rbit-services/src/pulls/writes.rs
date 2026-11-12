@@ -128,6 +128,9 @@ impl PullService {
         commit: &str,
         expected: &str,
     ) -> Result<(), MergeFailure> {
+        if let Some(reason) = crate::protection::ProtectionService::reserved_branch_refusal(branch) {
+            return Err(MergeFailure::Blocked(reason.to_owned()));
+        }
         self.may_write(repo, actor, branch).await?;
         let commit = repo.reader.commit_id(commit.to_owned()).await.map_err(ServiceError::from)?;
         let keeps_tip = repo.reader.is_ancestor(expected.to_owned(), commit.clone()).await.unwrap_or(false);

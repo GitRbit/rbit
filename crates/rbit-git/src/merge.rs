@@ -248,7 +248,7 @@ pub(crate) async fn hand_over(
     let output = update.output().await?;
     if !output.status.success() {
         let creating = expected.bytes().all(|b| b == b'0');
-        return match base.rev_parse(target).await? {
+        return match candidate::ref_target(base, target).await? {
             Some(current) if current != expected => Err(MergeError::BaseMoved),
             None if !creating => Err(MergeError::BaseMoved),
             Some(_) | None => Err(failure(&output, "update-ref")),

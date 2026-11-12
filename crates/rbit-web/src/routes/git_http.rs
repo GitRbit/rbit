@@ -362,8 +362,12 @@ async fn authorize(
     let gate = CallerRepositories { state, caller: caller.as_ref() };
     let ctx = access::authorize(&gate, caller.is_none(), owner, repo, service).await?;
     if let Some(GitCaller::User { token_limit: Some(limit), .. }) = &caller {
-        let push = service == Service::ReceivePack;
-        if !limit.reaches(ctx.repo.repo.id) || (push && !limit.allows(rbit_services::tokens::Right::Push)) {
+        // Another repository is not there for a limited token, as over the API: a 403 would
+        // say it exists.
+        if !limit.reaches(ctx.repo.repo.id) {
+            return Err(Denied::NotFound);
+        }
+        if service == Service::ReceivePack && !limit.allows(rbit_services::tokens::Right::Push) {
             return Err(Denied::Forbidden);
         }
     }

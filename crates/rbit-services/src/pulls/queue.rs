@@ -35,7 +35,7 @@ use rbit_storage::sqlite::{
     pulls::MergeRecord,
 };
 
-use super::{MergeFailure, PullContext, PullService, merge_lock};
+use super::{MergeBox, MergeFailure, PullContext, PullService, merge_lock};
 use crate::{RepoContext, ServiceError};
 
 /// How often every line with entries is looked at again.
@@ -65,6 +65,25 @@ fn strategy_of(name: &str) -> MergeStrategy {
     }
 }
 
+/// What a pull request still lacks to be queued or to land, but its checks: the queue tests
+/// those itself, and a conflict check still running is no reason to wait (building the
+/// candidate finds a conflict).
+fn unmet_requirements(merge_box: &MergeBox) -> Vec<String> {
+    merge_box
+        .evaluation
+        .checks
+        .iter()
+        .filter(|check| {
+            !check.met
+                && !matches!(
+                    check.requirement,
+                    Requirement::RequiredChecks(_) | Requirement::Checks(_) | Requirement::NoConflicts(Mergeability::Unknown)
+                )
+        })
+        .map(|check| check.requirement.describe(false))
+        .collect()
+}
+
 impl PullService {
     /// Queues `ctx` to land with `strategy` for head `expected_head` (the current one when
     /// `None`). Every requirement but its checks must be met; a conflict check still running
@@ -83,20 +102,7 @@ impl PullService {
         if expected_head.is_some_and(|expected| !ctx.pull.head_sha.starts_with(expected)) {
             return Err(MergeFailure::HeadChanged);
         }
-        let merge_box = self.merge_box(Some(actor), ctx).await?;
-        let unmet: Vec<String> = merge_box
-            .evaluation
-            .checks
-            .iter()
-            .filter(|check| {
-                !check.met
-                    && !matches!(
-                        check.requirement,
-                        Requirement::RequiredChecks(_) | Requirement::Checks(_) | Requirement::NoConflicts(Mergeability::Unknown)
-                    )
-            })
-            .map(|check| check.requirement.describe(false))
-            .collect();
+        let unmet = unmet_requirements(&self.merge_box(Some(actor), ctx).await?);
         if !unmet.is_empty() {
             return Err(MergeFailure::Blocked(unmet.join("; ")));
         }
@@ -128,7 +134,8 @@ impl PullService {
 
     /// Takes `ctx` out of line; `false` when it was not in line.
     pub async fn dequeue(&self, actor: &User, ctx: &PullContext) -> Result<bool, ServiceError> {
-        if !ctx.repo().can_write_content() {
+        // Taking an entry out writes nothing to the repository: it works when archived too.
+        if !ctx.repo().access.can_write() {
             return Err(ServiceError::Forbidden);
         }
         let store = self.ctx().database.actions_runs();
@@ -188,11 +195,28 @@ impl PullService {
             return self.leave(&entry, "failed", "whoever queued it is gone").await;
         };
         let Some(owned) = database.admin().find_repository(repo).await? else { return Ok(()) };
-        let repo_ctx = self.inner.repositories.open(Some(&user), owned.owner.name.as_str(), owned.repo.name.as_str()).await?;
+        let opened = self.inner.repositories.open(Some(&user), owned.owner.name.as_str(), owned.repo.name.as_str()).await;
+        let repo_ctx = match opened {
+            Ok(repo_ctx) => repo_ctx,
+            // An entry that cannot be looked at would hold up the line for ever.
+            Err(ServiceError::NotFound | ServiceError::Forbidden) => {
+                return self.leave(&entry, "failed", "whoever queued it can no longer read the repository").await;
+            }
+            Err(error) => return Err(error),
+        };
         let number = IssueNumber::new(entry.number).ok_or(ServiceError::NotFound)?;
         let ctx = self.open(Some(&user), repo_ctx, number).await?;
         if !ctx.issue().is_open() {
             return self.leave(&entry, "removed", "the pull request is no longer open").await;
+        }
+        if !ctx.repo().can_write_content() {
+            return self.leave(&entry, "failed", "the repository is archived, or whoever queued it may no longer write to it").await;
+        }
+        // What held when it was queued is checked again before each build and landing.
+        let merge_box = self.merge_box(Some(&user), &ctx).await?;
+        let unmet = unmet_requirements(&merge_box);
+        if !unmet.is_empty() {
+            return self.leave(&entry, "failed", &format!("no longer ready: {}", unmet.join("; "))).await;
         }
         if ctx.pull.head_sha != entry.head_sha {
             return self.leave(&entry, "failed", "the head moved after it was queued; queue it again").await;
@@ -202,7 +226,7 @@ impl PullService {
         };
         match (entry.state.as_str(), entry.candidate_sha.as_deref(), entry.base_sha.as_deref()) {
             ("testing", Some(candidate_sha), Some(built_on)) if built_on == base_tip => {
-                let rules = self.merge_box(Some(&user), &ctx).await?.rules;
+                let rules = merge_box.rules;
                 let statuses = database.commit_statuses().latest(repo, candidate_sha).await?;
                 let mut pending = false;
                 for context in &rules.required_contexts {

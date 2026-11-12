@@ -113,6 +113,11 @@ impl Caller {
     /// requests and 403 for a token with a narrower scope.
     pub fn require(&self, scope: TokenScope) -> ApiResult<&User> {
         let user = self.require_user()?;
+        // The admin scope changes protection, hooks, secrets, runners and the repository
+        // itself: nothing a token limited to some rights may do, whatever scope it was given.
+        if scope == TokenScope::Admin && self.is_limited() {
+            return Err(ApiError::forbidden("A limited token cannot do what needs the admin scope"));
+        }
         match self.scope {
             Some(granted) if !granted.allows(scope) => Err(ApiError::forbidden(format!(
                 "This token's scope ({}) does not allow this; it needs the {} scope",
@@ -132,6 +137,13 @@ impl Caller {
             }
             _ => Ok(()),
         }
+    }
+
+    /// Refuses (403) a limited token without `approve` for a review verdict (`APPROVE` or
+    /// `REQUEST_CHANGES`): a review act, as resolving a thread is. Comments need no right.
+    pub fn require_verdict_right(&self, event: Option<&str>) -> ApiResult<()> {
+        let verdict = event.is_some_and(|event| event.eq_ignore_ascii_case("APPROVE") || event.eq_ignore_ascii_case("REQUEST_CHANGES"));
+        if verdict { self.require_right(Right::Approve) } else { Ok(()) }
     }
 
     /// Refuses (403) a limited token: for writes no right covers (switching workflows,
@@ -177,7 +189,12 @@ impl Caller {
                 Ok(ctx)
             }
             Err(ServiceError::NotFound) => {
-                let moved = repositories.moved_to(self.user(), owner, name).await?;
+                // An old name is followed only to a repository the token reaches: a redirect
+                // would name another repository's current name.
+                let moved = repositories
+                    .moved_to(self.user(), owner, name)
+                    .await?
+                    .filter(|repo| self.token_limit.as_ref().is_none_or(|limit| limit.reaches(repo.repo.id)));
                 let location = moved.and_then(|repo| self.request.moved(state.config.server.base_url(), owner, name, &repo.full_name()));
                 Err(location.map_or_else(ApiError::not_found, |location| ApiError::moved(&self.request.method, location)))
             }

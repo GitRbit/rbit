@@ -42,6 +42,8 @@ use super::{
 };
 use crate::AppState;
 
+mod dismissals;
+
 /// This area's endpoints, appended to [`super::table`].
 pub(super) fn routes() -> Vec<ApiRoute> {
     use ApiMethod::{Delete, Get, Patch, Post, Put};
@@ -58,7 +60,7 @@ pub(super) fn routes() -> Vec<ApiRoute> {
         route(Get, path("/{number}/reviews"), reviews),
         route(Post, path("/{number}/reviews"), create_review),
         route(Get, path("/{number}/reviews/{id}"), review),
-        route(Put, path("/{number}/reviews/{id}/dismissals"), dismiss),
+        route(Put, path("/{number}/reviews/{id}/dismissals"), dismissals::dismiss),
         route(Get, path("/{number}/comments"), comments),
         route(Post, path("/{number}/comments"), create_comment),
         route(Get, path("/{number}/requested_reviewers"), requested_reviewers),
@@ -160,6 +162,7 @@ pub async fn create(
     Path((owner, name)): Path<(String, String)>,
     ApiJson(new): ApiJson<NewPull>,
 ) -> ApiResult<(StatusCode, Json<Value>)> {
+    caller.require_right(Right::Push)?; // as `pulls/ensure`: it proposes pushed work
     let base = caller.open_repo(&state, &owner, &name).await?;
     let user = writer(&caller)?;
     let spec = HeadSpec::parse(&new.head).ok_or_else(|| ApiError::invalid("head", "head must be branch or owner:branch"))?;
@@ -206,6 +209,7 @@ pub async fn update(
     Path((owner, name, number)): Path<(String, String, String)>,
     ApiJson(changes): ApiJson<PullChanges>,
 ) -> ApiResult<Json<Value>> {
+    changes.base.as_ref().map_or(Ok(()), |_| caller.require_right(Right::Push))?;
     let ctx = open(&state, &caller, &owner, &name, &number).await?;
     let user = writer(&caller)?;
     let services = &state.services;
@@ -437,6 +441,7 @@ pub async fn create_review(
     Path((owner, name, number)): Path<(String, String, String)>,
     ApiJson(new): ApiJson<NewReview>,
 ) -> ApiResult<Json<Value>> {
+    caller.require_verdict_right(new.event.as_deref())?;
     let ctx = open(&state, &caller, &owner, &name, &number).await?;
     let user = writer(&caller)?;
     let pulls = &state.services.pulls;
@@ -458,43 +463,6 @@ pub async fn create_review(
     let data = pulls.reviews(Some(user), &ctx).await?;
     let pending = data.pending.ok_or_else(|| ApiError::invalid("event", "a pending review needs at least one comment"))?;
     Ok(Json(pull_json::review(&pending.review, Some(&user.account), &ctx.repo().repo, number, base)))
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Dismissal {
-    message: String,
-}
-
-/// `PUT /repos/{owner}/{repo}/pulls/{number}/reviews/{id}/dismissals`
-pub async fn dismiss(
-    State(state): State<AppState>,
-    caller: Caller,
-    Path((owner, name, number, id)): Path<(String, String, String, String)>,
-    ApiJson(dismissal): ApiJson<Dismissal>,
-) -> ApiResult<Json<Value>> {
-    let id = review_id(&id)?;
-    let ctx = open(&state, &caller, &owner, &name, &number).await?;
-    let user = writer(&caller)?;
-    let review = state
-        .services
-        .pulls
-        .dismiss_review(user, &ctx, id, &dismissal.message)
-        .await
-        .map_err(|error| ApiError::service(error, "message"))?;
-    let reviewer = match review.reviewer {
-        Some(id) if id == user.id() => Some(user.account.clone()),
-        Some(_) => state
-            .services
-            .pulls
-            .reviews(Some(user), &ctx)
-            .await?
-            .reviews
-            .into_iter()
-            .find(|entry| entry.review.id == id)
-            .and_then(|entry| entry.reviewer),
-        None => None,
-    };
-    Ok(Json(pull_json::review(&review, reviewer.as_ref(), &ctx.repo().repo, ctx.issue().number.get(), base_url(&state))))
 }
 
 /// `GET /repos/{owner}/{repo}/pulls/{number}/comments`: review comments the caller can see.

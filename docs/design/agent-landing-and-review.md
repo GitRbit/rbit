@@ -80,9 +80,10 @@ completed. Nothing is reverted on its own.
 
 A personal access token may be limited to one repository and to rights within its scope:
 `push` (also releases, which make tags), `statuses`, `merge` (merge, queue, ready),
-`dispatch` (also repository dispatch), `approve` (approve, rerun, cancel), `read_logs` (logs,
-failure digests, artifacts). Such a token reaches only its repository's endpoints and
-`GET /user`: nothing account-wide, so no repository list naming the others and no new
+`dispatch` (also repository dispatch), `approve` (approve, rerun, cancel, review verdicts and
+dismissals, deployment approvals), `read_logs` (logs, failure digests, artifacts, the log lines
+in status and watch). Such a token reaches only its repository's endpoints (Git and LFS included) and
+`GET /user`, never with the `admin` scope: nothing account-wide, so no repository list naming the others and no new
 repository. Writes no right names (switching workflows, deleting artifacts and caches) need
 an unlimited token. The limit lives in its own table beside the
 token (migration `0082_token_limits.sql`), so the credential table and its writer protocol

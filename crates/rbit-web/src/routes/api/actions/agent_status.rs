@@ -81,6 +81,22 @@ fn ci_json(ci: &CommitCi) -> Value {
     })
 }
 
+/// Leaves out of `ci` the log lines, annotations and test names of its failed jobs when the
+/// caller may not read logs (a token without `read_logs`): the failure digest asks that
+/// right for the same words. The failed jobs themselves stay.
+fn without_logs_unless(caller: &Caller, ci: &mut Value) {
+    if caller.require_right(rbit_services::tokens::Right::ReadLogs).is_ok() {
+        return;
+    }
+    for job in ci["failed"].as_array_mut().into_iter().flatten() {
+        if let Some(job) = job.as_object_mut() {
+            for key in ["excerpt", "annotations", "tests"] {
+                job.remove(key);
+            }
+        }
+    }
+}
+
 /// A fingerprint of what a watcher cares about: the state, the job counts, each run's
 /// status and the failed jobs.
 fn cursor(ci: &CommitCi) -> String {
@@ -141,6 +157,7 @@ pub async fn status(
         .map(|divergence| json!({ "merge_base": divergence.merge_base, "ahead": divergence.ahead, "behind": divergence.behind }));
     let pull = status.pull.as_ref().map(|pull| json!({ "number": pull.number, "draft": pull.draft, "base": pull.base, "head_sha": pull.head_sha, "up_to_date_with_head": pull.head_sha == status.head }));
     let mut ci = ci_json(&status.ci);
+    without_logs_unless(&caller, &mut ci);
     ci["for_sha"] = json!(status.head);
     Ok(Json(json!({
         "schema": "rbit.status/1",
@@ -191,6 +208,7 @@ pub async fn watch(
         if changed || moved.is_some() || Instant::now() >= deadline {
             let done = matches!(ci.state, "success" | "failure" | "cancelled" | "superseded" | "indeterminate" | "none_expected");
             let mut body = ci_json(&ci);
+            without_logs_unless(&caller, &mut body);
             body["schema"] = json!("rbit.watch/1");
             body["sha"] = json!(sha);
             body["cursor"] = json!(seen);
