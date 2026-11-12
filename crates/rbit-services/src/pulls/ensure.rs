@@ -6,6 +6,8 @@
 //! * With a request id, the answer is remembered for a week per account: replaying the id
 //!   with the same inputs returns the same pull request, even after it was created by the
 //!   first call whose response was lost; replaying it with other inputs is a `conflict`.
+//! * Calls racing for the same branches (a retry sent while the first is still running)
+//!   get the one pull request the first of them created, not a refusal.
 
 use std::fmt::Write as _;
 
@@ -79,19 +81,35 @@ impl PullService {
                 return Ok(Ensured::Replayed(number));
             }
         }
-        let open = self.ctx().database.pulls().open_with_head(head.repo.repo.id, &input.head_branch).await?;
-        let existing = open
-            .iter()
-            .find(|(issue, pull)| issue.repo_id == base.repo.repo.id && pull.base_branch == input.base_branch)
-            .map(|(issue, _)| issue.number);
-        let ensured = match existing {
+        let branches = (input.base_branch.clone(), input.head_branch.clone());
+        let ensured = match self.open_between(base, head, &branches).await? {
             Some(number) => Ensured::Existing(number),
-            None => Ensured::Created(self.create(actor, base, head, input).await?.0.number),
+            None => match self.create(actor, base, head, input).await {
+                Ok(created) => Ensured::Created(created.0.number),
+                // Another call created it meanwhile: that one is the answer.
+                Err(error) => match self.open_between(base, head, &branches).await? {
+                    Some(number) if request_id.is_some() => Ensured::Replayed(number),
+                    Some(number) => Ensured::Existing(number),
+                    None => return Err(error),
+                },
+            },
         };
         if let Some(id) = request_id {
             requests.remember_request(actor.id(), id, &print, &ensured.number().get().to_string(), Timestamp::now()).await?;
         }
         Ok(ensured)
+    }
+
+    /// The open pull request from `head`'s branch into `base`'s, `(base, head)` branches.
+    async fn open_between(
+        &self,
+        base: &RepoContext,
+        head: &RepoContext,
+        branches: &(String, String),
+    ) -> Result<Option<IssueNumber>, ServiceError> {
+        let open = self.ctx().database.pulls().open_with_head(head.repo.repo.id, &branches.1).await?;
+        let found = open.iter().find(|(issue, pull)| issue.repo_id == base.repo.repo.id && pull.base_branch == branches.0);
+        Ok(found.map(|(issue, _)| issue.number))
     }
 }
 

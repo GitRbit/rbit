@@ -35,6 +35,13 @@ impl Api {
         (status, if text.is_empty() { Value::Null } else { serde_json::from_str(&text).unwrap() })
     }
 
+    /// The answers to four copies of one `pulls/ensure` sent at once: success and number.
+    async fn ensure_copies(&self, body: Value) -> std::collections::BTreeSet<(bool, Option<u64>)> {
+        let copy = || self.send(Method::POST, "pulls/ensure", Some(body.clone()));
+        let (one, two, three, four) = tokio::join!(copy(), copy(), copy(), copy());
+        [one, two, three, four].iter().map(|(status, body)| (status.is_success(), body["number"].as_u64())).collect()
+    }
+
     /// The pull request's queue entry once `ready` says so, within 20 seconds.
     async fn queue_until(&self, number: u64, ready: impl Fn(&Value) -> bool) -> Value {
         for _ in 0..200 {
@@ -103,6 +110,13 @@ async fn a_queued_pull_request_lands_exactly_the_commit_ci_passed() {
     assert_eq!((existing["outcome"].as_str(), existing["number"].as_u64()), (Some("existing"), Some(pull)));
     let other_inputs = json!({ "head": "landing", "base": "main", "title": "Other", "request_id": "r-1" });
     assert_eq!(api.send(Method::POST, "pulls/ensure", Some(other_inputs)).await.0, StatusCode::CONFLICT);
+    // Racing copies of one request (a retry sent while the first runs) get one pull request.
+    git.ok(&sample.dir, &["checkout", "--quiet", "-b", "racing", "main"]);
+    git.commit_file(&sample.dir, "race.txt", "go\n");
+    git.ok(&sample.dir, &["push", "--quiet", &url, "racing"]);
+    let answers = api.ensure_copies(json!({ "head": "racing", "base": "main", "request_id": "r-race" })).await;
+    assert_eq!(answers.len(), 1, "every copy answers the same pull request: {answers:?}");
+    git.ok(&sample.dir, &["checkout", "--quiet", "landing"]);
 
     // 4.2: a draft is not ready; marked ready for its head, it waits only on `ci/test`.
     let (_, readiness) = api.send(Method::GET, &format!("pulls/{pull}/readiness"), None).await;
