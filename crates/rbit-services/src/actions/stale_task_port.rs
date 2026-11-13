@@ -55,8 +55,13 @@ impl StaleTaskStore for StaleTaskSession<'_> {
             Staleness::Silent => TerminationReason::RunnerLost,
             Staleness::Endless => TerminationReason::Timeout,
         };
-        store.record_termination(id, Termination::because(reason), Timestamp(now)).await?;
-        Ok(store.finish_task(id, Status::Failure, Timestamp(now)).await?)
+        // The record follows the failure it explains: a task its runner finished meanwhile
+        // keeps the runner's own record, not a lost runner's.
+        let settled = store.finish_task(id, Status::Failure, Timestamp(now)).await?;
+        if settled.is_some() {
+            store.record_termination(id, Termination::because(reason), Timestamp(now)).await?;
+        }
+        Ok(settled)
     }
 
     async fn close(&self, id: TaskId, reason: &str) -> Result<(), ServiceError> {
