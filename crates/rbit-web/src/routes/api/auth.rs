@@ -152,6 +152,13 @@ impl Caller {
         if self.is_limited() { Err(ApiError::forbidden("A limited token cannot do this")) } else { Ok(()) }
     }
 
+    /// Whether the caller may reach repository `repo` at all: a limited token reaches only its
+    /// own. For a repository opened some other way than [`Self::open_repo`], such as a pull
+    /// request's head.
+    pub fn reaches(&self, repo: rbit_core::RepoId) -> bool {
+        self.token_limit.as_ref().is_none_or(|limit| limit.reaches(repo))
+    }
+
     /// Whether the caller's token is limited to a repository or some rights.
     pub fn is_limited(&self) -> bool {
         self.token_limit.is_some()

@@ -112,6 +112,9 @@ pub async fn ensure(
     let spec = HeadSpec::parse(&request.head).ok_or_else(|| ApiError::invalid("head", "head must be branch or owner:branch"))?;
     let pulls = &state.services.pulls;
     let head = pulls.resolve_head(Some(user), &base, &spec).await.map_err(|error| ApiError::service(error, "head"))?;
+    if !caller.reaches(head.repo.repo.id) {
+        return Err(ApiError::service(ServiceError::NotFound, "head"));
+    }
     let input = NewPullInput {
         base_branch: request.base,
         head_branch: spec.branch,

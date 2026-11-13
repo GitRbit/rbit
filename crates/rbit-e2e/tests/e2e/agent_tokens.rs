@@ -120,3 +120,39 @@ async fn a_limited_token_reaches_one_repository_with_its_rights_only() {
     assert_eq!(send(&server, &admin, Method::DELETE, &format!("user/tokens/{id}"), None).await.0, StatusCode::NO_CONTENT);
     assert_eq!(send(&server, &agent, Method::GET, "repos/alice/rocket", None).await.0, StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn a_limited_token_reaches_no_other_repository_through_a_pull_requests_head() {
+    let server = TestServer::start();
+    let alice = server.sign_up("alice").await;
+    let bob = server.sign_up("bob").await;
+    alice.create_repo("alice", "rocket", "public").await;
+    let admin = alice.create_token("owner", "admin").await;
+    let git = Git::new();
+    let sample = git.sample();
+    git.ok(&sample.dir, &["push", "--quiet", &server.git_url_as("alice", "rocket", "alice", rbit_e2e::PASSWORD), "main"]);
+    // bob forks rocket and pushes a branch alice herself may read.
+    let bobs = bob.create_token("bob", "write").await;
+    let (status, fork) = send(&server, &bobs, Method::POST, "repos/alice/rocket/forks", Some(json!({}))).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{fork}");
+    git.commit_file(&sample.dir, "loot.txt", "bob's work\n");
+    git.ok(&sample.dir, &["push", "--quiet", &server.git_url_as("bob", "rocket", "bob", rbit_e2e::PASSWORD), "HEAD:loot"]);
+    let limited = json!({ "name": "agent", "scope": "write", "repository": "alice/rocket", "rights": ["push"] });
+    let (_, made) = send(&server, &admin, Method::POST, "user/tokens", Some(limited)).await;
+    let agent = made["token"].as_str().unwrap().to_owned();
+
+    // A token limited to rocket sees bob's fork as a head that does not exist, everywhere.
+    let missing = json!({ "title": "x", "head": "bob:nothing-here", "base": "main" });
+    let (absent, _) = send(&server, &agent, Method::POST, "repos/alice/rocket/pulls", Some(missing)).await;
+    let open = json!({ "title": "Take bob's work", "head": "bob:loot", "base": "main" });
+    let (status, body) = send(&server, &agent, Method::POST, "repos/alice/rocket/pulls", Some(open.clone())).await;
+    assert_eq!(status, absent, "as a head that does not exist: {body}");
+    let ensure = json!({ "head": "bob:loot", "base": "main", "title": "Take bob's work" });
+    let (status, body) = send(&server, &agent, Method::POST, "repos/alice/rocket/pulls/ensure", Some(ensure)).await;
+    assert!(status.is_client_error(), "{body}");
+    // An unlimited token may; a limited one then still does not find it by that head.
+    let (status, body) = send(&server, &admin, Method::POST, "repos/alice/rocket/pulls", Some(open)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let (_, listed) = send(&server, &agent, Method::GET, "repos/alice/rocket/pulls?head=bob:loot", None).await;
+    assert_eq!(listed, json!([]), "{listed}");
+}

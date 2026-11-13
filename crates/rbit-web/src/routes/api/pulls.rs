@@ -126,6 +126,8 @@ pub async fn list(
     if let Some(head) = query.head.filter(|head| !head.is_empty()) {
         let spec = HeadSpec::parse(&head).ok_or_else(|| ApiError::invalid("head", "head must be branch or owner:branch"))?;
         match state.services.pulls.resolve_head(caller.user(), &ctx, &spec).await {
+            // A head in a repository the token does not reach is not there for it.
+            Ok(head_repo) if !caller.reaches(head_repo.repo.repo.id) => return Ok(pager.paged(Vec::new(), Some(0), false)),
             Ok(head_repo) => {
                 filter.head_repo = Some(head_repo.repo.repo.id);
                 filter.head_branch = Some(spec.branch);
@@ -168,6 +170,11 @@ pub async fn create(
     let spec = HeadSpec::parse(&new.head).ok_or_else(|| ApiError::invalid("head", "head must be branch or owner:branch"))?;
     let pulls = &state.services.pulls;
     let head = pulls.resolve_head(Some(user), &base, &spec).await.map_err(|error| ApiError::service(error, "head"))?;
+    // A limited token's pull request proposes only its own repository's work: another
+    // repository's branch is answered as a head that does not exist.
+    if !caller.reaches(head.repo.repo.id) {
+        return Err(ApiError::service(ServiceError::NotFound, "head"));
+    }
     let input = NewPullInput {
         base_branch: new.base,
         head_branch: spec.branch,
