@@ -4,7 +4,9 @@ use rbit_core::{
     PushSource, Timestamp,
     actions::{Status, TaskId},
 };
+use rbit_services::actions::logs::LogRange;
 use rbit_services::actions::runners::{CachedRunner, ManagedScope, RegistrationOptions};
+use rbit_services::actions::scheduler::JOB_CANCEL_IN_PROGRESS;
 use rbit_storage::count_work;
 use rbit_workflow::protocol::{Backend, Capabilities, DeclaredLabel, PollRequest, RegisterRequest};
 use rbit_workflow::secret::Secret;
@@ -70,4 +72,18 @@ async fn remembered_replay_rotates_only_token_and_spent_key_uses_one_read_withou
     assert_eq!((work.acquisitions, work.statements), (1, 1), "spent key skips rotation/specification/queue");
     let next = actions.poll(&runner, &request, Some("new-key")).await.unwrap().unwrap();
     assert_ne!(next.task_id, first.task_id, "the spent key did not take queued work");
+}
+
+#[tokio::test]
+async fn a_job_asking_to_cancel_its_group_in_progress_is_warned_in_its_log() {
+    let fixture = Fixture::new().await;
+    let job = "on: push\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n    concurrency: {group: deploy, cancel-in-progress: true}\n    steps: [{run: x}]\n";
+    fixture.commit(&[(".forgejo/workflows/deploy.yml", job)], "Deploy");
+    let update = fixture.push_ref("refs/heads/main").await;
+    let repo = fixture.repo(&fixture.alice).await;
+    fixture.actions().handle_push(repo.repo.repo.id, PushSource::User(fixture.alice.id()), &[update]).await.unwrap();
+    let runner = runner(&fixture).await;
+    let task = fixture.actions().poll(&runner, &PollRequest { free_slots: 1 }, None).await.unwrap().unwrap();
+    let log = fixture.actions().task_log(&repo, TaskId(task.task_id.0), LogRange::From(0), 10, 4096).await.unwrap();
+    assert_eq!(log.lines, [format!("rbit: {JOB_CANCEL_IN_PROGRESS}")]);
 }
