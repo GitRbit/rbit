@@ -182,13 +182,16 @@ async fn require_repository(repo_path: &Path) -> Result<(), RemoteError> {
 
 /// Fetches the branches and tags of `remote` into the bare repository at `repo_path`
 /// (replacing what is there), and with `pull_heads` also its pull request heads
-/// (`refs/pull/{n}/head`, which GitHub and Gitea both publish).
+/// (`refs/pull/{n}/head`, which GitHub and Gitea both publish). With `max_bytes` the
+/// repository may grow by at most that much: a remote that sends more (a hostile one may
+/// send for as long as the timeout allows) is cut off and the import fails.
 pub async fn fetch_import(
     git_binary: &Path,
     repo_path: &Path,
     remote: Remote<'_>,
     pull_heads: bool,
     timeout: Duration,
+    max_bytes: Option<u64>,
 ) -> Result<(), RemoteError> {
     require_repository(repo_path).await?;
     let mut command = remote_command(git_binary, repo_path, remote);
@@ -199,7 +202,50 @@ pub async fn fetch_import(
     if pull_heads {
         command.arg("+refs/pull/*/head:refs/pull/*/head");
     }
-    run(&mut command, timeout).await
+    let Some(limit) = max_bytes else { return run(&mut command, timeout).await };
+    let too_large = || RemoteError::Failed(format!("the repository is larger than the {limit} bytes an import may bring in"));
+    let start = measure(repo_path.to_path_buf()).await;
+    // Dropping the transfer kills git (`kill_on_drop`), so the first to finish decides; one
+    // that finished before a look still counts.
+    tokio::select! {
+        result = run(&mut command, timeout) => result?,
+        () = outgrown(repo_path.to_path_buf(), start, limit) => return Err(too_large()),
+    }
+    if measure(repo_path.to_path_buf()).await.saturating_sub(start) > limit {
+        return Err(too_large());
+    }
+    Ok(())
+}
+
+/// How often an import's growth is looked at.
+const GROWTH_CHECK: Duration = Duration::from_secs(2);
+
+/// The bytes of the files under `dir`, read off the async runtime.
+async fn measure(dir: std::path::PathBuf) -> u64 {
+    tokio::task::spawn_blocking(move || tree_bytes(&dir)).await.unwrap_or(0)
+}
+
+/// Resolves once the files under `dir` hold more than `limit` bytes over `start`.
+async fn outgrown(dir: std::path::PathBuf, start: u64, limit: u64) {
+    loop {
+        tokio::time::sleep(GROWTH_CHECK).await;
+        if measure(dir.clone()).await.saturating_sub(start) > limit {
+            return;
+        }
+    }
+}
+
+/// The bytes of the files under `dir` (links are not followed; unreadable parts count 0).
+fn tree_bytes(dir: &Path) -> u64 {
+    let Ok(entries) = std::fs::read_dir(dir) else { return 0 };
+    entries
+        .flatten()
+        .map(|entry| match entry.file_type() {
+            Ok(kind) if kind.is_dir() => tree_bytes(&entry.path()),
+            Ok(kind) if kind.is_file() => entry.metadata().map_or(0, |meta| meta.len()),
+            _ => 0,
+        })
+        .sum()
 }
 
 /// Pushes every branch and tag of the bare repository at `repo_path` to `remote`,

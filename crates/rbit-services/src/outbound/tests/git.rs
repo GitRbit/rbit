@@ -83,7 +83,7 @@ async fn git_follows_no_redirect() {
     let target = bare(dir.path());
     let url = server.url("/acme/rocket.git");
     let remote = Remote { url: &url, authorization: Some("Basic c2VjcmV0"), allow_local: false, resolution: None };
-    assert!(fetch_import(Path::new("git"), &target, remote, false, Duration::from_secs(30)).await.is_err());
+    assert!(fetch_import(Path::new("git"), &target, remote, false, Duration::from_secs(30), None).await.is_err());
     assert!(push_mirror(Path::new("git"), &target, remote, Duration::from_secs(30)).await.is_err());
     assert!(server.connections() >= 3);
     assert_eq!(elsewhere.connections(), 0, "no redirect was followed, and the credentials stayed where they were sent");
@@ -109,7 +109,7 @@ async fn a_stalled_remote_does_not_outlive_the_time_limit() {
     let url = server.url("/acme/rocket.git");
     let remote = Remote { url: &url, authorization: None, allow_local: false, resolution: None };
     assert!(matches!(fetch_mirror(Path::new("git"), &target, &url, None, limit).await, Err(FetchError::TimedOut(_))));
-    assert!(matches!(fetch_import(Path::new("git"), &target, remote, false, limit).await, Err(RemoteError::TimedOut(_))));
+    assert!(matches!(fetch_import(Path::new("git"), &target, remote, false, limit, None).await, Err(RemoteError::TimedOut(_))));
     assert!(matches!(push_mirror(Path::new("git"), &target, remote, limit).await, Err(RemoteError::TimedOut(_))));
     assert!(started.elapsed() < limit * 4 + Duration::from_secs(10), "each operation stopped at its limit");
     assert!(server.connections() >= 4, "every operation reached the stalled remote");

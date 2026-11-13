@@ -195,7 +195,9 @@ impl Job {
         let timeout = Duration::from_secs(config.imports.git_timeout_seconds.max(1));
         let fetched = {
             let _lease = self.ctx().repositories.lease(self.repo_id()).await;
-            fetch_import(&config.repository.git_binary, &self.repo.disk_path, remote, self.options.issues, timeout).await
+            // An import brings in no more than a push may.
+            let max_bytes = config.repository.max_push_bytes();
+            fetch_import(&config.repository.git_binary, &self.repo.disk_path, remote, self.options.issues, timeout, max_bytes).await
         };
         if let Err(error) = fetched {
             return Err(match error {

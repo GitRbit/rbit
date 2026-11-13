@@ -79,15 +79,15 @@ async fn imports_fetch_branches_tags_and_pull_request_heads() {
     let url = file_url(&upstream);
 
     let target = bare(dir.path(), "target.git");
-    fetch_import(Path::new("git"), &target, local(&url), true, TIMEOUT).await.unwrap();
+    fetch_import(Path::new("git"), &target, local(&url), true, TIMEOUT, None).await.unwrap();
     assert_eq!(refs(&target), ["refs/heads/feature", "refs/heads/main", "refs/pull/1/head", "refs/tags/v1"], "not refs/pull/*/merge");
 
     let without = bare(dir.path(), "without.git");
-    fetch_import(Path::new("git"), &without, local(&url), false, TIMEOUT).await.unwrap();
+    fetch_import(Path::new("git"), &without, local(&url), false, TIMEOUT, None).await.unwrap();
     assert_eq!(refs(&without), ["refs/heads/feature", "refs/heads/main", "refs/tags/v1"]);
 
     let refused = Remote { allow_local: false, ..local(&url) };
-    let result = fetch_import(Path::new("git"), &bare(dir.path(), "refused.git"), refused, true, TIMEOUT).await;
+    let result = fetch_import(Path::new("git"), &bare(dir.path(), "refused.git"), refused, true, TIMEOUT, None).await;
     assert!(matches!(result, Err(RemoteError::Failed(_))), "file:// needs the switch: {result:?}");
 }
 
@@ -141,7 +141,7 @@ async fn credentials_travel_in_a_header_not_in_the_command_line() {
     let target = bare(dir.path(), "target.git");
     let url = format!("http://{address}/a/b.git");
     let remote = Remote { url: &url, authorization: Some("Basic c2VjcmV0"), allow_local: false, resolution: None };
-    let result = fetch_import(Path::new("git"), &target, remote, false, TIMEOUT).await;
+    let result = fetch_import(Path::new("git"), &target, remote, false, TIMEOUT, None).await;
     assert!(matches!(result, Err(RemoteError::Failed(_))), "{result:?}");
     let request = server.await.unwrap();
     assert!(request.to_ascii_lowercase().contains("authorization: basic c2vjcmv0"), "{request}");
@@ -197,7 +197,7 @@ async fn every_remote_operation_uses_the_approved_address_and_keeps_the_http_hos
         let remote = Remote { url: &url, authorization: None, allow_local: false, resolution: Some(&resolution) };
         let git = Path::new("git");
         let refused = match operation {
-            "import" => fetch_import(git, &target, remote, false, TIMEOUT).await.is_err(),
+            "import" => fetch_import(git, &target, remote, false, TIMEOUT, None).await.is_err(),
             "push" => push_mirror(git, &target, remote, TIMEOUT).await.is_err(),
             "mirror" => fetch_mirror(git, &target, &url, Some(&resolution), TIMEOUT).await.is_err(),
             _ => upstream_default_branch(git, &url, Some(&resolution), TIMEOUT).await.is_err(),
@@ -206,4 +206,30 @@ async fn every_remote_operation_uses_the_approved_address_and_keeps_the_http_hos
         let request = tokio::time::timeout(Duration::from_secs(10), server).await.expect("Git did not reach the pinned address").unwrap();
         assert!(request.to_ascii_lowercase().contains(&format!("host: {host}:{}\r\n", address.port())), "{operation}: {request}");
     }
+}
+
+#[tokio::test]
+async fn an_import_larger_than_its_limit_is_cut_off() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("source");
+    std::fs::create_dir(&source).unwrap();
+    let git = |args: &[&str]| assert!(std::process::Command::new("git").args(args).current_dir(&source).status().unwrap().success());
+    git(&["init", "-q", "-b", "main"]);
+    // 4 MiB that does not compress: more than the 1 MiB limit below.
+    let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+    let noise: Vec<u8> = (0..(4 << 20) / 8)
+        .flat_map(|_| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state.to_le_bytes()
+        })
+        .collect();
+    std::fs::write(source.join("noise.bin"), noise).unwrap();
+    git(&["add", "noise.bin"]);
+    git(&["-c", "user.name=T", "-c", "user.email=t@example.com", "commit", "-q", "-m", "noise"]);
+    let target = bare(dir.path(), "target.git");
+    let url = format!("file://{}", source.display());
+    let result = fetch_import(Path::new("git"), &target, local(&url), false, TIMEOUT, Some(1 << 20)).await;
+    assert!(matches!(&result, Err(RemoteError::Failed(why)) if why.contains("larger than")), "{result:?}");
 }
