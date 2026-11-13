@@ -99,3 +99,15 @@ async fn pushes_check_write_access_before_revealing_a_mirror() {
     let writer = Gate { found: true, writable: true, mirror: Some(false), ..Gate::default() };
     assert_eq!(decide(&writer, false, Service::ReceivePack).await, Ok(()));
 }
+
+#[tokio::test]
+async fn capped_readers_fail_past_their_limit() {
+    use tokio::io::AsyncReadExt as _;
+    let mut within = Vec::new();
+    Capped::new(&[7u8; 100][..], 100).read_to_end(&mut within).await.unwrap();
+    assert_eq!(within.len(), 100, "exactly the limit is accepted");
+    let mut over = Vec::new();
+    let error = Capped::new(&[7u8; 101][..], 100).read_to_end(&mut over).await.unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+    assert!(over.len() <= 100, "{}", over.len());
+}

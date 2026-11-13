@@ -133,7 +133,7 @@ async fn run_service(
 
     // Uploaded bytes count as activity, and a stalled upload fails (the push gate included).
     let activity = Activity::start(exchange_limits(&state));
-    let request: Request = Box::new(Watched::new(request_reader(&headers, body), activity.clone()));
+    let request: Request = Box::new(Watched::new(request_reader(&headers, body, service), activity.clone()));
     // The push gate runs on the resolved repository, after the access and mirror checks.
     let (request, options) = if service.is_write() {
         match push_gate(&state, &ctx, caller.as_ref(), request).await {
@@ -274,12 +274,22 @@ async fn session_succeeded(completion: tokio::sync::oneshot::Receiver<std::proce
 }
 
 /// Streams the request body, transparently decompressing `Content-Encoding: gzip`
-/// (which Git uses for large negotiation requests).
-fn request_reader(headers: &HeaderMap, body: Body) -> Request {
+/// (which Git uses for large negotiation requests). A fetch, open to anyone on a public
+/// repository, inflates to at most [`smart_http::MAX_INFLATED_REQUEST_BYTES`]; a push is
+/// signed in and bounded by the push limits.
+fn request_reader(headers: &HeaderMap, body: Body, service: Service) -> Request {
     let stream = body.into_data_stream().map_err(std::io::Error::other);
     let reader = StreamReader::new(stream);
     let gzipped = headers.get(header::CONTENT_ENCODING).is_some_and(|v| smart_http::is_gzip(v.as_bytes()));
-    if gzipped { Box::new(GzipDecoder::new(BufReader::new(reader))) } else { Box::new(reader) }
+    if !gzipped {
+        return Box::new(reader);
+    }
+    let inflated = GzipDecoder::new(BufReader::new(reader));
+    if service.is_write() {
+        Box::new(inflated)
+    } else {
+        Box::new(smart_http::Capped::new(inflated, smart_http::MAX_INFLATED_REQUEST_BYTES))
+    }
 }
 
 fn git_protocol(headers: &HeaderMap) -> Option<&str> {
