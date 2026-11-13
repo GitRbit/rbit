@@ -43,6 +43,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Further fixes
 
+- Surface native Git ref-read failures as operational errors, preserving genuine
+  missing-ref handling and avoiding immediate merge-queue retry loops.
 - Correct cancellation follow-up jobs, rerun dependencies, attempt-scoped fail-fast,
   environment waits and concurrency-group ownership in Actions.
 - Release archive admission and workers after stalled clients without reporting a
