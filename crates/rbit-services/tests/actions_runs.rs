@@ -110,6 +110,25 @@ async fn opened(fixture: &Fixture, issue: IssueId, by: &User) -> Run {
 }
 
 #[tokio::test]
+async fn a_job_run_again_alone_still_needs_what_failed() {
+    let fixture = Fixture::new().await;
+    let run = pushed(&fixture, &[(".forgejo/workflows/ci.yml", CHAIN)], "CI").await;
+    let (actions, store) = (fixture.actions(), fixture.database.actions_runs());
+    for (seed, labels, result) in [(1, ["x"], Status::Failure), (2, ["y"], Status::Success)] {
+        let claimed = fixture.claim(&labels, seed).await.unwrap();
+        let settled = store.finish_task(claimed.task.id, result, Timestamp::now()).await.unwrap().unwrap();
+        actions.settled(&settled).await.unwrap();
+    }
+    assert_eq!(statuses(&fixture, run.id).await, keyed(&[("a", Status::Failure), ("b", Status::Skipped), ("c", Status::Success)]));
+    let b = store.jobs(run.id).await.unwrap().into_iter().find(|job| job.key == "b").unwrap();
+    let writer = fixture.repo(&fixture.carol).await;
+    let again = actions.rerun(&fixture.carol, &writer, run.id, Rerun::Job(b.id)).await.unwrap();
+    // `a` is not run again and still failed: `b` is skipped again, not sent to a runner.
+    assert_eq!(statuses(&fixture, run.id).await, keyed(&[("a", Status::Failure), ("b", Status::Skipped), ("c", Status::Success)]));
+    assert_eq!(again.status, Status::Failure);
+}
+
+#[tokio::test]
 async fn writers_approve_untrusted_runs_and_may_trust_their_author() {
     let fixture = Fixture::new().await;
     let (issue, run) = fork_pull(&fixture, CHAIN).await;

@@ -1284,7 +1284,9 @@ impl ActionsRunStore {
             // decided again by the server, with the needs of this attempt.
             let decided: bool =
                 sqlx::query_scalar("SELECT condition FROM actions_jobs WHERE id = ?").bind(job.id.0).fetch_one(&mut *tx).await?;
-            let waits = decided || job.needs.iter().any(|need| keys.contains(need.as_str()));
+            // A job with needs waits for them, run again or not: one that still failed skips it
+            // (its default `success()`), as on GitHub, rather than sending it to a runner.
+            let waits = decided || !job.needs.is_empty();
             let status = initial_status(start, waits);
             sqlx::query(
                 "UPDATE actions_jobs SET status = ?1, attempt = attempt + 1, task_id = NULL, runner_id = NULL, started_at = NULL, \

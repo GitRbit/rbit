@@ -1507,7 +1507,9 @@ mod tests {
         let (response, json) = fixture.send("POST", &test_job, Some(&write), None).await;
         assert_eq!((response.status(), json), (StatusCode::CREATED, json!({})));
         let jobs = fixture.database.actions_runs().jobs(pushed.id).await.unwrap();
-        assert_eq!((jobs[0].status, jobs[1].status), (Status::Cancelled, Status::Waiting), "only the test job runs again");
+        // Only the test job runs again; `build` stays cancelled, so its default `success()`
+        // skips it rather than sending it to a runner.
+        assert_eq!((jobs[0].status, jobs[1].status), (Status::Cancelled, Status::Skipped), "only the test job runs again");
 
         // Approval starts a run that waits for it, once.
         let pull = Spec {
