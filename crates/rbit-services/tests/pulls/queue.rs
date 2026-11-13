@@ -76,10 +76,10 @@ async fn suspended_queuer_cannot_advance(build_first: bool) {
 
 #[tokio::test]
 async fn a_suspended_queuer_cannot_land_a_candidate_after_ci_passes() {
-    suspended_queuer_cannot_advance(true).await;
+    Box::pin(suspended_queuer_cannot_advance(true)).await;
 }
 
 #[tokio::test]
 async fn a_suspended_queuer_cannot_build_a_persisted_waiting_entry() {
-    suspended_queuer_cannot_advance(false).await;
+    Box::pin(suspended_queuer_cannot_advance(false)).await;
 }
