@@ -148,10 +148,17 @@ impl PullService {
         }
         let store = self.ctx().database.actions_runs();
         let Some(entry) = store.queue_of_pull(ctx.issue().id).await? else { return Ok(false) };
+        // Under the line's lock, as `advance`: an entry being landed or built lands or is
+        // built first, and one taken out is never landed afterwards.
+        let lock = merge_lock(&self.inner.merge_locks, entry.repo);
+        let guard = lock.lock().await;
         let removed =
             store.queue_finish(entry.id, "removed", Some(&format!("taken out of line by {}", actor.name())), Timestamp::now()).await?;
         if removed {
             self.forget_candidate(ctx.repo(), &entry).await;
+        }
+        drop(guard);
+        if removed {
             self.nudge(entry.repo, entry.base_branch);
         }
         Ok(removed)
@@ -228,6 +235,12 @@ impl PullService {
         }
         if ctx.pull.head_sha != entry.head_sha {
             return self.leave(&entry, "failed", "the head moved after it was queued; queue it again").await;
+        }
+        // Its candidate ref is named by the base it was queued for; a retargeted pull
+        // request belongs in another line.
+        if ctx.pull.base_branch != entry.base_branch {
+            let reason = format!("its base changed to `{}` after it was queued; queue it again", ctx.pull.base_branch);
+            return self.leave(&entry, "failed", &reason).await;
         }
         let Some(base_tip) = self.base_tip(&ctx).await? else {
             return self.leave(&entry, "failed", "the base branch does not exist").await;

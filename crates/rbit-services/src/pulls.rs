@@ -630,9 +630,13 @@ impl PullService {
             self.publish(
                 ctx.issue(),
                 Some(actor.id()),
-                IssueAction::Edited { previous_title: None, previous_body: None, previous_base: Some(previous) },
+                IssueAction::Edited { previous_title: None, previous_body: None, previous_base: Some(previous.clone()) },
             );
             self.inner.wake.notify_one();
+            // A queued pull request belongs in another line now: its old line looks at once.
+            if self.ctx().database.actions_runs().queue_of_pull(ctx.issue().id).await?.is_some() {
+                self.nudge(ctx.repo().repo.repo.id, previous);
+            }
         }
         Ok(())
     }
