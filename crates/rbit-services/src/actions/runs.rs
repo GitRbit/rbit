@@ -180,9 +180,11 @@ impl ActionsService {
         drop(decisions);
         tracing::info!(repo = %trigger.repo.full_name(), run = run.id.0, number = run.number, workflow = %run.workflow_path, event = %run.event, status = %run.status, "workflow run created");
         // Actions: join (J). Following up the creation decides the jobs that start with their
-        // own `if:`, moves the scheduler's version and reports the statuses.
+        // own `if:`, moves the scheduler's version and reports the statuses; a run those
+        // decisions finish (every job skipped) releases its group's next run, which may have
+        // been held behind it meanwhile.
         let settled = self.ctx().database.actions_runs().resettle(run.id, Timestamp::now()).await?;
-        self.followed_up(&settled).await?;
+        self.settled(&settled).await?;
         let run = self.ctx().database.actions_runs().run(run.id).await?.unwrap_or(run);
         Ok(Some(run))
     }
@@ -343,7 +345,7 @@ impl ActionsService {
         };
         store.set_trigger_actor(id, actor.id()).await?;
         tracing::info!(repo = %repo.repo.full_name(), run = id.0, by = %actor.name(), ?which, "workflow run started again");
-        self.followed_up(&settled).await?;
+        self.settled(&settled).await?;
         store.find_run(repo_id, id).await?.ok_or(ServiceError::NotFound)
     }
 
@@ -370,7 +372,7 @@ impl ActionsService {
         let Some(settled) = settled else {
             return Err(ServiceError::Invalid(requests::NOT_AWAITING_APPROVAL.to_owned()));
         };
-        self.followed_up(&settled).await?;
+        self.settled(&settled).await?;
         let full_name = repo.repo.full_name();
         let detail = format!("run #{} of {} at {}", run.number, run.workflow_path, run.sha);
         self.audit().record(AuditEntry::new(AuditAction::ActionsRunApproved).by(actor).on(full_name.clone()).detail(detail)).await;
