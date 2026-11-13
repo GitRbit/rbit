@@ -17,8 +17,35 @@ fn git(path: &Path, args: &[&str]) -> String {
     String::from_utf8(output.stdout).unwrap().trim().to_owned()
 }
 
+/// Read exactly the ref used by native landing, with its isolated Git configuration.
+fn native_main(repo: &Path) -> String {
+    let mut command = Command::new("git");
+    command.env_clear();
+    for key in ["PATH", "SYSTEMROOT", "TEMP", "TMP", "TMPDIR"] {
+        if let Some(value) = std::env::var_os(key) {
+            command.env(key, value);
+        }
+    }
+    let output = command
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", if cfg!(windows) { "NUL" } else { "/dev/null" })
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_ALLOW_PROTOCOL", "file")
+        .args(["--git-dir"])
+        .arg(repo)
+        .args(["-c", "core.fsmonitor=false", "-c", "core.useReplaceRefs=false", "show-ref", "--verify", "--hash", "refs/heads/main"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "native show-ref at {repo:?} ({:?}): {}", output.status, String::from_utf8_lossy(&output.stderr));
+    String::from_utf8(output.stdout).unwrap().trim().to_owned()
+}
+
 async fn landing_after_authority_snapshot(suspend: bool) {
     let directory = tempfile::tempdir().unwrap();
+    // Match ordinary Windows configuration paths; Unix temp aliases need resolving.
+    #[cfg(windows)]
+    let root = directory.path().to_path_buf();
+    #[cfg(not(windows))]
     let root = directory.path().canonicalize().unwrap();
     let mut config = Config::default();
     config.storage.data_dir = root.join("data");
@@ -76,6 +103,7 @@ async fn landing_after_authority_snapshot(suspend: bool) {
     };
     let entry = database.actions_runs().queue_pull(&new, Timestamp::now()).await.unwrap().unwrap();
     database.actions_runs().queue_testing(entry.id, &candidate, &base, Timestamp::now()).await.unwrap();
+    assert_eq!(native_main(&ctx.repo().disk_path), base, "native Git sees the captured base immediately before landing");
     // User and repository authority were captured while the account was active.
     // Suspend only after the landing method has acquired its repository lease.
     services
@@ -89,6 +117,7 @@ async fn landing_after_authority_snapshot(suspend: bool) {
         .unwrap();
     let entry = database.actions_runs().queue_entry(entry.id).await.unwrap().unwrap();
     let tip = ctx.repo().reader.commit_id("refs/heads/main".into()).await.unwrap();
+    assert_eq!(native_main(&ctx.repo().disk_path), tip, "native Git and the repository reader agree after landing");
     let pull = database.pulls().find(pull.id).await.unwrap().unwrap();
     if suspend {
         assert_eq!(entry.state, "failed", "a stale active-user snapshot must not authorize landing");
