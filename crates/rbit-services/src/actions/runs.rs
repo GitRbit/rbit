@@ -229,15 +229,23 @@ impl ActionsService {
         let store = self.ctx().database.actions_runs();
         let others = members(&store.unfinished_in_group(repo, group).await?);
         let entry = scheduling::enter_group(&others, own, cancel);
+        let cancelled = !entry.cancel.is_empty();
         for other in entry.cancel {
             if let Some(settled) = self.cancel_superseded(repo, other, by).await? {
                 tracing::info!(repo = repo.0, run = other.0, group, "workflow run cancelled by its concurrency group");
                 self.followed_up(&settled).await?;
             }
         }
+        // A run just cancelled whose runner is still ending a task holds the group until it
+        // stops (its `always()` steps must not overlap the next run); that settles it and
+        // releases the next.
+        let draining = cancelled
+            && members(&store.unfinished_in_group(repo, group).await?)
+                .iter()
+                .any(|&(id, member)| Some(id) != own && matches!(member, Member::Draining | Member::Active));
         Ok(match entry.start {
-            Start::Runnable => RunStart::Runnable,
-            Start::HeldForConcurrency => RunStart::HeldForConcurrency,
+            Start::Runnable if !draining => RunStart::Runnable,
+            Start::Runnable | Start::HeldForConcurrency => RunStart::HeldForConcurrency,
         })
     }
 
@@ -409,6 +417,8 @@ fn members(runs: &[Run]) -> Vec<(RunId, Member)> {
             let member = match run.status {
                 Status::AwaitingApproval => Member::AwaitingApproval,
                 Status::Blocked => Member::Held,
+                // Listed though finished: a task of it has not stopped yet.
+                status if status.is_done() => Member::Draining,
                 _ => Member::Active,
             };
             (run.id, member)

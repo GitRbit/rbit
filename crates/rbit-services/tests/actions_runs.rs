@@ -213,6 +213,38 @@ async fn an_approved_run_waits_while_its_group_is_busy() {
     assert_eq!(fixture.database.actions_runs().find_run(repo, second.id).await.unwrap().unwrap().status, Status::Waiting, "released");
 }
 
+#[tokio::test]
+async fn a_cancelled_run_holds_its_group_until_its_runner_has_stopped() {
+    let fixture = Fixture::new().await;
+    let grouped = |n: u8| {
+        format!(
+            "name: CI
+on: push
+concurrency: {{group: deploy, cancel-in-progress: true}}
+jobs:
+  a:
+    runs-on: x
+    steps: [{{run: echo {n}}}]
+"
+        )
+    };
+    let first = pushed(&fixture, &[(".forgejo/workflows/ci.yml", &grouped(1))], "First").await;
+    let running = fixture.claim(&["x"], 1).await.unwrap();
+    assert_eq!(running.job.run_id, first.id);
+    // A newer run cancels the first, but its runner is still ending the task (its
+    // `always()` steps): the newer one waits for the group rather than overlapping it.
+    let second = pushed(&fixture, &[(".forgejo/workflows/ci.yml", &grouped(2))], "Second").await;
+    let store = fixture.database.actions_runs();
+    assert_eq!(store.run(first.id).await.unwrap().unwrap().status, Status::Cancelled);
+    assert_eq!(store.run(second.id).await.unwrap().unwrap().status, Status::Blocked, "held while the first drains");
+    assert!(fixture.claim(&["x"], 2).await.is_none());
+    // The runner reports the cancelled task's end: the group is free.
+    if let Some(settled) = store.finish_task(running.task.id, Status::Cancelled, Timestamp::now()).await.unwrap() {
+        fixture.actions().settled(&settled).await.unwrap();
+    }
+    assert_eq!(store.run(second.id).await.unwrap().unwrap().status, Status::Waiting, "released once the first stopped");
+}
+
 // Actions: archived repositories.
 #[tokio::test]
 async fn archived_repositories_start_nothing_and_refuse_reruns() {

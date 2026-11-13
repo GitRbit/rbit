@@ -607,12 +607,14 @@ impl ActionsRunStore {
 
     /// The runs of `repo` in concurrency group `group` that have not finished, oldest first.
     pub async fn unfinished_in_group(&self, repo: RepoId, group: &str) -> Result<Vec<Run>, StorageError> {
-        let rows: Vec<RunRow> =
-            sqlx::query_as(select_run!("WHERE repo_id = ? AND concurrency_group = ? AND status IN (5, 6, 7, 8) ORDER BY id"))
-                .bind(repo.0)
-                .bind(group)
-                .fetch_all(&self.pool)
-                .await?;
+        let rows: Vec<RunRow> = sqlx::query_as(select_run!(concat!(
+            "WHERE repo_id = ? AND concurrency_group = ? AND (status IN (5, 6, 7, 8) OR EXISTS (SELECT 1 FROM actions_tasks t ",
+            "JOIN actions_jobs j ON j.id = t.job_id WHERE j.run_id = actions_runs.id AND t.status = 6)) ORDER BY id"
+        )))
+        .bind(repo.0)
+        .bind(group)
+        .fetch_all(&self.pool)
+        .await?;
         rows.into_iter().map(Run::try_from).collect()
     }
 
