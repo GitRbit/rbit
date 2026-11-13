@@ -94,6 +94,17 @@ pub async fn create(
 ) -> ApiResult<(StatusCode, Json<Value>)> {
     let user = owner(&caller)?;
     let scope = TokenScope::parse(&new.scope).ok_or_else(|| ApiError::invalid("scope", "scope must be read, write or admin"))?;
+    // A token never makes one that outlives it: a leaked token with days left would
+    // otherwise become a credential that never expires.
+    if let Some(id) = caller.token_id() {
+        let mine = state.services.tokens.list(user).await?.into_iter().find(|token| token.id == id);
+        if let Some(expires_at) = mine.and_then(|token| token.expires_at) {
+            let asked = new.expires_in_days.map(|days| rbit_core::Timestamp::now().0 + i64::from(days) * 86_400);
+            if asked.is_none_or(|asked| asked > expires_at.0) {
+                return Err(ApiError::invalid("expires_in_days", "a token may not outlive the token that creates it"));
+            }
+        }
+    }
     let input = CreateAccessToken { name: new.name, scope, expires_in_days: new.expires_in_days };
     let repository = match new.repository.as_deref().filter(|name| !name.is_empty()) {
         Some(full) => {

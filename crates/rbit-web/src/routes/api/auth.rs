@@ -55,6 +55,8 @@ pub struct Caller {
     task: Option<(TaskGrant, TaskNeed)>,
     /// A scoped token's limit: one repository, some rights (agent plan step 4.8).
     token_limit: Option<TokenLimit>,
+    /// The token the caller authenticated with.
+    token: Option<rbit_core::AccessTokenId>,
     /// The request being answered, for redirects from old repository names.
     request: Arc<RequestTarget>,
 }
@@ -91,6 +93,11 @@ impl RequestTarget {
 }
 
 impl Caller {
+    /// The token the caller authenticated with; `None` for a workflow task.
+    pub fn token_id(&self) -> Option<rbit_core::AccessTokenId> {
+        self.token
+    }
+
     pub fn user(&self) -> Option<&User> {
         self.user.as_deref()
     }
@@ -278,7 +285,7 @@ impl FromRequestParts<AppState> for Caller {
             return Ok(Self { task: Some((grant, need)), request, ..Self::default() });
         }
         throttle.check_client(ThrottleScope::ApiAuth, &address)?;
-        let Some((user, scope, token_limit)) = state.services.tokens.authenticate_limited(token).await? else {
+        let Some((user, scope, token_limit, token_id)) = state.services.tokens.authenticate_limited(token).await? else {
             throttle.record_client_failure(ThrottleScope::ApiAuth, &address);
             return Err(ApiError::unauthorized("Bad credentials"));
         };
@@ -293,7 +300,7 @@ impl FromRequestParts<AppState> for Caller {
                 return Err(ApiError::forbidden("A token limited to one repository cannot use this endpoint"));
             }
         }
-        Ok(Self { user: Some(Arc::new(user)), scope: Some(scope), task: None, token_limit, request })
+        Ok(Self { user: Some(Arc::new(user)), scope: Some(scope), task: None, token_limit, token: Some(token_id), request })
     }
 }
 
@@ -333,7 +340,7 @@ mod tests {
             created_at: Timestamp(0),
         };
         let user = User { account, email: "ada@example.com".parse().unwrap(), is_admin: false };
-        Caller { user: Some(Arc::new(user)), scope, task: None, token_limit: None, request: Arc::default() }
+        Caller { user: Some(Arc::new(user)), scope, task: None, token_limit: None, token: None, request: Arc::default() }
     }
 
     #[test]

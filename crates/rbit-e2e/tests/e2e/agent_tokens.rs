@@ -186,3 +186,22 @@ async fn git_answers_a_limited_token_for_another_repository_as_if_it_did_not_exi
     assert_eq!(advertise("bob/plans.git").await.unwrap().status(), missing, "as a repository that does not exist");
     assert_eq!(advertise("alice/rocket.git").await.unwrap().status(), StatusCode::OK, "its own repository");
 }
+
+#[tokio::test]
+async fn a_token_makes_no_token_that_outlives_it() {
+    let server = TestServer::start();
+    let alice = server.sign_up("alice").await;
+    let owner = alice.create_token("owner", "admin").await;
+    let month = json!({ "name": "month", "scope": "admin", "expires_in_days": 30 });
+    let (status, made) = send(&server, &owner, Method::POST, "user/tokens", Some(month)).await;
+    assert_eq!(status, StatusCode::CREATED, "{made}");
+    let month = made["token"].as_str().unwrap().to_owned();
+    // A leaked 30-day token must not turn itself into one that lasts longer, or for ever.
+    for days in [json!(null), json!(365)] {
+        let longer = json!({ "name": "longer", "scope": "write", "expires_in_days": days });
+        let (status, body) = send(&server, &month, Method::POST, "user/tokens", Some(longer)).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{days}: {body}");
+    }
+    let shorter = json!({ "name": "week", "scope": "write", "expires_in_days": 7 });
+    assert_eq!(send(&server, &month, Method::POST, "user/tokens", Some(shorter)).await.0, StatusCode::CREATED);
+}

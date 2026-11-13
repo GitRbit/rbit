@@ -106,11 +106,11 @@ impl AccessTokenService {
         Ok(self.store.limit_of(id).await?.map(from_stored))
     }
 
-    /// [`Self::authenticate`] with the token's limit.
+    /// [`Self::authenticate`] with the token's limit and id.
     pub async fn authenticate_limited(
         &self,
         secret: &str,
-    ) -> Result<Option<(User, rbit_core::TokenScope, Option<TokenLimit>)>, ServiceError> {
+    ) -> Result<Option<(User, rbit_core::TokenScope, Option<TokenLimit>, AccessTokenId)>, ServiceError> {
         match self.application().authenticate(secret).await.map_err(map)? {
             TokenAuthentication::Accepted { user, scope, token, bookkeeping } => {
                 if let Err(error) = bookkeeping {
@@ -120,7 +120,7 @@ impl AccessTokenService {
                 // A limited token is never an administrator, wherever its scope is read (the
                 // API, Git and LFS): one stored with the admin scope acts with write.
                 let scope = if limit.is_some() { scope.min(rbit_core::TokenScope::Write) } else { scope };
-                Ok(Some((user, scope, limit)))
+                Ok(Some((user, scope, limit, token)))
             }
             TokenAuthentication::SuspendedOwner { user } => {
                 tracing::info!(user = %user.name(), "suspended user's access token refused");

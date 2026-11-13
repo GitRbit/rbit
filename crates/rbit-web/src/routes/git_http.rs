@@ -397,7 +397,7 @@ pub(super) async fn authenticate(state: &AppState, client: &Client, headers: &He
         }
         // The token identifies its owner on its own; Git's username is ignored.
         return match state.services.tokens.authenticate_limited(&password).await {
-            Ok(Some((user, scope, token_limit))) => Ok(Some(GitCaller::User { user, token_scope: Some(scope), token_limit })),
+            Ok(Some((user, scope, token_limit, _))) => Ok(Some(GitCaller::User { user, token_scope: Some(scope), token_limit })),
             Ok(None) => {
                 state.services.throttle.record_client_failure(ThrottleScope::GitAuth, &ip);
                 Err(Denied::Challenge)
