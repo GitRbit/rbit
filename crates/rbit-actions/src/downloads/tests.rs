@@ -148,10 +148,24 @@ fn files_of_one_name_in_two_directories_are_refused_not_overwritten() {
     let dir = tempfile::tempdir().unwrap();
     let file = tar::EntryType::Regular;
     let clash = tar_gz(&[("w/linux/app", b"linux build", 0o755, file), ("w/macos/app", b"macos build", 0o755, file)]);
-    let refused = extract_files(Cursor::new(clash), dir.path(), 20).unwrap_err();
+    let refused = extract_files(Cursor::new(clash), dir.path(), 20, 1 << 20).unwrap_err();
     assert_eq!(refused.kind(), std::io::ErrorKind::InvalidData);
     assert!(refused.to_string().contains("`app`"), "{refused}");
     let apart = tar_gz(&[("w/linux/app-linux", b"linux build", 0o755, file), ("w/macos/app-macos", b"macos build", 0o755, file)]);
-    let names: Vec<String> = extract_files(Cursor::new(apart), dir.path(), 20).unwrap().into_iter().map(|(name, _)| name).collect();
+    let names: Vec<String> =
+        extract_files(Cursor::new(apart), dir.path(), 20, 1 << 20).unwrap().into_iter().map(|(name, _)| name).collect();
     assert_eq!(names, ["app-linux", "app-macos"]);
+}
+
+#[test]
+fn a_file_larger_than_the_limit_is_refused_however_small_the_archive() {
+    let dir = tempfile::tempdir().unwrap();
+    // 8 MiB of zeros compress to a few kilobytes.
+    let zeros = vec![0_u8; 8 << 20];
+    let small = tar_gz(&[("w/huge", zeros.as_slice(), 0o644, tar::EntryType::Regular)]);
+    assert!(small.len() < 64 << 10, "{} bytes", small.len());
+    let refused = extract_files(Cursor::new(small), dir.path(), 20, 1 << 20).unwrap_err();
+    assert_eq!(refused.kind(), std::io::ErrorKind::InvalidData);
+    assert!(refused.to_string().contains("`huge`"), "{refused}");
+    assert!(!dir.path().join("huge").exists(), "nothing is left behind");
 }

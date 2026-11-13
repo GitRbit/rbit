@@ -45,7 +45,9 @@ impl ActionsService {
         tokio::fs::create_dir_all(&dir).await.map_err(ServiceError::internal)?;
         let unpacked = Unpacked(dir.clone());
         let file = file.into_std().await;
-        let files = tokio::task::spawn_blocking(move || rbit_actions::downloads::extract_files(file, &dir, MAX_PROMOTED_FILES))
+        // Each file becomes a release asset, which may be no larger than this.
+        let max_bytes = self.ctx().config.releases.max_asset_bytes;
+        let files = tokio::task::spawn_blocking(move || rbit_actions::downloads::extract_files(file, &dir, MAX_PROMOTED_FILES, max_bytes))
             .await
             .map_err(ServiceError::internal)?
             .map_err(|error| ServiceError::Invalid(error.to_string()))?;
