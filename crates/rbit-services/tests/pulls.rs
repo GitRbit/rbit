@@ -2,6 +2,8 @@
 //! `refs/pull/{n}/head`, pushes to head and base, mergeability, reviews, every merge
 //! strategy, reopening rules and webhook payloads.
 
+mod queue;
+
 use std::{path::Path, process::Command, sync::Arc};
 
 use rbit_core::{

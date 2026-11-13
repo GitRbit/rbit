@@ -206,8 +206,8 @@ impl PullService {
         let store = self.ctx().database.actions_runs();
         let Some(entry) = store.queue_line(repo, base).await?.into_iter().next() else { return Ok(()) };
         let database = &self.ctx().database;
-        let Some(user) = database.accounts().find_user(entry.queued_by).await? else {
-            return self.leave(&entry, "failed", "whoever queued it is gone").await;
+        let Some(user) = database.accounts().find_active_user(entry.queued_by).await? else {
+            return self.leave(&entry, "failed", "whoever queued it is gone or suspended").await;
         };
         let Some(owned) = database.admin().find_repository(repo).await? else { return Ok(()) };
         let opened = self.inner.repositories.open(Some(&user), owned.owner.name.as_str(), owned.repo.name.as_str()).await;
