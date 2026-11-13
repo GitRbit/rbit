@@ -275,6 +275,15 @@ pub async fn run_streaming(
             exited = child.wait(), if status.is_none() => {
                 status = Some(exited?);
                 drain_until = Some(tokio::time::Instant::now() + OUTPUT_DRAIN);
+                // A stopped step whose leader has exited: one forceful signal to its group at
+                // once, so a background process that ignores the polite one does not outlive
+                // the stop. Sent right at the reap, while a member that holds the group id is
+                // most likely alive, not after the drain: once all have exited the id is free
+                // and could, with a fast enough pid churn, name another group.
+                #[cfg(unix)]
+                if stop_sent && matches!(stopper, Stopper::Host) {
+                    stopper.signal(pid, true).await;
+                }
             }
             () = tokio::time::sleep_until(drain_until.unwrap_or_else(tokio::time::Instant::now)), if drain_until.is_some() => break,
             () = &mut stop, if !stop_sent => {
@@ -292,18 +301,6 @@ pub async fn run_streaming(
         }
     }
     if let Some(escalation) = escalation {
-        // The leader has exited, so the grace period has nothing to wait for: a background
-        // process that ignores the polite signal would otherwise outlive the stop. One
-        // forceful signal to the group now; ESRCH when no member is left, which is ignored.
-        // A group id stays allocated while any member lives, so this cannot reach another
-        // group. Container steps keep their container for later steps, so they are not
-        // handled here.
-        #[cfg(unix)]
-        {
-            if status.is_some() && matches!(stopper, Stopper::Host) {
-                stopper.signal(pid, true).await;
-            }
-        }
         escalation.abort();
     }
     for reader in readers {
