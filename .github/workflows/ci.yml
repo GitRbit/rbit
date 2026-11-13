@@ -49,6 +49,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
+          # A pinned toolchain is installed without the hosted image's clippy.
+          components: clippy
       # Bootstrap registry sources before guarded compilation's offline metadata scan.
       - run: node scripts/workspace.mjs fetch --locked
       - run: node --test scripts/tests/rewrite-*.test.mjs scripts/tests/identity-features.test.mjs scripts/tests/platform-boundary.test.mjs scripts/tests/workspace*.test.mjs
