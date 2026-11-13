@@ -486,10 +486,10 @@ front job.
 
 rbit records what the trigger decided for every pushed commit: how many workflow files it
 has, how many started a run, and why none did (a skip marker, no workflow files, or the
-workflows' `branches`/`paths` filters). A required check that rbit Actions reports
-(`<workflow> / <job> (<event>)`) is not required of a commit every workflow left out, so a
-docs-only change behind `paths-ignore` can still merge; checks from other CI systems stay
-required.
+workflows' `branches`/`paths` filters). A required check that rbit Actions reports for a
+push (`<workflow> / <job> (push)`) is not required of a commit every workflow left the push
+out for, so a docs-only change behind `paths-ignore` can still merge; checks of pull request
+runs (`… (pull_request)`) and from other CI systems stay required.
 
 `GET` and `PUT …/actions/supersede` (`{"enabled": true}`, administrators) let a newer push to
 a branch other than the default one cancel that branch's older unfinished runs of the same

@@ -347,16 +347,16 @@ impl PullService {
 
     // Agent loop: checks a commit does not need.
     /// The `required` contexts the head commit needs: a required check that rbit Actions
-    /// reports (`<workflow> / <job> (<event>)`) is not required of a commit for which the
-    /// trigger recorded that every workflow left it out (`branches` or `paths` filters, a
-    /// skip marker), or a docs-only push would never become mergeable.
+    /// reports for a push (`<workflow> / <job> (push)`) is not required of a commit for which
+    /// the push trigger recorded that every workflow left it out (`branches` or `paths`
+    /// filters, a skip marker), or a docs-only push would never become mergeable. That
+    /// decision is the push's alone: checks of pull request runs stay required.
     async fn required_for_head<S: ToString>(&self, ctx: &PullContext, required: &[S]) -> Result<Vec<String>, ServiceError> {
         let required: Vec<String> = required.iter().map(ToString::to_string).collect();
         let decision = self.ctx().database.actions_runs().decision(ctx.repo().repo.repo.id, &ctx.pull.head_sha).await?;
-        if !decision.is_some_and(|decision| decision.started == 0 && matches!(decision.reason.as_str(), "filtered" | "skip_marker")) {
-            return Ok(required);
-        }
-        Ok(required.into_iter().filter(|context| !is_actions_context(context)).collect())
+        let left_out =
+            decision.is_some_and(|decision| decision.started == 0 && matches!(decision.reason.as_str(), "filtered" | "skip_marker"));
+        Ok(required_after(required, left_out))
     }
 
     /// Deletes the head branch of a merged or closed pull request on request (the "Delete
@@ -383,7 +383,33 @@ impl PullService {
     }
 }
 
-/// Whether `context` is the shape of an rbit Actions job status: `<workflow> / <job> (<event>)`.
-fn is_actions_context(context: &str) -> bool {
-    context.contains(" / ") && context.ends_with(')') && context.contains(" (")
+/// Whether `context` is the shape of an rbit Actions job status for a push:
+/// `<workflow> / <job> (push)`.
+fn is_push_actions_context(context: &str) -> bool {
+    context.contains(" / ") && context.ends_with(" (push)")
+}
+
+/// `required` without the checks of push runs when the push left every workflow out.
+fn required_after(required: Vec<String>, left_out: bool) -> Vec<String> {
+    if !left_out {
+        return required;
+    }
+    required.into_iter().filter(|context| !is_push_actions_context(context)).collect()
+}
+
+#[cfg(test)]
+mod required_tests {
+    use super::required_after;
+
+    #[test]
+    fn a_push_left_out_drops_only_its_own_checks() {
+        let required: Vec<String> =
+            ["CI / test (push)", "CI / test (pull_request)", "ci/external", "Jenkins / build (nightly)"].map(String::from).to_vec();
+        assert_eq!(required_after(required.clone(), false), required, "a push that ran something keeps every check");
+        assert_eq!(
+            required_after(required, true),
+            ["CI / test (pull_request)", "ci/external", "Jenkins / build (nightly)"],
+            "pull request runs and other systems still report"
+        );
+    }
 }
