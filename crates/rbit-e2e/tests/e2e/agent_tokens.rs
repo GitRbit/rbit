@@ -95,8 +95,12 @@ async fn a_limited_token_reaches_one_repository_with_its_rights_only() {
     assert_eq!(send(&server, &admin, Method::PATCH, "repos/alice/vault", Some(json!({ "name": "vault-new" }))).await.0, StatusCode::OK);
     assert_eq!(send(&server, &agent, Method::GET, "repos/alice/vault", None).await.0, StatusCode::NOT_FOUND);
 
-    // A limited token makes no tokens, even with the admin scope.
-    let wide = json!({ "name": "wide", "scope": "admin", "repository": "alice/rocket" });
+    // A limited token is never an administrator: asking for one with the admin scope is
+    // refused, and one stored before acts with write (it makes no tokens, nothing below).
+    let admin_limited = json!({ "name": "wide", "scope": "admin", "repository": "alice/rocket" });
+    let (status, body) = send(&server, &admin, Method::POST, "user/tokens", Some(admin_limited)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    let wide = json!({ "name": "wide", "scope": "write", "repository": "alice/rocket" });
     let (_, wide) = send(&server, &admin, Method::POST, "user/tokens", Some(wide)).await;
     let wide = wide["token"].as_str().unwrap().to_owned();
     let (status, _) = send(&server, &wide, Method::POST, "user/tokens", Some(json!({ "name": "more", "scope": "admin" }))).await;

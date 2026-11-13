@@ -117,6 +117,9 @@ impl AccessTokenService {
                     tracing::warn!(%error, token = token.0, "failed to record access token use");
                 }
                 let limit = self.limit_of(token).await?;
+                // A limited token is never an administrator, wherever its scope is read (the
+                // API, Git and LFS): one stored with the admin scope acts with write.
+                let scope = if limit.is_some() { scope.min(rbit_core::TokenScope::Write) } else { scope };
                 Ok(Some((user, scope, limit)))
             }
             TokenAuthentication::SuspendedOwner { user } => {

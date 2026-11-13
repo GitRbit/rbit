@@ -117,6 +117,11 @@ pub async fn create(
             Some(TokenLimit { repo: repository.as_ref().map(|(id, _)| *id), rights: rights.unwrap_or_else(|| Right::ALL.to_vec()) })
         }
     };
+    // A limited token is never an administrator: the admin scope would give it the admin's
+    // bypass of branch protection over Git and the force-unlock of others' LFS locks.
+    if limit.is_some() && scope == TokenScope::Admin {
+        return Err(ApiError::invalid("scope", "a token limited to a repository or rights is read or write"));
+    }
     let (token, secret) = match &limit {
         Some(limit) => state.services.tokens.create_limited(user, input, limit).await?,
         None => state.services.tokens.create(user, input).await?,
