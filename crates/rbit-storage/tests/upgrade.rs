@@ -297,8 +297,7 @@ async fn the_access_token_rebuild_keeps_ids_and_columns() {
     let listed: Vec<_> = store.list_for_account(ALICE).await.unwrap().into_iter().map(|t| t.id).collect();
     assert_eq!(listed, vec![admin.id, AccessTokenId(7)], "newest first");
 
-    // Constraints of the rebuilt table: unique digest, unknown scopes refused, and the
-    // foreign key to the account (with its cascade) kept.
+    // Constraints of the rebuilt table: unique digest, unknown scopes refused, and the foreign key to the account (with its cascade) kept.
     let duplicate = sqlx::query(
         "INSERT INTO access_tokens (account_id, name, token_digest, hint, scope, created_at) VALUES (1, 'dup', ?, 'x', 'read', 1)",
     )
@@ -378,8 +377,7 @@ async fn repositories_from_milestone_1_get_redirects_when_they_move() {
         let moved = repositories.find_by_old_path(owner, name).await.unwrap().unwrap();
         assert_eq!(moved.full_name(), "acme/config", "{owner}/{name}");
     }
-    // The star from milestone 1 followed the repository.
-    assert_eq!(db.count("SELECT COUNT(*) FROM stars WHERE repo_id = 5").await, 1);
+    assert_eq!(db.count("SELECT COUNT(*) FROM stars WHERE repo_id = 5").await, 1, "the star from milestone 1 followed the repository");
 }
 
 #[tokio::test]
@@ -486,8 +484,7 @@ async fn new_tables_start_empty_with_their_defaults() {
     assert_eq!(release.get::<i64, _>("is_prerelease"), 0);
     assert_eq!(release.get::<Option<i64>, _>("published_at"), None);
 
-    // Milestone 3: Git LFS (L). An object linked to a milestone 1 repository, and a lock
-    // held by a milestone 1 user.
+    // Milestone 3: Git LFS (L). An object linked to a milestone 1 repository, and a lock held by a milestone 1 user.
     let oid = "a".repeat(64);
     sqlx::query("INSERT INTO lfs_objects (oid, size, created_at) VALUES (?, 5, 1)").bind(&oid).execute(&db.raw).await.unwrap();
     sqlx::query("INSERT INTO lfs_repo_objects (repo_id, oid, created_at) VALUES (6, ?, 1)").bind(&oid).execute(&db.raw).await.unwrap();
@@ -742,51 +739,56 @@ async fn actions_checks_refuse_inconsistent_rows(db: &Upgraded) {
     sqlx::query("DELETE FROM actions_runs").execute(&db.raw).await.unwrap();
 }
 
+/// Every Actions table an upgraded database has, by name.
+const ACTIONS_TABLES: [&str; 36] = [
+    // Actions: annotations.
+    "actions_annotations",
+    "actions_artifacts",
+    // Actions: shared cache.
+    "actions_caches",
+    "actions_commit_decisions",
+    "actions_deployment_reviews",
+    // Actions: disabled workflows.
+    "actions_disabled_workflows",
+    "actions_environment_reviewers",
+    "actions_environment_secrets",
+    "actions_environment_variables",
+    "actions_environments",
+    "actions_job_labels",
+    "actions_job_outputs",
+    "actions_jobs",
+    "actions_owner_enabled_repositories",
+    "actions_owner_policies",
+    "actions_owner_settings",
+    "actions_registration_tokens",
+    "actions_repositories",
+    "actions_run_numbers",
+    "actions_runners",
+    "actions_runs",
+    "actions_schedules",
+    "actions_scratch_refs",
+    "actions_secret_repositories",
+    "actions_secrets",
+    "actions_step_summaries",
+    "actions_steps",
+    "actions_supersede_settings",
+    "actions_supersessions",
+    "actions_tasks",
+    "actions_terminations",
+    "actions_test_failures",
+    "actions_test_passes",
+    "actions_test_reports",
+    "actions_trusted_users",
+    "actions_variables",
+];
+
 // Actions: foundation (F).
 #[tokio::test]
 async fn actions_tables_start_empty_with_their_checks_and_cascades() {
     let db = upgraded().await;
-    let tables: Vec<String> =
-        sqlx::query_scalar("SELECT name FROM sqlite_master WHERE type = 'table' AND name GLOB 'actions_*' ORDER BY name")
-            .fetch_all(&db.raw)
-            .await
-            .unwrap();
-    assert_eq!(
-        tables,
-        [
-            // Actions: annotations.
-            "actions_annotations",
-            "actions_artifacts",
-            // Actions: shared cache.
-            "actions_caches",
-            "actions_deployment_reviews",
-            // Actions: disabled workflows.
-            "actions_disabled_workflows",
-            "actions_environment_reviewers",
-            "actions_environment_secrets",
-            "actions_environment_variables",
-            "actions_environments",
-            "actions_job_labels",
-            "actions_job_outputs",
-            "actions_jobs",
-            "actions_owner_enabled_repositories",
-            "actions_owner_policies",
-            "actions_owner_settings",
-            "actions_registration_tokens",
-            "actions_repositories",
-            "actions_run_numbers",
-            "actions_runners",
-            "actions_runs",
-            "actions_schedules",
-            "actions_secret_repositories",
-            "actions_secrets",
-            "actions_step_summaries",
-            "actions_steps",
-            "actions_tasks",
-            "actions_trusted_users",
-            "actions_variables",
-        ]
-    );
+    let listed = "SELECT name FROM sqlite_master WHERE type = 'table' AND name GLOB 'actions_*' ORDER BY name";
+    let tables: Vec<String> = sqlx::query_scalar(listed).fetch_all(&db.raw).await.unwrap();
+    assert_eq!(tables, ACTIONS_TABLES);
     for table in &tables {
         assert_eq!(db.count(&format!("SELECT COUNT(*) FROM {table}")).await, 0, "{table}");
     }

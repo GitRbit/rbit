@@ -14,8 +14,20 @@
 //! The client is part of the `rbit` binary, which every release already builds for every
 //! platform, so it always speaks the API of the server it ships with.
 
+mod agent;
+mod bisect;
+mod ci;
 mod commands;
+mod failure;
+mod git_credential;
 mod hosts;
+mod issues;
+mod pulls;
+mod runs;
+mod runs_view;
+mod status;
+mod task;
+mod util;
 
 use std::time::Duration;
 
@@ -23,6 +35,7 @@ use anyhow::{Context as _, anyhow, bail};
 use reqwest::{Method, StatusCode};
 use serde_json::Value;
 
+pub use agent::exit_code;
 pub use commands::{ClientCommand, run};
 
 /// An authenticated connection to one instance's REST API.
@@ -89,6 +102,86 @@ pub fn parse_remote(url: &str) -> Option<(String, Repo)> {
     Some((format!("{base}{prefix}"), Repo::parse(&format!("{owner}/{name}")).ok()?))
 }
 
+/// A Git remote: its name, and its instance and repository when its URL names them.
+pub type Remote = (String, Option<(String, Repo)>);
+
+/// The remote [`choose_remote`] picked (its name, instance and repository), or why none.
+pub type Chosen<'a> = Result<Option<(&'a str, &'a (String, Repo))>, String>;
+
+/// The remote that names the repository: `named` when given; otherwise `origin` when it is on
+/// a known instance (one `known` accepts), else the one remote on a known instance. With no
+/// instance known at all (`any_known` false, a token in the environment only), `origin`.
+/// `Err` when instances are known but no remote is on one, or several are, since sending
+/// another host's path (`origin` on GitHub, say) to an rbit instance only finds nothing.
+pub fn choose_remote<'a>(named: Option<&str>, remotes: &'a [Remote], known: &dyn Fn(&str) -> bool, any_known: bool) -> Chosen<'a> {
+    let parsed = |remote: &'a Remote| remote.1.as_ref().map(|found| (remote.0.as_str(), found));
+    if let Some(name) = named {
+        return Ok(remotes.iter().find(|remote| remote.0 == name).and_then(parsed));
+    }
+    let origin = remotes.iter().find(|remote| remote.0 == "origin").and_then(parsed);
+    if !any_known || origin.is_some_and(|(_, (host, _))| known(host)) {
+        return Ok(origin);
+    }
+    let on_known: Vec<_> = remotes.iter().filter_map(parsed).filter(|(_, (host, _))| known(host)).collect();
+    match (on_known.as_slice(), origin) {
+        ([one], _) => Ok(Some(*one)),
+        ([], None) => Ok(None),
+        ([], Some((_, (host, _)))) => {
+            Err(format!("`origin` is on {host}, not on an rbit instance you are logged in to: pass --remote NAME or --repo owner/name"))
+        }
+        (several, _) => {
+            let listed: Vec<&str> = several.iter().map(|(name, _)| *name).collect();
+            Err(format!("remotes {} are all on rbit instances you know: pass --remote NAME", listed.join(", ")))
+        }
+    }
+}
+
+/// What an rbit token starts with: a personal access token or a workflow task's token.
+const RBIT_TOKEN_PREFIXES: [&str; 2] = ["rbit_", "rbat_"];
+
+/// The token the environment offers an rbit instance: `RBIT_TOKEN`, else `GH_TOKEN` when it
+/// holds an rbit token (a workflow's `GH_TOKEN: ${{ github.token }}`). A GitHub token there
+/// is the `gh` tool's, and is never sent to an rbit instance, whose operator would see it.
+pub fn environment_token(rbit: Option<String>, gh: Option<String>) -> Option<String> {
+    let present = |token: Option<String>| token.filter(|token| !token.trim().is_empty());
+    present(rbit).or_else(|| present(gh).filter(|token| RBIT_TOKEN_PREFIXES.iter().any(|prefix| token.starts_with(prefix))))
+}
+
+/// [`environment_token`] of this process.
+pub fn env_token() -> Option<String> {
+    environment_token(std::env::var("RBIT_TOKEN").ok(), std::env::var("GH_TOKEN").ok())
+}
+
+/// The token a request to an instance carries: one from the environment (`env`) only when
+/// the instance is `trusted` (named with `--hostname`, or one with a stored login), never a
+/// host only a Git remote suggested; otherwise the instance's `stored` login. `Err` when an
+/// environment token would go to such a host: it may be meant for another instance.
+pub fn token_for(env: Option<String>, trusted: bool, host: &str, stored: Option<String>) -> Result<Option<String>, String> {
+    match env {
+        Some(_) if !trusted => Err(format!(
+            "the token in RBIT_TOKEN or GH_TOKEN is not sent to {host}, which only a Git remote names: set RBIT_HOST (or pass --hostname)"
+        )),
+        Some(token) => Ok(Some(token)),
+        None => Ok(stored),
+    }
+}
+
+/// Times a throttled read is tried again.
+const RATE_LIMIT_RETRIES: u32 = 3;
+/// The longest `Retry-After` waited for; a longer one is the caller's to decide.
+const MAX_RETRY_AFTER_SECONDS: u64 = 30;
+
+/// How long to wait before trying attempt `attempt` (0 for the first) again: a `GET` the
+/// server answered `429` with a short `Retry-After`, at most [`RATE_LIMIT_RETRIES`] times.
+/// Writes are never repeated.
+fn retry_wait(status: StatusCode, method: &Method, retry_after: Option<&str>, attempt: u32) -> Option<Duration> {
+    if status != StatusCode::TOO_MANY_REQUESTS || *method != Method::GET || attempt >= RATE_LIMIT_RETRIES {
+        return None;
+    }
+    let seconds = retry_after?.trim().parse::<u64>().ok().filter(|seconds| *seconds <= MAX_RETRY_AFTER_SECONDS)?;
+    Some(Duration::from_secs(seconds.max(1)))
+}
+
 impl Api {
     pub fn new(base: &str, token: Option<String>) -> anyhow::Result<Self> {
         let http = reqwest::Client::builder()
@@ -117,17 +210,27 @@ impl Api {
         })
     }
 
-    /// The JSON answer of a request, or an error with the server's message.
+    /// The JSON answer of a request, or an error with the server's message. A read the
+    /// server throttles is tried again after the `Retry-After` it gives (see [`retry_wait`]).
     pub async fn json(&self, method: Method, path: &str, body: Option<&Value>) -> anyhow::Result<Value> {
-        let mut request = self.request(method, path)?;
-        if let Some(body) = body {
-            request = request.json(body);
-        }
-        let response = request.send().await.with_context(|| format!("cannot reach {}", self.base))?;
+        let mut attempt = 0;
+        let response = loop {
+            let mut request = self.request(method.clone(), path)?;
+            if let Some(body) = body {
+                request = request.json(body);
+            }
+            let response = request.send().await.with_context(|| format!("cannot reach {}", self.base))?;
+            let after = response.headers().get(reqwest::header::RETRY_AFTER).and_then(|value| value.to_str().ok());
+            match retry_wait(response.status(), &method, after, attempt) {
+                Some(wait) => tokio::time::sleep(wait).await,
+                None => break response,
+            }
+            attempt += 1;
+        };
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
         if !status.is_success() {
-            bail!("{}", failure(status, &text));
+            return Err(agent::ApiFailure::from_response(status.as_u16(), &text).into());
         }
         Ok(if text.trim().is_empty() { Value::Null } else { serde_json::from_str(&text).context("the server's answer is not JSON")? })
     }
@@ -152,19 +255,9 @@ impl Api {
     pub async fn download(&self, path: &str) -> anyhow::Result<Vec<u8>> {
         let (status, _, bytes) = self.raw(Method::GET, path, None).await?;
         if !status.is_success() {
-            bail!("{}", failure(status, &String::from_utf8_lossy(&bytes)));
+            return Err(agent::ApiFailure::from_response(status.as_u16(), &String::from_utf8_lossy(&bytes)).into());
         }
         Ok(bytes)
-    }
-}
-
-/// What a refused request says: the server's `message` when it sent one.
-fn failure(status: StatusCode, body: &str) -> String {
-    let message = serde_json::from_str::<Value>(body).ok().and_then(|value| value["message"].as_str().map(str::to_owned));
-    match (status, message) {
-        (StatusCode::UNAUTHORIZED, _) => "not signed in, or the token is not valid: run `rbit auth login`".to_owned(),
-        (_, Some(message)) => format!("{message} ({})", status.as_u16()),
-        _ => format!("the server answered {status}"),
     }
 }
 
@@ -190,5 +283,56 @@ mod tests {
             assert_eq!(parse_remote(url), None, "{url}");
         }
         assert!(Repo::parse("alice").is_err() && Repo::parse("a/b c").is_err());
+    }
+
+    #[test]
+    fn an_environment_token_goes_only_to_an_instance_the_user_named() {
+        let env = || Some("t".to_owned());
+        assert_eq!(token_for(env(), true, "https://git.example.com", None), Ok(env()));
+        let refused = token_for(env(), false, "http://127.0.0.1:18080", None).unwrap_err();
+        assert!(refused.contains("127.0.0.1:18080") && refused.contains("RBIT_HOST"), "{refused}");
+        assert_eq!(token_for(None, false, "https://git.example.com", None), Ok(None), "no token, nothing sent");
+        assert_eq!(token_for(None, true, "https://git.example.com", Some("s".to_owned())), Ok(Some("s".to_owned())));
+    }
+
+    #[test]
+    fn a_github_token_in_gh_token_is_never_offered_to_rbit() {
+        let some = |token: &str| Some(token.to_owned());
+        assert_eq!(environment_token(None, some("ghp_github")), None, "gh's own token stays with gh");
+        assert_eq!(environment_token(None, some("rbat_task")), some("rbat_task"), "a workflow's task token");
+        assert_eq!(environment_token(None, some("rbit_personal")), some("rbit_personal"));
+        assert_eq!(environment_token(some("anything"), some("rbit_other")), some("anything"), "RBIT_TOKEN first");
+        assert_eq!(environment_token(some(" "), None), None);
+    }
+
+    #[test]
+    fn a_throttled_read_waits_and_tries_again_but_a_write_does_not() {
+        let limited = StatusCode::TOO_MANY_REQUESTS;
+        assert_eq!(retry_wait(limited, &Method::GET, Some("7"), 0), Some(Duration::from_secs(7)));
+        assert_eq!(retry_wait(limited, &Method::GET, Some("0"), 2), Some(Duration::from_secs(1)));
+        assert_eq!(retry_wait(limited, &Method::GET, Some("7"), RATE_LIMIT_RETRIES), None, "it gives up");
+        assert_eq!(retry_wait(limited, &Method::GET, Some("600"), 0), None, "a long wait is the caller's to decide");
+        assert_eq!(retry_wait(limited, &Method::GET, None, 0), None);
+        assert_eq!(retry_wait(limited, &Method::POST, Some("7"), 0), None, "a write is never repeated");
+        assert_eq!(retry_wait(StatusCode::SERVICE_UNAVAILABLE, &Method::GET, Some("7"), 0), None);
+    }
+
+    #[test]
+    fn the_remote_on_a_known_instance_names_the_repository() {
+        fn name(chosen: Chosen<'_>) -> Result<Option<String>, String> {
+            chosen.map(|found| found.map(|(name, _)| name.to_owned()))
+        }
+        let remote = |name: &str, url: &str| (name.to_owned(), parse_remote(url));
+        let (github, home) = (remote("origin", "https://github.com/up/rocket"), remote("home", "https://git.example.com/alice/rocket"));
+        let known = |host: &str| host == "https://git.example.com";
+        let mirror = [github.clone(), home.clone()];
+        assert_eq!(name(choose_remote(None, &mirror, &known, true)), Ok(Some("home".to_owned())));
+        assert_eq!(name(choose_remote(Some("origin"), &mirror, &known, true)), Ok(Some("origin".to_owned())));
+        assert_eq!(name(choose_remote(None, &mirror, &known, false)), Ok(Some("origin".to_owned())), "nothing known: origin");
+        let elsewhere = choose_remote(None, std::slice::from_ref(&github), &known, true).unwrap_err();
+        assert!(elsewhere.contains("github.com") && elsewhere.contains("--remote"), "{elsewhere}");
+        let both = [home.clone(), ("fork".to_owned(), home.1.clone())];
+        assert!(choose_remote(None, &both, &known, true).unwrap_err().contains("home, fork"));
+        assert_eq!(name(choose_remote(None, &[], &known, true)), Ok(None));
     }
 }

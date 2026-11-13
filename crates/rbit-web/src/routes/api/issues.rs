@@ -11,13 +11,13 @@
 //! `pull_request` key and share the number sequence. Scopes: `read` for every `GET`,
 //! `write` for changes (also for readers who comment), `admin` to delete an issue.
 //! Documented deviations: milestones are addressed by id (GitHub numbers them per
-//! repository), `sort=comments` is always descending, and label names containing `/`
-//! cannot be addressed in a path.
+//! repository), `sort=comments` is always descending, and label names containing `/` cannot be addressed in a path.
 
 mod assignees;
 mod comments;
 mod labels;
 mod milestones;
+pub(super) mod take;
 
 use axum::{
     Json,

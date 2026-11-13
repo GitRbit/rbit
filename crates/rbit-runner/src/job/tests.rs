@@ -415,7 +415,7 @@ async fn a_step_that_runs_too_long_is_stopped_and_fails() {
     let (result, reporter, _work) = execute(host_job(steps)).await;
     let text = reporter.lines().join("\n");
     assert!(started.elapsed() < Duration::from_secs(18), "{:?}", started.elapsed());
-    assert_eq!(result, TaskResult::Failure, "{text}");
+    assert_eq!((result, reporter.ending.report(result).reason.as_str()), (TaskResult::Failure, "timeout"), "{text}");
     assert_eq!(statuses(&reporter), [StepStatus::Failure, StepStatus::Skipped, StepStatus::Success, StepStatus::Skipped], "{text}");
     assert!(text.contains("exceeded its timeout of 0.02 minutes") && text.contains("always ran"), "{text}");
     assert!(!reporter.lines().iter().any(|line| line == "after"), "the step was stopped: {text}");
@@ -475,7 +475,7 @@ async fn a_cache_saved_after_one_job_is_restored_in_the_next() {
     let (result, reporter) = run(1, vec![cache_step(&key), step("mkdir cachedir\necho cached > cachedir/x")]).await;
     let text = reporter.lines().join("\n");
     assert_eq!(result, TaskResult::Success, "{text}");
-    assert!(text.contains("No cache entry") && text.contains("Saved the cache entry `deps-"), "{text}");
+    assert!(text.contains("cache miss: no entry") && text.contains("cache saved: `deps-"), "{text}");
     assert_eq!(reporter.state().outputs["hit"], "false");
 
     let (result, reporter) = run(2, vec![cache_step(&key), step("cat cachedir/x")]).await;
@@ -483,7 +483,7 @@ async fn a_cache_saved_after_one_job_is_restored_in_the_next() {
     assert_eq!(result, TaskResult::Success, "{text}");
     assert!(text.contains("Restoring the cache entry") && reporter.lines().iter().any(|line| line.trim() == "cached"), "{text}");
     assert_eq!(reporter.state().outputs["hit"], "true");
-    assert!(!text.contains("Saved the cache entry"), "an exact hit is not saved again");
+    assert!(!text.contains("cache saved:"), "an exact hit is not saved again");
     assert!(work.path().join("cache/1/refs/heads/main").is_dir(), "entries live under the repository and scope");
 
     // An entry that cannot be restored is a miss, not a failed job.
@@ -498,7 +498,7 @@ async fn a_cache_saved_after_one_job_is_restored_in_the_next() {
     assert_eq!(result, TaskResult::Success, "{text}");
     assert!(text.contains("##[warning]cannot restore the cache entry `deps-"), "{text}");
     assert_eq!(reporter.state().outputs["hit"], "false");
-    assert!(text.contains("Saved the cache entry `deps-"), "the job's save replaces it: {text}");
+    assert!(text.contains("cache saved: `deps-"), "the job's save replaces it: {text}");
     let (result, reporter) = run(4, vec![cache_step(&key), step("cat cachedir/x")]).await;
     let text = reporter.lines().join("\n");
     assert_eq!(result, TaskResult::Success, "{text}");

@@ -55,6 +55,10 @@ impl RepositoryReader {
         Self { path, lock: None, pinned: None }
     }
 
+    pub(crate) fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+
     pub(crate) fn with_lock(mut self, lock: Arc<RepositoryLock>) -> Self {
         self.lock = Some(lock);
         self

@@ -58,6 +58,7 @@ impl ActionsService {
         let port = ArtifactUploadPort::new(self, runner, task);
         let artifact = ArtifactStorage::upload(&port, &limits, upload, body).await.map_err(answer)?;
         tracing::info!(run = artifact.run_id.0, artifact = %artifact.name, size = artifact.size, "artifact uploaded");
+        self.take_test_report(task, &artifact).await;
         Ok(artifact)
     }
 

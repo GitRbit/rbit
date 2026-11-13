@@ -87,3 +87,21 @@ async fn the_longest_push_mirror_secret_fits_sealed() {
     assert!(target.mirror.next_sync_at <= Timestamp::now());
     database.close().await;
 }
+
+/// Creators racing for one key file all get the same key, and none reads a key file that
+/// another is still writing (which once failed with "must hold 32 bytes").
+#[test]
+fn racing_creators_agree_and_never_see_a_partial_key() {
+    for _ in 0..50 {
+        let dir = tempfile::tempdir().unwrap();
+        let key_file = dir.path().join(KEY_FILE_NAME);
+        let keys: Vec<_> = std::thread::scope(|scope| {
+            let workers: Vec<_> = (0..8).map(|_| scope.spawn(|| SealingKey::create(&key_file))).collect();
+            workers.into_iter().map(|worker| worker.join().unwrap().expect("every creator gets a whole key")).collect()
+        });
+        let sealed = keys[0].seal(b"probe").unwrap();
+        assert!(keys.iter().all(|key| key.open(sealed.as_bytes()).unwrap() == b"probe"), "every creator holds the same key");
+        let names: Vec<_> = std::fs::read_dir(dir.path()).unwrap().map(|entry| entry.unwrap().file_name()).collect();
+        assert_eq!(names, [std::ffi::OsString::from(KEY_FILE_NAME)], "no temporary file is left behind");
+    }
+}

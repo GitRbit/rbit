@@ -145,7 +145,10 @@ A job's `name`, `runs-on`, `strategy` (a matrix from `fromJSON(needs.setup.outpu
 `timeout-minutes`, `continue-on-error`, `concurrency`, `container`, `services` and
 `environment` may read `needs`, as on GitHub: such a job is planned when the jobs it needs are
 done, with their outputs, and a plan that cannot be made (a matrix that is not JSON) fails it.
-A called workflow's jobs cannot do this yet.
+A called workflow's jobs cannot do this yet. A matrix that leaves no combination (a dimension
+with no values and no `include`, or an `exclude` that removes every one) is an error, as on
+GitHub: a job planned from its needs fails, and a matrix known when the run starts fails the
+run's workflow. It never runs one job without a matrix.
 
 A job without its own `if:` runs only when every job it needs succeeded (`success()`);
 `if: always()`, `failure()` and `cancelled()` change that. The server decides a job's `if:`
@@ -323,7 +326,8 @@ In a container job a matcher file is read when its step ends, with the container
 the matcher applies from the next step on.
 The environment has
 `CI=true`, `GITHUB_ACTIONS=true`, `RBIT_ACTIONS=true` and the usual `GITHUB_*` and `RUNNER_*`
-variables.
+variables. (An `rbit` server started by a job reads only `RBIT_SECTION__KEY` variables as
+settings, so these names do not configure it.)
 
 ## Secrets and variables
 
@@ -450,6 +454,58 @@ repository (`/repos/{owner}/{repo}/actions/…`), an organisation (`/orgs/{org}/
 `…/permissions/repositories` for its selected repositories) and the caller (`/user/actions/…`,
 rbit's own), with the `admin` scope; a value past the owner's ceiling is `409`. Webhooks can subscribe
 to `workflow_run` and `workflow_job`.
+
+### How a job ended
+
+Beside GitHub's fields, a job in the API carries rbit's own `termination` once it has
+ended: `{"reason", "step", "step_name", "exit_code", "log_complete"}`. The runner reports
+`completed`, `step_failed` (with the step, as numbered in `steps`, and its exit code),
+`timeout` (the job's `timeout-minutes`, or a step's own when that step failed the job, with the
+step), `cancelled` or `setup_failed` (a failure before or outside the steps); the server
+records `runner_lost` when a runner stops reporting for `zombie_timeout_seconds` (two
+minutes by default) and `timeout` when a task runs past `endless_timeout_seconds`. A job
+whose runner reported nothing (an older runner) reads `completed`, `cancelled` or, for a
+failure nobody explained, `unknown`. A job that ran out of time reads
+`conclusion: timed_out`, as on GitHub. `log_complete` is false when the log was not
+finalised or was cut short: such a result is not a complete one, and an agent should say
+so instead of reading the log as the whole story. `rbit run view --json` shows the record of
+each job.
+
+rbit's own endpoints read failures without whole logs: `GET …/runs/{run_id}/failure`
+(the failure digest: per failed job, its termination record, up to 10 error annotations and
+a cleaned excerpt of the last 30 lines of the step that ended it, with a `more` command),
+`GET …/jobs/{job_id}/steps/{step}/log` (one step's lines, tail first, of any attempt),
+`GET …/jobs/{job_id}/annotations` and `GET …/jobs/{job_id}/attempts` (every attempt of a
+job and how it ended, so a test that failed and then passed on the same commit can be seen).
+`rbit run failure` and `rbit run log` use them.
+
+A waiting job carries rbit's own `queue`: its `position` among waiting jobs with the same
+labels (oldest first), how many are `ahead`, and `expected_start_seconds`, from how long the
+last 50 such jobs took, assuming one runner; `rbit status` shows the position of a commit's
+front job.
+
+rbit records what the trigger decided for every pushed commit: how many workflow files it
+has, how many started a run, and why none did (a skip marker, no workflow files, or the
+workflows' `branches`/`paths` filters). A required check that rbit Actions reports for a
+push (`<workflow> / <job> (push)`) is not required of a commit every workflow left the push
+out for, so a docs-only change behind `paths-ignore` can still merge; checks of pull request
+runs (`… (pull_request)`) and from other CI systems stay required.
+
+`GET` and `PUT …/actions/supersede` (`{"enabled": true}`, administrators) let a newer push to
+a branch other than the default one cancel that branch's older unfinished runs of the same
+workflow, as if each workflow said `concurrency: {group: <workflow>-<ref>,
+cancel-in-progress: true}` (a workflow's own `concurrency` wins). It is off by default. Every
+run cancelled by a newer run of its group, this way or by a workflow's own
+`cancel-in-progress`, carries `superseded_by` with the newer commit, and the tasks it was
+running end as `superseded`.
+
+`GET /repos/{owner}/{repo}/agent/status?branch=` answers "where am I" in one object (see
+`rbit status` in [the client's guide](cli.md)), and `GET /repos/{owner}/{repo}/agent/watch?
+sha=&branch=&cursor=&timeout=` is a long-poll on the CI of one commit: it answers when that
+CI changes from what `cursor` saw, when `branch` moves on (`head_changed`), at once when the
+commit is `done` and every run of it has finished (nothing can change), or after at most
+25 seconds (below the API's 30 second request timeout), and checks the caller's rights again
+before every answer. A malformed query (`timeout=abc`) answers 422 with the usual JSON error.
 
 ## Differences from GitHub Actions
 

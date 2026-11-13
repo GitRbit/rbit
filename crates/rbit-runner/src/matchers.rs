@@ -122,7 +122,15 @@ impl Matchers {
 
     /// The annotation lines `line` gives, if a matcher matches it.
     pub fn annotate(&mut self, line: &str) -> Option<String> {
-        if self.list.is_empty() || line.len() > MAX_MATCHED_BYTES {
+        if line.len() > MAX_MATCHED_BYTES {
+            // Too long to match, so it breaks every sequence in progress, as any other
+            // line that does not continue it.
+            for matcher in &mut self.list {
+                matcher.reset();
+            }
+            return None;
+        }
+        if self.list.is_empty() {
             return None;
         }
         // Every matcher sees every line, so none loses its place in a multi-line problem;
@@ -139,6 +147,12 @@ impl Matchers {
 }
 
 impl Matcher {
+    /// Forgets the problem in progress, if any.
+    fn reset(&mut self) {
+        self.next = 0;
+        self.captured = Captured::default();
+    }
+
     /// Moves the matcher along `line`; a finished problem's annotation.
     fn feed(&mut self, line: &str) -> Option<String> {
         let looping = self.next > 0 && self.next == self.patterns.len() - 1 && self.patterns[self.next].groups.repeat;
@@ -275,6 +289,16 @@ mod tests {
             matchers.annotate("  1:1  error  Missing semicolon  semi").as_deref(),
             Some("##[error]Missing semicolon (file=src/other.js,line=1,col=1,code=semi)")
         );
+    }
+
+    #[test]
+    fn a_line_too_long_to_match_ends_a_multi_line_problem() {
+        let mut matchers = Matchers::default();
+        matchers.add(ESLINT).unwrap();
+        assert_eq!(matchers.annotate("src/app.js"), None);
+        // Too long to match, so it cannot continue the sequence: the file line's problem is over.
+        assert_eq!(matchers.annotate(&"x".repeat(MAX_MATCHED_BYTES + 1)), None);
+        assert_eq!(matchers.annotate("  3:7  error  'x' is never used  no-unused-vars"), None);
     }
 
     #[test]

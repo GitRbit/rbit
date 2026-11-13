@@ -8,6 +8,16 @@ mod accounts;
 mod actions_container;
 mod actions_disabled;
 mod actions_runner;
+// Agent plan step 1: runs by commit, error codes, the CLI's output contract.
+mod agent_exclusive;
+mod agent_land;
+mod agent_land_stall;
+mod agent_paths;
+mod agent_runs;
+mod agent_scratch;
+mod agent_supersede;
+mod agent_termination;
+mod agent_tokens;
 mod api;
 mod api_workflow;
 mod archives;
@@ -45,3 +55,12 @@ mod imports;
 mod slots;
 // Frontend wave: partial responses and preloading (P).
 mod navigation;
+
+/// Turns Actions on for `owner/repo` through its settings form (read-only task token),
+/// and fails here, with the answer, when the form was not taken: otherwise every later
+/// Actions call answers a bare 404 that says nothing of why.
+async fn enable_actions(client: &rbit_e2e::Client, owner: &str, repo: &str) {
+    let response = client.post(&format!("/{owner}/{repo}/settings/actions"), &[("enabled", "on"), ("token_permission", "read")]).await;
+    let excerpt: String = response.body.chars().take(400).collect();
+    assert!(response.status.is_redirection() || response.status.is_success(), "enabling Actions: {} {excerpt}", response.status);
+}

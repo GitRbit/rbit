@@ -14,6 +14,8 @@ pub mod downloads;
 pub mod environments;
 pub mod logs;
 pub mod polling;
+// Agent loop: test reports and failure fingerprints.
+pub mod reports;
 pub mod runners;
 pub mod scheduling;
 pub mod secrets;

@@ -37,6 +37,15 @@ pub fn before(now: i64, seconds: u64) -> i64 {
     now.saturating_sub(i64::try_from(seconds).unwrap_or(i64::MAX))
 }
 
+/// Which pass found a task stale, so its termination record can say why.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Staleness {
+    /// No state call for the zombie timeout: the runner is gone or cut off.
+    Silent,
+    /// Running longer than the endless timeout.
+    Endless,
+}
+
 /// What the passes did.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct StaleSwept {
@@ -63,8 +72,14 @@ pub trait StaleTaskStore: Sync {
     fn task(&self, id: Self::TaskId) -> impl Future<Output = Result<Option<Self::Task>, Self::Error>> + Send;
     /// Writes `reason` into the task's log.
     fn note(&self, id: Self::TaskId, reason: &str) -> impl Future<Output = Result<(), Self::Error>> + Send;
-    /// Fails the task if it is still running; `None` when it was not.
-    fn fail(&self, id: Self::TaskId, now: i64) -> impl Future<Output = Result<Option<Self::Settled>, Self::Error>> + Send;
+    /// Fails the task if it is still running, recording why (`staleness`); `None` when it
+    /// was not.
+    fn fail(
+        &self,
+        id: Self::TaskId,
+        staleness: Staleness,
+        now: i64,
+    ) -> impl Future<Output = Result<Option<Self::Settled>, Self::Error>> + Send;
     /// After a failure: forgets the task's masks and finalises its log, logging `reason`.
     fn close(&self, id: Self::TaskId, reason: &str) -> impl Future<Output = Result<(), Self::Error>> + Send;
     /// Settles the jobs and runs a transition changed, and what depends on them.
@@ -84,12 +99,12 @@ impl StaleTasks {
         let silent = port.silent(before(now, timeouts.zombie_seconds)).await?;
         let reason = timeouts.zombie_reason();
         for task in silent {
-            swept.zombies += usize::from(Self::time_out(port, task, &reason, now).await?);
+            swept.zombies += usize::from(Self::time_out(port, task, &reason, Staleness::Silent, now).await?);
         }
         let endless = port.long_running(before(now, timeouts.endless_seconds)).await?;
         let reason = timeouts.endless_reason();
         for task in endless {
-            swept.endless += usize::from(Self::time_out(port, task, &reason, now).await?);
+            swept.endless += usize::from(Self::time_out(port, task, &reason, Staleness::Endless, now).await?);
         }
         for settled in port.cancel_abandoned(before(now, timeouts.abandoned_seconds), now).await? {
             swept.abandoned += 1;
@@ -100,10 +115,16 @@ impl StaleTasks {
 
     /// Fails running task `id` with `reason` in its log; deletes its runner when that was
     /// ephemeral. False when it was gone or no longer running.
-    pub async fn time_out<P: StaleTaskStore>(port: &P, id: P::TaskId, reason: &str, now: i64) -> Result<bool, P::Error> {
+    pub async fn time_out<P: StaleTaskStore>(
+        port: &P,
+        id: P::TaskId,
+        reason: &str,
+        staleness: Staleness,
+        now: i64,
+    ) -> Result<bool, P::Error> {
         let Some(task) = port.task(id).await? else { return Ok(false) };
         port.note(id, reason).await?;
-        let Some(settled) = port.fail(id, now).await? else { return Ok(false) };
+        let Some(settled) = port.fail(id, staleness, now).await? else { return Ok(false) };
         port.close(id, reason).await?;
         port.settle(&settled).await?;
         port.retire_ephemeral_runner(&task).await?;

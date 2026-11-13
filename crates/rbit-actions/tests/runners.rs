@@ -36,6 +36,7 @@ fn capabilities() -> Capabilities {
         capacity: 1,
         version: "0.2.0".into(),
         ephemeral: false,
+        exclusive_labels: Vec::new(),
     }
 }
 

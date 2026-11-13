@@ -25,7 +25,7 @@ use rbit_access::{
 use rbit_core::access::repo_access;
 pub use rbit_core::protection::{MergeRules, PushActor, PushVerdict, Refusal};
 use rbit_core::{
-    AccountId, AccountKind, RefUpdate, RepoId, User,
+    AccountId, AccountKind, RefUpdate, RepoId, Timestamp, User,
     membership::{Team, TeamId},
     protection::{BranchProtection, ProtectionId, RuleSettings, is_protected},
 };
@@ -37,6 +37,9 @@ use crate::{
     audit::{AuditAction, AuditEntry},
     repositories::viewer_grants,
 };
+
+/// Scratch refs one person may hold in one repository at a time.
+pub const SCRATCH_REFS_PER_OWNER: u64 = 20;
 
 /// The rule's protections in a few words, for the audit log.
 pub use rbit_access::protection::summary;
@@ -213,7 +216,8 @@ impl ProtectionService {
         }
         let principal = Principal { user: actor.user.map(User::id), deploy_key: actor.deploy_key, access: actor.access };
         let store = self.store();
-        let decision = ProtectionGate::new(&store).check_push(repo.repo.repo.id, principal, updates).await?;
+        let mut decision = ProtectionGate::new(&store).check_push(repo.repo.repo.id, principal, updates).await?;
+        self.check_scratch(repo, actor, updates, &mut decision.verdict).await?;
         if let Some(user) = actor.user {
             for bypass in &decision.bypasses {
                 tracing::info!(repo = %repo.repo.full_name(), r#ref = %bypass.name, by = %user.name(), "branch protection bypassed");
@@ -227,10 +231,68 @@ impl ProtectionService {
         Ok(decision.verdict)
     }
 
+    /// Scratch refs (`refs/scratch/<owner>/<name>`): only a person may push them, only under
+    /// their own name, and a new one only while they have fewer than
+    /// [`SCRATCH_REFS_PER_OWNER`] in the repository. Deleting one's own is always allowed.
+    /// An allowed update is recorded here, so the sweep expires it even if Actions is off; a
+    /// push that then fails leaves a record whose ref the sweep finds gone.
+    async fn check_scratch(
+        &self,
+        repo: &RepoContext,
+        actor: &PushActor<'_>,
+        updates: &[RefUpdate],
+        verdict: &mut PushVerdict,
+    ) -> Result<(), ServiceError> {
+        // Merge-queue candidates are written by the server only: a pushed one would be an
+        // untested commit the queue could take for a tested one.
+        for update in updates.iter().filter(|update| update.name.starts_with(rbit_git::merge::candidate::CANDIDATE_PREFIX)) {
+            verdict.refusals.push(Refusal { name: update.name.clone(), reason: "refs/merge-queue/ is managed by rbit".to_owned() });
+        }
+        // Branches named like those refs read as them where a name is resolved loosely, and
+        // look like candidates to workflows. Deleting one stays possible.
+        for update in updates.iter().filter(|update| update.after.is_some() && rbit_git::merge::candidate::reserved_branch(&update.name)) {
+            verdict.refusals.push(Refusal { name: update.name.clone(), reason: rbit_git::merge::candidate::RESERVED_BRANCH.to_owned() });
+        }
+        for update in updates.iter().filter(|update| update.name.starts_with(rbit_git::scratch::PREFIX)) {
+            let owner = rbit_git::scratch::owner(&update.name);
+            let reason = match actor.user {
+                Some(user) if owner == Some(user.name().as_str()) => {
+                    let new = update.before.is_none() && update.after.is_some();
+                    let held = if new {
+                        self.ctx.database.actions_runs().count_scratch(repo.repo.repo.id, user.id(), &update.name).await?
+                    } else {
+                        0
+                    };
+                    (held >= SCRATCH_REFS_PER_OWNER)
+                        .then(|| format!("you have {held} scratch refs here; delete one or wait for them to expire"))
+                }
+                _ => Some("refs/scratch/<you>/… is for your own scratch commits".to_owned()),
+            };
+            let store = self.ctx.database.actions_runs();
+            match (reason, &update.after, &update.before) {
+                (Some(reason), _, _) => verdict.refusals.push(Refusal { name: update.name.clone(), reason }),
+                (None, Some(after), _) => {
+                    store.record_scratch(repo.repo.repo.id, &update.name, actor.user.map(User::id), after, Timestamp::now()).await?;
+                }
+                (None, None, Some(before)) => {
+                    store.forget_scratch(repo.repo.repo.id, &update.name, before).await?;
+                }
+                (None, None, None) => {}
+            }
+        }
+        Ok(())
+    }
+
     /// What merging into `branch` requires of `merger` (`repo` is opened for the merger).
     pub async fn check_merge(&self, repo: &RepoContext, merger: &User, branch: &str) -> Result<MergeRules, ServiceError> {
         let store = self.store();
         Ok(ProtectionGate::new(&store).merge(repo.repo.repo.id, merger.id(), repo.access, branch).await?)
+    }
+
+    /// Why `branch` may not be written, when its name is reserved (`refs/…`, `merge-queue/…`).
+    #[must_use]
+    pub fn reserved_branch_refusal(branch: &str) -> Option<&'static str> {
+        rbit_git::merge::candidate::reserved_branch(&format!("refs/heads/{branch}")).then_some(rbit_git::merge::candidate::RESERVED_BRANCH)
     }
 
     /// Whether `actor` may delete `branch` (P's "delete head branch"): the same decision as
@@ -250,6 +312,34 @@ impl ProtectionService {
         }
         let store = self.store();
         Ok(ProtectionGate::new(&store).branch_update_refusal(repo.repo.repo.id, actor.id(), repo.access, branch).await?)
+    }
+
+    /// Why the server may not add commits to `branch` for `actor`, or `None` when it may:
+    /// the decision a push updating it gets. Unlike [`Self::branch_update_refusal`] this is
+    /// for a write about to happen, so an administrator's bypass is audited as a push's is.
+    /// `repo` is opened for the actor.
+    pub async fn authorize_branch_write(&self, repo: &RepoContext, actor: &User, branch: &str) -> Result<Option<String>, ServiceError> {
+        if let Err(archived) = repo.ensure_writable() {
+            return Ok(Some(archived.to_string()));
+        }
+        let store = self.store();
+        let decision = ProtectionGate::new(&store).branch_update(repo.repo.repo.id, actor.id(), repo.access, branch).await?;
+        if let Some(refusal) = decision.verdict.refusals.into_iter().next() {
+            return Ok(Some(refusal.reason));
+        }
+        for bypass in &decision.bypasses {
+            tracing::info!(repo = %repo.repo.full_name(), r#ref = %bypass.name, by = %actor.name(), "branch protection bypassed");
+            let detail = format!("{} (otherwise {})", bypass.name, bypass.instead);
+            self.record(AuditAction::BranchProtectionBypassed, actor, repo, detail).await;
+        }
+        Ok(None)
+    }
+
+    /// Whether a rule keeps `actor` from rewriting `branch`, as a force push to it would be
+    /// refused. `repo` is opened for the actor.
+    pub async fn denies_force_push(&self, repo: &RepoContext, actor: &User, branch: &str) -> Result<bool, ServiceError> {
+        let store = self.store();
+        Ok(ProtectionGate::new(&store).denies_force_push(repo.repo.repo.id, actor.id(), repo.access, branch).await?)
     }
 
     /// The names of the repository's existing branches that some rule protects.

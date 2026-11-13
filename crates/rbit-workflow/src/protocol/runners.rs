@@ -53,6 +53,11 @@ pub struct Capabilities {
     pub version: String,
     /// Runs one task, then unregisters.
     pub ephemeral: bool,
+    // Agent loop: exclusive labels.
+    /// Labels whose jobs need the whole runner: taken only when it runs nothing else, and
+    /// nothing else is taken while one runs. Left out by older runners.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exclusive_labels: Vec<String>,
 }
 
 impl Capabilities {
@@ -81,6 +86,9 @@ fn validate_runner(name: &str, labels: &[DeclaredLabel], capabilities: &Capabili
     validate_labels(labels.iter().map(|label| label.name.as_str()))?;
     ensure(unique(labels.iter().map(|label| &label.name)), || "labels must not repeat".to_owned())?;
     capabilities.validate()?;
+    if let Some(stray) = capabilities.exclusive_labels.iter().find(|name| !labels.iter().any(|label| &label.name == *name)) {
+        return Err(ValidationError::new(format!("exclusive label `{stray}` is not one of the runner's labels")));
+    }
     match labels.iter().find(|label| !capabilities.backends.contains(&label.backend)) {
         Some(label) => Err(ValidationError::new(format!("label `{}` uses a backend the runner does not have", label.name))),
         None => Ok(()),

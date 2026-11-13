@@ -181,8 +181,7 @@ pub struct Job {
 }
 
 /// A container's `options` from the server, checked again here, with their `--env` values
-/// moved into `env` (where `env:` itself wins): values travel in the env file, never in an
-/// argument.
+/// moved into `env` (where `env:` itself wins): values travel in the env file, never in an argument.
 fn checked_options(options: &[String], service: bool, field: &str, env: &mut BTreeMap<String, String>) -> Result<Vec<String>, String> {
     rbit_workflow::options::check(options, service).map_err(|error| format!("`{field}.options`: {error}"))?;
     let mut kept = Vec::new();
@@ -204,8 +203,7 @@ fn checked_volumes(volumes: &[String], field: &str) -> Result<Vec<rbit_workflow:
     volumes.iter().map(|volume| rbit_workflow::options::volume(volume).map_err(|error| format!("`{field}.volumes`: {error}"))).collect()
 }
 
-/// How long steps that run after a cancellation (`always()`, `cancelled()`) may take
-/// together.
+/// How long steps that run after a cancellation (`always()`, `cancelled()`) may take together.
 pub const CANCEL_BUDGET: Duration = Duration::from_mins(5);
 
 /// Why a step was stopped.
@@ -455,6 +453,7 @@ impl Job {
                     () = interrupt.cancelled() => {}
                     () = tokio::time::sleep(Duration::from_secs(u64::from(minutes) * 60)) => {
                         reporter.log(&format!("##[error]The job has exceeded its timeout of {minutes} minutes"));
+                        reporter.ending.timed_out();
                         timed_out.store(true, Ordering::SeqCst);
                         interrupt.cancel();
                     }
@@ -474,6 +473,7 @@ impl Job {
                     self.reporter.start_step(index);
                     self.reporter.log(&format!("##[error]`if`: {error}"));
                     self.reporter.finish_step(index, StepStatus::Failure);
+                    self.reporter.ending.step_ended(index, StepStatus::Failure);
                     self.record(step, &Outcome::failure(), StepStatus::Failure);
                     continue;
                 }
@@ -493,6 +493,7 @@ impl Job {
                 status => status,
             };
             self.reporter.finish_step(index, outcome.status);
+            self.reporter.ending.step_ended(index, conclusion);
             self.record(step, &outcome, conclusion);
         }
         self.post_steps().await;
@@ -589,8 +590,7 @@ impl Job {
     }
 
     /// What stops the next step. Before an interrupt: the interrupt, or the step's own
-    /// timeout. After it: whichever comes first of the step's timeout and the end of the
-    /// shared [`CANCEL_BUDGET`].
+    /// timeout. After it: whichever comes first of the step's timeout and the end of the shared [`CANCEL_BUDGET`].
     pub fn stop_signal(&self, timeout: Option<Duration>) -> StopSignal {
         let now = Instant::now();
         let step = timeout.map(|timeout| (now + timeout, StopReason::StepTimeout(timeout)));
@@ -616,6 +616,7 @@ impl Job {
                 Outcome::cancelled()
             }
             StopReason::StepTimeout(timeout) => {
+                self.reporter.ending.step_timed_out();
                 self.fail(&format!("The step has exceeded its timeout of {} minutes", timeout.as_secs_f64() / 60.0))
             }
             StopReason::Budget => {

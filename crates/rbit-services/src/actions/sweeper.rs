@@ -67,11 +67,19 @@ pub struct Swept {
     pub expired_caches: usize,
     /// Files removed because what they belonged to is gone.
     pub orphaned_files: usize,
+    /// Scratch refs deleted because they outlived their lifetime.
+    pub expired_scratch: usize,
 }
 
 impl ActionsService {
     /// The sweep loop; ends with the service.
     pub(super) async fn run_sweeper(self) {
+        // The server heard from no runner while it was down: its running tasks get a zombie
+        // timeout from now to report, not from their last heartbeat, before the first sweep
+        // (which comes at once) fails them as lost.
+        if let Err(error) = self.excuse_downtime(Timestamp::now()).await {
+            tracing::warn!(%error, "running tasks were not excused for the server's downtime");
+        }
         let mut ticks = tokio::time::interval(SWEEP_INTERVAL);
         ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
@@ -85,6 +93,15 @@ impl ActionsService {
                 Err(error) => tracing::warn!(%error, "Actions sweep failed; trying again in a minute"),
             }
         }
+    }
+
+    /// Counts every running task as heard from at `now` (the server just started).
+    pub async fn excuse_downtime(&self, now: Timestamp) -> Result<(), ServiceError> {
+        let excused = self.ctx().database.actions_runs().excuse_silence(now).await?;
+        if excused > 0 {
+            tracing::info!(tasks = excused, "running tasks given time to report after the server started");
+        }
+        Ok(())
     }
 
     // Actions: metrics.
@@ -114,12 +131,17 @@ impl ActionsService {
         };
         let stale = StaleTasks::sweep(&StaleTaskSession::new(self), &timeouts, now.0).await?;
         (swept.zombies, swept.endless, swept.abandoned) = (stale.zombies, stale.endless, stale.abandoned);
+        if stale.zombies + stale.endless + stale.abandoned > 0 {
+            // A freed runner may take jobs it had to leave out (exclusive labels): look again.
+            self.bump_tasks_version();
+        }
         // Actions: join (J).
         swept.decided = self.decide_stragglers().await?;
         // Actions: artifacts (A).
         swept.expired_artifacts = self.expire_artifacts(now).await?;
         // Actions: shared cache.
         swept.expired_caches = self.expire_caches(now).await?;
+        swept.expired_scratch = self.expire_scratch(now).await?;
         // Actions: metrics.
         self.record_gauges(now).await?;
 

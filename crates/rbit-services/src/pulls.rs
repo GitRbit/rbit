@@ -26,12 +26,20 @@
 
 mod background;
 mod creation;
+// Agent loop: pr ensure.
+pub mod ensure;
 pub mod hooks;
+// Agent loop: diff manifest and review inbox.
+pub mod inbox;
 pub mod json;
 pub mod lifecycle;
 mod merging;
+// Agent loop: the merge queue.
+pub mod queue;
 mod review_requests;
+// Agent loop: server-side writes.
 mod reviews;
+mod writes;
 
 use std::{
     collections::HashMap,
@@ -622,9 +630,13 @@ impl PullService {
             self.publish(
                 ctx.issue(),
                 Some(actor.id()),
-                IssueAction::Edited { previous_title: None, previous_body: None, previous_base: Some(previous) },
+                IssueAction::Edited { previous_title: None, previous_body: None, previous_base: Some(previous.clone()) },
             );
             self.inner.wake.notify_one();
+            // A queued pull request belongs in another line now: its old line looks at once.
+            if self.ctx().database.actions_runs().queue_of_pull(ctx.issue().id).await?.is_some() {
+                self.nudge(ctx.repo().repo.repo.id, previous);
+            }
         }
         Ok(())
     }

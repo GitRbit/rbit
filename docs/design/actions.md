@@ -1387,8 +1387,10 @@ and what is known to be missing. Where they disagree, this section and the code 
 - Jobs without their own `if:` follow `success()` in SQL; jobs with one stay blocked until
   the server decides them (`conditions.rs`), so no runner can claim an undecided job. The
   sweeper decides any a restart left undecided.
-- Fail-fast cancels a failed matrix job's unfinished siblings; the run then aggregates as
-  *cancelled*, because `aggregate` ranks cancelled above failed (GitHub reports failure).
+- Fail-fast cancels a failed matrix job's unfinished siblings; the run then concludes
+  *failure*, as on GitHub. `aggregate` ranks cancelled above failed, so `settle` gives the
+  failure precedence unless the run was cancelled as a whole (`cancel_requested`, set by
+  `cancel_run` and the abandoned sweep, cleared by a new attempt).
 - Job-level concurrency groups gate claims (one running job per group and repository) but
   `cancel-in-progress` is not applied to job groups.
 - The claim query takes the oldest claimable job; §11.8's per-repository fairness is that

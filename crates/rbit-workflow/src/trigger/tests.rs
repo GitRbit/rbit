@@ -295,3 +295,13 @@ fn repository_dispatch_matches_its_types() {
     assert!(dispatch(&typed, "deploy") && dispatch(&typed, "rollback") && !dispatch(&typed, "Deploy"));
     assert!(!dispatch(&workflow("  push:"), "deploy"));
 }
+
+#[test]
+fn a_scratch_ref_is_pushed_like_a_branch_named_after_it() {
+    let scratch = "refs/scratch/ada/4c1e9a";
+    assert!(push(&workflow("  push:"), scratch, &["src/a.rs"]));
+    assert!(push(&workflow("  push:\n    branches: ['scratch/**']"), scratch, &["src/a.rs"]));
+    assert!(!push(&workflow("  push:\n    branches: [main]"), scratch, &["src/a.rs"]), "a branch filter sees `scratch/…`");
+    assert!(!push(&workflow("  push:\n    tags: ['*']"), scratch, &["src/a.rs"]), "it is no tag");
+    assert!(!push(&workflow("  push:\n    paths-ignore: ['docs/**']"), scratch, &["docs/a.md"]), "paths filters apply");
+}

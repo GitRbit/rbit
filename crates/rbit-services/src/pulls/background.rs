@@ -51,6 +51,9 @@ impl PullService {
             }
             worker.mergeability_worker().await;
         });
+        // Agent loop: the merge queue's sweep.
+        let sweeper = self.clone();
+        self.inner.tasks.spawn(async move { sweeper.queue_sweeper().await });
     }
 
     /// Stops background work (running merges and trial merges) and waits (bounded) for it
@@ -74,12 +77,14 @@ impl PullService {
                     if let Err(error) = self.handle_push(repo, source, &updates).await {
                         tracing::warn!(%error, repo = repo.0, "cannot update pull requests after a push");
                     }
+                    self.advance_repo(repo).await;
                 }
                 // Milestone 3: commit statuses (S).
                 Ok(DomainEvent::CommitStatus { repo, sha, .. }) => {
                     if let Err(error) = self.handle_status(repo, &sha).await {
                         tracing::warn!(%error, repo = repo.0, "cannot re-evaluate pull requests after a commit status");
                     }
+                    self.advance_repo(repo).await;
                 }
                 Ok(_) => {}
                 Err(RecvError::Lagged(skipped)) => {

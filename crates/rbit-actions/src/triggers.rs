@@ -31,8 +31,12 @@ pub struct PushedRef<'a> {
 }
 
 impl<'a> PushedRef<'a> {
+    /// The branch a pushed ref is; a scratch ref (`refs/scratch/…`) or a merge-queue candidate
+    /// (`refs/merge-queue/…`) counts as the branch named by the rest.
     fn branch(self) -> Option<&'a str> {
-        self.name.strip_prefix("refs/heads/")
+        self.name
+            .strip_prefix("refs/heads/")
+            .or_else(|| self.name.strip_prefix("refs/").filter(|rest| rest.starts_with("scratch/") || rest.starts_with("merge-queue/")))
     }
 
     fn considered(self) -> bool {
@@ -44,6 +48,12 @@ impl<'a> PushedRef<'a> {
 /// at most [`MAX_REF_UPDATES`].
 pub fn considered_refs<'u, T>(updates: &'u [T], view: impl Fn(&'u T) -> PushedRef<'u>) -> Vec<&'u T> {
     updates.iter().filter(|update| view(update).considered()).take(MAX_REF_UPDATES).collect()
+}
+
+/// The live branch and tag updates of one push beyond [`MAX_REF_UPDATES`]: they start no
+/// run, and their commits are told so rather than left waiting.
+pub fn dropped_refs<'u, T>(updates: &'u [T], view: impl Fn(&'u T) -> PushedRef<'u>) -> Vec<&'u T> {
+    updates.iter().filter(|update| view(update).considered()).skip(MAX_REF_UPDATES).collect()
 }
 
 /// The new head of the default branch among `refs`, which refreshes the schedule.

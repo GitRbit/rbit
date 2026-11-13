@@ -20,7 +20,7 @@ use std::{
     sync::Mutex,
 };
 
-use rbit_workflow::protocol::{MAX_LOG_LINE_BYTES, TaskId};
+use rbit_workflow::protocol::{MAX_LOG_BATCH_LINES, MAX_LOG_LINE_BYTES, TaskId};
 
 use crate::client::{CallError, Client};
 
@@ -169,7 +169,7 @@ impl TaskLog {
         self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    /// Up to [`MAX_BATCH_BYTES`] of whole lines from the first unacknowledged one.
+    /// Up to [`MAX_BATCH_BYTES`] and [`MAX_LOG_BATCH_LINES`] of whole lines from the first unacknowledged one.
     fn next_batch(&self) -> io::Result<Option<Batch>> {
         let mut spool = self.lock();
         if spool.refused || spool.acked >= spool.total {
@@ -178,12 +178,11 @@ impl TaskLog {
         spool.flush_writer()?;
         let index = usize::try_from(spool.acked - spool.first).unwrap_or(usize::MAX);
         let start = spool.offsets[index];
-        // The batch ends before the first line that starts beyond the batch size, but it
-        // always holds at least one line.
+        // The batch ends before the line that crosses the byte limit (keeping one at least) or at the line limit.
         let limit = MAX_BATCH_BYTES as u64;
-        let end = match spool.offsets.iter().skip(index + 1).position(|&offset| offset - start > limit) {
+        let end = match spool.offsets.iter().skip(index + 1).take(MAX_LOG_BATCH_LINES).position(|&offset| offset - start > limit) {
             Some(lines) => spool.offsets[index + lines.max(1)],
-            None => spool.bytes,
+            None => spool.offsets.get(index + MAX_LOG_BATCH_LINES).copied().unwrap_or(spool.bytes),
         };
         let mut file = File::open(&spool.path)?;
         file.seek(SeekFrom::Start(start))?;
@@ -387,5 +386,15 @@ mod tests {
         assert_eq!(received.len(), 10);
         assert!(received[8].contains("2 log line(s) were dropped"), "{received:?}");
         assert_eq!(received[9], "after");
+    }
+
+    #[tokio::test]
+    async fn a_batch_never_carries_more_lines_than_the_server_takes() {
+        let (server, dir, task) = (FakeServer::start().await, tempfile::tempdir().unwrap(), TaskId(4));
+        let log = TaskLog::create(&dir.path().join("log.spool")).unwrap();
+        log.push(&"{\n".repeat(2 * MAX_LOG_BATCH_LINES + 5));
+        log.flush(&server.client(), task).await.unwrap();
+        let froms: Vec<u64> = server.log_calls(task).iter().map(|&(from, _)| from).collect();
+        assert_eq!((froms, server.log(task).len()), (vec![0, 10_000, 20_000], 20_006));
     }
 }

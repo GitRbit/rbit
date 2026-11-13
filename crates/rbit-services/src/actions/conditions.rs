@@ -193,7 +193,8 @@ impl ActionsService {
             self.call_inputs(run, template, &github, &vars, inputs).await?.unwrap_or_default()
         };
         let needs = self.needs(run, template).await?;
-        Ok(jobs::condition_contexts(github, inputs, vars, template, needs))
+        let failed_ancestor = self.failed_ancestor(run, template).await?;
+        Ok(jobs::condition_contexts(github, inputs, vars, template, needs, failed_ancestor))
     }
 
     /// Cancels the unfinished matrix siblings of every failed job of run `id` whose strategy

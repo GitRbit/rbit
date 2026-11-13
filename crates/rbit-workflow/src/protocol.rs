@@ -28,6 +28,7 @@ mod errors;
 mod limits;
 mod runners;
 mod tasks;
+mod termination;
 mod tokens;
 mod validation;
 
@@ -43,10 +44,10 @@ pub use self::endpoints::Endpoint;
 pub use self::errors::{ErrorBody, ErrorCode};
 pub use self::limits::{
     ARTIFACTS_PATH, BASE_PATH, CACHES_PATH, CONTENT_SHA256_HEADER, IDEMPOTENCY_KEY_HEADER, MAX_CAPABILITY_BYTES, MAX_CAPACITY,
-    MAX_ENVIRONMENT_URL_BYTES, MAX_GZIP_RATIO, MAX_HEARTBEAT_INTERVAL, MAX_IDEMPOTENCY_KEY_BYTES, MAX_LABEL_CHARS, MAX_LOG_LINE_BYTES,
-    MAX_LONG_POLL, MAX_OUTPUT_BYTES, MAX_OUTPUT_KEY_BYTES, MAX_POST_STEP_NAME_BYTES, MAX_REGISTRATION_TOKEN_BYTES, MAX_RUNNER_LABELS,
-    MAX_RUNNER_NAME_CHARS, MAX_STEP_SUMMARY_BYTES, MAX_TASK_SUMMARY_BYTES, PROTOCOL_HEADER, PROTOCOL_VERSION, RUNNER_CREDENTIAL_PREFIX,
-    SUPPORTED_PROTOCOL_VERSIONS, TASK_TOKEN_PREFIX, TOKEN_BODY_CHARS, USER_AGENT_PREFIX,
+    MAX_ENVIRONMENT_URL_BYTES, MAX_GZIP_RATIO, MAX_HEARTBEAT_INTERVAL, MAX_IDEMPOTENCY_KEY_BYTES, MAX_LABEL_CHARS, MAX_LOG_BATCH_LINES,
+    MAX_LOG_LINE_BYTES, MAX_LONG_POLL, MAX_OUTPUT_BYTES, MAX_OUTPUT_KEY_BYTES, MAX_POST_STEP_NAME_BYTES, MAX_REGISTRATION_TOKEN_BYTES,
+    MAX_RUNNER_LABELS, MAX_RUNNER_NAME_CHARS, MAX_STEP_SUMMARY_BYTES, MAX_TASK_SUMMARY_BYTES, PROTOCOL_HEADER, PROTOCOL_VERSION,
+    RUNNER_CREDENTIAL_PREFIX, SUPPORTED_PROTOCOL_VERSIONS, TASK_TOKEN_PREFIX, TOKEN_BODY_CHARS, USER_AGENT_PREFIX,
 };
 pub use self::runners::{
     Backend, Capabilities, DeclareRequest, DeclareResponse, DeclaredLabel, Intervals, RegisterRequest, RegisterResponse, RunnerId,
@@ -55,6 +56,7 @@ pub use self::runners::{
 pub use self::tasks::{
     LogsQuery, LogsResponse, PollRequest, PollResponse, StepState, StepStatus, TaskId, TaskResult, TaskStateRequest, TaskStateResponse,
 };
+pub use self::termination::{MAX_REASON_BYTES, RUNNER_REASONS, TaskTermination};
 pub use self::tokens::{valid_idempotency_key, valid_runner_credential, valid_task_token};
 pub use self::validation::ValidationError;
 pub(crate) use self::validation::{ensure, unique, validate_labels, validate_outputs};

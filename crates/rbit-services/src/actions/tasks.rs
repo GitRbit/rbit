@@ -24,10 +24,11 @@
 
 use rbit_core::{
     Timestamp,
-    actions::{Status, TaskId},
+    actions::{Status, TaskId, Termination, TerminationReason},
 };
 use rbit_storage::sqlite::actions_runs::StepUpdate;
-use rbit_workflow::protocol::{MAX_OUTPUT_BYTES, StepStatus, TaskResult, TaskStateRequest, TaskStateResponse};
+pub use rbit_storage::sqlite::actions_runs::{QueuePlace, TaskEnd};
+use rbit_workflow::protocol::{MAX_OUTPUT_BYTES, StepStatus, TaskResult, TaskStateRequest, TaskStateResponse, TaskTermination};
 
 use rbit_actions::scheduling::leases;
 
@@ -109,6 +110,8 @@ impl ActionsService {
         let Some(result) = request.result else {
             return Ok(TaskStateResponse { cancel: job.status == Status::Cancelled });
         };
+        // Agent loop: how the task ended, before it stops, so whoever sees it stopped sees why.
+        store.record_termination(id, termination(request.termination.as_ref(), result), Timestamp::now()).await?;
         let mut status = result_status(result);
         // A job with `continue-on-error` that fails counts as succeeded, as in `rbit-runner
         // exec`: it fails neither the run nor the jobs that need it, and `fail-fast` leaves
@@ -131,6 +134,11 @@ impl ActionsService {
         }
         self.forget_masks(id);
         self.finalise_log(id).await?;
+        // Agent loop: exclusive labels. While busy, its polls left out the jobs that need it
+        // alone and then waited for new work; now it may take them, so they look again.
+        if !runner.exclusive_labels.is_empty() {
+            self.bump_tasks_version();
+        }
         if runner.ephemeral && self.ctx().database.actions_runners().delete_ephemeral(runner.id).await? {
             self.runner_cache().await?.remove(runner.id);
             tracing::info!(runner = runner.id.0, name = %runner.name, "ephemeral runner removed after its task");
@@ -147,6 +155,21 @@ fn step_status(status: StepStatus) -> Status {
         StepStatus::Failure => Status::Failure,
         StepStatus::Cancelled => Status::Cancelled,
         StepStatus::Skipped => Status::Skipped,
+    }
+}
+
+/// The termination record of a final call: the runner's, or what its result implies when
+/// an older runner sent none (a failure nobody explained is `unknown`).
+fn termination(reported: Option<&TaskTermination>, result: TaskResult) -> Termination {
+    match reported {
+        Some(reported) => {
+            Termination { reason: TerminationReason::parse(&reported.reason), step: reported.step, exit_code: reported.exit_code }
+        }
+        None => Termination::because(match result {
+            TaskResult::Success => TerminationReason::Completed,
+            TaskResult::Cancelled => TerminationReason::Cancelled,
+            TaskResult::Failure => TerminationReason::Unknown,
+        }),
     }
 }
 
@@ -176,5 +199,17 @@ mod tests {
         assert_eq!(statuses, [Status::Waiting, Status::Running, Status::Success, Status::Failure, Status::Cancelled, Status::Skipped]);
         let results: Vec<_> = [TaskResult::Success, TaskResult::Failure, TaskResult::Cancelled].into_iter().map(result_status).collect();
         assert!(results.iter().all(|status| status.is_done()));
+    }
+
+    #[test]
+    fn an_older_runners_silence_reads_by_its_result() {
+        assert_eq!(termination(None, TaskResult::Success).reason, TerminationReason::Completed);
+        assert_eq!(termination(None, TaskResult::Cancelled).reason, TerminationReason::Cancelled);
+        assert_eq!(termination(None, TaskResult::Failure).reason, TerminationReason::Unknown);
+        let reported = TaskTermination { reason: "step_failed".to_owned(), step: Some(4), exit_code: Some(101) };
+        let read = termination(Some(&reported), TaskResult::Failure);
+        assert_eq!((read.reason, read.step, read.exit_code), (TerminationReason::StepFailed, Some(4), Some(101)));
+        let newer = TaskTermination { reason: "frobnicated".to_owned(), step: None, exit_code: None };
+        assert_eq!(termination(Some(&newer), TaskResult::Failure).reason, TerminationReason::Unknown);
     }
 }

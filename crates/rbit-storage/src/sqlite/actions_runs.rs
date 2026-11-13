@@ -21,6 +21,8 @@
 
 use std::collections::BTreeSet;
 
+pub use super::actions_run_filter::RunFilter;
+
 use rbit_core::{
     AccountId, RepoId, Timestamp,
     actions::{
@@ -112,12 +114,15 @@ macro_rules! select_run {
 
 // Actions: integration (I).
 /// The `WHERE` clause of a [`RunFilter`] for repository `?1`; [`bind_run_filter!`] binds
-/// `?1` to `?8`.
+/// `?1` to `?10`. A branch (`?6` its ref, `?9` its name) also matches the runs of the
+/// repository's pull requests from that branch (`refs/pull/<n>/head`).
 macro_rules! runs_where {
     () => {
         "WHERE repo_id = ?1 AND (?2 IS NULL OR workflow_path = ?2) AND (?3 IS NULL OR event = ?3) AND (?4 IS NULL OR status = ?4) \
-         AND (?5 IS NULL OR actor_id = ?5) AND (?6 IS NULL OR ref = ?6) AND (?7 IS NULL OR id < ?7) \
-         AND (?8 IS NULL OR status IN (SELECT value FROM json_each(?8)))"
+         AND (?5 IS NULL OR actor_id = ?5) AND (?6 IS NULL OR ref = ?6 OR (?9 IS NOT NULL AND ref IN (SELECT 'refs/pull/' || i.number \
+         || '/head' FROM pull_requests p JOIN issues i ON i.id = p.issue_id WHERE p.repo_id = ?1 AND p.head_branch = ?9))) \
+         AND (?7 IS NULL OR id < ?7) AND (?8 IS NULL OR status IN (SELECT value FROM json_each(?8))) \
+         AND (?10 IS NULL OR sha = ?10 OR (length(?10) BETWEEN 7 AND 39 AND substr(sha, 1, length(?10)) = lower(?10)))"
     };
 }
 
@@ -133,6 +138,8 @@ macro_rules! bind_run_filter {
             .bind($filter.reference)
             .bind($filter.before.map(|run| run.0))
             .bind(status_codes($filter.statuses))
+            .bind($filter.reference.and_then(|reference| reference.strip_prefix("refs/heads/")))
+            .bind($filter.sha)
     };
 }
 
@@ -347,26 +354,6 @@ pub struct NewJob<'a> {
     pub environment: Option<&'a str>,
 }
 
-/// Filters of the runs list. `before` pages by id (newest first), `offset` by position
-/// (the API's pages).
-#[derive(Debug, Clone, Default)]
-pub struct RunFilter<'a> {
-    pub workflow_path: Option<&'a str>,
-    pub event: Option<RunEvent>,
-    pub status: Option<RunStatus>,
-    pub actor: Option<AccountId>,
-    /// The full ref.
-    pub reference: Option<&'a str>,
-    pub before: Option<RunId>,
-    pub limit: u32,
-    // Actions: integration (I).
-    /// One of these statuses, when not empty (a GitHub status such as `completed` stands
-    /// for several); applies together with `status`.
-    pub statuses: &'a [RunStatus],
-    /// Runs skipped after the filters apply.
-    pub offset: u32,
-}
-
 /// A runner asking for work.
 #[derive(Debug, Clone)]
 pub struct ClaimRequest<'a> {
@@ -445,7 +432,24 @@ pub enum Rerun {
 
 // Actions: annotations.
 mod annotations;
+mod decisions;
+pub use decisions::CommitDecision;
+// Agent loop: request ids and the merge queue.
+mod agent_requests;
+mod merge_queue;
+pub use agent_requests::{REQUEST_ID_SECONDS, Remembered};
+pub use merge_queue::{NewEntry, QueueEntry};
+mod outcomes;
+mod queue;
+mod scratch;
+pub use queue::QueuePlace;
+pub use scratch::ScratchRef;
+mod supersede;
+mod terminations;
+mod test_reports;
 pub use annotations::StoredAnnotation;
+pub use terminations::TaskEnd;
+pub use test_reports::{StoredReport, StoredTest};
 mod log_queries;
 
 #[derive(Debug, Clone)]
@@ -536,18 +540,25 @@ impl ActionsRunStore {
 
     /// The repository's runs, newest first.
     pub async fn list_runs(&self, repo: RepoId, filter: &RunFilter<'_>) -> Result<Vec<Run>, StorageError> {
-        let query = sqlx::query_as(select_run!(concat!(runs_where!(), " ORDER BY id DESC LIMIT ?9 OFFSET ?10")));
+        let query = sqlx::query_as(select_run!(concat!(runs_where!(), " ORDER BY id DESC LIMIT ?11 OFFSET ?12")));
         let rows: Vec<RunRow> = bind_run_filter!(query, repo, filter).bind(filter.limit).bind(filter.offset).fetch_all(&self.pool).await?;
         rows.into_iter().map(Run::try_from).collect()
     }
 
     // Actions: integration (I).
-    /// How many runs of the repository [`Self::list_runs`] pages through with `filter`
-    /// (its `limit` and `offset` aside).
-    pub async fn count_runs(&self, repo: RepoId, filter: &RunFilter<'_>) -> Result<u64, StorageError> {
+    /// [`Self::list_runs`] with `filter`, and how many runs it pages through in all (its
+    /// `limit` and `offset` aside). Both are read from one snapshot, so a run created
+    /// meanwhile cannot make the total disagree with the page.
+    pub async fn page_runs(&self, repo: RepoId, filter: &RunFilter<'_>) -> Result<(Vec<Run>, u64), StorageError> {
+        let mut snapshot = self.pool.begin().await?;
+        let query = sqlx::query_as(select_run!(concat!(runs_where!(), " ORDER BY id DESC LIMIT ?11 OFFSET ?12")));
+        let rows: Vec<RunRow> =
+            bind_run_filter!(query, repo, filter).bind(filter.limit).bind(filter.offset).fetch_all(&mut *snapshot).await?;
         let query = sqlx::query_scalar(concat!("SELECT COUNT(*) FROM actions_runs ", runs_where!()));
-        let count: i64 = bind_run_filter!(query, repo, filter).fetch_one(&self.pool).await?;
-        Ok(u64::try_from(count).unwrap_or_default())
+        let count: i64 = bind_run_filter!(query, repo, filter).fetch_one(&mut *snapshot).await?;
+        snapshot.rollback().await?;
+        let runs = rows.into_iter().map(Run::try_from).collect::<Result<_, _>>()?;
+        Ok((runs, u64::try_from(count).unwrap_or_default()))
     }
 
     // Actions: step summaries.
@@ -1077,6 +1088,7 @@ impl ActionsRunStore {
             .bind(run.0)
             .execute(&mut *tx)
             .await?;
+        sqlx::query("UPDATE actions_runs SET cancel_requested = 1 WHERE id = ?").bind(run.0).execute(&mut *tx).await?;
         let settled = settle(&mut tx, run, Vec::new(), now).await?;
         tx.commit().await?;
         Ok(Some(settled))
@@ -1094,10 +1106,21 @@ impl ActionsRunStore {
                 .await?;
         let mut settled = Vec::new();
         for run in runs.into_iter().collect::<BTreeSet<_>>() {
+            sqlx::query("UPDATE actions_runs SET cancel_requested = 1 WHERE id = ?").bind(run).execute(&mut *tx).await?;
             settled.push(settle(&mut tx, RunId(run), Vec::new(), now).await?);
         }
         tx.commit().await?;
         Ok(settled)
+    }
+
+    /// Counts every running task as heard from at `now`: a server that was down heard from
+    /// none, and their runners need a zombie timeout to report again. How many there were.
+    pub async fn excuse_silence(&self, now: Timestamp) -> Result<u64, StorageError> {
+        let excused = sqlx::query("UPDATE actions_tasks SET heartbeat_at = ?1 WHERE status = 6 AND heartbeat_at < ?1")
+            .bind(now.0)
+            .execute(&self.pool)
+            .await?;
+        Ok(excused.rows_affected())
     }
 
     /// Running tasks whose last heartbeat is older than `before` (the zombie sweep).
@@ -1241,7 +1264,7 @@ impl ActionsRunStore {
         }
         // A new attempt starts its own clock, as GitHub times each attempt; the first job it
         // starts sets `started_at` again.
-        sqlx::query("UPDATE actions_runs SET attempt = attempt + 1, status = ?, started_at = NULL, finished_at = NULL WHERE id = ?")
+        sqlx::query("UPDATE actions_runs SET attempt = attempt + 1, status = ?, started_at = NULL, finished_at = NULL, cancel_requested = 0              WHERE id = ?")
             .bind(placeholder_status(start).code())
             .bind(run.0)
             .execute(&mut *tx)
@@ -1664,7 +1687,8 @@ macro_rules! a_need_failed {
 /// others in turn. A job with its own `if:` stays blocked and is listed in
 /// [`Settled::to_decide`] for the caller to evaluate (§12.4).
 async fn settle(tx: &mut SqliteConnection, run: RunId, mut now_waiting: Vec<i64>, now: Timestamp) -> Result<Settled, StorageError> {
-    let run_status: i64 = sqlx::query_scalar("SELECT status FROM actions_runs WHERE id = ?").bind(run.0).fetch_one(&mut *tx).await?;
+    let (run_status, cancel_requested): (i64, bool) =
+        sqlx::query_as("SELECT status, cancel_requested FROM actions_runs WHERE id = ?").bind(run.0).fetch_one(&mut *tx).await?;
     let held = matches!(status(run_status)?, Status::Blocked | Status::AwaitingApproval);
     let mut to_decide = Vec::new();
     if !held {
@@ -1726,6 +1750,9 @@ async fn settle(tx: &mut SqliteConnection, run: RunId, mut now_waiting: Vec<i64>
         // Every job blocked on a decision (its own `if:`) is not a run held for its group:
         // a blocked run status would stop the next settle from unblocking anything.
         Status::Blocked if !held => Status::Waiting,
+        // Jobs cancelled while the run was not (`fail-fast` stopping a failed job's matrix
+        // siblings) leave the failure to decide it, as on GitHub.
+        Status::Cancelled if !cancel_requested && statuses.contains(&Status::Failure) => Status::Failure,
         other => other,
     };
     let started = statuses.contains(&Status::Running);

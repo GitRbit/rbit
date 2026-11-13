@@ -1,5 +1,4 @@
-//! `rbit-runner exec`: plan and run a workflow from a local checkout, with no server
-//! (§12.5.1).
+//! `rbit-runner exec`: plan and run a workflow from a local checkout, with no server (§12.5.1).
 //!
 //! The workflow is parsed and planned with the same `rbit-workflow` code the server uses,
 //! for the event `--event` names, and its jobs run with the same executor as
@@ -9,19 +8,16 @@
 //! * the `github` context names the repository after the checkout's directory, its `HEAD`
 //!   commit and branch, the event and an empty event payload;
 //! * a job's `if` is evaluated here, against the results of the jobs it needs;
-//! * secrets are the `--secret NAME` variables of this process's environment, and the task
-//!   token is a placeholder no server accepts;
-//! * the built-in checkout fetches the `HEAD` commit from the local repository, so changes
-//!   that are not committed are not part of the run;
-//! * every `runs-on` label runs on `--backend`: the host, or a container of
-//!   `docker.io/library/ubuntu:24.04` unless the job names an image. A `runner.toml`, when
-//!   there is one, supplies the container settings and the labels it defines.
+//! * secrets are the `--secret NAME` variables of this process's environment, and the task token is a placeholder no server accepts;
+//! * the built-in checkout fetches the `HEAD` commit from the local repository, so changes that are not committed are not part of the run;
+//! * every `runs-on` label runs on `--backend`: the host, or a container of `docker.io/library/ubuntu:24.04` unless the
+//!   job names an image. A `runner.toml`, when there is one, supplies the container settings and the labels it defines.
 //!
 //! Log lines go to standard output, prefixed with the job's name and masked as on a
 //! runner. With `--job`, only that job runs, and the jobs it needs count as successful.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -97,6 +93,8 @@ pub async fn run(config_path: &Path, args: ExecArgs) -> anyhow::Result<()> {
 
     let first_task = 1_000_000_000 + i64::from(getrandom::u32().unwrap_or(0) % 1_000_000);
     let mut results: BTreeMap<String, (JobResult, BTreeMap<String, String>)> = BTreeMap::new();
+    // Jobs that failed, or that something they need (at any depth) failed: `failure()` holds below them.
+    let mut failed_lines: BTreeSet<String> = BTreeSet::new();
     let mut pending: Vec<JobTemplate> = templates;
     let mut summary = Vec::new();
     let mut task = first_task;
@@ -114,8 +112,8 @@ pub async fn run(config_path: &Path, args: ExecArgs) -> anyhow::Result<()> {
                 (need.clone(), Needed { result, outputs })
             })
             .collect();
-        let name = template.name.clone();
-        let (result, outputs) = if should_run(&template, &github, &needs)? {
+        let (name, failed_above) = (template.name.clone(), template.needs.iter().any(|need| failed_lines.contains(need)));
+        let (result, outputs) = if should_run(&template, &github, &needs, failed_above)? {
             task += 1;
             let spec = job_spec(TaskId(task), template.clone(), github.clone(), needs, &secrets, &checkout);
             let (result, outputs) = execute(&executor, &loaded.work_dir, spec, &cancel).await;
@@ -131,6 +129,9 @@ pub async fn run(config_path: &Path, args: ExecArgs) -> anyhow::Result<()> {
             println!("[{name}] skipped: its `if` is false");
             (JobResult::Skipped, BTreeMap::new())
         };
+        if result == JobResult::Failure || failed_above {
+            failed_lines.insert(template.job_id.clone());
+        }
         merge(&mut results, &template.job_id, result, outputs);
         summary.push((name, result));
     }
@@ -148,9 +149,8 @@ pub async fn run(config_path: &Path, args: ExecArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Folds one finished job instance into `results`: a matrix job's result is the worst of
-/// its instances, where skipped instances count only when all are, as on the server
-/// (`aggregate`); their outputs are merged.
+/// Folds one finished job instance into `results`: a matrix job's result is the worst of its instances, where
+/// skipped instances count only when all are, as on the server (`aggregate`); their outputs are merged.
 fn merge(
     results: &mut BTreeMap<String, (JobResult, BTreeMap<String, String>)>,
     job: &str,
@@ -171,7 +171,7 @@ fn merge(
 }
 
 /// Whether the job's `if` (default `success()`) holds, given the results of its needs.
-fn should_run(template: &JobTemplate, github: &Map<String, Value>, needs: &BTreeMap<String, Needed>) -> anyhow::Result<bool> {
+fn should_run(template: &JobTemplate, github: &Map<String, Value>, needs: &BTreeMap<String, Needed>, failed: bool) -> anyhow::Result<bool> {
     let condition = Condition::parse(template.condition.as_deref().unwrap_or_default())
         .map_err(|error| anyhow::anyhow!("job `{}`: `if`: {error}", template.job_id))?;
     let needs_value: Map<String, Value> = needs
@@ -191,7 +191,7 @@ fn should_run(template: &JobTemplate, github: &Map<String, Value>, needs: &BTree
         .with("matrix", template.matrix.clone())
         .with("strategy", strategy)
         .with("needs", needs_value)
-        .with_status(Status::of_needs(needs.values().map(|needed| needed.result)));
+        .with_status(Status::of_needs(needs.values().map(|needed| needed.result)).with_failed_ancestor(failed));
     condition.evaluate(&contexts).map_err(|error| anyhow::anyhow!("job `{}`: `if`: {error}", template.job_id))
 }
 
@@ -296,8 +296,7 @@ fn job_spec(
     secrets: &BTreeMap<String, Secret>,
     checkout: &Checkout,
 ) -> JobSpec {
-    // Shaped like a task token so masking and `secrets.GITHUB_TOKEN` behave as on a runner;
-    // no server knows it.
+    // Shaped like a task token so masking and `secrets.GITHUB_TOKEN` behave as on a runner; no server knows it.
     let token = format!("rbat_{}", (crate::client::idempotency_key() + &crate::client::idempotency_key())[..43].to_owned());
     let root = checkout.root.to_string_lossy().replace('\\', "/");
     let url = if root.starts_with('/') { format!("file://{root}") } else { format!("file:///{root}") };
@@ -320,8 +319,7 @@ fn job_spec(
     }
 }
 
-/// The runner configuration of a local run: `runner.toml` when it loads, with every label
-/// the jobs ask for that it lacks added on `backend`.
+/// The runner configuration of a local run: `runner.toml` when it loads, plus the labels the jobs ask for that it lacks, on `backend`.
 fn local_config(config_path: &Path, templates: &[JobTemplate], backend: ExecBackend, work: &Path) -> Loaded {
     let mut config = config::load(config_path).map_or_else(
         |_| RunnerConfig {
@@ -341,8 +339,10 @@ fn local_config(config_path: &Path, templates: &[JobTemplate], backend: ExecBack
     for label in templates.iter().flat_map(|template| template.runs_on.iter()) {
         if !config.labels.iter().any(|known| &known.name == label) {
             config.labels.push(match backend {
-                ExecBackend::Host => Label { name: label.clone(), backend: Backend::Host, image: None },
-                ExecBackend::Container => Label { name: label.clone(), backend: Backend::Container, image: Some(DEFAULT_IMAGE.into()) },
+                ExecBackend::Host => Label { name: label.clone(), backend: Backend::Host, image: None, exclusive: false },
+                ExecBackend::Container => {
+                    Label { name: label.clone(), backend: Backend::Container, image: Some(DEFAULT_IMAGE.into()), exclusive: false }
+                }
             });
         }
     }

@@ -4,7 +4,7 @@ use super::contexts::{JobContexts, RunContext};
 use super::dependencies::{deferred_template, reads_matrix, reads_needs, strategy_reads_needs};
 use super::evaluation::Evaluator;
 use super::loader::{Loader, MAX_CALL_DEPTH, MAX_CALLED_WORKFLOWS, NoCalls};
-use super::matrix::{Axes, Combination, combinations, matrix_name};
+use super::matrix::{Combination, expand, matrix_name};
 use super::templates::{job_template, strategy_context};
 use crate::error::WorkflowError;
 use crate::expr::ContextMap;
@@ -120,7 +120,7 @@ impl Planner<'_> {
                 continue;
             }
             let combinations = match &job.strategy.matrix {
-                Some(matrix) => combinations(&Axes::resolve(matrix, run, &job.id)?, self.limits, self.deadline)?,
+                Some(matrix) => expand(matrix, run, &job.id, self.limits, self.deadline)?,
                 None => vec![Combination::new()],
             };
             let evaluator = Evaluator { job, contexts: run };
@@ -313,7 +313,7 @@ pub fn plan_deferred(
     let need_names: BTreeMap<String, NeedSource> =
         job.needs.iter().map(|need| (need.clone(), NeedSource::Jobs(vec![need.clone()]))).collect();
     let combinations = match &job.strategy.matrix {
-        Some(matrix) => combinations(&Axes::resolve(matrix, run, &job.id)?, limits, deadline)?,
+        Some(matrix) => expand(matrix, run, &job.id, limits, deadline)?,
         None => vec![Combination::new()],
     };
     let evaluator = Evaluator { job, contexts: run };

@@ -9,9 +9,10 @@
 //!   waiting, and a `runs-on` label is 1 to [`MAX_JOB_LABEL_CHARS`] characters. Past them a
 //!   run becomes a workflow error with the reason ([`check_jobs`], [`check_labels`],
 //!   [`check_waiting`]).
-//! * A run awaiting approval neither enters nor holds a group. Entering one with
-//!   `cancel-in-progress` cancels every other unfinished run of it; without, runs that were
-//!   only held are cancelled (the newer replaces them) and the run is held while another is
+//! * A run awaiting approval holds nothing in its group. Entering one with
+//!   `cancel-in-progress` cancels every other unfinished run of it, awaiting approval ones
+//!   included; without, awaiting-approval runs are left alone, runs that were only held are
+//!   cancelled (the newer replaces them) and the run is held while another is
 //!   active ([`enter_group`]). A finished run releases the oldest held run once no other is
 //!   active ([`next_to_release`]).
 //! * Running a run again, or approving one, enters its group as a new run would; a rerun

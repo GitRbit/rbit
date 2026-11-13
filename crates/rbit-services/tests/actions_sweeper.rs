@@ -51,9 +51,24 @@ async fn silent_tasks_fail_with_a_reason_and_take_ephemeral_runners_along() {
     assert_eq!(store.job(claimed.job.id).await.unwrap().unwrap().status, Status::Failure);
     let repo = fixture.repo(&fixture.alice).await;
     let log = actions.task_log(&repo, task.id, LogRange::From(0), 10, 4096).await.unwrap();
-    assert_eq!(log.lines, ["rbit: the runner sent no word for 600 seconds, so the task failed"]);
+    assert_eq!(log.lines, ["rbit: the runner sent no word for 120 seconds, so the task failed"]);
     assert_eq!(runners.find(runner).await.unwrap(), None, "the ephemeral runner went with its task");
     assert_eq!(actions.sweep(later).await.unwrap().zombies, 0, "once");
+}
+
+#[tokio::test]
+async fn a_restarted_server_gives_running_tasks_time_to_report_again() {
+    let fixture = Fixture::new().await;
+    let actions = fixture.actions();
+    let claimed = claimed(&fixture, 7).await;
+    // The server comes back ten minutes after the task's last heartbeat.
+    let restarted = Timestamp(Timestamp::now().0 + 600);
+    actions.excuse_downtime(restarted).await.unwrap();
+    assert_eq!(actions.sweep(restarted).await.unwrap().zombies, 0, "not lost: its runner could not reach the server");
+    let task = fixture.database.actions_runs().task(claimed.task.id).await.unwrap().unwrap();
+    assert_eq!(task.status, Status::Running);
+    // A runner that does not come back within the zombie timeout is lost after all.
+    assert_eq!(actions.sweep(Timestamp(restarted.0 + 601)).await.unwrap().zombies, 1);
 }
 
 #[tokio::test]

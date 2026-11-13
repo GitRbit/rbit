@@ -17,6 +17,11 @@ concurrency:
   group: process-tree-proof-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  # The Rust every CI job builds with: a new stable release changes rustfmt and Cargo's
+  # build layout, so it is adopted in its own change, never by surprise.
+  RUST_TOOLCHAIN: "1.99.1"
+
 jobs:
   linux-proof:
     name: Linux known-fixture ownership proof
@@ -36,6 +41,7 @@ jobs:
           node-version: '24'
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: clippy
       # Bootstrap registry sources before guarded compilation's offline metadata scan.
       - run: node scripts/workspace.mjs fetch --locked

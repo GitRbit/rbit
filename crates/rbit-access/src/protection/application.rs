@@ -236,6 +236,14 @@ impl<'a, S: RuleRepository> ProtectionGate<'a, S> {
         Ok(may_delete(&rules, &pusher, branch))
     }
 
+    /// The decision a push by `actor` adding commits to the existing `branch` gets: its
+    /// refusal, or the rules an administrator passes only by bypassing them.
+    pub async fn branch_update(&self, repo: S::Repo, actor: S::User, access: RepoAccess, branch: &str) -> Result<PushDecision, S::Error> {
+        let rules = self.rules(repo).await?;
+        let pusher = self.pusher(repo, &rules, actor, access).await?;
+        Ok(decide_push(&rules, &pusher, &[BranchChange::update(branch)]))
+    }
+
     /// Why `actor` may not add commits to the existing `branch` directly, or `None`: the
     /// decision a push updating it gets, without reporting a bypass.
     pub async fn branch_update_refusal(
@@ -245,10 +253,16 @@ impl<'a, S: RuleRepository> ProtectionGate<'a, S> {
         access: RepoAccess,
         branch: &str,
     ) -> Result<Option<String>, S::Error> {
+        let decision = self.branch_update(repo, actor, access, branch).await?;
+        Ok(decision.verdict.refusals.into_iter().next().map(|refusal| refusal.reason))
+    }
+
+    /// Whether a rule keeps `actor` from rewriting `branch` (a move that drops commits): the
+    /// force push protection a push updating it gets.
+    pub async fn denies_force_push(&self, repo: S::Repo, actor: S::User, access: RepoAccess, branch: &str) -> Result<bool, S::Error> {
         let rules = self.rules(repo).await?;
         let pusher = self.pusher(repo, &rules, actor, access).await?;
-        let decision = decide_push(&rules, &pusher, &[BranchChange::update(branch)]);
-        Ok(decision.verdict.refusals.into_iter().next().map(|refusal| refusal.reason))
+        Ok(decide_push(&rules, &pusher, &[BranchChange::update(branch)]).verdict.deny_non_fast_forwards)
     }
 }
 

@@ -14,6 +14,8 @@ struct AssigneeAttachmentView<'a> {
     actor: &'a User,
     ctx: &'a IssueContext,
     store: IssueMetaStore,
+    /// Taking: assign only while nobody is assigned.
+    only_if_free: bool,
 }
 impl AssigneeAttachmentPort for AssigneeAttachmentView<'_> {
     type Error = ServiceError;
@@ -27,6 +29,9 @@ impl AssigneeAttachmentPort for AssigneeAttachmentView<'_> {
         Ok(self.store.remove_assignee(self.ctx.issue.id, id).await?)
     }
     async fn add(&self, id: AccountId, at: Timestamp) -> Result<bool, Self::Error> {
+        if self.only_if_free {
+            return Ok(self.store.add_assignee_if_unassigned(self.ctx.issue.id, id, self.actor.id(), at).await?);
+        }
         Ok(self.store.add_assignee(self.ctx.issue.id, id, self.actor.id(), at).await?)
     }
     async fn record(&self, kind: AssigneeAttachmentKind, id: AccountId) -> Result<(), Self::Error> {
@@ -72,7 +77,7 @@ impl IssueService {
             .change(
                 add,
                 remove,
-                || AssigneeAttachmentView { service: self, actor, ctx, store: self.ctx.database.issue_meta() },
+                || AssigneeAttachmentView { service: self, actor, ctx, store: self.ctx.database.issue_meta(), only_if_free: false },
                 || self.spend(actor),
                 Timestamp::now,
             )
@@ -84,11 +89,33 @@ impl IssueService {
         AssigneeAssignments::new(access(actor, ctx))
             .set(
                 assignees,
-                || AssigneeAttachmentView { service: self, actor, ctx, store: self.ctx.database.issue_meta() },
+                || AssigneeAttachmentView { service: self, actor, ctx, store: self.ctx.database.issue_meta(), only_if_free: false },
                 || self.spend(actor),
                 Timestamp::now,
             )
             .await
             .map_err(error)
+    }
+
+    // Agent loop: taking an issue.
+    /// Takes the issue for `actor`: assigns them only while nobody holds it, as one
+    /// conditional write. `Ok(None)` when it is now theirs (or already was); otherwise the
+    /// login of who holds it.
+    pub async fn take(&self, actor: &User, ctx: &IssueContext) -> Result<Option<String>, ServiceError> {
+        AssigneeAssignments::new(access(actor, ctx))
+            .change(
+                &[actor.id()],
+                &[],
+                || AssigneeAttachmentView { service: self, actor, ctx, store: self.ctx.database.issue_meta(), only_if_free: true },
+                || self.spend(actor),
+                Timestamp::now,
+            )
+            .await
+            .map_err(error)?;
+        let holders = self.ctx.database.issue_meta().assignees_of(&[ctx.issue.id]).await?;
+        if holders.iter().any(|(_, account)| account.id == actor.id()) {
+            return Ok(None);
+        }
+        Ok(Some(holders.first().map_or_else(|| "someone".to_owned(), |(_, account)| account.name.to_string())))
     }
 }

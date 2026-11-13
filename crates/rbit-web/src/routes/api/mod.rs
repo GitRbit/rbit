@@ -24,6 +24,11 @@
 //! compression; their handlers bound size and time themselves.
 
 mod accounts;
+// Agent loop: ensure, readiness and commit queries.
+mod agent_pulls;
+mod agent_review;
+mod agent_tokens;
+mod agent_writes;
 mod auth;
 mod collaborators;
 mod error;
@@ -67,7 +72,7 @@ use crate::AppState;
 
 /// Every route is under this prefix.
 pub const PREFIX: &str = "/api/v1";
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_BODY_BYTES: usize = 1024 * 1024;
 
 /// The HTTP methods the API uses.
@@ -190,8 +195,15 @@ pub fn table(config: &Config) -> Vec<ApiRoute> {
     }
     // Milestone 2 wave B: each area owns its routes and its `openapi/<area>.json` fragment.
     routes.extend(issues::routes());
+    // Agent loop: taking and finding issues.
+    routes.extend(issues::take::routes());
     routes.extend(notifications::routes());
     routes.extend(pulls::routes());
+    // Agent loop: ensure, readiness and commit queries.
+    routes.extend(agent_pulls::routes());
+    routes.extend(agent_writes::routes());
+    routes.extend(agent_review::routes());
+    routes.extend(agent_tokens::routes());
     routes.extend(protection::routes());
     // Milestone 3: REST API continuation (A).
     routes.extend(collaborators::routes());

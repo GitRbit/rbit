@@ -15,7 +15,7 @@ use rbit_core::{
     Account, AccountId, RepoId,
     actions::{Job, JobId, Run, RunEvent, RunId, RunnerId, Status, Step, TaskId},
 };
-use rbit_storage::sqlite::actions_runs::RunFilter;
+use rbit_storage::sqlite::actions_runs::{QueuePlace, RunFilter, TaskEnd};
 
 use super::{ActionsService, hooks};
 use crate::{RepoContext, ServiceError};
@@ -39,8 +39,10 @@ pub struct Badge {
 pub struct RunQuery {
     /// A workflow path (`.rbit/workflows/ci.yml`).
     pub workflow: Option<String>,
-    /// A branch name, without `refs/heads/`.
+    /// A branch name, without `refs/heads/`; also matches its pull requests' runs.
     pub branch: Option<String>,
+    /// The commit a run tested: a full id or a prefix of at least 7 hex digits.
+    pub sha: Option<String>,
     pub event: Option<RunEvent>,
     pub status: Option<Status>,
     /// The name of the account that caused the run.
@@ -181,6 +183,7 @@ impl ActionsService {
             status: query.status,
             actor,
             reference: reference.as_deref(),
+            sha: query.sha.as_deref(),
             before: query.before,
             limit: RUNS_PER_PAGE + 1,
             ..RunFilter::default()
@@ -307,6 +310,7 @@ impl ActionsService {
             status: query.status,
             actor,
             reference: reference.as_deref(),
+            sha: query.sha.as_deref(),
             statuses,
             offset,
             limit,
@@ -314,7 +318,7 @@ impl ActionsService {
         };
         let store = database.actions_runs();
         let repo_id = repo.repo.repo.id;
-        let (runs, total) = (store.list_runs(repo_id, &filter).await?, store.count_runs(repo_id, &filter).await?);
+        let (runs, total) = store.page_runs(repo_id, &filter).await?;
         let people = self.people(runs.iter().flat_map(|run| [run.actor, run.trigger_actor])).await?;
         Ok(RunPage { runs, people, total })
     }
@@ -357,6 +361,26 @@ impl ActionsService {
             }
         }
         Ok(names)
+    }
+
+    // Agent loop: queue position.
+    /// Where each waiting job of `jobs` stands in line, by job.
+    pub async fn queue_places(&self, jobs: &[Job]) -> Result<BTreeMap<JobId, QueuePlace>, ServiceError> {
+        let store = self.ctx().database.actions_runs();
+        let mut places = BTreeMap::new();
+        for job in jobs.iter().filter(|job| job.status == Status::Waiting) {
+            if let Some(place) = store.queue_place(job.id).await? {
+                places.insert(job.id, place);
+            }
+        }
+        Ok(places)
+    }
+
+    // Agent loop: termination records.
+    /// How the tasks of `jobs` ended (termination record, log completeness), by task.
+    pub async fn task_ends(&self, jobs: &[Job]) -> Result<BTreeMap<TaskId, TaskEnd>, ServiceError> {
+        let tasks: Vec<TaskId> = jobs.iter().filter_map(|job| job.task_id).collect();
+        Ok(self.ctx().database.actions_runs().task_ends(&tasks).await?)
     }
 }
 

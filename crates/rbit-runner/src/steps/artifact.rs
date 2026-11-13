@@ -61,16 +61,30 @@ pub(super) fn file_digest(path: &Path) -> std::io::Result<String> {
 
 /// Whether `name` matches `pattern`, where `*` is any run of characters and `?` any one.
 pub fn matches(pattern: &str, name: &str) -> bool {
-    fn go(pattern: &[char], name: &[char]) -> bool {
-        match (pattern.split_first(), name.split_first()) {
-            (None, None) => true,
-            (Some(('*', rest)), _) => go(rest, name) || (!name.is_empty() && go(pattern, &name[1..])),
-            (Some(('?', rest)), Some((_, tail))) => go(rest, tail),
-            (Some((expected, rest)), Some((actual, tail))) => expected == actual && go(rest, tail),
-            _ => false,
+    // One backtrack point, at the last `*` seen: a later mismatch only needs to retry from
+    // there, so the work is quadratic at most. Trying every split of the name at each `*`
+    // (the naive recursion) takes exponential time on patterns such as `*a*a*a*b`.
+    let (pattern, name): (Vec<char>, Vec<char>) = (pattern.chars().collect(), name.chars().collect());
+    let (mut p, mut n) = (0, 0);
+    let (mut star, mut resume) = (None, 0);
+    while n < name.len() {
+        if p < pattern.len() && pattern[p] == '*' {
+            star = Some(p);
+            resume = n;
+            p += 1;
+        } else if p < pattern.len() && (pattern[p] == '?' || pattern[p] == name[n]) {
+            p += 1;
+            n += 1;
+        } else if let Some(at) = star {
+            // The last `*` takes one more character.
+            resume += 1;
+            n = resume;
+            p = at + 1;
+        } else {
+            return false;
         }
     }
-    go(&pattern.chars().collect::<Vec<_>>(), &name.chars().collect::<Vec<_>>())
+    pattern[p..].iter().all(|&c| c == '*')
 }
 
 /// The workspace, as the archive's root.
@@ -315,6 +329,18 @@ mod tests {
         assert!(!matches("log-??", "log-1"));
         assert!(!matches("dist-*", "build-linux"));
         assert!(matches("a*b*c", "aXXbYc"));
+        assert!(!matches("a*b*c", "aXXbYcZ"));
+        assert!(matches("*", ""));
+        assert!(!matches("?", ""));
+        assert!(matches("*a", "aa") && !matches("a*a", "a"));
+        // Backtracking to the last `*` must not skip a later one that could match.
+        assert!(matches("*ab*c", "xabyabc"));
+        assert!(matches("a*?c", "abbc") && !matches("a*?c", "ac"));
+        // Many stars against a long name that cannot match: the naive recursion took
+        // exponential time here, so this must finish at once.
+        let name = "a".repeat(128);
+        let pattern = format!("{}b", "*a".repeat(40));
+        assert!(!matches(&pattern, &name));
     }
 
     #[test]

@@ -67,6 +67,8 @@ pub struct CachedRunner {
     pub labels: Vec<RunnerLabel>,
     /// Its labels that run jobs on the host, with no isolation: never given untrusted runs.
     pub host_labels: Vec<RunnerLabel>,
+    /// Its labels whose jobs need the whole runner.
+    pub exclusive_labels: Vec<RunnerLabel>,
     /// The labels its registration token allowed, `None` for any.
     pub pinned_labels: Option<Vec<RunnerLabel>>,
     pub ephemeral: bool,
@@ -96,6 +98,7 @@ impl CachedRunner {
             scope: runner.scope,
             labels: runner.labels.clone(),
             host_labels: runner.capabilities.host_labels.clone(),
+            exclusive_labels: runner.capabilities.exclusive_labels.clone(),
             pinned_labels: runner.pinned_labels.clone(),
             ephemeral: runner.ephemeral,
             disabled: runner.disabled,

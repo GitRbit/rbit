@@ -131,7 +131,7 @@ async fn a_real_runner_runs_a_pushed_workflow() {
     let server = TestServer::start_with(|config| config.actions.enabled = true);
     let alice = server.sign_up("alice").await;
     alice.create_repo("alice", "rocket", "public").await;
-    alice.post("/alice/rocket/settings/actions", &[("enabled", "on"), ("token_permission", "read")]).await;
+    crate::enable_actions(&alice, "alice", "rocket").await;
     alice.post("/alice/rocket/settings/actions/secrets", &[("kind", "secret"), ("name", "GREETING"), ("value", "s3cr3t-greeting")]).await;
     alice.post("/alice/rocket/settings/actions/variables", &[("kind", "variable"), ("name", "REGION"), ("value", "eu-west")]).await;
 

@@ -6,8 +6,7 @@
 //! where the credential lives, outside every task workspace.
 //!
 //! Each label maps to exactly one backend, so the host backend, which gives jobs the
-//! runner user's full access, is never chosen implicitly; [`host_warning`] is printed at
-//! registration and at every start.
+//! runner user's full access, is never chosen implicitly; [`host_warning`] is printed at registration and at every start.
 
 use std::{
     collections::BTreeSet,
@@ -30,8 +29,7 @@ pub const CREDENTIAL_FILE: &str = ".credential";
 /// The label `register` creates when none is given.
 pub const DEFAULT_LABEL: &str = "ubuntu-latest:container:docker.io/library/ubuntu:24.04";
 
-/// The contents of `runner.toml`. Fields are in file order: plain values first, then the
-/// tables (TOML requires it).
+/// The contents of `runner.toml`. Fields are in file order: plain values first, then the tables (TOML requires it).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunnerConfig {
@@ -47,8 +45,7 @@ pub struct RunnerConfig {
     /// Task workspaces and the cache.
     #[serde(default = "default_work_dir")]
     pub work_dir: PathBuf,
-    /// How long running tasks may finish after a shutdown signal before they are
-    /// cancelled.
+    /// How long running tasks may finish after a shutdown signal before they are cancelled.
     #[serde(default = "default_shutdown_grace")]
     pub shutdown_grace_seconds: u64,
     /// `runs-on` labels and how their jobs run.
@@ -71,8 +68,7 @@ pub struct ActionsConfig {
     /// The server `owner/repo@ref` actions are fetched from with `git`. Empty (the default)
     /// means this runner's own rbit instance, so nothing is fetched from elsewhere: mirror
     /// the actions workflows use (`actions/setup-node`) there. `https://github.com` fetches
-    /// them from GitHub. Only `https://` (or `http://` on a loopback host, and `file://`
-    /// for tests).
+    /// them from GitHub. Only `https://` (or `http://` on a loopback host, and `file://` for tests).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub url: String,
     /// The actions jobs may use, as `owner/repo` patterns where `*` matches anything
@@ -102,6 +98,10 @@ pub struct Label {
     /// The job container's image, unless the workflow names one (container labels only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
+    /// Its jobs need the whole runner: taken only when the runner runs nothing else, and
+    /// nothing else is taken while one runs (for timing-sensitive work).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub exclusive: bool,
 }
 
 /// `[container]`: how the container backend runs jobs.
@@ -124,8 +124,7 @@ pub struct ContainerConfig {
     #[serde(default = "default_network")]
     pub network: String,
     /// The image that hands a task's files back to the runner's user (`chown`), never the
-    /// job's: it needs `sh`, `chown`, `find` and `chmod`. Pinned by digest; point it at a
-    /// mirror on a runner without access to Docker Hub.
+    /// job's: it needs `sh`, `chown`, `find` and `chmod`. Pinned by digest; point it at a mirror on a runner without access to Docker Hub.
     #[serde(default = "default_helper_image", skip_serializing_if = "is_default_helper_image")]
     pub helper_image: String,
 }
@@ -261,6 +260,7 @@ impl RunnerConfig {
             capacity: if ephemeral { 1 } else { self.capacity },
             version: env!("CARGO_PKG_VERSION").to_owned(),
             ephemeral,
+            exclusive_labels: self.labels.iter().filter(|label| label.exclusive).map(|label| label.name.clone()).collect(),
         }
     }
 
@@ -291,7 +291,7 @@ pub fn parse_label(spec: &str) -> anyhow::Result<Label> {
         None => bail!("label `{spec}` must be `name:backend[:image]`"),
     };
     let image = parts.next().map(|image| image.trim().to_owned()).filter(|image| !image.is_empty());
-    Ok(Label { name: name.to_owned(), backend, image })
+    Ok(Label { name: name.to_owned(), backend, image, exclusive: false })
 }
 
 /// The server's base URL: `https`, or `http` on a loopback host when `insecure_http` is
@@ -433,8 +433,7 @@ pub fn host_name() -> String {
 pub(crate) mod tests {
     use super::*;
 
-    /// A change that makes a configuration invalid, and part of the message it is refused
-    /// with.
+    /// A change that makes a configuration invalid, and part of the message it is refused with.
     type Refusal = (fn(&mut RunnerConfig), &'static str);
 
     pub(crate) fn config() -> RunnerConfig {
@@ -538,11 +537,11 @@ max_bytes = 10737418240
 
     #[test]
     fn labels_parse_with_images_that_have_colons() {
-        assert_eq!(
-            parse_label("ubuntu-latest:container:docker.io/library/ubuntu:24.04").unwrap(),
-            Label { name: "ubuntu-latest".into(), backend: Backend::Container, image: Some("docker.io/library/ubuntu:24.04".into()) }
-        );
-        assert_eq!(parse_label("self-hosted:host").unwrap(), Label { name: "self-hosted".into(), backend: Backend::Host, image: None });
+        let label =
+            |name: &str, backend, image: Option<&str>| Label { name: name.into(), backend, image: image.map(Into::into), exclusive: false };
+        let ubuntu = label("ubuntu-latest", Backend::Container, Some("docker.io/library/ubuntu:24.04"));
+        assert_eq!(parse_label("ubuntu-latest:container:docker.io/library/ubuntu:24.04").unwrap(), ubuntu);
+        assert_eq!(parse_label("self-hosted:host").unwrap(), label("self-hosted", Backend::Host, None));
         assert!(parse_label("self-hosted").is_err());
         assert!(parse_label("x:vm").is_err());
     }

@@ -277,6 +277,8 @@ pub async fn review(
     Path(path): Path<EnvironmentPath>,
     ApiJson(body): ApiJson<ReviewBody>,
 ) -> ApiResult<Response> {
+    // Letting a job deploy is an approval, as approving a run is.
+    caller.require_right(rbit_services::tokens::Right::Approve)?;
     let ctx = caller.open_repo(&state, &path.owner, &path.repo).await?;
     let user = caller.require(TokenScope::Write)?;
     let decision = match body.state.as_str() {

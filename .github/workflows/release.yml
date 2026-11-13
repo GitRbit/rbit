@@ -27,6 +27,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  # The Rust every CI job builds with: a new stable release changes rustfmt and Cargo's
+  # build layout, so it is adopted in its own change, never by surprise.
+  RUST_TOOLCHAIN: "1.99.1"
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
   CARGO_BUILD_JOBS: "1"
@@ -150,6 +153,7 @@ jobs:
           path: crates/rbit-web/assets
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: ${{ matrix.target }}
       - name: Build
         run: cargo build --release --locked --package rbit-server --package rbit-runner --target ${{ matrix.target }}

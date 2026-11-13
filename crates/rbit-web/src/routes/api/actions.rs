@@ -34,6 +34,7 @@
 //! * `actions/cache` entries are listed and deleted as on GitHub (`…/actions/caches`,
 //!   `…/actions/cache/usage`); deleting needs `write` and write access.
 
+use rbit_services::tokens::Right;
 use std::collections::BTreeMap;
 
 use axum::{
@@ -44,15 +45,12 @@ use axum::{
 };
 use rbit_core::{
     RepoId, Timestamp, TokenScope, User,
-    actions::{
-        Artifact, ArtifactId, CacheEntry, CacheEntryId, JobId, RunEvent, RunId, Runner, RunnerId, SecretScope, SecretVisibility, Status,
-        Variable,
-    },
+    actions::{Artifact, ArtifactId, CacheEntry, CacheEntryId, JobId, RunId, Runner, RunnerId, SecretScope, SecretVisibility, Variable},
 };
 use rbit_services::{
     ActionsService, OrgContext, RepoContext, ServiceError,
     actions::{
-        browse::{RunQuery, WorkflowState},
+        browse::WorkflowState,
         caches::CacheOrder,
         dispatch::DispatchRequest,
         hooks,
@@ -78,6 +76,16 @@ use crate::AppState;
 
 // Actions: settings API.
 mod permissions;
+mod run_filters;
+// Agent loop: termination records.
+mod terminations;
+// Agent loop: logs by step, failure digests, attempts.
+mod agent_logs;
+mod agent_status;
+// Agent loop: superseded branch runs.
+mod supersede;
+
+use run_filters::{RunsQuery, non_empty};
 
 /// Where secrets and variables are served: a repository, an organisation, the caller.
 const SETTINGS_PREFIXES: [&str; 3] = ["/repos/{owner}/{repo}/actions", "/orgs/{org}/actions", "/user/actions"];
@@ -97,6 +105,16 @@ pub(super) fn routes() -> Vec<ApiRoute> {
         route(Post, repo("/runs/{run_id}/approve"), approve),
         route(Get, repo("/jobs/{job_id}"), show_job),
         route(Get, repo("/jobs/{job_id}/logs"), job_logs),
+        // Agent loop: rbit's own reads for agents.
+        route(Get, repo("/runs/{run_id}/failure"), agent_logs::failure),
+        route(Get, repo("/jobs/{job_id}/steps/{step}/log"), agent_logs::step_log),
+        route(Get, repo("/jobs/{job_id}/annotations"), agent_logs::annotations),
+        route(Get, repo("/jobs/{job_id}/attempts"), agent_logs::attempts),
+        route(Get, "/repos/{owner}/{repo}/agent/status".to_owned(), agent_status::status),
+        route(Get, "/repos/{owner}/{repo}/agent/watch".to_owned(), agent_status::watch),
+        route(Get, "/repos/{owner}/{repo}/agent/bisect".to_owned(), agent_status::bisect),
+        route(Get, repo("/supersede"), supersede::show),
+        route(Put, repo("/supersede"), supersede::update),
         route(Post, repo("/jobs/{job_id}/rerun"), rerun_job),
         route(Get, repo("/runs/{run_id}/artifacts"), run_artifacts),
         route(Get, repo("/artifacts"), list_artifacts),
@@ -231,38 +249,6 @@ fn state_error(error: ServiceError) -> ApiError {
 
 // ------------------------------------------------------------------ runs and jobs
 
-/// The filters of `GET …/actions/runs`.
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
-pub struct RunsQuery {
-    branch: String,
-    event: String,
-    status: String,
-    actor: String,
-}
-
-/// The run statuses a GitHub `status` filter stands for; `None` for an unknown one. Valid
-/// values rbit never produces (`neutral`, `stale`, `timed_out`) stand for none.
-fn github_statuses(status: &str) -> Option<&'static [Status]> {
-    Some(match status {
-        "queued" | "requested" | "pending" => &[Status::Waiting, Status::Blocked],
-        "waiting" | "action_required" => &[Status::AwaitingApproval],
-        "in_progress" => &[Status::Running],
-        "completed" => &[Status::Success, Status::Failure, Status::Cancelled, Status::Skipped],
-        "success" => &[Status::Success],
-        "failure" => &[Status::Failure],
-        "cancelled" => &[Status::Cancelled],
-        "skipped" => &[Status::Skipped],
-        "neutral" | "stale" | "timed_out" => &[],
-        _ => return None,
-    })
-}
-
-fn non_empty(value: &str) -> Option<String> {
-    let value = value.trim();
-    (!value.is_empty()).then(|| value.to_owned())
-}
-
 /// `GET /repos/{owner}/{repo}/actions/runs`: newest first.
 pub async fn list_runs(
     State(state): State<AppState>,
@@ -283,20 +269,7 @@ async fn runs_page(
     filters: &RunsQuery,
     workflow: Option<String>,
 ) -> ApiResult<Response> {
-    let statuses = match non_empty(&filters.status) {
-        Some(status) => github_statuses(&status).ok_or_else(|| ApiError::invalid("status", format!("unknown status `{status}`")))?,
-        None => &[],
-    };
-    let event = non_empty(&filters.event);
-    let matches_nothing = (!filters.status.trim().is_empty() && statuses.is_empty())
-        || event.as_deref().is_some_and(|event| RunEvent::parse(event).is_none());
-    let query = RunQuery {
-        workflow,
-        branch: non_empty(&filters.branch),
-        event: event.as_deref().and_then(RunEvent::parse),
-        actor: non_empty(&filters.actor),
-        ..RunQuery::default()
-    };
+    let (query, statuses, matches_nothing) = filters.query(workflow)?;
     let actions = actions(state)?;
     let limit = u32::try_from(pager.limit()).unwrap_or(u32::MAX);
     let offset = u32::try_from(pager.offset()).unwrap_or(u32::MAX);
@@ -304,7 +277,9 @@ async fn runs_page(
     let page = actions.page_runs(ctx, &query, statuses, offset, if matches_nothing { 0 } else { limit }).await?;
     let total = if matches_nothing { 0 } else { page.total };
     let base = base_url(state);
-    let items = page.runs.iter().map(|run| hooks::workflow_run(run, &ctx.repo, &page.people, base)).collect();
+    let superseded = actions.superseded_by(&page.runs).await?;
+    let items =
+        page.runs.iter().map(|run| with_supersession(hooks::workflow_run(run, &ctx.repo, &page.people, base), run, &superseded)).collect();
     Ok(pager.paged(items, Some(total), false).wrapped("workflow_runs"))
 }
 
@@ -312,7 +287,17 @@ async fn runs_page(
 pub async fn show_run(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Json<Value>> {
     let ctx = path.repo(&state, &caller).await?;
     let detail = actions(&state)?.run_by_id(&ctx, path.run()?).await?;
-    Ok(Json(hooks::workflow_run(&detail.run, &ctx.repo, &detail.people, base_url(&state))))
+    let superseded = actions(&state)?.superseded_by(std::slice::from_ref(&detail.run)).await?;
+    Ok(Json(with_supersession(hooks::workflow_run(&detail.run, &ctx.repo, &detail.people, base_url(&state)), &detail.run, &superseded)))
+}
+
+/// `item` (a run's JSON) with rbit's own `superseded_by`, the commit whose newer run
+/// cancelled it, when one did.
+fn with_supersession(mut item: Value, run: &rbit_core::actions::Run, superseded: &BTreeMap<RunId, String>) -> Value {
+    if let Some(newer) = superseded.get(&run.id) {
+        item["superseded_by"] = json!(newer);
+    }
+    item
 }
 
 /// `GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs`: in the workflow's order.
@@ -325,7 +310,17 @@ pub async fn run_jobs(State(state): State<AppState>, caller: Caller, pager: Page
     let runners = actions.runner_names(&shown).await?;
     let base = base_url(&state);
     let runner = |job: &rbit_core::actions::Job| job.runner_id.and_then(|id| runners.get(&id)).map(String::as_str);
-    let items = shown.iter().map(|job| hooks::workflow_job(job, &detail.run, &ctx.repo, &steps, runner(job), base)).collect();
+    let ends = actions.task_ends(&shown).await?;
+    let places = actions.queue_places(&shown).await?;
+    let items = shown
+        .iter()
+        .map(|job| {
+            let mut item = hooks::workflow_job(job, &detail.run, &ctx.repo, &steps, runner(job), base);
+            terminations::annotate(&mut item, job, &ends);
+            terminations::queue(&mut item, places.get(&job.id));
+            item
+        })
+        .collect();
     let total = u64::try_from(detail.jobs.len()).unwrap_or(u64::MAX);
     Ok(pager.paged(items, Some(total), false).wrapped("jobs"))
 }
@@ -336,7 +331,12 @@ pub async fn show_job(State(state): State<AppState>, caller: Caller, Path(path):
     let detail = actions(&state)?.job_detail(&ctx, path.job()?).await?;
     let runners = actions(&state)?.runner_names(std::slice::from_ref(&detail.job)).await?;
     let runner = detail.job.runner_id.and_then(|id| runners.get(&id)).map(String::as_str);
-    Ok(Json(hooks::workflow_job(&detail.job, &detail.run, &ctx.repo, &detail.steps, runner, base_url(&state))))
+    let mut item = hooks::workflow_job(&detail.job, &detail.run, &ctx.repo, &detail.steps, runner, base_url(&state));
+    let ends = actions(&state)?.task_ends(std::slice::from_ref(&detail.job)).await?;
+    terminations::annotate(&mut item, &detail.job, &ends);
+    let places = actions(&state)?.queue_places(std::slice::from_ref(&detail.job)).await?;
+    terminations::queue(&mut item, places.get(&detail.job.id));
+    Ok(Json(item))
 }
 
 // Actions: REST API.
@@ -348,6 +348,7 @@ pub async fn job_logs(
     headers: HeaderMap,
     Path(path): Path<ActionsPath>,
 ) -> ApiResult<Response> {
+    caller.require_right(Right::ReadLogs)?;
     let ctx = path.repo(&state, &caller).await?;
     let actions = actions(&state)?;
     let detail = actions.job_detail(&ctx, path.job()?).await?;
@@ -361,6 +362,7 @@ pub async fn job_logs(
 /// `GET /repos/{owner}/{repo}/actions/runs/{run_id}/logs`: a zip with each job's log as
 /// `<n>_<job name>.txt`, sent itself rather than through GitHub's redirect.
 pub async fn run_logs(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Response> {
+    caller.require_right(Right::ReadLogs)?;
     let ctx = path.repo(&state, &caller).await?;
     let actions = actions(&state)?;
     let run = actions.run_by_id(&ctx, path.run()?).await?.run;
@@ -417,6 +419,7 @@ async fn fail_archive(sender: &tokio::sync::mpsc::Sender<std::io::Result<axum::b
 /// `POST /repos/{owner}/{repo}/actions/runs/{run_id}/cancel`: `202 Accepted`; running jobs
 /// stop when their runners next report.
 pub async fn cancel(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Response> {
+    caller.require_right(Right::Approve)?;
     let ctx = path.repo(&state, &caller).await?;
     let actions = actions(&state)?;
     let run = actions.run_by_id(&ctx, path.run()?).await?.run;
@@ -438,17 +441,20 @@ async fn rerun_jobs(state: &AppState, caller: &Caller, path: &ActionsPath, run: 
 /// `POST /repos/{owner}/{repo}/actions/runs/{run_id}/rerun`: `201 Created`; every job
 /// runs again as a new attempt.
 pub async fn rerun(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Response> {
+    caller.require_right(Right::Approve)?;
     rerun_jobs(&state, &caller, &path, path.run()?, Rerun::All).await
 }
 
 /// `POST /repos/{owner}/{repo}/actions/runs/{run_id}/rerun-failed-jobs`: failed and
 /// cancelled jobs and the jobs that need them.
 pub async fn rerun_failed(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Response> {
+    caller.require_right(Right::Approve)?;
     rerun_jobs(&state, &caller, &path, path.run()?, Rerun::Failed).await
 }
 
 /// `POST /repos/{owner}/{repo}/actions/jobs/{job_id}/rerun`: the job and the jobs that need it.
 pub async fn rerun_job(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Response> {
+    caller.require_right(Right::Approve)?;
     let ctx = path.repo(&state, &caller).await?;
     let job = actions(&state)?.job_detail(&ctx, path.job()?).await?.job;
     rerun_jobs(&state, &caller, &path, job.run_id, Rerun::Job(job.id)).await
@@ -457,6 +463,7 @@ pub async fn rerun_job(State(state): State<AppState>, caller: Caller, Path(path)
 /// `POST /repos/{owner}/{repo}/actions/runs/{run_id}/approve`: `201 Created`; a pull
 /// request run waiting for approval starts (still read-only, without secrets).
 pub async fn approve(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Response> {
+    caller.require_right(Right::Approve)?;
     let ctx = path.repo(&state, &caller).await?;
     let actions = actions(&state)?;
     let run = actions.run_by_id(&ctx, path.run()?).await?.run;
@@ -512,6 +519,7 @@ pub async fn enable_workflow(State(state): State<AppState>, caller: Caller, Path
 }
 
 async fn switch_workflow(state: &AppState, caller: &Caller, path: &ActionsPath, disabled: bool) -> ApiResult<StatusCode> {
+    caller.require_unlimited()?;
     let ctx = path.repo(state, caller).await?;
     let actions = actions(state)?;
     let workflow = path.workflow_id.as_deref().unwrap_or_default();
@@ -571,6 +579,7 @@ pub async fn dispatch(
     Path(path): Path<ActionsPath>,
     ApiJson(body): ApiJson<DispatchBody>,
 ) -> ApiResult<StatusCode> {
+    caller.require_right(Right::Dispatch)?;
     let ctx = path.repo(&state, &caller).await?;
     let actions = actions(&state)?;
     if !ctx.access.can_read() || !actions.enabled_for(ctx.repo.repo.id).await? {
@@ -600,6 +609,7 @@ pub async fn repository_dispatch(
     Path(path): Path<ActionsPath>,
     ApiJson(body): ApiJson<RepositoryDispatchBody>,
 ) -> ApiResult<StatusCode> {
+    caller.require_right(Right::Dispatch)?;
     let ctx = path.repo(&state, &caller).await?;
     let user = require_writer(&caller, &ctx)?;
     let event_type = body.event_type.ok_or_else(|| ApiError::invalid("event_type", "event_type is required"))?;
@@ -693,6 +703,7 @@ pub async fn show_artifact(State(state): State<AppState>, caller: Caller, Path(p
 /// `GET /repos/{owner}/{repo}/actions/artifacts/{artifact_id}/{archive_format}`: the file
 /// itself, as a `zip` (GitHub's format) or the `tar.gz` it is stored as.
 pub async fn download_artifact(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Response> {
+    caller.require_right(Right::ReadLogs)?;
     let ctx = path.repo(&state, &caller).await?;
     let id = path.artifact()?;
     let format = path
@@ -706,6 +717,7 @@ pub async fn download_artifact(State(state): State<AppState>, caller: Caller, Pa
 
 /// `DELETE /repos/{owner}/{repo}/actions/artifacts/{artifact_id}`: `204`; the file goes too.
 pub async fn delete_artifact(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<StatusCode> {
+    caller.require_unlimited()?;
     let ctx = path.repo(&state, &caller).await?;
     let actions = actions(&state)?;
     let artifact = actions.artifact(&ctx, path.artifact()?).await?;
@@ -785,6 +797,7 @@ pub async fn delete_caches_by_key(
     Path(path): Path<ActionsPath>,
     Query(query): Query<CachesQuery>,
 ) -> ApiResult<Json<Value>> {
+    caller.require_unlimited()?;
     let ctx = path.repo(&state, &caller).await?;
     let user = require_writer(&caller, &ctx)?;
     let key = non_empty(&query.key).ok_or_else(|| ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, "key is required"))?;
@@ -798,6 +811,7 @@ pub async fn delete_caches_by_key(
 
 /// `DELETE /repos/{owner}/{repo}/actions/caches/{cache_id}`: `204`; the file goes too.
 pub async fn delete_cache(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<StatusCode> {
+    caller.require_unlimited()?;
     let ctx = path.repo(&state, &caller).await?;
     let id = path.cache()?;
     let user = require_writer(&caller, &ctx)?;
@@ -1183,6 +1197,8 @@ mod tests {
     use rbit_core::{Timestamp, Visibility, actions::Run, membership::Permission};
     use rbit_services::{CreateOrganization, CreateRepository};
     use rbit_storage::sqlite::actions_runs::{NewJob, NewRun, RunStart};
+
+    use rbit_core::actions::{RunEvent, Status};
 
     use super::{super::test_support::Fixture, *};
 
@@ -1845,18 +1861,5 @@ jobs:
         let (_, json) = enabled.send("GET", "/api/v1/openapi.json", None, None).await;
         assert!(json["paths"]["/repos/{owner}/{repo}/actions/runs"]["get"].is_object());
         assert!(json["components"]["schemas"]["WorkflowRun"].is_object());
-    }
-
-    #[test]
-    fn github_statuses_cover_every_run_status_once() {
-        for status in Status::ALL {
-            let named = ["queued", "waiting", "in_progress", "completed"]
-                .into_iter()
-                .filter(|name| github_statuses(name).is_some_and(|statuses| statuses.contains(&status)))
-                .count();
-            assert_eq!(named, 1, "{status}");
-        }
-        assert_eq!(github_statuses("timed_out"), Some(&[][..]));
-        assert_eq!(github_statuses("Completed"), None);
     }
 }

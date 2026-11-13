@@ -1,4 +1,6 @@
-//! JSON errors: `{"message": "…"}`, plus `"errors": [{"field", "message"}]` for 422.
+//! JSON errors: `{"message": "…", "code": "…"}`, plus `"errors": [{"field", "message"}]` for
+//! 422. `code` is rbit's own, a stable word clients can branch on (see [`ApiError::code`]);
+//! `message` is for people and may change.
 //!
 //! Status codes: 401 unauthenticated (with `WWW-Authenticate: Bearer`), 403 for callers
 //! who may see the resource but not do this, 404 for anything the caller may not know
@@ -34,6 +36,8 @@ pub struct ApiError {
     pub retry_after: Option<u64>,
     /// Where a moved resource lives now (`Location` and the body's `url`).
     pub location: Option<String>,
+    /// A more precise `code` than the status implies (`head_changed` for a 409, …).
+    pub specific: Option<&'static str>,
 }
 
 pub type ApiResult<T> = Result<T, ApiError>;
@@ -41,6 +45,7 @@ pub type ApiResult<T> = Result<T, ApiError>;
 #[derive(Serialize)]
 struct Body<'a> {
     message: &'a str,
+    code: &'a str,
     #[serde(skip_serializing_if = "<[FieldError]>::is_empty")]
     errors: &'a [FieldError],
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -49,7 +54,31 @@ struct Body<'a> {
 
 impl ApiError {
     pub fn new(status: StatusCode, message: impl Into<String>) -> Self {
-        Self { status, message: message.into(), errors: Vec::new(), retry_after: None, location: None }
+        Self { status, message: message.into(), errors: Vec::new(), retry_after: None, location: None, specific: None }
+    }
+
+    /// This error with `code` instead of the one its status implies.
+    #[must_use]
+    pub fn with_code(self, code: &'static str) -> Self {
+        Self { specific: Some(code), ..self }
+    }
+
+    /// The stable code of the body: `not_found`, `unauthenticated`, `forbidden`,
+    /// `conflict` (or a precise kind of it, such as `head_changed`), `invalid`,
+    /// `rate_limited`, `unavailable`, `moved` or `internal`.
+    pub fn code(&self) -> &'static str {
+        self.specific.unwrap_or(match self.status.as_u16() {
+            401 => "unauthenticated",
+            403 => "forbidden",
+            404 | 410 => "not_found",
+            405 => "blocked",
+            409 | 412 => "conflict",
+            429 => "rate_limited",
+            301 | 307 | 308 => "moved",
+            400..=499 => "invalid",
+            503 => "unavailable",
+            _ => "internal",
+        })
     }
 
     /// The resource is at `location` now: `301` for `GET` and `HEAD`, `307` (which keeps
@@ -81,6 +110,7 @@ impl ApiError {
             message: "Validation Failed".to_owned(),
             retry_after: None,
             location: None,
+            specific: None,
         }
     }
 
@@ -143,7 +173,7 @@ impl From<PathRejection> for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let body = Body { message: &self.message, errors: &self.errors, url: self.location.as_deref() };
+        let body = Body { message: &self.message, code: self.code(), errors: &self.errors, url: self.location.as_deref() };
         let mut response = (self.status, Json(body)).into_response();
         let headers = response.headers_mut();
         if let Some(location) = self.location.as_deref().and_then(|location| HeaderValue::from_str(location).ok()) {
@@ -182,7 +212,7 @@ mod tests {
         assert_eq!(headers[header::CACHE_CONTROL], "no-store");
         assert!(!headers.contains_key(header::WWW_AUTHENTICATE));
         assert_eq!(headers[header::CONTENT_TYPE], "application/json");
-        assert_eq!(json, serde_json::json!({ "message": UNAVAILABLE_MESSAGE }));
+        assert_eq!(json, serde_json::json!({ "message": UNAVAILABLE_MESSAGE, "code": "unavailable" }));
     }
 
     #[tokio::test]
@@ -190,7 +220,10 @@ mod tests {
         let (status, json, headers) = body(ApiError::moved(&Method::GET, "https://git.example.com/api/v1/repos/bob/demo".into())).await;
         assert_eq!(status, StatusCode::MOVED_PERMANENTLY);
         assert_eq!(headers[header::LOCATION], "https://git.example.com/api/v1/repos/bob/demo");
-        assert_eq!(json, serde_json::json!({ "message": "Moved Permanently", "url": "https://git.example.com/api/v1/repos/bob/demo" }));
+        assert_eq!(
+            json,
+            serde_json::json!({ "message": "Moved Permanently", "code": "moved", "url": "https://git.example.com/api/v1/repos/bob/demo" })
+        );
         assert_eq!(ApiError::moved(&Method::HEAD, "/x".into()).status, StatusCode::MOVED_PERMANENTLY);
         let (status, json, _) = body(ApiError::moved(&Method::PATCH, "/x".into())).await;
         assert_eq!((status, json["message"].as_str()), (StatusCode::TEMPORARY_REDIRECT, Some("Temporary Redirect")));
@@ -202,12 +235,16 @@ mod tests {
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(
             json,
-            serde_json::json!({ "message": "Validation Failed", "errors": [{ "field": "name", "message": "name is too long" }] })
+            serde_json::json!({
+                "message": "Validation Failed",
+                "code": "invalid",
+                "errors": [{ "field": "name", "message": "name is too long" }]
+            })
         );
         assert_eq!(headers.get(header::CONTENT_TYPE).unwrap(), "application/json");
 
         let (status, json, _) = body(ServiceError::NotFound.into()).await;
-        assert_eq!((status, json), (StatusCode::NOT_FOUND, serde_json::json!({ "message": "Not Found" })));
+        assert_eq!((status, json), (StatusCode::NOT_FOUND, serde_json::json!({ "message": "Not Found", "code": "not_found" })));
 
         let (status, _, headers) = body(ApiError::unauthorized("Bad credentials")).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED);
@@ -222,5 +259,20 @@ mod tests {
         assert_eq!(status, StatusCode::FORBIDDEN);
         let (status, json, _) = body(ServiceError::Archived.into()).await;
         assert_eq!((status, json["message"].as_str()), (StatusCode::FORBIDDEN, Some("Repository was archived so is read-only.")));
+    }
+    #[tokio::test]
+    async fn every_error_carries_a_stable_code() {
+        for (error, code) in [
+            (ApiError::unauthorized("Bad credentials"), "unauthenticated"),
+            (ServiceError::Forbidden.into(), "forbidden"),
+            (ServiceError::Conflict("name").into(), "conflict"),
+            (ApiError::new(StatusCode::CONFLICT, "moved").with_code("head_changed"), "head_changed"),
+            (ApiError::new(StatusCode::METHOD_NOT_ALLOWED, "required check missing"), "blocked"),
+            (ServiceError::RateLimited { retry_after_seconds: 1 }.into(), "rate_limited"),
+            (ApiError::new(StatusCode::BAD_REQUEST, "bad"), "invalid"),
+            (ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "oops"), "internal"),
+        ] {
+            assert_eq!(body(error).await.1["code"], code);
+        }
     }
 }

@@ -28,6 +28,11 @@ impl RepositoryGate for CallerRepositories<'_> {
             (caller, _) => services.repositories.open_following_renames(caller.and_then(GitCaller::user), owner, name).await,
         };
         match opened {
+            // Another repository is not there for a limited token, before any other check:
+            // a refusal to write it (403) would say that it exists.
+            Ok(ctx) if matches!(self.caller, Some(GitCaller::User { token_limit: Some(limit), .. }) if !limit.reaches(ctx.repo.repo.id)) => {
+                Ok(None)
+            }
             Ok(mut ctx) => {
                 if let Some(scope) = self.caller.and_then(GitCaller::token_scope) {
                     ctx.access = scope.limit(ctx.access);

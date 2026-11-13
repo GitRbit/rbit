@@ -119,3 +119,53 @@ fn dos_times() {
     // 2023-11-14T22:13:20Z
     assert_eq!(dos_time(1_700_000_000), ((22 << 11) + (13 << 5) + 10, (43 << 9) + (11 << 5) + 14));
 }
+
+#[cfg(unix)]
+#[test]
+fn a_file_with_holes_packed_as_sparse_comes_out_whole() {
+    // Older runners packed files with `tar`'s default `sparse(true)`: a binary whose linker
+    // left holes became a GNU sparse entry, and converting the artifact dropped it.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("rbit");
+    let file = std::fs::File::create(&path).unwrap();
+    file.set_len(4 << 20).unwrap();
+    std::os::unix::fs::FileExt::write_all_at(&file, b"end", (4 << 20) - 3).unwrap();
+    let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast()));
+    builder.sparse(true);
+    builder.append_path_with_name(&path, "w/rbit").unwrap();
+    let tar = builder.into_inner().unwrap().finish().unwrap();
+    let mut zip = convert(&tar);
+    let mut entry = zip.by_name("rbit").unwrap();
+    let mut data = Vec::new();
+    std::io::Read::read_to_end(&mut entry, &mut data).unwrap();
+    assert_eq!(data.len(), 4 << 20);
+    assert_eq!(&data[data.len() - 3..], b"end");
+    assert!(data[..1024].iter().all(|byte| *byte == 0));
+}
+
+#[test]
+fn files_of_one_name_in_two_directories_are_refused_not_overwritten() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = tar::EntryType::Regular;
+    let clash = tar_gz(&[("w/linux/app", b"linux build", 0o755, file), ("w/macos/app", b"macos build", 0o755, file)]);
+    let refused = extract_files(Cursor::new(clash), dir.path(), 20, 1 << 20).unwrap_err();
+    assert_eq!(refused.kind(), std::io::ErrorKind::InvalidData);
+    assert!(refused.to_string().contains("`app`"), "{refused}");
+    let apart = tar_gz(&[("w/linux/app-linux", b"linux build", 0o755, file), ("w/macos/app-macos", b"macos build", 0o755, file)]);
+    let names: Vec<String> =
+        extract_files(Cursor::new(apart), dir.path(), 20, 1 << 20).unwrap().into_iter().map(|(name, _)| name).collect();
+    assert_eq!(names, ["app-linux", "app-macos"]);
+}
+
+#[test]
+fn a_file_larger_than_the_limit_is_refused_however_small_the_archive() {
+    let dir = tempfile::tempdir().unwrap();
+    // 8 MiB of zeros compress to a few kilobytes.
+    let zeros = vec![0_u8; 8 << 20];
+    let small = tar_gz(&[("w/huge", zeros.as_slice(), 0o644, tar::EntryType::Regular)]);
+    assert!(small.len() < 64 << 10, "{} bytes", small.len());
+    let refused = extract_files(Cursor::new(small), dir.path(), 20, 1 << 20).unwrap_err();
+    assert_eq!(refused.kind(), std::io::ErrorKind::InvalidData);
+    assert!(refused.to_string().contains("`huge`"), "{refused}");
+    assert!(!dir.path().join("huge").exists(), "nothing is left behind");
+}

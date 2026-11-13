@@ -198,7 +198,7 @@ pub async fn execute(
         Err(error) => job.fail(&format!("cannot start `{}`: {error}", command.program)),
         Ok(Exit::Stopped) => job.stopped(signal.reason()),
         Ok(Exit::Code(Some(0))) => Outcome::success(BTreeMap::new()),
-        Ok(Exit::Code(Some(code))) => job.fail(&format!("Process completed with exit code {code}.")),
+        Ok(Exit::Code(Some(code))) => crate::termination::exited(job, code),
         Ok(Exit::Code(None)) => job.fail("The process was killed by a signal."),
     };
     match written {

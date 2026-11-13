@@ -44,11 +44,14 @@ fn stored_files<R: Read>(source: R, mut each: impl FnMut(File<'_, flate2::read::
     for entry in archive.entries()? {
         let entry = entry?;
         let header = entry.header();
-        if !matches!(header.entry_type(), tar::EntryType::Regular | tar::EntryType::Continuous) {
+        // A file with holes (a freshly linked binary often has some) is a GNU sparse entry
+        // when an older runner packed it; reading it yields the whole file.
+        if !matches!(header.entry_type(), tar::EntryType::Regular | tar::EntryType::Continuous | tar::EntryType::GNUSparse) {
             continue;
         }
         let Some(name) = entry_name(&entry.path_bytes()) else { continue };
-        let size = header.size()?;
+        // The file's size: for a sparse entry, larger than what the archive stores.
+        let size = entry.size();
         let mode = match header.mode()? & 0o777 {
             0 => 0o644,
             mode => mode,
@@ -60,6 +63,54 @@ fn stored_files<R: Read>(source: R, mut each: impl FnMut(File<'_, flate2::read::
     // reader, stopping at its end-of-archive blocks, never reaches.
     io::copy(&mut archive.into_inner(), &mut io::sink())?;
     Ok(())
+}
+
+// Agent loop: promoting an artifact.
+/// Writes the files of the stored tar.gz `source` into directory `dir` (flattened to their
+/// file names), at most `max_files` of at most `max_bytes` each; each file's name and path,
+/// in order.
+///
+/// # Errors
+///
+/// What reading `source` or writing a file fails with, and [`io::ErrorKind::InvalidData`]
+/// for more than `max_files` files, for a file larger than `max_bytes` (a small archive can
+/// hold a huge file: compressed zeros, or a sparse file's holes, which read as zeros), or
+/// for two files with one name (`linux/app` and `macos/app`): one would overwrite the
+/// other, and what ships would not be what was built.
+pub fn extract_files<R: Read>(
+    source: R,
+    dir: &std::path::Path,
+    max_files: usize,
+    max_bytes: u64,
+) -> io::Result<Vec<(String, std::path::PathBuf)>> {
+    let too_large = |name: &str| io::Error::new(io::ErrorKind::InvalidData, format!("`{name}` is larger than {max_bytes} bytes"));
+    let mut written = Vec::new();
+    stored_files(source, |mut file| {
+        if written.len() == max_files {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, format!("the artifact has more than {max_files} files")));
+        }
+        let name = String::from_utf8_lossy(&file.name).rsplit('/').next().unwrap_or_default().to_owned();
+        if name.is_empty() || name.starts_with('.') {
+            return Ok(());
+        }
+        if written.iter().any(|(taken, _)| *taken == name) {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, format!("the artifact has two files named `{name}`")));
+        }
+        if file.size > max_bytes {
+            return Err(too_large(&name));
+        }
+        let path = dir.join(&name);
+        let mut out = std::fs::File::create(&path)?;
+        // The header's size is the archive's word; what comes out is bounded regardless.
+        if io::copy(&mut (&mut file.data).take(max_bytes.saturating_add(1)), &mut out)? > max_bytes {
+            drop(out);
+            let _ = std::fs::remove_file(&path);
+            return Err(too_large(&name));
+        }
+        written.push((name, path));
+        Ok(())
+    })?;
+    Ok(written)
 }
 
 /// Reads the stored tar.gz `source` and writes its files as a zip to `out`.

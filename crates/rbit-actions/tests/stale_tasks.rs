@@ -1,6 +1,6 @@
 //! The sweep's task passes over a scripted, immediately ready store.
 #![allow(clippy::unused_async_trait_impl)]
-use rbit_actions::stale_tasks::{StaleSwept, StaleTaskStore, StaleTasks, Timeouts, before};
+use rbit_actions::stale_tasks::{StaleSwept, StaleTaskStore, StaleTasks, Staleness, Timeouts, before};
 use std::{
     future::Future,
     pin::pin,
@@ -61,7 +61,7 @@ impl StaleTaskStore for Store {
         self.call(format!("note {id}: {reason}"));
         Ok(())
     }
-    async fn fail(&self, id: i64, _: i64) -> Result<Option<String>, ()> {
+    async fn fail(&self, id: i64, _: Staleness, _: i64) -> Result<Option<String>, ()> {
         self.call(format!("fail {id}"));
         Ok((!self.stopped.contains(&id)).then(|| format!("task {id}")))
     }

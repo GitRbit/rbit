@@ -1,13 +1,16 @@
 //! The client's subcommands, as close to `gh`'s as rbit's API allows.
 
-use std::{collections::BTreeMap, io::Read as _, path::PathBuf, time::Duration};
+use std::{io::Read as _, path::PathBuf};
 
 use anyhow::{Context as _, anyhow, bail};
 use clap::{Args, Subcommand};
 use reqwest::Method;
 use serde_json::{Map, Value, json};
 
-use super::{Api, Repo, hosts, parse_remote};
+use super::{
+    Api, Repo, agent, hosts, parse_remote, pulls, runs,
+    util::{clip, encode, git, split_pair, text, value_text, wildcard},
+};
 
 /// Where a command works: the repository and the instance.
 #[derive(Debug, Clone, Args)]
@@ -18,6 +21,22 @@ pub struct Target {
     /// The instance, `https://git.example.com`; the remote's, or the one logged in to.
     #[arg(long, env = "RBIT_HOST", global = true)]
     hostname: Option<String>,
+    /// The Git remote that names the repository and instance (`origin` by default).
+    #[arg(long, env = "RBIT_REMOTE", global = true)]
+    remote: Option<String>,
+    #[command(flatten)]
+    output: Output,
+}
+
+/// How a command answers: for people, or one JSON object for programs (`docs/cli.md`).
+#[derive(Debug, Clone, Default, Args)]
+pub struct Output {
+    /// Print one compact JSON object with a `schema`; failures too, with a `code`.
+    #[arg(long, global = true)]
+    pub json: bool,
+    /// With `--json`, only these fields of each listed item (comma-separated).
+    #[arg(long, global = true, value_delimiter = ',')]
+    pub fields: Vec<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -45,6 +64,46 @@ pub enum ClientCommand {
     Artifact {
         #[command(subcommand)]
         command: ArtifactCommand,
+        #[command(flatten)]
+        target: Target,
+    },
+    /// Issues: list, view, create, comment, close and label.
+    Issue {
+        #[command(subcommand)]
+        command: super::issues::IssueCommand,
+        #[command(flatten)]
+        target: Target,
+    },
+    /// Where a branch stands: its head, its CI for exactly that commit, its base, its pull
+    /// request and the next command worth running (the current branch by default).
+    Status {
+        #[arg(short, long)]
+        branch: Option<String>,
+        #[command(flatten)]
+        target: Target,
+    },
+    /// CI without a branch: `rbit ci run` tests the working tree (or `--commit`) on a scratch
+    /// ref and watches its run.
+    Ci {
+        #[command(subcommand)]
+        command: CiCommand,
+        #[command(flatten)]
+        target: Target,
+    },
+    /// What CI already recorded between a good and a bad commit, and the one to test next.
+    Bisect {
+        good: String,
+        bad: String,
+        /// Only this workflow's results, by path (`.rbit/workflows/ci.yml`).
+        #[arg(long)]
+        workflow: Option<String>,
+        #[command(flatten)]
+        target: Target,
+    },
+    /// Tasks: take an issue into its own branch and worktree, resume it, finish it.
+    Task {
+        #[command(subcommand)]
+        command: super::task::TaskCommand,
         #[command(flatten)]
         target: Target,
     },
@@ -77,6 +136,13 @@ pub enum ClientCommand {
 }
 
 #[derive(Debug, Subcommand)]
+pub enum CiCommand {
+    /// Test the working tree, or a commit, without a branch, and watch the run: exit 0 when
+    /// it passed, 1 when a job failed, 8 at `--timeout`.
+    Run(super::ci::CiRun),
+}
+
+#[derive(Debug, Subcommand)]
 pub enum AuthCommand {
     /// Store a token for an instance, read from standard input or `RBIT_TOKEN`.
     Login {
@@ -99,6 +165,14 @@ pub enum AuthCommand {
         #[arg(long)]
         hostname: Option<String>,
     },
+    /// Let `git push` and `git fetch` use the stored login for an instance, never prompting.
+    SetupGit {
+        #[arg(long)]
+        hostname: String,
+    },
+    /// The Git credential helper `setup-git` installs (`get`, `store`, `erase`).
+    #[command(hide = true)]
+    GitCredential { operation: String },
 }
 
 #[derive(Debug, Subcommand)]
@@ -115,15 +189,18 @@ pub enum RunCommand {
         /// `queued`, `in_progress`, `completed`, `success`, `failure`, …
         #[arg(short, long)]
         status: Option<String>,
+        /// Only runs that tested this commit (an id or a prefix of 7 or more hex digits).
+        #[arg(long)]
+        sha: Option<String>,
         #[arg(short = 'L', long, default_value_t = 20)]
         limit: u32,
-        /// Print the runs as JSON.
-        #[arg(long)]
-        json: bool,
     },
-    /// A run and its jobs; the newest run when no id is given.
+    /// A run and its jobs; without an id, every run of `--sha` or of `HEAD`.
     View {
         run: Option<i64>,
+        /// The commit whose runs to show, when no run id is given (default: `HEAD`).
+        #[arg(long, conflicts_with = "run")]
+        sha: Option<String>,
         /// Print every job's log.
         #[arg(long)]
         log: bool,
@@ -133,25 +210,37 @@ pub enum RunCommand {
         /// Only this job.
         #[arg(short, long)]
         job: Option<i64>,
-        #[arg(long)]
-        json: bool,
-        /// Exit with 1 when the run did not succeed.
+        /// Exit with 1 when a run did not succeed, 8 while one has not finished.
         #[arg(long)]
         exit_status: bool,
     },
-    /// Follow a run until it finishes; the newest run when no id is given.
+    /// Follow a run until it finishes; without an id, every run of `--sha` or of `HEAD`,
+    /// waiting for the first to appear.
     Watch {
         run: Option<i64>,
-        /// Exit with 1 when the run did not succeed.
+        /// The commit whose runs to follow, when no run id is given (default: `HEAD`).
+        #[arg(long, conflicts_with = "run")]
+        sha: Option<String>,
+        /// Exit with 1 when a run did not succeed.
         #[arg(long)]
         exit_status: bool,
         /// Seconds between looks.
         #[arg(short, long, default_value_t = 3)]
         interval: u64,
+        /// Give up after this many seconds with `timeout` (exit 8).
+        #[arg(long, default_value_t = 3600)]
+        timeout: u64,
+        /// With a commit: end with `head_changed` (exit 5) when this branch moves on (the
+        /// current branch when watching `HEAD`).
+        #[arg(long, conflicts_with = "run")]
+        branch: Option<String>,
     },
-    /// Run a run's jobs again: all, the failed ones, or one.
+    /// Run a run's jobs again: all, the failed ones, or one. Without a run id, every failed
+    /// or cancelled run of `--sha` (or of `HEAD`).
     Rerun {
-        run: i64,
+        run: Option<i64>,
+        #[arg(long, conflicts_with = "run")]
+        sha: Option<String>,
         #[arg(long)]
         failed: bool,
         #[arg(short, long)]
@@ -159,9 +248,40 @@ pub enum RunCommand {
     },
     /// Cancel a run.
     Cancel { run: i64 },
-    /// Download a run's artifacts; the newest run when no id is given.
+    /// What failed: per failed job, how it ended, its error annotations and the last lines
+    /// of the step that ended it. Without an id, every failed run of `--sha` or of `HEAD`.
+    Failure {
+        run: Option<i64>,
+        #[arg(long, conflicts_with = "run")]
+        sha: Option<String>,
+    },
+    /// One step's log lines: the last 100 by default.
+    Log {
+        job: i64,
+        /// The step's number, as `run view` lists it.
+        #[arg(long)]
+        step: i64,
+        #[arg(long, conflicts_with = "from")]
+        tail: Option<u32>,
+        /// Start at this task-log line.
+        #[arg(long)]
+        from: Option<u64>,
+        /// With `--from`, how many lines.
+        #[arg(long, requires = "from")]
+        lines: Option<u32>,
+        /// An earlier attempt of the job (default: the current one).
+        #[arg(long)]
+        attempt: Option<i64>,
+        /// Keep timestamps and colour codes.
+        #[arg(long)]
+        raw: bool,
+    },
+    /// Download a run's artifacts; without an id, the run of `--sha` or of `HEAD`.
     Download {
         run: Option<i64>,
+        /// The commit whose run to download from, when no run id is given (default: `HEAD`).
+        #[arg(long, conflicts_with = "run")]
+        sha: Option<String>,
         /// Only artifacts of these names (repeatable).
         #[arg(short, long)]
         name: Vec<String>,
@@ -226,20 +346,82 @@ pub enum PrCommand {
         #[arg(short, long)]
         draft: bool,
     },
+    /// Publish or recover one draft pull request for a branch: an existing one is returned,
+    /// and `--request-id` makes a retry return the first answer.
+    Ensure {
+        #[arg(short, long, default_value = "")]
+        title: String,
+        #[arg(short, long, default_value = "")]
+        body: String,
+        #[arg(short = 'B', long)]
+        base: Option<String>,
+        #[arg(short = 'H', long)]
+        head: Option<String>,
+        /// Open it ready for review instead of as a draft.
+        #[arg(long)]
+        ready: bool,
+        #[arg(long)]
+        request_id: Option<String>,
+    },
+    /// Whether a pull request can merge, by the merge's own rules: exit 0 when ready, 1 when
+    /// a required check failed, 8 while something is still expected or running.
+    Ready {
+        number: u64,
+        /// The head you expect; a different one is `head_changed` (exit 5).
+        #[arg(long)]
+        head: Option<String>,
+        /// Mark a draft ready for review first.
+        #[arg(long)]
+        mark: bool,
+        /// Wait until it is ready or a required check failed.
+        #[arg(long)]
+        watch: bool,
+        #[arg(long, default_value_t = 3600)]
+        timeout: u64,
+    },
+    /// Queue a pull request to land only after its merge on the current base passed CI;
+    /// `--watch` waits: exit 0 when it landed, 1 when it failed, 5 when taken out of line.
+    Queue {
+        number: u64,
+        #[arg(long)]
+        head: Option<String>,
+        #[arg(long, conflicts_with = "rebase")]
+        squash: bool,
+        #[arg(long)]
+        rebase: bool,
+        #[arg(long)]
+        watch: bool,
+        #[arg(long, default_value_t = 7200)]
+        timeout: u64,
+    },
+    /// Take a pull request out of the merge queue.
+    Dequeue { number: u64 },
+    /// Merge the base into a pull request's head branch, if the head is still `--head`.
+    UpdateBranch {
+        number: u64,
+        #[arg(long)]
+        head: String,
+    },
+    /// Revert a commit into a new branch and a pull request (never merged on its own).
+    Revert {
+        commit: String,
+        #[arg(short = 'B', long)]
+        base: Option<String>,
+    },
     /// Open pull requests.
     List {
         #[arg(short, long, default_value = "open")]
         state: String,
+        /// Only pull requests from this branch.
+        #[arg(short = 'H', long)]
+        head: Option<String>,
         #[arg(short = 'L', long, default_value_t = 30)]
         limit: u32,
     },
     /// A pull request.
-    View {
-        number: u64,
-        #[arg(long)]
-        json: bool,
-    },
-    /// Merge a pull request.
+    View { number: u64 },
+    /// Merge a pull request, only if its head is still `--head` (by default the head read
+    /// just before merging).
     Merge {
         number: u64,
         #[arg(long, conflicts_with_all = ["squash", "rebase"])]
@@ -248,8 +430,12 @@ pub enum PrCommand {
         squash: bool,
         #[arg(long)]
         rebase: bool,
+        /// The head commit that may be merged; a newer head is refused (`head_changed`).
+        #[arg(long)]
+        head: Option<String>,
     },
-    /// The checks of a pull request's head: exit 0 when all passed, 8 while some are pending.
+    /// The checks of a pull request's head: exit 0 when all passed, 1 when one failed, 8
+    /// while some are pending or none has been reported yet.
     Checks {
         number: u64,
         /// Wait until every check finished.
@@ -260,13 +446,37 @@ pub enum PrCommand {
     },
 }
 
-/// Runs `command`; the process exit code.
+/// Runs `command`; the process exit code. With `--json`, a failure is printed as an error
+/// object on stdout and its exit code returned.
 pub async fn run(command: ClientCommand) -> anyhow::Result<i32> {
+    let json = match &command {
+        ClientCommand::Run { target, .. }
+        | ClientCommand::Workflow { target, .. }
+        | ClientCommand::Artifact { target, .. }
+        | ClientCommand::Pr { target, .. }
+        | ClientCommand::Status { target, .. }
+        | ClientCommand::Ci { target, .. }
+        | ClientCommand::Task { target, .. }
+        | ClientCommand::Bisect { target, .. }
+        | ClientCommand::Issue { target, .. }
+        | ClientCommand::Api { target, .. } => target.output.json,
+        ClientCommand::Auth { .. } => false,
+    };
+    match dispatch(command).await {
+        Err(error) if json => {
+            println!("{}", agent::error_body(&error));
+            Ok(agent::exit_code(&error))
+        }
+        result => result,
+    }
+}
+
+async fn dispatch(command: ClientCommand) -> anyhow::Result<i32> {
     match command {
         ClientCommand::Auth { command } => auth(command).await,
         ClientCommand::Run { command, target } => {
             let (api, repo) = connect(&target, true)?;
-            runs(&api, &repo.expect("a repository"), command).await
+            runs::runs(&api, &repo.expect("a repository"), command, &target.output).await
         }
         ClientCommand::Workflow { command, target } => {
             let (api, repo) = connect(&target, true)?;
@@ -278,7 +488,27 @@ pub async fn run(command: ClientCommand) -> anyhow::Result<i32> {
         }
         ClientCommand::Pr { command, target } => {
             let (api, repo) = connect(&target, true)?;
-            pulls(&api, &repo.expect("a repository"), command).await
+            pulls::pulls(&api, &repo.expect("a repository"), command, &target.output).await
+        }
+        ClientCommand::Issue { command, target } => {
+            let (api, repo) = connect(&target, true)?;
+            super::issues::issues(&api, &repo.expect("a repository"), command, &target.output).await
+        }
+        ClientCommand::Status { branch, target } => {
+            let (api, repo) = connect(&target, true)?;
+            super::status::status(&api, &repo.expect("a repository"), branch, &target.output).await
+        }
+        ClientCommand::Ci { command: CiCommand::Run(options), target } => {
+            let (api, repo, remote) = connect_through(&target, true)?;
+            super::ci::run(&api, &repo.expect("a repository"), remote.as_deref(), options, &target.output).await
+        }
+        ClientCommand::Bisect { good, bad, workflow, target } => {
+            let (api, repo) = connect(&target, true)?;
+            super::bisect::bisect(&api, &repo.expect("a repository"), &good, &bad, workflow.as_deref(), &target.output).await
+        }
+        ClientCommand::Task { command, target } => {
+            let (api, repo, remote) = connect_through(&target, true)?;
+            super::task::task(&api, &repo.expect("a repository"), remote.as_deref(), command, &target.output).await
         }
         ClientCommand::Api { path, method, raw_fields, fields, input, target } => {
             let needs_repo = path.contains("{owner}") || path.contains("{repo}");
@@ -290,26 +520,44 @@ pub async fn run(command: ClientCommand) -> anyhow::Result<i32> {
 
 // ------------------------------------------------------------------ where and as whom
 
-/// The `origin` remote of the Git repository in the current directory.
-fn origin() -> Option<String> {
-    let output = std::process::Command::new("git").args(["remote", "get-url", "origin"]).output().ok()?;
-    output.status.success().then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+/// Every Git remote of the repository in the current directory, with what its URL names.
+fn remotes() -> Vec<super::Remote> {
+    let names = git(&["remote"]).unwrap_or_default();
+    names.lines().map(|name| (name.to_owned(), git(&["remote", "get-url", name]).and_then(|url| parse_remote(&url)))).collect()
 }
 
 /// The API of the instance `target` names, with its token, and the repository when
 /// `need_repo` (an error when there is none).
 fn connect(target: &Target, need_repo: bool) -> anyhow::Result<(Api, Option<Repo>)> {
-    let remote = origin().and_then(|url| parse_remote(&url));
+    connect_through(target, need_repo).map(|(api, repo, _)| (api, repo))
+}
+
+/// [`connect`], and the name of the remote that named the repository, which commands that
+/// push or fetch use: `--remote`, else the one [`super::choose_remote`] picked.
+fn connect_through(target: &Target, need_repo: bool) -> anyhow::Result<(Api, Option<Repo>, Option<String>)> {
+    let stored = hosts::Hosts::load()?;
+    let named = target.hostname.as_deref().map(hosts::normalize);
+    let known = |host: &str| named.as_deref() == Some(host) || stored.hosts.contains_key(host);
+    let all = remotes();
+    let chosen = match super::choose_remote(target.remote.as_deref(), &all, &known, named.is_some() || !stored.hosts.is_empty()) {
+        Ok(chosen) => chosen,
+        Err(_) if target.repo.is_some() => None,
+        Err(problem) => bail!("{problem}"),
+    };
+    if let (Some(name), None) = (&target.remote, &chosen) {
+        bail!("no Git remote `{name}` with an rbit URL here");
+    }
+    let remote = chosen.map(|(_, found)| found.clone());
     let repo = match &target.repo {
         Some(repo) => Some(Repo::parse(repo)?),
         None => remote.as_ref().map(|(_, repo)| repo.clone()),
     };
     if need_repo && repo.is_none() {
-        bail!("no repository: pass --repo owner/name, or run inside a clone whose `origin` is on rbit");
+        bail!("no repository: pass --repo owner/name or --remote NAME, or run inside a clone whose `origin` is on rbit");
     }
-    let stored = hosts::Hosts::load()?;
-    let host = match (&target.hostname, &target.repo, &remote) {
-        (Some(host), ..) => hosts::normalize(host),
+    let named_host = named.is_some();
+    let host = match (named, &target.repo, &remote) {
+        (Some(host), ..) => host,
         (None, None, Some((host, _))) => host.clone(),
         _ => match (&stored.default, stored.hosts.len()) {
             (Some(default), _) => default.clone(),
@@ -317,12 +565,11 @@ fn connect(target: &Target, need_repo: bool) -> anyhow::Result<(Api, Option<Repo
             _ => bail!("which instance? pass --hostname, or log in with `rbit auth login`"),
         },
     };
-    let token = std::env::var("RBIT_TOKEN")
-        .ok()
-        .or_else(|| std::env::var("GH_TOKEN").ok())
-        .filter(|token| !token.trim().is_empty())
-        .or_else(|| stored.hosts.get(&host).map(|login| login.token.clone()));
-    Ok((Api::new(&host, token)?, repo))
+    let env = super::env_token();
+    let trusted = named_host || stored.hosts.contains_key(&host);
+    let login = stored.hosts.get(&host).map(|login| login.token.clone());
+    let token = super::token_for(env, trusted, &host, login).map_err(|problem| anyhow!(problem))?;
+    Ok((Api::new(&host, token)?, repo, chosen.map(|(name, _)| name.to_owned())))
 }
 
 async fn auth(command: AuthCommand) -> anyhow::Result<i32> {
@@ -382,6 +629,8 @@ async fn auth(command: AuthCommand) -> anyhow::Result<i32> {
             stored.save()?;
             eprintln!("Logged out of {host}");
         }
+        AuthCommand::SetupGit { hostname } => super::git_credential::setup(&hostname)?,
+        AuthCommand::GitCredential { operation } => return super::git_credential::credential(&operation),
         AuthCommand::Token { hostname } => {
             let Some(host) = hostname.map(|host| hosts::normalize(&host)).or(stored.default.clone()) else {
                 bail!("which instance? pass --hostname");
@@ -399,173 +648,17 @@ fn actions(repo: &Repo, rest: &str) -> String {
     format!("repos/{repo}/actions/{rest}")
 }
 
-/// The newest run's id, or `run`.
-async fn run_or_newest(api: &Api, repo: &Repo, run: Option<i64>) -> anyhow::Result<i64> {
-    if let Some(run) = run {
-        return Ok(run);
-    }
-    let listed = api.get(&actions(repo, "runs?per_page=1")).await?;
-    listed["workflow_runs"][0]["id"].as_i64().ok_or_else(|| anyhow!("{repo} has no runs"))
-}
-
-fn text<'a>(value: &'a Value, key: &str) -> &'a str {
-    value[key].as_str().unwrap_or("")
-}
-
-/// `completed/success`, or the status while it runs.
-fn state(value: &Value) -> String {
-    match value["conclusion"].as_str() {
-        Some(conclusion) => conclusion.to_owned(),
-        None => text(value, "status").to_owned(),
-    }
-}
-
-async fn runs(api: &Api, repo: &Repo, command: RunCommand) -> anyhow::Result<i32> {
-    match command {
-        RunCommand::List { workflow, branch, event, status, limit, json } => {
-            let mut query = vec![format!("per_page={}", limit.clamp(1, 100))];
-            for (key, value) in [("branch", &branch), ("event", &event), ("status", &status)] {
-                if let Some(value) = value {
-                    query.push(format!("{key}={}", encode(value)));
-                }
-            }
-            let listed = api.get(&actions(repo, &format!("runs?{}", query.join("&")))).await?;
-            let mut items: Vec<Value> = listed["workflow_runs"].as_array().cloned().unwrap_or_default();
-            if let Some(workflow) = &workflow {
-                items.retain(|run| {
-                    text(run, "path").rsplit('/').next() == Some(workflow.as_str())
-                        || text(run, "path") == workflow
-                        || text(run, "name") == workflow
-                });
-            }
-            if json {
-                println!("{}", serde_json::to_string_pretty(&items)?);
-                return Ok(0);
-            }
-            for run in &items {
-                println!(
-                    "{:<12} {:<20} {:<40} {:<20} {:<18} {}",
-                    state(run),
-                    clip(text(run, "name"), 20),
-                    clip(text(run, "display_title"), 40),
-                    clip(text(run, "head_branch"), 20),
-                    text(run, "event"),
-                    run["id"]
-                );
-            }
-        }
-        RunCommand::View { run, log, log_failed, job, json, exit_status } => {
-            return view_run(api, repo, run, View { log, log_failed, job, json, exit_status }).await;
-        }
-        RunCommand::Watch { run, exit_status, interval } => return watch_run(api, repo, run, exit_status, interval).await,
-        RunCommand::Rerun { run, failed, job } => {
-            let path = match (job, failed) {
-                (Some(job), _) => actions(repo, &format!("jobs/{job}/rerun")),
-                (None, true) => actions(repo, &format!("runs/{run}/rerun-failed-jobs")),
-                (None, false) => actions(repo, &format!("runs/{run}/rerun")),
-            };
-            api.json(Method::POST, &path, Some(&json!({}))).await?;
-            eprintln!("Run {run} runs again");
-        }
-        RunCommand::Cancel { run } => {
-            api.json(Method::POST, &actions(repo, &format!("runs/{run}/cancel")), Some(&json!({}))).await?;
-            eprintln!("Run {run} was cancelled");
-        }
-        RunCommand::Download { run, name, pattern, dir } => download_run(api, repo, run, &name, pattern.as_deref(), &dir).await?,
-    }
-    Ok(0)
-}
-
-/// What `run view` shows besides the summary.
-#[expect(clippy::struct_excessive_bools, reason = "the command's flags")]
-struct View {
-    log: bool,
-    log_failed: bool,
-    job: Option<i64>,
-    json: bool,
-    exit_status: bool,
-}
-
-/// `run view`: the run, its jobs and the steps that did not succeed, and the logs asked for.
-async fn view_run(api: &Api, repo: &Repo, run: Option<i64>, view: View) -> anyhow::Result<i32> {
-    let View { log, log_failed, job, json, exit_status } = view;
-    let id = run_or_newest(api, repo, run).await?;
-    let run = api.get(&actions(repo, &format!("runs/{id}"))).await?;
-    let jobs = api.get(&actions(repo, &format!("runs/{id}/jobs?per_page=100"))).await?;
-    let jobs: Vec<Value> = jobs["jobs"].as_array().cloned().unwrap_or_default();
-    if json {
-        println!("{}", serde_json::to_string_pretty(&json!({ "run": run, "jobs": jobs }))?);
-    } else {
-        println!("{} #{} {} ({})", text(&run, "name"), run["run_number"], text(&run, "display_title"), state(&run));
-        println!(
-            "{} on {} at {}",
-            text(&run, "event"),
-            text(&run, "head_branch"),
-            &text(&run, "head_sha")[..text(&run, "head_sha").len().min(12)]
-        );
-        println!("{}", text(&run, "html_url"));
-        for job in jobs.iter().filter(|candidate| job.is_none_or(|wanted| candidate["id"].as_i64() == Some(wanted))) {
-            println!("  {:<12} {} ({})", state(job), text(job, "name"), job["id"]);
-            for step in job["steps"].as_array().into_iter().flatten() {
-                if step["conclusion"].as_str() != Some("success") {
-                    println!("      {:<10} {}", state(step), text(step, "name"));
-                }
-            }
-        }
-    }
-    if log || log_failed {
-        for entry in &jobs {
-            let wanted = job.is_none_or(|wanted| entry["id"].as_i64() == Some(wanted));
-            let failed = entry["conclusion"].as_str() == Some("failure");
-            if !wanted || (log_failed && !failed) {
-                continue;
-            }
-            let bytes = api.download(&actions(repo, &format!("jobs/{}/logs", entry["id"]))).await?;
-            for line in String::from_utf8_lossy(&bytes).lines() {
-                println!("{}\t{line}", text(entry, "name"));
-            }
-        }
-    }
-    if exit_status && run["conclusion"].as_str() != Some("success") {
-        return Ok(1);
-    }
-    Ok(0)
-}
-
-/// `run watch`: each job's state as it changes, until the run completes.
-async fn watch_run(api: &Api, repo: &Repo, run: Option<i64>, exit_status: bool, interval: u64) -> anyhow::Result<i32> {
-    let id = run_or_newest(api, repo, run).await?;
-    let mut seen: BTreeMap<i64, String> = BTreeMap::new();
-    loop {
-        let run = api.get(&actions(repo, &format!("runs/{id}"))).await?;
-        let jobs = api.get(&actions(repo, &format!("runs/{id}/jobs?per_page=100"))).await?;
-        for job in jobs["jobs"].as_array().into_iter().flatten() {
-            let (key, now) = (job["id"].as_i64().unwrap_or_default(), state(job));
-            if seen.get(&key) != Some(&now) {
-                println!("{:<12} {}", now, text(job, "name"));
-                seen.insert(key, now);
-            }
-        }
-        if run["status"].as_str() == Some("completed") {
-            println!("Run #{} {}: {}", run["run_number"], text(&run, "name"), state(&run));
-            return Ok(i32::from(exit_status && run["conclusion"].as_str() != Some("success")));
-        }
-        tokio::time::sleep(Duration::from_secs(interval.max(1))).await;
-    }
-}
-
 /// `run download`: the run's artifacts called `name` (every one when empty) whose name
 /// matches `pattern`, each unpacked into a directory of its own under `dir`, or into `dir`
 /// itself when one is named.
-async fn download_run(
+pub async fn download_run(
     api: &Api,
     repo: &Repo,
-    run: Option<i64>,
+    id: i64,
     name: &[String],
     pattern: Option<&str>,
     dir: &std::path::Path,
 ) -> anyhow::Result<()> {
-    let id = run_or_newest(api, repo, run).await?;
     let listed = api.get(&actions(repo, &format!("runs/{id}/artifacts?per_page=100"))).await?;
     let chosen: Vec<Value> = listed["artifacts"]
         .as_array()
@@ -679,103 +772,6 @@ async fn artifacts(api: &Api, repo: &Repo, command: ArtifactCommand) -> anyhow::
     Ok(0)
 }
 
-// ------------------------------------------------------------------ pull requests
-
-/// The current Git branch.
-fn current_branch() -> Option<String> {
-    let output = std::process::Command::new("git").args(["rev-parse", "--abbrev-ref", "HEAD"]).output().ok()?;
-    let branch = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-    (output.status.success() && branch != "HEAD").then_some(branch)
-}
-
-async fn pulls(api: &Api, repo: &Repo, command: PrCommand) -> anyhow::Result<i32> {
-    match command {
-        PrCommand::Create { title, body, base, head, draft } => {
-            let head = head.or_else(current_branch).ok_or_else(|| anyhow!("which branch? pass --head"))?;
-            let base = match base {
-                Some(base) => base,
-                None => api.get(&format!("repos/{repo}")).await?["default_branch"].as_str().unwrap_or("main").to_owned(),
-            };
-            let created = api
-                .json(
-                    Method::POST,
-                    &format!("repos/{repo}/pulls"),
-                    Some(&json!({ "title": title, "body": body, "base": base, "head": head, "draft": draft })),
-                )
-                .await?;
-            println!("{}", text(&created, "html_url"));
-        }
-        PrCommand::List { state, limit } => {
-            let listed = api.get(&format!("repos/{repo}/pulls?state={}&per_page={}", encode(&state), limit.clamp(1, 100))).await?;
-            for pull in listed.as_array().into_iter().flatten() {
-                println!(
-                    "#{:<6} {:<50} {} <- {}",
-                    pull["number"],
-                    clip(text(pull, "title"), 50),
-                    text(&pull["base"], "ref"),
-                    text(&pull["head"], "ref")
-                );
-            }
-        }
-        PrCommand::View { number, json } => {
-            let pull = api.get(&format!("repos/{repo}/pulls/{number}")).await?;
-            if json {
-                println!("{}", serde_json::to_string_pretty(&pull)?);
-            } else {
-                let state = if pull["merged"].as_bool() == Some(true) { "merged" } else { text(&pull, "state") };
-                println!("#{number} {} ({state})", text(&pull, "title"));
-                println!(
-                    "{} wants to merge {} into {}",
-                    text(&pull["user"], "login"),
-                    text(&pull["head"], "ref"),
-                    text(&pull["base"], "ref")
-                );
-                println!("{}", text(&pull, "html_url"));
-                if !text(&pull, "body").is_empty() {
-                    println!("\n{}", text(&pull, "body"));
-                }
-            }
-        }
-        PrCommand::Merge { number, merge: _, squash, rebase } => {
-            let method = if squash {
-                "squash"
-            } else if rebase {
-                "rebase"
-            } else {
-                "merge"
-            };
-            let merged =
-                api.json(Method::PUT, &format!("repos/{repo}/pulls/{number}/merge"), Some(&json!({ "merge_method": method }))).await?;
-            eprintln!("Merged #{number} ({method}): {}", text(&merged, "sha"));
-        }
-        PrCommand::Checks { number, watch, interval } => loop {
-            let pull = api.get(&format!("repos/{repo}/pulls/{number}")).await?;
-            let sha = text(&pull["head"], "sha").to_owned();
-            let status = api.get(&format!("repos/{repo}/commits/{sha}/status")).await?;
-            let statuses = status["statuses"].as_array().cloned().unwrap_or_default();
-            let pending = statuses.iter().any(|status| text(status, "state") == "pending");
-            if !watch || !pending {
-                for status in &statuses {
-                    println!("{:<8} {:<50} {}", text(status, "state"), clip(text(status, "context"), 50), text(status, "target_url"));
-                }
-                if statuses.is_empty() {
-                    println!("no checks reported on {}", &sha[..sha.len().min(12)]);
-                }
-                let failed = statuses.iter().any(|status| matches!(text(status, "state"), "failure" | "error"));
-                return Ok(if failed {
-                    1
-                } else if pending {
-                    8
-                } else {
-                    0
-                });
-            }
-            tokio::time::sleep(Duration::from_secs(interval.max(1))).await;
-        },
-    }
-    Ok(0)
-}
-
 // ------------------------------------------------------------------ the raw API
 
 async fn raw_api(
@@ -843,61 +839,4 @@ async fn raw_api(
         return Ok(1);
     }
     Ok(0)
-}
-
-// ------------------------------------------------------------------ helpers
-
-/// A field's value in a query string: text as is, anything else as JSON.
-fn value_text(value: &Value) -> String {
-    match value {
-        Value::String(text) => text.clone(),
-        other => other.to_string(),
-    }
-}
-
-fn split_pair(pair: &str) -> anyhow::Result<(String, String)> {
-    let (key, value) = pair.split_once('=').ok_or_else(|| anyhow!("`{pair}` is not `key=value`"))?;
-    Ok((key.to_owned(), value.to_owned()))
-}
-
-/// `text` for a URL's query or path segment.
-fn encode(text: &str) -> String {
-    text.bytes()
-        .map(|byte| match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (byte as char).to_string(),
-            _ => format!("%{byte:02X}"),
-        })
-        .collect()
-}
-
-fn clip(text: &str, width: usize) -> String {
-    if text.chars().count() <= width { text.to_owned() } else { format!("{}…", text.chars().take(width - 1).collect::<String>()) }
-}
-
-/// Whether `name` matches `pattern`, `*` for any run of characters and `?` for one.
-fn wildcard(pattern: &str, name: &str) -> bool {
-    fn go(pattern: &[char], name: &[char]) -> bool {
-        match (pattern.split_first(), name.split_first()) {
-            (None, None) => true,
-            (Some(('*', rest)), _) => go(rest, name) || (!name.is_empty() && go(pattern, &name[1..])),
-            (Some(('?', rest)), Some((_, others))) => go(rest, others),
-            (Some((expected, rest)), Some((actual, others))) => expected == actual && go(rest, others),
-            _ => false,
-        }
-    }
-    go(&pattern.chars().collect::<Vec<_>>(), &name.chars().collect::<Vec<_>>())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn helpers() {
-        assert_eq!(split_pair("a=b=c").unwrap(), ("a".to_owned(), "b=c".to_owned()));
-        assert!(split_pair("nope").is_err());
-        assert_eq!(encode("feature/x y"), "feature%2Fx%20y");
-        assert!(wildcard("dist-*", "dist-linux") && !wildcard("dist-?", "dist-xy"));
-        assert_eq!(clip("abcdef", 4), "abc…");
-    }
 }

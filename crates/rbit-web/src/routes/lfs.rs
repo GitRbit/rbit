@@ -40,7 +40,7 @@ use axum::{
 };
 use futures_util::TryStreamExt;
 use rbit_core::{
-    User,
+    TokenScope, User,
     lfs::{LfsOid, LfsOperation},
 };
 use rbit_services::{
@@ -175,6 +175,16 @@ pub(crate) async fn authorize(
     };
     if let Some(scope) = caller.as_ref().and_then(GitCaller::token_scope) {
         ctx.access = scope.limit(ctx.access);
+    }
+    // A limited token reaches its one repository, and uploads only with the `push` right,
+    // as over Git: another repository is not there for it.
+    if let Some(GitCaller::User { token_limit: Some(limit), .. }) = &caller {
+        if !limit.reaches(ctx.repo.repo.id) {
+            return Err(ServiceError::NotFound.into());
+        }
+        if !limit.allows(rbit_services::tokens::Right::Push) {
+            ctx.access = TokenScope::Read.limit(ctx.access);
+        }
     }
     let subject = user.map_or(TokenSubject::Anonymous, |user| TokenSubject::User(user.id()));
     let authenticated = user.is_some();

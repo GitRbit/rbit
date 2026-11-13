@@ -16,6 +16,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
+  # The Rust every CI job builds with: a new stable release changes rustfmt and Cargo's
+  # build layout, so it is adopted in its own change, never by surprise.
+  RUST_TOOLCHAIN: "1.99.1"
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
   CARGO_BUILD_JOBS: "1"
@@ -44,6 +47,10 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          # A pinned toolchain is installed without the hosted image's clippy.
+          components: clippy
       # Bootstrap registry sources before guarded compilation's offline metadata scan.
       - run: node scripts/workspace.mjs fetch --locked
       - run: node --test scripts/tests/rewrite-*.test.mjs scripts/tests/identity-features.test.mjs scripts/tests/platform-boundary.test.mjs scripts/tests/workspace*.test.mjs
@@ -94,6 +101,7 @@ jobs:
       - uses: ./.github/actions/prepare-build
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
@@ -141,6 +149,8 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/prepare-build
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
       # This job only compiles, so it succeeds (and saves) even when a test fails later.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
@@ -199,6 +209,8 @@ jobs:
       - uses: ./.github/actions/prepare-build
       # The e2e tests ask cargo for the build's layout, and toolchain paths are compiled in.
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
       # Integration tests drive the real git CLI (pushes, gc, backups); the hosted runners
       # ship git, so only print its version for the log.
       - run: git --version
@@ -250,6 +262,8 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/prepare-build
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: ". -> .cargo-build"
@@ -305,6 +319,8 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/prepare-build
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: ". -> .cargo-build"
@@ -356,6 +372,8 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/prepare-build
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
       - run: git --version
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
@@ -405,6 +423,8 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/prepare-build
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: ". -> .cargo-build"
@@ -476,6 +496,8 @@ jobs:
           name: app-css
           path: crates/rbit-web/assets
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: ". -> .cargo-build"

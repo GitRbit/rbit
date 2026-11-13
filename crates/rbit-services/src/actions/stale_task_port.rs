@@ -2,10 +2,10 @@
 //! runner store. The passes, cutoffs, reasons and step order are
 //! `rbit_actions::stale_tasks::StaleTasks`; the SQL that selects and moves tasks stays the
 //! race authority.
-use rbit_actions::stale_tasks::StaleTaskStore;
+use rbit_actions::stale_tasks::{StaleTaskStore, Staleness};
 use rbit_core::{
     Timestamp,
-    actions::{Status, Task, TaskId},
+    actions::{Status, Task, TaskId, Termination, TerminationReason},
 };
 use rbit_storage::sqlite::actions_runs::Settled;
 
@@ -48,8 +48,20 @@ impl StaleTaskStore for StaleTaskSession<'_> {
         self.service.write_system_line(id, reason).await
     }
 
-    async fn fail(&self, id: TaskId, now: i64) -> Result<Option<Settled>, ServiceError> {
-        Ok(self.service.ctx().database.actions_runs().finish_task(id, Status::Failure, Timestamp(now)).await?)
+    async fn fail(&self, id: TaskId, staleness: Staleness, now: i64) -> Result<Option<Settled>, ServiceError> {
+        let store = self.service.ctx().database.actions_runs();
+        // Agent loop: a silent runner is lost; an endless task ran out of time.
+        let reason = match staleness {
+            Staleness::Silent => TerminationReason::RunnerLost,
+            Staleness::Endless => TerminationReason::Timeout,
+        };
+        // The record follows the failure it explains: a task its runner finished meanwhile
+        // keeps the runner's own record, not a lost runner's.
+        let settled = store.finish_task(id, Status::Failure, Timestamp(now)).await?;
+        if settled.is_some() {
+            store.record_termination(id, Termination::because(reason), Timestamp(now)).await?;
+        }
+        Ok(settled)
     }
 
     async fn close(&self, id: TaskId, reason: &str) -> Result<(), ServiceError> {

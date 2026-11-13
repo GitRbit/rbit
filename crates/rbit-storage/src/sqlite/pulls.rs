@@ -6,11 +6,9 @@
 //! [`super::issues::IssueStore`]) plus a `pull_requests` row keyed by it. [`PullStore::create`]
 //! inserts both in one transaction, and refuses a second **open** pull request for the
 //! same base repository, base branch, head repository and head branch inside that same
-//! transaction (its first write takes `SQLite`'s write lock, so concurrent creations are
-//! serialised and cannot both pass the check).
+//! transaction (its first write takes `SQLite`'s write lock, so concurrent creations are serialised and cannot both pass the check).
 //!
-//! Lists join the issue rows read-only; the issue row conversion is repeated here because
-//! the core's row type is private to its store.
+//! Lists join the issue rows read-only; the issue row conversion is repeated here because the core's row type is private to its store.
 
 use super::pool::Pool;
 use rbit_core::{
@@ -41,8 +39,7 @@ macro_rules! issue_columns {
 }
 
 /// List filter: `?1` repository, `?2` state (`open`, `closed`, `merged`, `all`), `?3`
-/// author or NULL, `?4` head repository or NULL, `?5` head branch or NULL, `?6` base
-/// branch or NULL.
+/// author or NULL, `?4` head repository or NULL, `?5` head branch or NULL, `?6` base branch or NULL.
 macro_rules! list_filter {
     () => {
         " FROM pull_requests p JOIN issues i ON i.id = p.issue_id WHERE p.repo_id = ?1 \
@@ -590,3 +587,6 @@ impl PullStore {
         Ok(result.rows_affected() > 0)
     }
 }
+
+// Agent loop: the pull requests of a commit.
+mod commits;

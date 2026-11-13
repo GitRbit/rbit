@@ -24,6 +24,29 @@ impl<'a> ClaimSession<'a> {
     pub(super) fn new(service: &'a ActionsService, runner: &'a CachedRunner) -> Self {
         Self { service, runner, store: service.ctx().database.actions_runs() }
     }
+
+    // Agent loop: exclusive labels.
+    /// The labels this poll may claim with: all of them on an idle runner; without its
+    /// exclusive labels while it runs something; `None` while it runs a job that needs one
+    /// (that job has the runner to itself).
+    async fn claimable_labels(&self) -> Result<Option<Vec<rbit_core::actions::RunnerLabel>>, RunnerError> {
+        let runner = self.runner;
+        if runner.exclusive_labels.is_empty() {
+            return Ok(Some(runner.labels.clone()));
+        }
+        let running = self.store.running_tasks_of(runner.id).await?;
+        if running.is_empty() {
+            return Ok(Some(runner.labels.clone()));
+        }
+        for task in running {
+            let Some(task) = self.store.task(task).await? else { continue };
+            let Some(job) = self.store.job(task.job_id).await? else { continue };
+            if job.runs_on.iter().any(|label| runner.exclusive_labels.iter().any(|exclusive| exclusive.as_str() == label)) {
+                return Ok(None);
+            }
+        }
+        Ok(Some(runner.labels.iter().filter(|label| !runner.exclusive_labels.contains(label)).cloned().collect()))
+    }
 }
 impl Specification for ClaimSession<'_> {
     type Error = RunnerError;
@@ -47,10 +70,11 @@ impl Specification for ClaimSession<'_> {
 impl ClaimQueue for ClaimSession<'_> {
     async fn claim(&self, token: &TaskTokenSecret, key: Option<&str>) -> Result<Option<Claimed<Job, Task>>, RunnerError> {
         let runner = self.runner;
+        let Some(labels) = self.claimable_labels().await? else { return Ok(None) };
         let request = ClaimRequest {
             runner: runner.id,
             scope: runner.scope,
-            labels: &runner.labels,
+            labels: &labels,
             host_labels: &runner.host_labels,
             ephemeral: runner.ephemeral,
             instance_runners_for_all: self.service.config().instance_runners_for_all,

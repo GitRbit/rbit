@@ -66,6 +66,9 @@ pub const MAX_IDEMPOTENCY_KEY_BYTES: usize = 64;
 /// Longest log line; a runner splits longer lines before sending them.
 pub const MAX_LOG_LINE_BYTES: usize = 64 * 1024;
 
+/// Most lines one log append carries; a runner sends a longer log in several appends.
+pub const MAX_LOG_BATCH_LINES: usize = 10_000;
+
 /// Longest job output name, in bytes.
 pub const MAX_OUTPUT_KEY_BYTES: usize = 255;
 

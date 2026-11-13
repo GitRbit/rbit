@@ -16,6 +16,14 @@ fn pushes_consider_live_branches_and_tags_in_order_up_to_the_cap() {
     assert_eq!(names, ["refs/tags/v1", "refs/heads/main"]);
     updates = (0..MAX_REF_UPDATES + 4).map(|_| ("refs/heads/x", None, Some("f"))).collect();
     assert_eq!(considered_refs(&updates, |(n, b, a)| pushed(n, *b, *a)).len(), MAX_REF_UPDATES);
+    assert_eq!(dropped_refs(&updates, |(n, b, a)| pushed(n, *b, *a)).len(), 4, "the rest are said to be left out");
+    // The default branch past the cap still refreshes the schedule: it is looked for in both.
+    updates[MAX_REF_UPDATES] = ("refs/heads/main", Some("a"), Some("m"));
+    let view = |(n, b, a): &(&'static str, Option<&'static str>, Option<&'static str>)| pushed(n, *b, *a);
+    let kept = considered_refs(&updates, view);
+    assert_eq!(default_branch_head(kept.iter().copied().map(view), "main"), None);
+    let every = kept.into_iter().chain(dropped_refs(&updates, view)).map(view);
+    assert_eq!(default_branch_head(every, "main"), Some("m"));
 }
 
 #[test]
@@ -56,4 +64,13 @@ fn closing_cancels_only_runs_that_have_not_started() {
         assert!(cancelled_when_pull_closes(stage));
     }
     assert!(!cancelled_when_pull_closes(RunStage::Started));
+}
+
+#[test]
+fn a_scratch_ref_is_pushed_like_a_branch_of_its_name() {
+    let updates = [("refs/scratch/ada/4c1e9a", None, Some("a")), ("refs/scratch/ada/gone", Some("b"), None)];
+    let names: Vec<_> = considered_refs(&updates, |(n, b, a)| pushed(n, *b, *a)).into_iter().map(|u| u.0).collect();
+    assert_eq!(names, ["refs/scratch/ada/4c1e9a"], "a deleted scratch ref starts nothing");
+    let scratch = pushed("refs/scratch/ada/4c1e9a", None, Some("a"));
+    assert_eq!(comparison_base(scratch, "main"), Some("main"), "its paths are compared with the default branch");
 }

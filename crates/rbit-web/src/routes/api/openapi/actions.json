@@ -26,9 +26,18 @@
           {
             "name": "branch",
             "in": "query",
-            "description": "Runs for this branch (without `refs/heads/`).",
+            "description": "Runs for this branch (without `refs/heads/`), including the runs of pull requests from it.",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "head_sha",
+            "in": "query",
+            "description": "rbit's own: runs that tested this commit, given as its full id or a prefix of at least 7 hex digits (422 otherwise). An empty list means no run has started for the commit yet, or none will.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{7,40}$"
             }
           },
           {
@@ -966,9 +975,18 @@
           {
             "name": "branch",
             "in": "query",
-            "description": "Runs for this branch (without `refs/heads/`).",
+            "description": "Runs for this branch (without `refs/heads/`), including the runs of pull requests from it.",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "head_sha",
+            "in": "query",
+            "description": "rbit's own: runs that tested this commit, given as its full id or a prefix of at least 7 hex digits (422 otherwise). An empty list means no run has started for the commit yet, or none will.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{7,40}$"
             }
           },
           {
@@ -3493,6 +3511,543 @@
           }
         }
       }
+    },
+    "/repos/{owner}/{repo}/actions/runs/{run_id}/failure": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "run_id",
+          "in": "path",
+          "required": true,
+          "description": "The run's id.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getRunFailureDigest",
+        "tags": [
+          "actions"
+        ],
+        "summary": "rbit's own: what failed in a run, small enough to read",
+        "description": "A run that failed before any job, because its workflow could not be read or planned, says why in `workflow_error`. The failure digest (`schema: rbit.failure/1`): for each job that did not succeed, its termination record, up to 10 error annotations (`path`, `line`, `message`) and an excerpt of the last 30 lines of the step that ended it, with timestamps and colours removed and repeated lines folded. A cut excerpt says `truncated`, how many lines it shows of how many, and a `more` command. A job that uploaded an `rbit-test-report` artifact lists its failed `tests` (`id`, `path`, `line`, `message`, `flaky` when it also passed at this commit). Each job says whether its failures are `new` or `recurring` against the previous run of the workflow and ref, and `also_failing_on_base`; `resolved` names the previous run's failures that are gone. A run without failed jobs has an empty `jobs`.",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The digest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/jobs/{job_id}/steps/{step}/log": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "job_id",
+          "in": "path",
+          "required": true,
+          "description": "The job's id.",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "step",
+          "in": "path",
+          "required": true,
+          "description": "The step's `number`, as in the job's `steps`.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getJobStepLog",
+        "tags": [
+          "actions"
+        ],
+        "summary": "rbit's own: one step's log lines, tail first",
+        "description": "`schema: rbit.log/1`. The last `tail` lines (default 100, at most 1,000), or `lines` lines from task-log line `from`; at most 256 KiB. Lines are cleaned of timestamps and colours unless `raw=true`. `more_before` says earlier lines exist; `next_line` continues; `live` that the step still runs; `truncated` that the job wrote more than the instance keeps.",
+        "parameters": [
+          {
+            "name": "tail",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "lines",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "attempt",
+            "in": "query",
+            "description": "Which attempt of the job; the current one by default.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "raw",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The lines",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/jobs/{job_id}/annotations": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "job_id",
+          "in": "path",
+          "required": true,
+          "description": "The job's id.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getJobAnnotations",
+        "tags": [
+          "actions"
+        ],
+        "summary": "rbit's own: a job attempt's annotations",
+        "description": "`schema: rbit.annotations/1`: the `::error`, `::warning` and `::notice` lines and problem-matcher findings of an attempt (at most 50), each with `level`, `path`, `line`, `message` and the task-log line.",
+        "parameters": [
+          {
+            "name": "attempt",
+            "in": "query",
+            "description": "Which attempt of the job; the current one by default.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The annotations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/jobs/{job_id}/attempts": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "job_id",
+          "in": "path",
+          "required": true,
+          "description": "The job's id.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listJobAttempts",
+        "tags": [
+          "actions"
+        ],
+        "summary": "rbit's own: every attempt of a job and how it ended",
+        "description": "`schema: rbit.attempts/1`: oldest first, each with its `attempt`, whether it is the `current` one, its termination `reason` and `log_complete`. A job that failed and then passed on a re-run of the same commit shows both.",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The attempts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/agent/status": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "getAgentStatus",
+        "tags": [
+          "actions"
+        ],
+        "summary": "rbit's own: where a branch stands, in one answer",
+        "description": "`schema: rbit.status/1`: the branch's head and where it stands against its base (merge base, ahead, behind), the CI of exactly that commit (`state`: `none_expected` with a reason, `not_started`, `queued`, `running`, `failure` as soon as a job failed, `indeterminate` when every failed job's account is incomplete, `cancelled`, `success`; job counts; the failed jobs with their termination records and excerpts; each run with its `error` when its workflow could not run), the base's CI, the open pull request from the branch, the issue a `feature/<n>-…` branch names, and `next`, a command worth running.",
+        "parameters": [
+          {
+            "name": "branch",
+            "in": "query",
+            "description": "The branch; the default branch when not given.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/agent/watch": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "watchAgentCommit",
+        "tags": [
+          "actions"
+        ],
+        "summary": "rbit's own: wait until the CI of a commit changes",
+        "description": "`schema: rbit.watch/1`, a long-poll. Answers at once when the CI of `sha` differs from what `cursor` saw (the first answer always does), when `branch` no longer points at `sha` (`head_changed` with the newer commit), at once when a `done` commit has no run left going, or after `timeout` seconds (default and at most 25, below the request timeout) with `changed: false`. `done` is true for a state that will not change by itself. The body has the same `state`, `jobs` and `failed` as the status, and the `cursor` for the next call.",
+        "parameters": [
+          {
+            "name": "sha",
+            "in": "query",
+            "required": true,
+            "description": "The full id of the commit.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{40}$"
+            }
+          },
+          {
+            "name": "branch",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "timeout",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 25
+            }
+          }
+        ],
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The CI of the commit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/supersede": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "getSupersedeSetting",
+        "tags": [
+          "actions"
+        ],
+        "summary": "rbit's own: whether newer branch pushes supersede older runs",
+        "description": "`{\"enabled\": bool}`. When enabled, a push to a branch other than the default one cancels that branch's older unfinished runs of the same workflow (unless the workflow declares its own `concurrency`); the cancelled run's `superseded_by` names the newer commit.",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The setting",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "setSupersedeSetting",
+        "tags": [
+          "actions"
+        ],
+        "summary": "rbit's own: turn superseding branch runs on or off",
+        "description": "Repository administrators, `admin` scope. Off by default.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "enabled"
+                ],
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/agent/bisect": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "getAgentBisect",
+        "tags": [
+          "actions"
+        ],
+        "summary": "rbit's own: what CI already recorded between a good and a bad commit",
+        "description": "`schema: rbit.bisect/1`: walks `bad`'s first-parent line down to `good` (at most 1,000 commits, `truncated` beyond) and reads the finished runs already recorded for each commit (of `workflow` only, when given). A commit `passed` with a successful run and no failed one, `failed` with a failed one, and is `untested` otherwise. Answers the newest commit that passed before the first that failed (`last_good`), that failure (`first_bad`), how many untested commits lie between them (`remaining`, the first 50 in `remaining_shas`), the one to test next (`next`, the middle), and `culprit` when none is left to test. `good` must be on `bad`'s first-parent line: reversed bounds, a commit merged in from a side branch or an unrelated one answer 422 with the reason. `warnings` names a `good` with a recorded failure or a `bad` with only recorded passes.",
+        "parameters": [
+          {
+            "name": "good",
+            "in": "query",
+            "required": true,
+            "description": "A commit, branch or tag known to pass.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bad",
+            "in": "query",
+            "required": true,
+            "description": "A commit, branch or tag known to fail.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "workflow",
+            "in": "query",
+            "description": "Only this workflow's runs, by path (`.rbit/workflows/ci.yml`).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The bisection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3666,6 +4221,10 @@
           },
           "is_schedule": {
             "type": "boolean"
+          },
+          "superseded_by": {
+            "type": "string",
+            "description": "rbit's own: on a cancelled run, the commit whose newer run superseded it (a `concurrency` group with `cancel-in-progress`, or the repository's supersede setting)."
           }
         },
         "description": "A run, as the `workflow_run` webhook sends it. A workflow that failed to parse is a completed run with conclusion failure and no jobs."
@@ -3770,6 +4329,57 @@
           "completed_at"
         ],
         "properties": {
+          "termination": {
+            "description": "rbit's own: how the job's task ended, once it has. A task without a record reads by its status (`completed`, `cancelled`, or `unknown` for an unexplained failure). A job that ran out of time also reads `conclusion: timed_out`.",
+            "type": "object",
+            "required": [
+              "reason",
+              "step",
+              "step_name",
+              "exit_code",
+              "log_complete"
+            ],
+            "properties": {
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "completed",
+                  "step_failed",
+                  "timeout",
+                  "cancelled",
+                  "superseded",
+                  "runner_lost",
+                  "setup_failed",
+                  "server_shutdown",
+                  "unknown"
+                ]
+              },
+              "step": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "The `number` of the step that ended the job."
+              },
+              "step_name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "exit_code": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "That step's exit code, when it was a process that exited."
+              },
+              "log_complete": {
+                "type": "boolean",
+                "description": "The log was finalised and nothing was cut from it. When false, the job's result cannot be trusted as complete."
+              }
+            }
+          },
           "id": {
             "type": "integer"
           },
@@ -3825,6 +4435,7 @@
               "success",
               "failure",
               "cancelled",
+              "timed_out",
               "skipped",
               null
             ],

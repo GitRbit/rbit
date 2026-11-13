@@ -6,6 +6,8 @@ use rbit_core::{
     actions::{Run, Status},
 };
 
+use rbit_storage::sqlite::actions_runs::{Rerun, RunStart};
+
 use crate::actions_fixture::Fixture;
 
 async fn pushed(fixture: &Fixture, workflow: &str, reference: &str) -> Run {
@@ -117,13 +119,41 @@ async fn fail_fast_cancels_matrix_siblings_unless_turned_off() {
     run_next(&fixture, 1, Status::Failure, &[]).await;
     let after: Vec<Status> = statuses(&fixture, &run).await.into_iter().map(|(_, status)| status).collect();
     assert_eq!(after, [Status::Failure, Status::Cancelled, Status::Cancelled]);
-    // A cancelled job outranks a failed one in a run's status (`rbit_core::actions::aggregate`).
-    assert_eq!(fixture.database.actions_runs().run(run.id).await.unwrap().unwrap().status, Status::Cancelled);
+    // The run itself was not cancelled, so the failure decides it, as on GitHub.
+    assert_eq!(fixture.database.actions_runs().run(run.id).await.unwrap().unwrap().status, Status::Failure);
 
     let run = pushed(&fixture, &workflow(false), "refs/heads/next").await;
     run_next(&fixture, 2, Status::Failure, &[]).await;
     let after: Vec<Status> = statuses(&fixture, &run).await.into_iter().map(|(_, status)| status).collect();
     assert_eq!(after, [Status::Failure, Status::Waiting, Status::Waiting]);
+}
+
+#[tokio::test]
+async fn a_run_cancelled_as_a_whole_stays_cancelled_until_it_runs_again() {
+    let fixture = Fixture::new().await;
+    let workflow = "on: push
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix: {n: [1, 2]}
+    runs-on: x
+    steps: [{run: x}]
+";
+    let run = pushed(&fixture, workflow, "refs/heads/main").await;
+    run_next(&fixture, 1, Status::Failure, &[]).await;
+    let store = fixture.database.actions_runs();
+    store.cancel_run(run.repo_id, run.id, Timestamp::now()).await.unwrap().unwrap();
+    assert_eq!(store.run(run.id).await.unwrap().unwrap().status, Status::Cancelled, "a job had failed, but the run was cancelled");
+
+    // A new attempt forgets the cancel: a job cancelled after a failure (as fail-fast does)
+    // leaves the run failed again.
+    store.rerun(run.repo_id, run.id, Rerun::All, RunStart::Runnable, Timestamp::now()).await.unwrap().unwrap();
+    run_next(&fixture, 2, Status::Failure, &[]).await;
+    let waiting: Vec<_> =
+        store.jobs(run.id).await.unwrap().into_iter().filter(|job| job.status == Status::Waiting).map(|job| job.id).collect();
+    store.cancel_jobs(run.id, &waiting, Timestamp::now()).await.unwrap().unwrap();
+    assert_eq!(store.run(run.id).await.unwrap().unwrap().status, Status::Failure);
 }
 
 #[tokio::test]

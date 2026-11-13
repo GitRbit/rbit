@@ -44,6 +44,8 @@ mod archive_files;
 // Actions: run page.
 mod artifact_ports;
 pub mod artifacts;
+// Agent loop: bisection from recorded results.
+pub mod bisect;
 pub mod trigger_details;
 // Actions: shared cache.
 pub mod browse;
@@ -62,16 +64,23 @@ pub use rbit_actions::{availability::Availability, downloads};
 pub mod environments;
 pub mod hooks;
 pub mod logs;
+// Agent loop: promoting artifacts.
+pub mod promote;
+// Agent loop: test reports, fingerprints and flaky tests.
+pub mod reports;
 mod runner_ports;
 pub mod runners;
 pub mod runs;
 pub mod scheduler;
 pub mod schedules;
+mod scratch;
 pub mod secrets;
 // Actions: interface and secrets (U).
 pub mod settings;
 mod stale_task_port;
+pub mod status;
 pub mod statuses;
+mod supersede;
 pub mod sweeper;
 mod task_leases;
 pub mod tasks;

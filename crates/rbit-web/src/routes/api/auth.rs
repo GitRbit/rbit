@@ -32,7 +32,11 @@ use axum::{
     http::{HeaderValue, Method, header, request::Parts},
 };
 use rbit_core::{RepoAccess, TokenScope, User};
-use rbit_services::{RepoContext, ServiceError, ThrottleScope, actions::tokens::TaskGrant};
+use rbit_services::{
+    RepoContext, ServiceError, ThrottleScope,
+    actions::tokens::TaskGrant,
+    tokens::{Right, TokenLimit},
+};
 
 use super::{
     ApiMethod, PREFIX,
@@ -49,6 +53,10 @@ pub struct Caller {
     // Actions: S.
     /// A workflow task, and what the endpoint it calls needs of it.
     task: Option<(TaskGrant, TaskNeed)>,
+    /// A scoped token's limit: one repository, some rights (agent plan step 4.8).
+    token_limit: Option<TokenLimit>,
+    /// The token the caller authenticated with.
+    token: Option<rbit_core::AccessTokenId>,
     /// The request being answered, for redirects from old repository names.
     request: Arc<RequestTarget>,
 }
@@ -85,6 +93,11 @@ impl RequestTarget {
 }
 
 impl Caller {
+    /// The token the caller authenticated with; `None` for a workflow task.
+    pub fn token_id(&self) -> Option<rbit_core::AccessTokenId> {
+        self.token
+    }
+
     pub fn user(&self) -> Option<&User> {
         self.user.as_deref()
     }
@@ -107,6 +120,11 @@ impl Caller {
     /// requests and 403 for a token with a narrower scope.
     pub fn require(&self, scope: TokenScope) -> ApiResult<&User> {
         let user = self.require_user()?;
+        // The admin scope changes protection, hooks, secrets, runners and the repository
+        // itself: nothing a token limited to some rights may do, whatever scope it was given.
+        if scope == TokenScope::Admin && self.is_limited() {
+            return Err(ApiError::forbidden("A limited token cannot do what needs the admin scope"));
+        }
         match self.scope {
             Some(granted) if !granted.allows(scope) => Err(ApiError::forbidden(format!(
                 "This token's scope ({}) does not allow this; it needs the {} scope",
@@ -115,6 +133,42 @@ impl Caller {
             ))),
             _ => Ok(user),
         }
+    }
+
+    // Agent loop: scoped tokens.
+    /// Refuses (403) a limited token without `right`; any other caller passes.
+    pub fn require_right(&self, right: Right) -> ApiResult<()> {
+        match &self.token_limit {
+            Some(limit) if !limit.allows(right) => {
+                Err(ApiError::forbidden(format!("This token is limited and does not have the `{}` right", right.as_str())))
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// Refuses (403) a limited token without `approve` for a review verdict (`APPROVE` or
+    /// `REQUEST_CHANGES`): a review act, as resolving a thread is. Comments need no right.
+    pub fn require_verdict_right(&self, event: Option<&str>) -> ApiResult<()> {
+        let verdict = event.is_some_and(|event| event.eq_ignore_ascii_case("APPROVE") || event.eq_ignore_ascii_case("REQUEST_CHANGES"));
+        if verdict { self.require_right(Right::Approve) } else { Ok(()) }
+    }
+
+    /// Refuses (403) a limited token: for writes no right covers (switching workflows,
+    /// deleting artifacts and caches); any other caller passes.
+    pub fn require_unlimited(&self) -> ApiResult<()> {
+        if self.is_limited() { Err(ApiError::forbidden("A limited token cannot do this")) } else { Ok(()) }
+    }
+
+    /// Whether the caller may reach repository `repo` at all: a limited token reaches only its
+    /// own. For a repository opened some other way than [`Self::open_repo`], such as a pull
+    /// request's head.
+    pub fn reaches(&self, repo: rbit_core::RepoId) -> bool {
+        self.token_limit.as_ref().is_none_or(|limit| limit.reaches(repo))
+    }
+
+    /// Whether the caller's token is limited to a repository or some rights.
+    pub fn is_limited(&self) -> bool {
+        self.token_limit.is_some()
     }
 
     /// Caps what the caller may do with a repository to the token's scope.
@@ -140,12 +194,21 @@ impl Caller {
         }
         let repositories = &state.services.repositories;
         match repositories.open(self.user(), owner, name).await {
+            // A limited token sees only its repository; the rest is not there for it.
             Ok(mut ctx) => {
+                if self.token_limit.as_ref().is_some_and(|limit| !limit.reaches(ctx.repo.repo.id)) {
+                    return Err(ApiError::not_found());
+                }
                 ctx.access = self.limit(ctx.access);
                 Ok(ctx)
             }
             Err(ServiceError::NotFound) => {
-                let moved = repositories.moved_to(self.user(), owner, name).await?;
+                // An old name is followed only to a repository the token reaches: a redirect
+                // would name another repository's current name.
+                let moved = repositories
+                    .moved_to(self.user(), owner, name)
+                    .await?
+                    .filter(|repo| self.token_limit.as_ref().is_none_or(|limit| limit.reaches(repo.repo.id)));
                 let location = moved.and_then(|repo| self.request.moved(state.config.server.base_url(), owner, name, &repo.full_name()));
                 Err(location.map_or_else(ApiError::not_found, |location| ApiError::moved(&self.request.method, location)))
             }
@@ -222,13 +285,31 @@ impl FromRequestParts<AppState> for Caller {
             return Ok(Self { task: Some((grant, need)), request, ..Self::default() });
         }
         throttle.check_client(ThrottleScope::ApiAuth, &address)?;
-        let Some((user, scope)) = state.services.tokens.authenticate(token).await? else {
+        let Some((user, scope, token_limit, token_id)) = state.services.tokens.authenticate_limited(token).await? else {
             throttle.record_client_failure(ThrottleScope::ApiAuth, &address);
             return Err(ApiError::unauthorized("Bad credentials"));
         };
         throttle.check(ThrottleScope::ApiRequest, &user.id().0.to_string())?;
-        Ok(Self { user: Some(Arc::new(user)), scope: Some(scope), task: None, request })
+        // A token limited to one repository reaches that repository's endpoints (where
+        // `open_repo` checks which repository) and who it belongs to, nothing account-wide:
+        // no repository list naming the others, no new repositories.
+        if token_limit.is_some() {
+            let route = parts.extensions.get::<MatchedPath>().and_then(|matched| matched.as_str().strip_prefix(PREFIX));
+            let allowed = route.zip(api_method(&parts.method)).is_some_and(|(path, method)| limited_route(method, path));
+            if !allowed {
+                return Err(ApiError::forbidden("A token limited to one repository cannot use this endpoint"));
+            }
+        }
+        Ok(Self { user: Some(Arc::new(user)), scope: Some(scope), task: None, token_limit, token: Some(token_id), request })
     }
+}
+
+/// Whether a token limited to one repository may call `path`: the repository's own
+/// endpoints, and reading who it belongs to.
+fn limited_route(method: ApiMethod, path: &str) -> bool {
+    path == "/repos/{owner}/{repo}"
+        || path.starts_with("/repos/{owner}/{repo}/")
+        || (method == ApiMethod::Get && matches!(path, "/user" | "/version"))
 }
 
 // Actions: S.
@@ -259,7 +340,19 @@ mod tests {
             created_at: Timestamp(0),
         };
         let user = User { account, email: "ada@example.com".parse().unwrap(), is_admin: false };
-        Caller { user: Some(Arc::new(user)), scope, task: None, request: Arc::default() }
+        Caller { user: Some(Arc::new(user)), scope, task: None, token_limit: None, token: None, request: Arc::default() }
+    }
+
+    #[test]
+    fn a_limited_token_reaches_its_repository_endpoints_only() {
+        assert!(limited_route(ApiMethod::Get, "/repos/{owner}/{repo}"));
+        assert!(limited_route(ApiMethod::Post, "/repos/{owner}/{repo}/pulls/{number}/queue"));
+        assert!(limited_route(ApiMethod::Get, "/user"));
+        assert!(!limited_route(ApiMethod::Get, "/user/repos"), "it would name every repository");
+        assert!(!limited_route(ApiMethod::Post, "/user/repos"));
+        assert!(!limited_route(ApiMethod::Patch, "/user"));
+        assert!(!limited_route(ApiMethod::Get, "/search/repositories"));
+        assert!(!limited_route(ApiMethod::Get, "/repos/{owner}/{repo}s"), "a prefix is not the repository");
     }
 
     #[test]

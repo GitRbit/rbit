@@ -300,6 +300,8 @@ pub(super) enum GitCaller {
         /// `Some` when authenticated with a personal access token, whose scope caps access.
         /// Password authentication carries the user's full access.
         token_scope: Option<TokenScope>,
+        /// A scoped token's limit (agent plan step 4.8): one repository, pushes only with `push`.
+        token_limit: Option<rbit_services::tokens::TokenLimit>,
     },
     // Actions: S.
     /// A running workflow task, by its token (`docs/design/actions.md` §11.3).
@@ -359,6 +361,16 @@ async fn authorize(
     }
     let gate = CallerRepositories { state, caller: caller.as_ref() };
     let ctx = access::authorize(&gate, caller.is_none(), owner, repo, service).await?;
+    if let Some(GitCaller::User { token_limit: Some(limit), .. }) = &caller {
+        // Another repository is not there for a limited token, as over the API: a 403 would
+        // say it exists.
+        if !limit.reaches(ctx.repo.repo.id) {
+            return Err(Denied::NotFound);
+        }
+        if service == Service::ReceivePack && !limit.allows(rbit_services::tokens::Right::Push) {
+            return Err(Denied::Forbidden);
+        }
+    }
     Ok((ctx, caller))
 }
 
@@ -384,8 +396,8 @@ pub(super) async fn authenticate(state: &AppState, client: &Client, headers: &He
             return Err(Denied::RateLimited { retry_after_seconds });
         }
         // The token identifies its owner on its own; Git's username is ignored.
-        return match state.services.tokens.authenticate(&password).await {
-            Ok(Some((user, scope))) => Ok(Some(GitCaller::User { user, token_scope: Some(scope) })),
+        return match state.services.tokens.authenticate_limited(&password).await {
+            Ok(Some((user, scope, token_limit, _))) => Ok(Some(GitCaller::User { user, token_scope: Some(scope), token_limit })),
             Ok(None) => {
                 state.services.throttle.record_client_failure(ThrottleScope::GitAuth, &ip);
                 Err(Denied::Challenge)
@@ -397,7 +409,7 @@ pub(super) async fn authenticate(state: &AppState, client: &Client, headers: &He
         };
     }
     match state.services.authenticate_git_password(&login, password, &client.0).await {
-        Ok(GitPasswordOutcome::Authenticated(user)) => Ok(Some(GitCaller::User { user, token_scope: None })),
+        Ok(GitPasswordOutcome::Authenticated(user)) => Ok(Some(GitCaller::User { user, token_scope: None, token_limit: None })),
         Ok(GitPasswordOutcome::TokenRequired) => Err(Denied::TokenRequired),
         Err(ServiceError::InvalidCredentials) => Err(Denied::Challenge),
         Err(ServiceError::Forbidden) => Err(Denied::Suspended),
@@ -488,7 +500,7 @@ mod tests {
             is_admin: false,
         };
         for token_scope in [None, Some(TokenScope::Write)] {
-            let caller = GitCaller::User { user: user.clone(), token_scope };
+            let caller = GitCaller::User { user: user.clone(), token_scope, token_limit: None };
             assert_eq!(caller.push_source(), PushSource::User(rbit_core::AccountId(5)));
         }
     }

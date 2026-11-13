@@ -2,10 +2,10 @@
 use rbit_core::{RepoId, actions::TaskId};
 use std::path::{Path, PathBuf};
 
-/// Most lines one append may carry (`rbit_actions::logs`).
-pub use rbit_actions::logs::MAX_LINES_PER_CALL;
 /// Windows, ranges, limits and the step view's bounds are owned by `rbit_actions::logs`.
 pub use rbit_actions::logs::{LogLimits, LogRange, LogWindow, STEP_VIEW_BYTES, STEP_VIEW_LINES};
+/// Most lines one append may carry (`rbit_actions::logs`).
+pub use rbit_actions::logs::{MAX_LINES_PER_CALL, readable_line};
 
 /// A whole task log for download: the plain file while the task runs, the gzip file after.
 #[derive(Debug)]

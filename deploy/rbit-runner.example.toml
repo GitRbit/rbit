@@ -28,6 +28,14 @@ image = "docker.io/library/ubuntu:24.04"
 # name = "self-hosted"
 # backend = "host"
 
+# A label whose jobs need the whole runner (benchmarks, timing-sensitive tests): with
+# `exclusive = true` the runner takes such a job only when it runs nothing else, and takes
+# nothing else while it runs. Its other labels still use the full `capacity`.
+# [[labels]]
+# name = "bench"
+# backend = "host"
+# exclusive = true
+
 [container]
 # "docker" or "podman" (rootless Podman is recommended), or a path to either.
 program = "docker"

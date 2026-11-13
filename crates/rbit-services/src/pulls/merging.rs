@@ -92,6 +92,7 @@ impl PullService {
         );
         let base_tip = base_tip?;
         let rules = rules?;
+        let required = self.required_for_head(ctx, &rules.required_contexts).await?;
         let (reviews, writers) = voters?;
         let tally = tally(&reviews, ctx.issue().author, &ctx.pull.head_sha, rules.dismiss_stale_approvals, |id| writers.contains(&id));
         let statuses = statuses?;
@@ -111,7 +112,7 @@ impl PullService {
             mergeable,
             tally: &tally,
             checks: checks_status(&statuses),
-            required_checks: required_checks(&rules.required_contexts, &statuses),
+            required_checks: required_checks(&required, &statuses),
         };
         let evaluation = evaluate(&facts, &rules);
         let can_delete_head = can_delete_head?;
@@ -123,6 +124,7 @@ impl PullService {
             mergeable,
             conflict_paths: if mergeable == Mergeability::Conflict { ctx.pull.conflict_paths.clone() } else { Vec::new() },
             statuses,
+            required,
             head_branch_exists,
             can_merge: merges_as_writer(viewer.is_some(), ctx.repo().can_write_content()),
             can_delete_head,
@@ -343,6 +345,20 @@ impl PullService {
         Ok(head_ctx.can_write_content() && self.inner.protection.may_delete_branch(head_ctx, actor, &ctx.pull.head_branch).await?)
     }
 
+    // Agent loop: checks a commit does not need.
+    /// The `required` contexts the head commit needs: a required check that rbit Actions
+    /// reports for a push (`<workflow> / <job> (push)`) is not required of a commit for which
+    /// the push trigger recorded that every workflow left it out (`branches` or `paths`
+    /// filters, a skip marker), or a docs-only push would never become mergeable. That
+    /// decision is the push's alone: checks of pull request runs stay required.
+    async fn required_for_head<S: ToString>(&self, ctx: &PullContext, required: &[S]) -> Result<Vec<String>, ServiceError> {
+        let required: Vec<String> = required.iter().map(ToString::to_string).collect();
+        let decision = self.ctx().database.actions_runs().decision(ctx.repo().repo.repo.id, &ctx.pull.head_sha).await?;
+        let left_out =
+            decision.is_some_and(|decision| decision.started == 0 && matches!(decision.reason.as_str(), "filtered" | "skip_marker"));
+        Ok(required_after(required, left_out))
+    }
+
     /// Deletes the head branch of a merged or closed pull request on request (the "Delete
     /// branch" button). `false` when it was not deleted.
     pub async fn delete_head(&self, actor: &User, ctx: &PullContext) -> Result<bool, ServiceError> {
@@ -364,5 +380,36 @@ impl PullService {
         }
         self.delete_head_branch(actor, ctx).await;
         Ok(!self.head_branch_exists(ctx).await)
+    }
+}
+
+/// Whether `context` is the shape of an rbit Actions job status for a push:
+/// `<workflow> / <job> (push)`.
+fn is_push_actions_context(context: &str) -> bool {
+    context.contains(" / ") && context.ends_with(" (push)")
+}
+
+/// `required` without the checks of push runs when the push left every workflow out.
+fn required_after(required: Vec<String>, left_out: bool) -> Vec<String> {
+    if !left_out {
+        return required;
+    }
+    required.into_iter().filter(|context| !is_push_actions_context(context)).collect()
+}
+
+#[cfg(test)]
+mod required_tests {
+    use super::required_after;
+
+    #[test]
+    fn a_push_left_out_drops_only_its_own_checks() {
+        let required: Vec<String> =
+            ["CI / test (push)", "CI / test (pull_request)", "ci/external", "Jenkins / build (nightly)"].map(String::from).to_vec();
+        assert_eq!(required_after(required.clone(), false), required, "a push that ran something keeps every check");
+        assert_eq!(
+            required_after(required, true),
+            ["CI / test (pull_request)", "ci/external", "Jenkins / build (nightly)"],
+            "pull request runs and other systems still report"
+        );
     }
 }

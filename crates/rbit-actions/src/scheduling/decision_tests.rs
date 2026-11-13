@@ -37,11 +37,15 @@ fn conditions_run_skip_or_fail_with_the_server_contexts() {
     let template = &templates(true)[0];
     let github: Map<String, Value> = json!({"ref": "refs/heads/main", "token": "secret", "Token": "x"}).as_object().cloned().unwrap();
     let vars: Map<String, Value> = json!({"STAGE": "prod"}).as_object().cloned().unwrap();
-    let passed = condition_contexts(github.clone(), Map::new(), vars.clone(), template, needs(&[("test", JobResult::Success)]));
+    let passed = condition_contexts(github.clone(), Map::new(), vars.clone(), template, needs(&[("test", JobResult::Success)]), false);
     assert_eq!(condition_verdict("github.ref == 'refs/heads/main' && vars.STAGE == 'prod'", &passed), (Verdict::Run, None));
     assert_eq!(condition_verdict("needs.test.result == 'success' && needs.test.outputs.v == '1'", &passed), (Verdict::Run, None));
     assert_eq!(condition_verdict("github.token == 'secret'", &passed), (Verdict::Skip, None), "the token is never readable");
-    let failed = condition_contexts(github, Map::new(), vars, template, needs(&[("test", JobResult::Failure)]));
+    // `test` was skipped because a job before it failed: `failure()` holds, `success()` not.
+    let skipped = needs(&[("test", JobResult::Skipped)]);
+    let upstream = condition_contexts(github.clone(), Map::new(), vars.clone(), template, skipped, true);
+    assert_eq!((condition_verdict("failure()", &upstream).0, condition_verdict("success()", &upstream).0), (Verdict::Run, Verdict::Skip));
+    let failed = condition_contexts(github, Map::new(), vars, template, needs(&[("test", JobResult::Failure)]), false);
     assert_eq!(
         condition_verdict("github.ref == 'refs/heads/main'", &failed),
         (Verdict::Skip, None),

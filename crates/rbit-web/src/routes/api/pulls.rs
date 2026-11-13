@@ -1,11 +1,9 @@
-//! REST API: Pull requests, reviews, review comments, requested reviewers and merging:
-//! `/repos/{owner}/{repo}/pulls…`.
+//! REST API: Pull requests, reviews, review comments, requested reviewers and merging: `/repos/{owner}/{repo}/pulls…`.
 //!
 //! Milestone 2 workstream P (pull requests) owns this file and `openapi/pulls.json`, the `OpenAPI`
 //! fragment documenting exactly these routes (merged into the served document).
 //!
-//! A child of `api`, so it can use the parent's private `route()` helper, `Caller`,
-//! `Pager`, `ApiError` and `ApiJson`.
+//! A child of `api`, so it can use the parent's private `route()` helper, `Caller`, `Pager`, `ApiError` and `ApiJson`.
 //!
 //! Reads need read access; every change needs a token with the `write` scope (merging
 //! also write access to the base repository). Repositories and pull request numbers the
@@ -29,6 +27,7 @@ use rbit_services::{
         json as pull_json,
     },
     timeline::StateChange,
+    tokens::Right,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -42,6 +41,8 @@ use super::{
     route,
 };
 use crate::AppState;
+
+mod dismissals;
 
 /// This area's endpoints, appended to [`super::table`].
 pub(super) fn routes() -> Vec<ApiRoute> {
@@ -59,7 +60,7 @@ pub(super) fn routes() -> Vec<ApiRoute> {
         route(Get, path("/{number}/reviews"), reviews),
         route(Post, path("/{number}/reviews"), create_review),
         route(Get, path("/{number}/reviews/{id}"), review),
-        route(Put, path("/{number}/reviews/{id}/dismissals"), dismiss),
+        route(Put, path("/{number}/reviews/{id}/dismissals"), dismissals::dismiss),
         route(Get, path("/{number}/comments"), comments),
         route(Post, path("/{number}/comments"), create_comment),
         route(Get, path("/{number}/requested_reviewers"), requested_reviewers),
@@ -125,6 +126,8 @@ pub async fn list(
     if let Some(head) = query.head.filter(|head| !head.is_empty()) {
         let spec = HeadSpec::parse(&head).ok_or_else(|| ApiError::invalid("head", "head must be branch or owner:branch"))?;
         match state.services.pulls.resolve_head(caller.user(), &ctx, &spec).await {
+            // A head in a repository the token does not reach is not there for it.
+            Ok(head_repo) if !caller.reaches(head_repo.repo.repo.id) => return Ok(pager.paged(Vec::new(), Some(0), false)),
             Ok(head_repo) => {
                 filter.head_repo = Some(head_repo.repo.repo.id);
                 filter.head_branch = Some(spec.branch);
@@ -161,11 +164,17 @@ pub async fn create(
     Path((owner, name)): Path<(String, String)>,
     ApiJson(new): ApiJson<NewPull>,
 ) -> ApiResult<(StatusCode, Json<Value>)> {
+    caller.require_right(Right::Push)?; // as `pulls/ensure`: it proposes pushed work
     let base = caller.open_repo(&state, &owner, &name).await?;
     let user = writer(&caller)?;
     let spec = HeadSpec::parse(&new.head).ok_or_else(|| ApiError::invalid("head", "head must be branch or owner:branch"))?;
     let pulls = &state.services.pulls;
     let head = pulls.resolve_head(Some(user), &base, &spec).await.map_err(|error| ApiError::service(error, "head"))?;
+    // A limited token's pull request proposes only its own repository's work: another
+    // repository's branch is answered as a head that does not exist.
+    if !caller.reaches(head.repo.repo.id) {
+        return Err(ApiError::service(ServiceError::NotFound, "head"));
+    }
     let input = NewPullInput {
         base_branch: new.base,
         head_branch: spec.branch,
@@ -207,6 +216,7 @@ pub async fn update(
     Path((owner, name, number)): Path<(String, String, String)>,
     ApiJson(changes): ApiJson<PullChanges>,
 ) -> ApiResult<Json<Value>> {
+    changes.base.as_ref().map_or(Ok(()), |_| caller.require_right(Right::Push))?;
     let ctx = open(&state, &caller, &owner, &name, &number).await?;
     let user = writer(&caller)?;
     let services = &state.services;
@@ -330,6 +340,7 @@ pub async fn merge(
     Path((owner, name, number)): Path<(String, String, String)>,
     ApiJson(request): ApiJson<MergeRequest>,
 ) -> ApiResult<Json<Value>> {
+    caller.require_right(Right::Merge)?;
     let ctx = open(&state, &caller, &owner, &name, &number).await?;
     let user = writer(&caller)?;
     let method = request.merge_method.as_deref().unwrap_or("merge");
@@ -347,10 +358,10 @@ pub async fn merge(
     match state.services.pulls.merge(user, &ctx, input).await {
         Ok(sha) => Ok(Json(json!({ "sha": sha, "merged": true, "message": "Pull Request successfully merged" }))),
         Err(MergeFailure::HeadChanged) => {
-            Err(ApiError::new(StatusCode::CONFLICT, "Head branch was modified. Review and try the merge again."))
+            Err(ApiError::new(StatusCode::CONFLICT, "Head branch was modified. Review and try the merge again.").with_code("head_changed"))
         }
         Err(MergeFailure::BaseChanged) => {
-            Err(ApiError::new(StatusCode::CONFLICT, "Base branch was changed. Review and try the merge again."))
+            Err(ApiError::new(StatusCode::CONFLICT, "Base branch was changed. Review and try the merge again.").with_code("base_changed"))
         }
         Err(MergeFailure::Blocked(message)) => Err(ApiError::new(StatusCode::METHOD_NOT_ALLOWED, message)),
         Err(MergeFailure::Service(error)) => Err(error.into()),
@@ -437,6 +448,7 @@ pub async fn create_review(
     Path((owner, name, number)): Path<(String, String, String)>,
     ApiJson(new): ApiJson<NewReview>,
 ) -> ApiResult<Json<Value>> {
+    caller.require_verdict_right(new.event.as_deref())?;
     let ctx = open(&state, &caller, &owner, &name, &number).await?;
     let user = writer(&caller)?;
     let pulls = &state.services.pulls;
@@ -458,43 +470,6 @@ pub async fn create_review(
     let data = pulls.reviews(Some(user), &ctx).await?;
     let pending = data.pending.ok_or_else(|| ApiError::invalid("event", "a pending review needs at least one comment"))?;
     Ok(Json(pull_json::review(&pending.review, Some(&user.account), &ctx.repo().repo, number, base)))
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Dismissal {
-    message: String,
-}
-
-/// `PUT /repos/{owner}/{repo}/pulls/{number}/reviews/{id}/dismissals`
-pub async fn dismiss(
-    State(state): State<AppState>,
-    caller: Caller,
-    Path((owner, name, number, id)): Path<(String, String, String, String)>,
-    ApiJson(dismissal): ApiJson<Dismissal>,
-) -> ApiResult<Json<Value>> {
-    let id = review_id(&id)?;
-    let ctx = open(&state, &caller, &owner, &name, &number).await?;
-    let user = writer(&caller)?;
-    let review = state
-        .services
-        .pulls
-        .dismiss_review(user, &ctx, id, &dismissal.message)
-        .await
-        .map_err(|error| ApiError::service(error, "message"))?;
-    let reviewer = match review.reviewer {
-        Some(id) if id == user.id() => Some(user.account.clone()),
-        Some(_) => state
-            .services
-            .pulls
-            .reviews(Some(user), &ctx)
-            .await?
-            .reviews
-            .into_iter()
-            .find(|entry| entry.review.id == id)
-            .and_then(|entry| entry.reviewer),
-        None => None,
-    };
-    Ok(Json(pull_json::review(&review, reviewer.as_ref(), &ctx.repo().repo, ctx.issue().number.get(), base_url(&state))))
 }
 
 /// `GET /repos/{owner}/{repo}/pulls/{number}/comments`: review comments the caller can see.

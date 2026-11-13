@@ -100,7 +100,7 @@ async fn run(cli: Cli) -> anyhow::Result<bool> {
     if let Some(Command::Client(command)) = cli.command {
         let code = client::run(command).await.unwrap_or_else(|error| {
             eprintln!("rbit: {error:#}");
-            1
+            client::exit_code(&error)
         });
         std::process::exit(code);
     }

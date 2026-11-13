@@ -7,6 +7,254 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- The command-line client waits out a short `Retry-After` and tries a throttled read again
+  (up to three times) instead of failing with `rate_limited` at once; writes are never
+  repeated.
+- Test reports may be uploaded as `rbit-test-report-<suffix>` as well as `rbit-test-report`:
+  a run's artifact names are unique, so with one name only one job of a run (one leg of a
+  test matrix) could hand in its report, and the others' uploads failed.
+- A job that waits for `runs-on` labels no runner of its repository has is named: `rbit
+  status` reads reason `no_runner` with the labels in `waits_for` and no longer suggests
+  watching, and `rbit run watch` stops at once with `no_runner` (exit 8) instead of waiting
+  for its timeout. Mirrored projects whose workflows ask for `ubuntu-latest` hit this.
+- Merge queue: `POST …/pulls/{n}/queue` (and `rbit pr queue`) lands a pull request only
+  after its merge on the current base passed every required check; the tested commit
+  becomes the base by compare-and-swap, and a base that moved means a new candidate and a
+  new test. Candidates live under `refs/merge-queue/`, which clients cannot push to.
+- Readiness by the merge's own rules (`GET …/pulls/{n}/readiness`, `rbit pr ready`), and
+  marking a draft ready for an exact head (`POST …/pulls/{n}/ready`).
+- `POST …/pulls/ensure` and `rbit pr ensure`: one pull request for a pair of branches,
+  returned when it exists, with request ids that make retries safe.
+- Server-side writes: update a pull request's branch from its base, revert a commit into a
+  pull request, move a branch by compare-and-swap, each through branch protection.
+- Commit queries: compare, contains, and the pull requests of a commit.
+- Artifacts by commit and name, and releases that attach a built artifact's files.
+- A failing workflow on the default branch keeps one issue open until it passes again.
+- Scoped tokens: limited to one repository and some rights, enforced over the API and Git;
+  `/user/tokens` lists, creates and revokes tokens.
+- `rbit bisect` and `GET …/agent/bisect`: what CI already recorded between two commits.
+- Pull request manifests with blob ids and change classes, a review inbox with anchors that
+  follow the code or say they are ambiguous, and resolving threads from the API.
+- `rbit issue take` (only if nobody holds it) and `rbit issue search`; `rbit task
+  start|resume|finish` for one issue in one worktree.
+- Test reports: a job that uploads its JUnit files as the artifact `rbit-test-report` gets
+  its failed tests (id, place, message) in the failure digest and `rbit run failure`. A
+  test that failed and passed at the same commit is marked `flaky`.
+- Failure fingerprints: each failed job in the digest is `new` or `recurring` against the
+  previous run of its workflow and ref, says `also_failing_on_base` when the default branch
+  fails the same way, and the digest lists what was `resolved`.
+- `rbit run rerun --sha COMMIT [--failed]` reruns every failed run of a commit.
+- `rbit ci run [--jobs a,b]` tests the working tree (or `--commit`) without a branch: it
+  pushes a commit to `refs/scratch/<login>/…`, which the workflows see as the branch
+  `scratch/<login>/…`, and watches its run. An `Rbit-CI-Jobs:` trailer on a scratch
+  commit runs only those jobs and the jobs they need. Scratch refs are never listed as
+  branches, are limited to 20 per person and repository, and expire after a day.
+- Cache steps report what they bought: a hit, a partial hit or a miss, with files, bytes
+  and seconds, as `##[notice]` lines, so they show among a job's annotations in the API.
+- `rbit auth setup-git`: Git uses the stored login for an instance through a credential
+  helper that never prompts; a missing or revoked token fails at once.
+- Queue position: a waiting job in the API carries `queue` (its position among waiting jobs
+  with the same labels, and an expected start from how long such jobs recently took), and
+  `rbit status` and the watch show the position of the commit's front job.
+- Exclusive runner labels: `exclusive = true` on a `[[labels]]` entry of `runner.toml` makes
+  the runner take that label's jobs only when it runs nothing else, and nothing else while
+  one runs, so timing-sensitive jobs never share the machine. Older servers ignore it.
+- Superseded runs: `PUT …/actions/supersede {"enabled": true}` lets a newer push to a
+  branch (not the default one) cancel that branch's older runs of the same workflow. A run
+  a newer run of its group cancelled says `superseded_by` with the commit, its running
+  tasks end as `superseded`, and `rbit status` reads `superseded`.
+- `rbit issue list`, `view`, `create`, `comment`, `close` and `label`, with `--json`.
+- `rbit status` and `GET …/agent/status`: where a branch stands in one call (its head, how
+  far from its base, the CI of exactly that commit with failed jobs and how they ended, the
+  base's CI, its pull request and issue, and the next command). `rbit run watch` on a commit
+  long-polls `GET …/agent/watch`: it returns at the first failed job, ends with
+  `head_changed` when the branch moves on, and says `none_expected` at once for a commit no
+  workflow applies to.
+- Failure digests: `GET …/actions/runs/{run_id}/failure` and `rbit run failure [RUN | --sha]`
+  say what failed in a few kilobytes: per failed job its termination record, error
+  annotations and the cleaned last 30 lines of the step that ended it. `GET …/jobs/{id}/
+  steps/{n}/log` and `rbit run log JOB --step N` read one step tail first, of any attempt;
+  `…/jobs/{id}/annotations` and `…/jobs/{id}/attempts` are in the API too.
+- Termination records: every finished Actions job says how it ended in the jobs API
+  (`termination`: reason, the step by number and name, its exit code, and whether the log
+  is complete), so a timeout, a lost runner and a failing step no longer all read
+  `failure`. A job that ran out of time reads `conclusion: timed_out`. Runners 0.2.2 and
+  later report the step and exit code; an older runner's failures read `unknown`.
+- Output for programs: every `rbit run`, `pr`, `workflow`, `artifact` and `api` command
+  takes `--json` and prints one compact object with a versioned `schema`; failures print an
+  `rbit.error/1` object with a `code` and, where one helps, a runnable `hint`. Exit codes
+  now say what kind of answer it was (2 usage, 3 auth, 4 not found, 5 head or base moved, 8
+  pending, 9 cannot be trusted). `--fields` narrows lists; `--remote` (or `RBIT_REMOTE`)
+  reads a remote other than `origin`. See "Output for programs" in `docs/cli.md`.
+- Every REST API error body has a stable `code` beside its `message` (`not_found`,
+  `head_changed`, `invalid`, …).
+- `GET …/actions/runs?head_sha=` lists the runs that tested a commit (full id or a prefix
+  of 7 or more hex digits).
+
+### Changed
+
+- A running task whose runner sends no word for two minutes now fails as `runner_lost`;
+  before, the default `zombie_timeout_seconds` was ten minutes. Set it back in `[actions]`
+  if your runners lose touch for longer and recover.
+- `rbit run view`, `watch` and `download` without a run id work on the runs of `--sha`, or
+  of the checkout's `HEAD`, instead of the repository's newest run, which could be another
+  branch's. A commit with no run yet is `pending` (exit 8); `watch` waits for its first run.
+- `rbit pr checks` treats "no status reported yet" as pending (exit 8), not as passed.
+- `rbit pr merge` always sends the head it expects (`--head`, or the one it just read), so a
+  newer push is refused with `head_changed` instead of merged.
+- `rbit run view --log-failed` includes timed-out and cancelled jobs.
+- `rbit run list --workflow` asks the server for that workflow's runs instead of filtering
+  one page after fetching it, which could come back empty.
+- The `--json` output of `rbit run list`, `run view` and `pr view` is now the compact,
+  versioned shape described in `docs/cli.md` instead of whole API objects.
+
+### Fixed
+
+- A run whose matrix `fail-fast` stopped after one job failed reads `failure`, as on
+  GitHub, instead of `cancelled`; a run cancelled as a whole (by a person, a newer push,
+  its concurrency group or the abandoned-job sweep) stays `cancelled` even when a job had
+  failed before, until it runs again.
+- Limited tokens are held to their limits everywhere: one given the `admin` scope can no
+  longer change protection, hooks, secrets, runners or the repository; Git LFS now applies
+  the limit (it read and wrote other repositories' objects, and uploaded without `push`);
+  Git and an old repository name no longer tell such a token that another repository exists.
+  Opening a pull request needs `push`; approving or requesting changes, dismissing a review
+  and approving a deployment need `approve`; promoting an artifact to a release needs `push`
+  and `read_logs`, and finding an artifact by commit or reading a job's annotations needs
+  `read_logs`; status and watch leave failure log lines out without `read_logs`.
+- The merge queue reads its candidate refs exactly: a branch named
+  `refs/merge-queue/<base>/pr-<n>` stopped the line for ever. Branches named `refs/…` or
+  `merge-queue/…` are refused. Before building and before landing, the queue checks again
+  that the repository is not archived, that whoever queued it may still write, and that
+  the pull request still meets its requirements; an entry it cannot look at leaves the line
+  instead of blocking it, and dequeuing works on an archived repository.
+- Promoting an artifact with two files of one name (`linux/app`, `macos/app`) is refused;
+  one overwrote the other. `agent/branch-update` answers 422 for an id that is not a full
+  commit id, not 500.
+- A failed test is `flaky` in `rbit run failure` when the same test passed at the same
+  commit in another attempt or run of the job, as documented. Only a whole successful job
+  counted, so a test that passed in an attempt that failed for another test was not
+  flaky. Test reports now keep the ids of their first 2,000 passed tests (migration
+  `0085_actions_test_passes.sql`); a skipped test is not a pass.
+- Review inbox anchors follow a file the pull request renamed: the commented line is
+  looked up at the new path (`head_path` names it) instead of reading `ambiguous` because
+  the old path is gone. A line that had identical twins in the commented file (a `}`, a
+  `return;`) is `ambiguous` rather than `moved` to whichever copy is left.
+- Pull request change classes: `workflows` covers `.forgejo/workflows/` and
+  `.gitea/workflows/`; `dependencies` covers `yarn.lock`, `pnpm-lock.yaml`,
+  `pyproject.toml`, `Pipfile.lock`, `uv.lock`, `Gemfile.lock`, `composer.lock`, `pom.xml`,
+  `build.gradle(.kts)` and a few more; and a code or script file under `docs/` (a
+  `conf.py`, a build script) no longer makes a change `docs_only`.
+- `rbit status` and `GET …/agent/watch` no longer count cancelled jobs in `jobs.failure`:
+  a superseded or cancelled run showed one failed job and an empty `failed` list. They are
+  counted in a new `jobs.cancelled`; the other counts are unchanged.
+- `rbit run rerun RUN` on a run that has not finished says so (`pending`, exit 8), as the
+  `--sha` form does; it exited 5 with the server's 409.
+- `GET …/steps/{n}/log?tail=0` (and `rbit run log --tail 0`) answers no line, with
+  `next_line` where the log ends; it answered the last line.
+- A step's own `timeout-minutes` that fails its job now ends it with termination reason
+  `timeout` (naming the step), as the job's `timeout-minutes` does, and the job reads
+  `conclusion: timed_out`; it read `step_failed`. Needs an updated runner.
+- `GET …/agent/watch` waits at most 25 seconds: with `timeout` of 30 or more it raced the
+  API's 30 second request timeout and often answered an empty 408. A commit that is done
+  with every run finished is answered at once even with the current cursor, as nothing can
+  change it (it waited out the whole timeout), and a malformed query (`timeout=abc`) gets
+  the JSON error (422 `invalid`) instead of axum's plain-text 400.
+- `rbit bisect` (and `GET …/agent/bisect`) refuses bounds where `GOOD` is not on `BAD`'s
+  first-parent line, such as reversed arguments: it answered a culprit with nothing
+  checked. A `GOOD` with a recorded failure or a `BAD` with only recorded passes now comes
+  with `warnings`. The command-line client prints what a 422 says about each field instead
+  of only "Validation Failed (422)".
+- A matrix that leaves no combination, such as a dimension with no values
+  (`fromJSON(needs.gen.outputs.m)` giving `{"item": []}`) or an `exclude` that removes
+  every combination, is a plan error, as on GitHub: the job fails. It ran once with an
+  empty `matrix` and succeeded.
+- A scratch commit whose `Rbit-CI-Jobs` trailer names no job of its workflows (`rbit ci
+  run --jobs nope`) reads `none_expected` with the reason at once. Its decision was
+  recorded as runs started, so the watch said `not_started` ("runs were started for this
+  commit and are gone") until its timeout, an hour by default. Migration
+  `0084_actions_decisions_no_jobs.sql` lets the decision table hold the reason `no_jobs`.
+- `rbit run failure --sha` no longer reads a skipped run (every job's `if` false) as a
+  failure: it printed "0 failed job(s)" and exited 1 while `status` and the watch said
+  `success`; `run view --exit-status` and `run watch RUN --exit-status` count it as passed
+  too. `rbit run failure RUN` on a run that has not finished and has no failed job yet exits
+  8 (pending), as documented, instead of 0.
+- A token limited to one repository can no longer fork it (a fork is a new repository; the
+  fork was made and the token then answered 404), and resolving a review thread needs the
+  `approve` right, as the other review acts do.
+- The command-line client sends a token from `RBIT_TOKEN` or `GH_TOKEN` only to the instance
+  `--hostname`/`RBIT_HOST` names or one with a stored login. With neither, it sent the token
+  to whatever host the clone's `origin` pointed at; it now refuses and asks for `RBIT_HOST`.
+- Watching or reading the status of a commit the repository does not have (yet) answers
+  `not_started`, not `none_expected`: the watch kept saying no run would come and stopped.
+- A push updating more than 16 branches still refreshes the default branch's schedule when
+  that branch is past the cap, and the red main issue of a workflow is found among every
+  open issue, not only the first 50.
+- `POST …/agent/branch-update` no longer rewrites a branch whose protection denies force
+  pushes: a move to a commit that does not contain the current tip is refused as `blocked`
+  ("force pushes denied"), as `git push` refuses it. It moved protected `main` to an
+  unrelated commit.
+- A push that updates more than 16 branches and tags starts runs for the first 16 only, as
+  before, but no longer leaves the rest waiting in silence: their commits read
+  `none_expected` with the reason, so `rbit status` and the watch answer at once, and the
+  server logs how many were left out (migration `0083_actions_decisions_too_many_refs.sql`
+  lets the decision table hold that reason).
+- A job-level `if: failure()` now holds when a job further up its chain failed, even
+  through needs that were skipped because of it, as GitHub documents ("if any ancestor job
+  fails"): a notification job after a chain did not run. `needs.<id>.result` still says
+  `skipped`, and `success()` stays false there.
+- A token limited to one repository could still use account-wide endpoints: it listed
+  every repository of its owner, private ones included, and created new (public)
+  repositories. It could also cancel runs, create releases and tags without `push`, send
+  repository dispatches without `dispatch`, disable workflows and delete artifacts and
+  caches. It now reaches only its repository's endpoints and `GET /user`, cancel needs
+  `approve`, releases `push`, repository dispatch `dispatch`, and the other writes an
+  unlimited token.
+- `rbit run failure --sha` reads a failure as soon as a job failed, as `status` and the
+  watch do; it answered `pending` until every job of the run had ended. `rbit run rerun`
+  on a commit whose failed run is still going says it has not finished (exit 8) instead of
+  "No failed run to rerun".
+- A failed matrix leg no longer shows as passing: legs under one fixed `name:` share a
+  commit status context, and each leg posted its own state there, so whichever finished
+  last won. A passing leg after a failed one made the context, the combined status and any
+  required check green while the run failed. The context now reports the worst leg.
+- A run that failed before any job, because its workflow could not be read or planned, now
+  says why outside the web page: the failure digest carries `workflow_error`, `rbit status`
+  gives each run its `error`, and `rbit run failure` prints it and exits 1. It exited 0, as
+  if nothing had failed, and every agent-facing answer showed a failure with no cause.
+- The command-line client no longer sends another host's repository path to rbit: in a clone
+  whose `origin` is on GitHub and another remote is on rbit, it used `origin`'s path and
+  answered a bare 404, and with no instance named it took GitHub for the instance. It now
+  picks the remote on an instance you are logged in to, and `ci run` and `task` push and
+  fetch through that remote rather than always `origin`.
+- A step that prints more than 10,000 short lines at once no longer loses the rest of its
+  job's log: the runner sent up to 1 MiB per log append, the server refuses more than
+  10,000 lines per append, and the runner then stopped sending. Batches now stay within
+  both limits, and the line limit is part of the runner protocol.
+- A required Actions check no longer holds a pull request forever when every workflow left
+  its head commit out (`branches`/`paths` filters, a skip marker): the trigger now records
+  its decision per pushed commit, `rbit status` says `none_expected` with the reason, and
+  the check is not required of that commit. A check from another CI is still required.
+- The runs API's `branch` filter now matches the runs of pull requests from that branch.
+- Artifact downloads and cache restores no longer drop files with holes. Runners packed
+  such files (a freshly linked binary often has some) as GNU sparse entries, which the
+  server's conversion and the runner's restore skipped without a word; both now read them,
+  and runners write plain entries.
+- `rbit` started inside an rbit Actions job no longer refuses to start with "invalid
+  configuration". The runner sets `RBIT_ACTIONS=true`, `RBIT_ACTOR`, `RBIT_SHA` and the
+  other `RBIT_*` names of the run in every job, and the server read them as settings. It
+  now reads only `RBIT_SECTION__KEY` variables (every setting is in a section, so nothing
+  that worked before changes). This broke rbit's own tests, and any server a workflow
+  starts, on rbit Actions.
+- A server killed while it creates its secret key file (on its first start, or during
+  `rbit migrate`) no longer leaves a short key file behind that every later start refuses
+  ("the secret key file … must hold 32 bytes in base64"). The key is written whole and
+  then linked into place, so a second process starting at the same time never reads a
+  half-written key either.
+- rustix is updated to 1.1.6 for RUSTSEC-2026-0486.
+
 ## [0.2.1] - 2026-11-10
 
 ### Added
