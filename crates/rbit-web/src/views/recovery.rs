@@ -146,22 +146,32 @@ impl ResetCompletePage {
     }
 }
 
-/// `/email/verify/{token}`: the outcome of a verification link.
+/// `/email/verify/{token}`: the confirmation a verification link asks for, and its outcome.
 #[derive(Debug, Template, WebTemplate)]
 #[template(path = "recovery/verify.html")]
 pub struct VerifyEmailPage {
     pub page: Page,
+    /// The address the link would confirm, and where the confirmation posts.
+    pub confirming: Option<(String, String)>,
     /// The confirmed address, or `None` if the link was not valid.
     pub verified_address: Option<String>,
 }
 
 impl VerifyEmailPage {
+    pub fn confirm(page: Page, token: &str, address: String) -> Self {
+        Self {
+            page: titled(page, RecoveryMessage::ConfirmEmailTitle),
+            confirming: Some((address, format!("/email/verify/{token}"))),
+            verified_address: None,
+        }
+    }
+
     pub fn verified(page: Page, address: String) -> Self {
-        Self { page: titled(page, RecoveryMessage::EmailVerified), verified_address: Some(address) }
+        Self { page: titled(page, RecoveryMessage::EmailVerified), confirming: None, verified_address: Some(address) }
     }
 
     pub fn invalid(page: Page) -> Self {
-        Self { page: titled(page, RecoveryMessage::LinkExpired), verified_address: None }
+        Self { page: titled(page, RecoveryMessage::LinkExpired), confirming: None, verified_address: None }
     }
 
     /// Where to go next: the account settings when signed in, sign-in otherwise.
@@ -245,6 +255,10 @@ mod tests {
         let html = ResetCompletePage::new(page()).render().unwrap();
         assert!(html.contains("Password changed"));
         assert!(html.contains(r#"href="/login""#));
+
+        let html = VerifyEmailPage::confirm(page(), "tok_EN", "alice@example.com".to_owned()).render().unwrap();
+        assert!(html.contains("Confirm your email address") && html.contains("alice@example.com"));
+        assert!(html.contains(r#"<form method="post" action="/email/verify/tok_EN">"#), "{html}");
 
         let html = VerifyEmailPage::verified(page(), "alice@example.com".to_owned()).render().unwrap();
         assert!(html.contains("alice@example.com"));

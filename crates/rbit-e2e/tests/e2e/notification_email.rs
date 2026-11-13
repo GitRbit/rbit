@@ -18,7 +18,7 @@ async fn verified_user(server: &TestServer, mail: MailLog, name: &str) -> Client
     let sent = mail.wait_for(server, &format!("{name}@example.test"), 1).await;
     let link = sent[0].link_starting_with(&server.url("/email/verify/")).expect("a verification link");
     let path = link.strip_prefix(server.base_url()).unwrap().to_owned();
-    client.get(&path).await.expect_status(StatusCode::OK).expect_contains(&["Email address verified"]);
+    client.post(&path, &[]).await.expect_status(StatusCode::OK).expect_contains(&["Email address verified"]);
     client
 }
 

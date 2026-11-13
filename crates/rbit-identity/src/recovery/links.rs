@@ -77,6 +77,24 @@ impl<'a, R: RecoveryRepository, T: RecoveryThrottle> RecoveryLinks<'a, R, T> {
         Ok(secret.encode())
     }
 
+    /// The verification link's record, without using it up: [`RecoveryError::NotFound`]
+    /// for an unknown, expired or used link, or one sent to an address the account no
+    /// longer uses.
+    pub async fn verify_target(&self, token: &str) -> RecoveryResult<EmailTokenRecord, R::Error, T::Error> {
+        let digest = link_digest(token).ok_or(RecoveryError::NotFound)?;
+        let record = self
+            .recovery
+            .find_valid(digest, TokenPurpose::Verify, Timestamp::now())
+            .await
+            .map_err(RecoveryError::Store)?
+            .ok_or(RecoveryError::NotFound)?;
+        let account = self.recovery.find_account(record.account_id).await.map_err(RecoveryError::Store)?.ok_or(RecoveryError::NotFound)?;
+        if account.email != record.email {
+            return Err(RecoveryError::NotFound);
+        }
+        Ok(record)
+    }
+
     /// Uses up a verification link and confirms the address it was sent to, provided the
     /// account still uses it; then retires the account's other verification links.
     pub async fn verify_email(&self, token: &str) -> RecoveryResult<EmailTokenRecord, R::Error, T::Error> {

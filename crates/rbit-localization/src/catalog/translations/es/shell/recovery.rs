@@ -63,6 +63,13 @@ entries! { Es:
         ),
         RecoveryMessage::GoToAccountSettings => text.literal("Ir a la configuración de la cuenta"),
         RecoveryMessage::SignIn => text.literal("Iniciar sesión"),
+        RecoveryMessage::ConfirmEmailTitle => text.literal("Confirma tu dirección de correo"),
+        RecoveryMessage::ConfirmEmailText(address) => {
+            text.literal("Confirma ");
+            text.argument(address);
+            text.literal(" como la dirección de correo de tu cuenta. Si no lo solicitaste, cierra esta página.");
+        }
+        RecoveryMessage::ConfirmEmail => text.literal("Confirmar dirección de correo"),
     }
     RecoverySentence => RichWriter |text| {
         RecoverySentence::NothingArrived => {

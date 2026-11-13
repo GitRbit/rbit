@@ -63,6 +63,13 @@ entries! { De:
         ),
         RecoveryMessage::GoToAccountSettings => text.literal("Zu den Kontoeinstellungen"),
         RecoveryMessage::SignIn => text.literal("Anmelden"),
+        RecoveryMessage::ConfirmEmailTitle => text.literal("E-Mail-Adresse bestätigen"),
+        RecoveryMessage::ConfirmEmailText(address) => {
+            text.literal("Bestätigen Sie ");
+            text.argument(address);
+            text.literal(" als E-Mail-Adresse Ihres Kontos. Falls Sie das nicht angefordert haben, schließen Sie diese Seite.");
+        }
+        RecoveryMessage::ConfirmEmail => text.literal("E-Mail-Adresse bestätigen"),
     }
     RecoverySentence => RichWriter |text| {
         RecoverySentence::NothingArrived => {

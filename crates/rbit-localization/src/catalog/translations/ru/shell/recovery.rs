@@ -41,6 +41,13 @@ entries! { Ru:
         RecoveryMessage::VerifyLinkExpiredText => text.literal("Ссылки для подтверждения одноразовые, действуют два дня и перестают работать при смене адреса. Войдите и отправьте новую из настроек учётной записи."),
         RecoveryMessage::GoToAccountSettings => text.literal("Перейти к настройкам учётной записи"),
         RecoveryMessage::SignIn => text.literal("Войти"),
+        RecoveryMessage::ConfirmEmailTitle => text.literal("Подтвердите адрес электронной почты"),
+        RecoveryMessage::ConfirmEmailText(address) => {
+            text.literal("Подтвердите ");
+            text.argument(address);
+            text.literal(" как адрес электронной почты вашей учётной записи. Если вы этого не запрашивали, закройте эту страницу.");
+        }
+        RecoveryMessage::ConfirmEmail => text.literal("Подтвердить адрес"),
     }
     RecoverySentence => RichWriter |text| {
         RecoverySentence::NothingArrived => {

@@ -236,9 +236,14 @@ async fn verification_links_work_once() {
     let secret = links.issue(&account, TokenPurpose::Verify).await.unwrap();
     let other = links.issue(&account, TokenPurpose::Verify).await.unwrap();
     assert!(matches!(links.verify_email("malformed").await, Err(RecoveryError::NotFound)));
+    // Looking a link up (the page it opens) does not use it up.
+    assert!(matches!(links.verify_target("malformed").await, Err(RecoveryError::NotFound)));
+    assert_eq!(links.verify_target(&secret).await.unwrap().email, account.email);
+    assert_eq!(links.verify_target(&secret).await.unwrap().account_id, AccountId(7));
     let record = links.verify_email(&secret).await.unwrap();
     assert_eq!(record.account_id, AccountId(7));
     assert!(matches!(links.verify_email(&secret).await, Err(RecoveryError::NotFound)), "used up");
+    assert!(matches!(links.verify_target(&secret).await, Err(RecoveryError::NotFound)), "used up");
     assert!(matches!(links.verify_email(&other).await, Err(RecoveryError::NotFound)), "siblings are retired");
     assert_eq!(rejection(links.resend_target(&account_user()).await), "your email address is already verified");
 }

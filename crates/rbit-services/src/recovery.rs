@@ -172,6 +172,13 @@ impl RecoveryService {
 
     // ------------------------------------------------------------------ verification
 
+    /// The address a verification link would confirm; the link is not used up.
+    /// [`ServiceError::NotFound`] as for [`Self::verify_email`].
+    pub async fn verify_target(&self, token: &str) -> Result<String, ServiceError> {
+        let (store, throttle) = (self.store(), Throttle(&*self.throttle));
+        Ok(self.links(&store, &throttle).verify_target(token).await.map_err(map)?.email.to_string())
+    }
+
     /// Confirms the address a verification link was sent to. The link is used up.
     ///
     /// [`ServiceError::NotFound`] for unknown, expired or used links, and for links sent to

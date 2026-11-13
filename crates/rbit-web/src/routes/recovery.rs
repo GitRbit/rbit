@@ -42,7 +42,7 @@ pub fn routes() -> Router<AppState> {
         .route("/password/forgot", get(forgot_form).post(forgot))
         .route(RESET_COMPLETE_URL, get(reset_complete))
         .route("/password/reset/{token}", get(reset_form).post(reset))
-        .route("/email/verify/{token}", get(verify))
+        .route("/email/verify/{token}", get(verify_form).post(verify))
 }
 
 // ------------------------------------------------------------------ forgot password
@@ -126,8 +126,19 @@ pub async fn reset_complete(page: Page) -> ResetCompletePage {
 
 // ------------------------------------------------------------------ verification
 
-/// `GET /email/verify/{token}`: confirms the address. Following the link is the whole
-/// action, so mail clients that open links in advance can only ever confirm it.
+/// `GET /email/verify/{token}`: asks to confirm the address. Opening the link changes
+/// nothing: mail filters that open links in advance would otherwise confirm an address
+/// for whoever signed up with it, which is how one claims another's address.
+pub async fn verify_form(State(state): State<AppState>, page: Page, Path(token): Path<String>) -> WebResult<Response> {
+    let response = match state.services.recovery.verify_target(&token).await {
+        Ok(address) => (StatusCode::OK, VerifyEmailPage::confirm(page, &token, address)).into_response(),
+        Err(ServiceError::NotFound) => (StatusCode::NOT_FOUND, VerifyEmailPage::invalid(page)).into_response(),
+        Err(other) => WebError::from(other).into_response(),
+    };
+    Ok((SECRET_URL_HEADERS, response).into_response())
+}
+
+/// `POST /email/verify/{token}`: confirms the address.
 pub async fn verify(State(state): State<AppState>, page: Page, Path(token): Path<String>) -> WebResult<Response> {
     let response = match state.services.recovery.verify_email(&token).await {
         Ok(verified) => (StatusCode::OK, VerifyEmailPage::verified(page, verified.address.to_string())).into_response(),

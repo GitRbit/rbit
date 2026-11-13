@@ -55,6 +55,12 @@ entries! { Ja:
         ),
         RecoveryMessage::GoToAccountSettings => text.literal("アカウント設定へ"),
         RecoveryMessage::SignIn => text.literal("サインイン"),
+        RecoveryMessage::ConfirmEmailTitle => text.literal("メールアドレスの確認"),
+        RecoveryMessage::ConfirmEmailText(address) => {
+            text.argument(address);
+            text.literal(" をアカウントのメールアドレスとして確認します。心当たりがない場合は、このページを閉じてください。");
+        }
+        RecoveryMessage::ConfirmEmail => text.literal("メールアドレスを確認"),
     }
     RecoverySentence => RichWriter |text| {
         RecoverySentence::NothingArrived => {
