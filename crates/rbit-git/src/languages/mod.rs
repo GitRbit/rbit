@@ -33,6 +33,10 @@ pub const OTHER_LANGUAGE_COLOR: &str = "#9e9e9e";
 
 /// A root `.gitattributes` larger than this is ignored.
 const MAX_ATTRIBUTES_BYTES: u64 = 64 * 1024;
+/// Most tree entries the breakdown visits. A tree may name the same subtree many times over,
+/// so a push of a kilobyte can stand for billions of paths (a "git bomb"); past this the
+/// breakdown counts what it saw, breadth first, rather than walk (and hold) them all.
+const MAX_VISITED_ENTRIES: usize = 500_000;
 
 /// One slice of the language bar.
 #[derive(Debug, Clone, PartialEq)]
@@ -142,7 +146,7 @@ impl RepositoryReader {
             let tree = commit.tree().map_err(GitError::backend)?;
             let attributes = root_attributes(repo, &tree)?;
             let mut collector = FileCollector::new(&attributes, true);
-            tree.traverse().breadthfirst(&mut collector).map_err(GitError::backend)?;
+            collector.walk(&tree)?;
             let mut counts: HashMap<&'static str, (&'static Language, u64)> = HashMap::new();
             if name == "Other" {
                 for (language, id, _) in &collector.files {
@@ -176,7 +180,7 @@ impl RepositoryReader {
             let attributes = root_attributes(repo, &tree)?;
 
             let mut collector = FileCollector::new(&attributes, false);
-            tree.traverse().breadthfirst(&mut collector).map_err(GitError::backend)?;
+            collector.walk(&tree)?;
 
             let mut counts: HashMap<&'static str, (&'static Language, u64)> = HashMap::new();
             for (language, id, _) in collector.files {
@@ -211,11 +215,29 @@ struct FileCollector<'a> {
     may_prune: bool,
     files: Vec<(&'static Language, ObjectId, String)>,
     keep_paths: bool,
+    /// Entries visited so far, against [`MAX_VISITED_ENTRIES`].
+    visited: usize,
 }
 
 impl<'a> FileCollector<'a> {
     fn new(attributes: &'a LinguistAttributes, keep_paths: bool) -> Self {
-        Self { location: Recorder::default(), attributes, may_prune: attributes.is_empty(), files: Vec::new(), keep_paths }
+        Self { location: Recorder::default(), attributes, may_prune: attributes.is_empty(), files: Vec::new(), keep_paths, visited: 0 }
+    }
+
+    /// Visits `tree` breadth first, up to [`MAX_VISITED_ENTRIES`] entries.
+    fn walk(&mut self, tree: &gix::Tree<'_>) -> Result<(), GitError> {
+        match tree.traverse().breadthfirst(&mut *self) {
+            Ok(()) => Ok(()),
+            // Stopped at the cap: what was seen is the breakdown.
+            Err(_) if self.visited > MAX_VISITED_ENTRIES => Ok(()),
+            Err(error) => Err(GitError::backend(error)),
+        }
+    }
+
+    /// Counts one more entry; `false` once past the cap.
+    fn count(&mut self) -> bool {
+        self.visited += 1;
+        self.visited <= MAX_VISITED_ENTRIES
     }
 
     fn current_path(&self) -> String {
@@ -245,11 +267,17 @@ impl Visit for FileCollector<'_> {
     }
 
     fn visit_tree(&mut self, _entry: &EntryRef<'_>) -> Action {
+        if !self.count() {
+            return Action::Break(());
+        }
         let descend = !(self.may_prune && exclusions::is_excluded_directory(&self.current_path()));
         Action::Continue(descend)
     }
 
     fn visit_nontree(&mut self, entry: &EntryRef<'_>) -> Action {
+        if !self.count() {
+            return Action::Break(());
+        }
         let path = self.current_path();
         if matches!(entry.mode.kind(), GixEntryKind::Blob | GixEntryKind::BlobExecutable)
             && let Some(language) = classify(&path, self.attributes)
