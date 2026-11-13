@@ -73,6 +73,25 @@ async fn full_sha(api: &Api, repo: &Repo, sha: &str) -> anyhow::Result<String> {
     Ok(text(&commit, "sha").to_owned())
 }
 
+/// The commit at the tip of `branch` on the server. A branch the server does not have is a
+/// usage error: the checkout's branches say nothing about the server's.
+async fn branch_tip(api: &Api, repo: &Repo, branch: &str) -> anyhow::Result<String> {
+    let name: Vec<String> = branch.split('/').map(encode).collect();
+    let found = match api.get(&format!("repos/{repo}/branches/{}", name.join("/"))).await {
+        Ok(found) => found,
+        Err(error) if error.downcast_ref::<agent::ApiFailure>().is_some_and(|failure| failure.status == 404) => {
+            let message = format!("branch `{branch}` is not on {repo}: push it, or pass --sha");
+            return Err(agent::outcome("usage", message, None));
+        }
+        Err(error) => return Err(error),
+    };
+    let sha = text(&found["commit"], "sha");
+    if sha.is_empty() {
+        anyhow::bail!("the server did not say where branch `{branch}` is");
+    }
+    Ok(sha.to_owned())
+}
+
 /// How `watch_commit` waits.
 pub struct CommitWait {
     pub sha: Option<String>,
@@ -82,12 +101,15 @@ pub struct CommitWait {
 }
 
 /// `run watch` for a commit: long-polls until the CI of the commit settles or fails.
+///
+/// The commit is `--sha`; else the tip of `--branch` on the server; else the checkout's `HEAD`.
 pub async fn watch_commit(api: &Api, repo: &Repo, wait: CommitWait, out: &Output) -> anyhow::Result<i32> {
-    // Watching `HEAD` follows the current branch, so a newer push ends the watch.
-    let branch = if wait.sha.is_none() { wait.branch.or_else(current_branch) } else { wait.branch };
-    let sha = match &wait.sha {
-        Some(sha) => full_sha(api, repo, sha).await?,
-        None => git(&["rev-parse", "HEAD"]).ok_or_else(|| agent::outcome("usage", "pass --sha or run inside a clone", None))?,
+    // Watching a branch, or `HEAD` (which follows the current branch), ends with a newer push.
+    let branch = if wait.sha.is_none() { wait.branch.clone().or_else(current_branch) } else { wait.branch.clone() };
+    let sha = match (&wait.sha, &wait.branch) {
+        (Some(sha), _) => full_sha(api, repo, sha).await?,
+        (None, Some(name)) => branch_tip(api, repo, name).await?,
+        (None, None) => git(&["rev-parse", "HEAD"]).ok_or_else(|| agent::outcome("usage", "pass --sha or run inside a clone", None))?,
     };
     let deadline = tokio::time::Instant::now() + Duration::from_secs(wait.timeout);
     let mut cursor: Option<String> = None;
