@@ -11,7 +11,10 @@ use rbit_actions::{
     logs::{Append, accept_append, split_body},
     scheduling::leases,
 };
-use rbit_core::actions::{Job, LogState, Task, TaskId};
+use rbit_core::{
+    Timestamp,
+    actions::{Job, LogState, Task, TaskId},
+};
 use rbit_workflow::protocol::{LogsResponse, MAX_LOG_LINE_BYTES};
 use std::{
     path::PathBuf,
@@ -44,6 +47,9 @@ impl ActionsService {
         leases::owned(task.runner_id.map(|id| id.0), runner.id.0).map_err(|refusal| RunnerError::forbidden(refusal.message()))?;
         leases::log_open(task.status.is_done(), task.log_state == LogState::Live)
             .map_err(|refusal| RunnerError::conflict(refusal.message()))?;
+        // A runner sending lines is alive: on a slow link, its uploads of a long log may hold
+        // back its state call past the zombie timeout.
+        store.heartbeat(id, Timestamp::now()).await?;
         let current = u64::try_from(task.log_lines).unwrap_or_default();
         let skip = match accept_append(from, current, lines.len()) {
             Append::Gap { current } => return Err(RunnerError::log_gap(current)),
