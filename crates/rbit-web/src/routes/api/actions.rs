@@ -371,10 +371,12 @@ pub async fn run_logs(State(state): State<AppState>, caller: Caller, Path(path):
         return Err(ApiError::not_found());
     }
     let mtime = u64::try_from(run.finished_at.unwrap_or(run.created_at).0).unwrap_or_default();
+    let Some(slot) = crate::routes::actions::download_slot() else { return Ok(crate::routes::actions::downloads_busy()) };
     // One job's log is read at a time, straight into the response.
     let (sender, receiver) = tokio::sync::mpsc::channel::<std::io::Result<axum::body::Bytes>>(8);
     let (actions, writer) = (actions.clone(), crate::routes::actions::ChunkWriter::new(sender.clone()));
     tokio::spawn(async move {
+        let _slot = slot;
         let mut zip = rbit_services::actions::downloads::ZipWriter::new(writer, mtime);
         for (name, task) in files {
             let log = match actions.raw_log(&ctx, task).await {

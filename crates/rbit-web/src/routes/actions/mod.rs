@@ -62,11 +62,13 @@ pub(crate) fn artifact_download(
         ArtifactFormat::TarGz => ("application/gzip", "tar.gz"),
         ArtifactFormat::Zip => ("application/zip", "zip"),
     };
+    let Some(slot) = download_slot() else { return downloads_busy() };
     let (sender, receiver) = tokio::sync::mpsc::channel::<std::io::Result<Bytes>>(8);
     tokio::spawn(async move {
         let file = file.into_std().await;
         let _ = tokio::task::spawn_blocking(move || {
-            let writer = ChunkWriter { sender: sender.clone(), chunk: Vec::with_capacity(ChunkWriter::SIZE) };
+            let _slot = slot;
+            let writer = ChunkWriter::new(sender.clone());
             let source = std::io::BufReader::new(file);
             let written = match format {
                 ArtifactFormat::TarGz => downloads::to_tar_gz(source, writer).map(drop),
@@ -101,11 +103,33 @@ pub(crate) fn channel_body(receiver: tokio::sync::mpsc::Receiver<std::io::Result
     axum::body::Body::from_stream(stream.fuse())
 }
 
+/// Archive downloads converted at once (artifacts, run logs): each holds a blocking thread
+/// while its client reads, and the blocking threads are shared with Git reads.
+const MAX_DOWNLOADS: usize = 32;
+static DOWNLOADS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(MAX_DOWNLOADS);
+/// How long a download waits for its client to take the next chunk before it gives up.
+const DOWNLOAD_STALL: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// A slot for one archive download, or `None` when [`MAX_DOWNLOADS`] are running.
+pub(crate) fn download_slot() -> Option<tokio::sync::SemaphorePermit<'static>> {
+    DOWNLOADS.try_acquire().ok()
+}
+
+/// The answer when every download slot is taken.
+pub(crate) fn downloads_busy() -> axum::response::Response {
+    use axum::{http::StatusCode, response::IntoResponse as _};
+    (StatusCode::SERVICE_UNAVAILABLE, [(axum::http::header::RETRY_AFTER, "30")], "too many downloads are running; try again shortly")
+        .into_response()
+}
+
 /// Sends what the zip writer writes as chunks of the response body; a closed response
-/// (the client went away) stops the conversion.
+/// (the client went away) stops the conversion, and so does a client that takes no chunk
+/// for [`DOWNLOAD_STALL`]: it would hold a blocking thread for as long as it liked.
 pub(crate) struct ChunkWriter {
     sender: tokio::sync::mpsc::Sender<std::io::Result<axum::body::Bytes>>,
     chunk: Vec<u8>,
+    /// How long a chunk may wait for the client ([`DOWNLOAD_STALL`]).
+    stall: std::time::Duration,
 }
 
 impl ChunkWriter {
@@ -113,7 +137,7 @@ impl ChunkWriter {
 
     // Actions: run logs.
     pub(crate) fn new(sender: tokio::sync::mpsc::Sender<std::io::Result<axum::body::Bytes>>) -> Self {
-        Self { sender, chunk: Vec::with_capacity(Self::SIZE) }
+        Self { sender, chunk: Vec::with_capacity(Self::SIZE), stall: DOWNLOAD_STALL }
     }
 
     fn send(&mut self) -> std::io::Result<()> {
@@ -121,9 +145,23 @@ impl ChunkWriter {
             return Ok(());
         }
         let chunk = std::mem::replace(&mut self.chunk, Vec::with_capacity(Self::SIZE));
-        self.sender
-            .blocking_send(Ok(chunk.into()))
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "the download was closed"))
+        let deadline = std::time::Instant::now() + self.stall;
+        let mut item = Ok(chunk.into());
+        loop {
+            match self.sender.try_send(item) {
+                Ok(()) => return Ok(()),
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                    return Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "the download was closed"));
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Full(back)) => {
+                    if std::time::Instant::now() >= deadline {
+                        return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "the client stopped reading the download"));
+                    }
+                    item = back;
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+            }
+        }
     }
 }
 
@@ -268,5 +306,16 @@ mod tests {
         assert!(data.next().await.is_none());
         // An unfused stream panics here, which aborts a release build.
         assert!(data.next().await.is_none(), "polling a finished body again ends it again");
+    }
+
+    #[test]
+    fn a_client_that_stops_reading_releases_the_download() {
+        use std::io::Write as _;
+        let (sender, _receiver) = tokio::sync::mpsc::channel(1);
+        let mut writer = super::ChunkWriter { stall: std::time::Duration::from_millis(50), ..super::ChunkWriter::new(sender) };
+        writer.write_all(&vec![0; super::ChunkWriter::SIZE]).unwrap();
+        // The channel holds one chunk and nobody reads it: the next one gives up.
+        let stalled = writer.write_all(&vec![0; super::ChunkWriter::SIZE]).unwrap_err();
+        assert_eq!(stalled.kind(), std::io::ErrorKind::TimedOut);
     }
 }
