@@ -136,6 +136,22 @@ pub fn choose_remote<'a>(named: Option<&str>, remotes: &'a [Remote], known: &dyn
     }
 }
 
+/// What an rbit token starts with: a personal access token or a workflow task's token.
+const RBIT_TOKEN_PREFIXES: [&str; 2] = ["rbit_", "rbat_"];
+
+/// The token the environment offers an rbit instance: `RBIT_TOKEN`, else `GH_TOKEN` when it
+/// holds an rbit token (a workflow's `GH_TOKEN: ${{ github.token }}`). A GitHub token there
+/// is the `gh` tool's, and is never sent to an rbit instance, whose operator would see it.
+pub fn environment_token(rbit: Option<String>, gh: Option<String>) -> Option<String> {
+    let present = |token: Option<String>| token.filter(|token| !token.trim().is_empty());
+    present(rbit).or_else(|| present(gh).filter(|token| RBIT_TOKEN_PREFIXES.iter().any(|prefix| token.starts_with(prefix))))
+}
+
+/// [`environment_token`] of this process.
+pub fn env_token() -> Option<String> {
+    environment_token(std::env::var("RBIT_TOKEN").ok(), std::env::var("GH_TOKEN").ok())
+}
+
 /// The token a request to an instance carries: one from the environment (`env`) only when
 /// the instance is `trusted` (named with `--hostname`, or one with a stored login), never a
 /// host only a Git remote suggested; otherwise the instance's `stored` login. `Err` when an
@@ -277,6 +293,16 @@ mod tests {
         assert!(refused.contains("127.0.0.1:18080") && refused.contains("RBIT_HOST"), "{refused}");
         assert_eq!(token_for(None, false, "https://git.example.com", None), Ok(None), "no token, nothing sent");
         assert_eq!(token_for(None, true, "https://git.example.com", Some("s".to_owned())), Ok(Some("s".to_owned())));
+    }
+
+    #[test]
+    fn a_github_token_in_gh_token_is_never_offered_to_rbit() {
+        let some = |token: &str| Some(token.to_owned());
+        assert_eq!(environment_token(None, some("ghp_github")), None, "gh's own token stays with gh");
+        assert_eq!(environment_token(None, some("rbat_task")), some("rbat_task"), "a workflow's task token");
+        assert_eq!(environment_token(None, some("rbit_personal")), some("rbit_personal"));
+        assert_eq!(environment_token(some("anything"), some("rbit_other")), some("anything"), "RBIT_TOKEN first");
+        assert_eq!(environment_token(some(" "), None), None);
     }
 
     #[test]

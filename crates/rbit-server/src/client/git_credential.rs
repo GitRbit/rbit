@@ -4,8 +4,9 @@
 //! * `setup-git` sets `credential.<instance>.helper` to `!<this rbit> auth git-credential`
 //!   in the user's global Git configuration, after clearing other helpers for that URL (so a
 //!   desktop credential manager cannot pop up a dialog for it).
-//! * `git-credential get` answers from `RBIT_TOKEN`, `GH_TOKEN` or the stored login for the
-//!   host Git asks about. Without one it answers `quit=1`, which tells Git to stop instead of
+//! * `git-credential get` answers from `RBIT_TOKEN` (or an rbit token in `GH_TOKEN`) for the
+//!   instance `RBIT_HOST` names or one with a stored login, else from the stored login for
+//!   the host Git asks about. Without one it answers `quit=1`, which tells Git to stop instead of
 //!   prompting: a missing login fails at once with a clear error. A token the server refuses
 //!   fails the push the same way (`Authentication failed`); the helper never prompts.
 
@@ -68,9 +69,11 @@ pub fn credential(operation: &str) -> anyhow::Result<i32> {
         return Ok(0);
     };
     let instance = hosts::normalize(&format!("{protocol}://{host}"));
-    let from_env = std::env::var("RBIT_TOKEN").ok().or_else(|| std::env::var("GH_TOKEN").ok()).filter(|token| !token.trim().is_empty());
     let stored = hosts::Hosts::load().ok().and_then(|stored| stored.hosts.get(&instance).map(|login| login.token.clone()));
-    let token = from_env.or(stored);
+    // As for the API: an environment token goes only to the instance `RBIT_HOST` names or
+    // one with a stored login, never to whatever host a remote points Git at.
+    let named = std::env::var("RBIT_HOST").is_ok_and(|host| hosts::normalize(&host) == instance);
+    let token = super::token_for(super::env_token(), named || stored.is_some(), &instance, stored.clone()).unwrap_or(stored);
     if token.is_none() {
         eprintln!("rbit: no login for {instance}; run `rbit auth login --hostname {instance}`");
     }

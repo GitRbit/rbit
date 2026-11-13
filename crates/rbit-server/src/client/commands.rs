@@ -565,7 +565,7 @@ fn connect_through(target: &Target, need_repo: bool) -> anyhow::Result<(Api, Opt
             _ => bail!("which instance? pass --hostname, or log in with `rbit auth login`"),
         },
     };
-    let env = std::env::var("RBIT_TOKEN").ok().or_else(|| std::env::var("GH_TOKEN").ok()).filter(|token| !token.trim().is_empty());
+    let env = super::env_token();
     let trusted = named_host || stored.hosts.contains_key(&host);
     let login = stored.hosts.get(&host).map(|login| login.token.clone());
     let token = super::token_for(env, trusted, &host, login).map_err(|problem| anyhow!(problem))?;
