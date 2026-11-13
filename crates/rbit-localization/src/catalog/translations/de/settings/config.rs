@@ -382,7 +382,7 @@ entries! { De:
         ConfigText::Help { section: "provider", key: "scopes" } => text.literal("Geben Sie einen Bereich pro Zeile ein. Mit den Anbieter-Standardwerten fordern Sie die vom Anbieter empfohlenen Bereiche an."),
         ConfigText::Label { section: "provider", key: "allow_registration" } => text.literal("Kontoerstellung"),
         ConfigText::Label { section: "provider", key: "trust_email" } => text.literal("Verifizierten E-Mail-Adressen vertrauen"),
-        ConfigText::Help { section: "provider", key: "trust_email" } => text.literal("Verknüpft eine erste Anmeldung mit dem einen Konto, dessen verifizierte E-Mail-Adresse der beim Anbieter verifizierten E-Mail-Adresse entspricht. Nur für Anbieter, die die Adressen ihrer Benutzer kontrollieren."),
+        ConfigText::Help { section: "provider", key: "trust_email" } => text.literal("Verknüpft eine erste Anmeldung mit dem einen Konto, dessen verifizierte E-Mail-Adresse der beim Anbieter verifizierten E-Mail-Adresse entspricht. Nur für Anbieter, die die Adressen ihrer Benutzer kontrollieren. Eine Registrierung darüber übernimmt außerdem die vom Anbieter verifizierte Adresse als bestätigt, ohne Bestätigungs-E-Mail."),
         ConfigText::Label { section: "provider", key: "trust_mfa" } => text.literal("Mehr-Faktor-Authentifizierung des Anbieters vertrauen"),
         ConfigText::Help { section: "provider", key: "trust_mfa" } => text.literal("Überspringt den eigenen Zwei-Faktor-Schritt des Kontos, wenn der amr-Claim des ID-Tokens angibt, dass der Anbieter eine Mehr-Faktor-Authentifizierung („mfa“) durchgeführt hat. Nur OIDC."),
     }

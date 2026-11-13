@@ -110,6 +110,25 @@ async fn opened(fixture: &Fixture, issue: IssueId, by: &User) -> Run {
 }
 
 #[tokio::test]
+async fn a_job_run_again_alone_still_needs_what_failed() {
+    let fixture = Fixture::new().await;
+    let run = pushed(&fixture, &[(".forgejo/workflows/ci.yml", CHAIN)], "CI").await;
+    let (actions, store) = (fixture.actions(), fixture.database.actions_runs());
+    for (seed, labels, result) in [(1, ["x"], Status::Failure), (2, ["y"], Status::Success)] {
+        let claimed = fixture.claim(&labels, seed).await.unwrap();
+        let settled = store.finish_task(claimed.task.id, result, Timestamp::now()).await.unwrap().unwrap();
+        actions.settled(&settled).await.unwrap();
+    }
+    assert_eq!(statuses(&fixture, run.id).await, keyed(&[("a", Status::Failure), ("b", Status::Skipped), ("c", Status::Success)]));
+    let b = store.jobs(run.id).await.unwrap().into_iter().find(|job| job.key == "b").unwrap();
+    let writer = fixture.repo(&fixture.carol).await;
+    let again = actions.rerun(&fixture.carol, &writer, run.id, Rerun::Job(b.id)).await.unwrap();
+    // `a` is not run again and still failed: `b` is skipped again, not sent to a runner.
+    assert_eq!(statuses(&fixture, run.id).await, keyed(&[("a", Status::Failure), ("b", Status::Skipped), ("c", Status::Success)]));
+    assert_eq!(again.status, Status::Failure);
+}
+
+#[tokio::test]
 async fn writers_approve_untrusted_runs_and_may_trust_their_author() {
     let fixture = Fixture::new().await;
     let (issue, run) = fork_pull(&fixture, CHAIN).await;
@@ -192,6 +211,38 @@ async fn an_approved_run_waits_while_its_group_is_busy() {
     assert_eq!(finished.status, Status::Cancelled);
     let repo = writer.repo.repo.id;
     assert_eq!(fixture.database.actions_runs().find_run(repo, second.id).await.unwrap().unwrap().status, Status::Waiting, "released");
+}
+
+#[tokio::test]
+async fn a_cancelled_run_holds_its_group_until_its_runner_has_stopped() {
+    let fixture = Fixture::new().await;
+    let grouped = |n: u8| {
+        format!(
+            "name: CI
+on: push
+concurrency: {{group: deploy, cancel-in-progress: true}}
+jobs:
+  a:
+    runs-on: x
+    steps: [{{run: echo {n}}}]
+"
+        )
+    };
+    let first = pushed(&fixture, &[(".forgejo/workflows/ci.yml", &grouped(1))], "First").await;
+    let running = fixture.claim(&["x"], 1).await.unwrap();
+    assert_eq!(running.job.run_id, first.id);
+    // A newer run cancels the first, but its runner is still ending the task (its
+    // `always()` steps): the newer one waits for the group rather than overlapping it.
+    let second = pushed(&fixture, &[(".forgejo/workflows/ci.yml", &grouped(2))], "Second").await;
+    let store = fixture.database.actions_runs();
+    assert_eq!(store.run(first.id).await.unwrap().unwrap().status, Status::Cancelled);
+    assert_eq!(store.run(second.id).await.unwrap().unwrap().status, Status::Blocked, "held while the first drains");
+    assert!(fixture.claim(&["x"], 2).await.is_none());
+    // The runner reports the cancelled task's end: the group is free.
+    if let Some(settled) = store.finish_task(running.task.id, Status::Cancelled, Timestamp::now()).await.unwrap() {
+        fixture.actions().settled(&settled).await.unwrap();
+    }
+    assert_eq!(store.run(second.id).await.unwrap().unwrap().status, Status::Waiting, "released once the first stopped");
 }
 
 // Actions: archived repositories.

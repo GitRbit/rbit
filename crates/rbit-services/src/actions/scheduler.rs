@@ -95,6 +95,11 @@ impl PollEnd for PollEnded {
     }
 }
 
+/// What a job asking for `concurrency.cancel-in-progress` is told in its log: a job's group
+/// lets one of its jobs run at a time, but cancels none (GitHub cancels the one in progress).
+pub const JOB_CANCEL_IN_PROGRESS: &str = "warning: this job's `concurrency` asks for `cancel-in-progress`, which rbit does not apply \
+     to a job's group: its jobs run one at a time and none is cancelled. A workflow's own `concurrency` cancels runs in progress.";
+
 impl ActionsService {
     /// `POST poll`: a task for `runner`, or `None` once the long poll has passed, the runner
     /// polled again, or the server is shutting down. See the module documentation.
@@ -153,6 +158,9 @@ impl ActionsService {
         };
         if let Err(error) = template.validate() {
             return Ok(Err(format!("this job's stored template is invalid: {error}")));
+        }
+        if template.concurrency.as_ref().is_some_and(|concurrency| concurrency.cancel_in_progress) {
+            self.write_system_line(task.id, JOB_CANCEL_IN_PROGRESS).await?;
         }
         let run = store.run(job.run_id).await?.ok_or(ServiceError::NotFound)?;
         let repo = database.admin().find_repository(run.repo_id).await?.ok_or(ServiceError::NotFound)?;

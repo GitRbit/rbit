@@ -187,6 +187,57 @@ jobs:
 }
 
 #[tokio::test]
+async fn a_cancelled_run_still_runs_its_always_and_cancelled_jobs() {
+    let fixture = Fixture::new().await;
+    let workflow = "on: push
+jobs:
+  build:
+    runs-on: x
+    steps: [{run: x}]
+  cleanup:
+    needs: build
+    if: always()
+    runs-on: x
+    steps: [{run: x}]
+  notify:
+    needs: build
+    if: cancelled()
+    runs-on: x
+    steps: [{run: x}]
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: x
+    steps: [{run: x}]
+  test:
+    needs: build
+    runs-on: x
+    steps: [{run: x}]
+";
+    let run = pushed(&fixture, workflow, "refs/heads/main").await;
+    let build = fixture.claim(&["x"], 1).await.expect("build runs");
+    assert_eq!(build.job.key, "build");
+    let alice = fixture.alice.clone();
+    let cancelled = fixture.actions().cancel(&alice, &fixture.repo(&alice).await, run.id).await.unwrap();
+    assert_eq!(cancelled.status, Status::Waiting, "its cleanup still has to run");
+    // As on GitHub: `always()` and `cancelled()` hold once the run is cancelled; a condition
+    // without a status function implies `success()`, which does not.
+    assert_eq!(
+        statuses(&fixture, &run).await,
+        keyed(&[
+            ("build", Status::Cancelled),
+            ("cleanup", Status::Waiting),
+            ("notify", Status::Waiting),
+            ("deploy", Status::Skipped),
+            ("test", Status::Cancelled),
+        ])
+    );
+    run_next(&fixture, 2, Status::Success, &[]).await;
+    run_next(&fixture, 3, Status::Success, &[]).await;
+    assert_eq!(fixture.database.actions_runs().run(run.id).await.unwrap().unwrap().status, Status::Cancelled);
+}
+
+#[tokio::test]
 async fn max_parallel_lets_one_matrix_job_run_at_a_time() {
     let fixture = Fixture::new().await;
     let workflow = "on: push\njobs:\n  test:\n    strategy:\n      max-parallel: 1\n      matrix: {n: [1, 2]}\n    runs-on: x\n    steps: [{run: x}]\n";

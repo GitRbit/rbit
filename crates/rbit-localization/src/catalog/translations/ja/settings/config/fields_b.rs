@@ -143,7 +143,7 @@ config_entries! {
         ConfigText::Help { section: "provider", key: "base_url" } => text.literal("GitHub Enterprise Server の URL です（kind = \"github\" の場合のみ）。デフォルトは https://github.com です。"),
         ConfigText::Help { section: "provider", key: "client_secret" } => text.literal("ログに記録されることも、表示されることもありません（Debug の実装を参照）。"),
         ConfigText::Help { section: "provider", key: "scopes" } => text.literal("1 行に 1 つのスコープを入力します。推奨スコープを要求するには、プロバイダーのデフォルト値を使用してください。"),
-        ConfigText::Help { section: "provider", key: "trust_email" } => text.literal("初回サインイン時に、プロバイダーの確認済みメールアドレスと確認済みメールアドレスが一致する唯一のアカウントに関連付けます。ユーザーのアドレスを管理しているプロバイダーでのみ使用してください。"),
+        ConfigText::Help { section: "provider", key: "trust_email" } => text.literal("初回サインイン時に、プロバイダーの確認済みメールアドレスと確認済みメールアドレスが一致する唯一のアカウントに関連付けます。ユーザーのアドレスを管理しているプロバイダーでのみ使用してください。このプロバイダー経由の登録では、プロバイダーが確認したアドレスを確認メールなしで確認済みとして扱います。"),
         ConfigText::Help { section: "provider", key: "trust_mfa" } => text.literal("ID トークンの amr クレームでプロバイダーが多要素認証（\"mfa\"）を行ったことが示されている場合、アカウント自身の 2 要素認証の手順を省略します。OIDC のみ。"),
         ConfigText::Label { section: "webhooks", key: "enabled" } => text.literal("この機能を有効にする"),
         ConfigText::Label { section: "mirrors", key: "enabled" } => text.literal("この機能を有効にする"),

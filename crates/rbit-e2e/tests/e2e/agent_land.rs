@@ -7,9 +7,10 @@
 //!
 //! The integration workstream (I) owns this file.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use rbit_e2e::{Git, PASSWORD, TestServer};
+use rbit_services::pulls::queue::QUEUE_SWEEP;
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
 
@@ -42,16 +43,21 @@ impl Api {
         [one, two, three, four].iter().map(|(status, body)| (status.is_success(), body["number"].as_u64())).collect()
     }
 
-    /// The pull request's queue entry once `ready` says so, within 20 seconds.
+    /// The queue entry once `ready` says so, allowing the documented fallback sweep.
     pub(crate) async fn queue_until(&self, number: u64, ready: impl Fn(&Value) -> bool) -> Value {
-        for _ in 0..200 {
-            let (_, entry) = self.send(Method::GET, &format!("pulls/{number}/queue"), None).await;
+        // A push may be observed before Actions records its decision, with no later status
+        // event when no workflow starts. Allow two sweeps plus scheduling headroom.
+        let deadline = Instant::now() + QUEUE_SWEEP * 2 + Duration::from_secs(20);
+        loop {
+            let (status, entry) = self.send(Method::GET, &format!("pulls/{number}/queue"), None).await;
+            assert_eq!(status, StatusCode::OK, "reading queue entry #{number}: {entry}");
             if ready(&entry) {
                 return entry;
             }
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            assert!(Instant::now() < deadline, "the queue entry of #{number} never got there: {status}: {entry}");
+            // Stay within both account and client API refill rates while awaiting a sweep.
+            tokio::time::sleep(Duration::from_secs(1)).await;
         }
-        panic!("the queue entry of #{number} never got there")
     }
 }
 

@@ -154,7 +154,7 @@ config_table! {
         ConfigText::Label { section: "provider", key: "allow_registration" } => text.literal("Création de comptes"),
         ConfigText::Help { section: "provider", key: "allow_registration" } => text.literal("Paramètre de déploiement appliqué après le redémarrage du serveur."),
         ConfigText::Label { section: "provider", key: "trust_email" } => text.literal("Faire confiance aux adresses e-mail vérifiées"),
-        ConfigText::Help { section: "provider", key: "trust_email" } => text.literal("Associe une première connexion au seul compte dont l’adresse e-mail vérifiée correspond à celle vérifiée par le fournisseur. Uniquement pour les fournisseurs qui contrôlent les adresses de leurs utilisateurs."),
+        ConfigText::Help { section: "provider", key: "trust_email" } => text.literal("Associe une première connexion au seul compte dont l’adresse e-mail vérifiée correspond à celle vérifiée par le fournisseur. Uniquement pour les fournisseurs qui contrôlent les adresses de leurs utilisateurs. Une inscription par ce fournisseur considère aussi l’adresse qu’il a vérifiée comme vérifiée, sans e-mail de confirmation."),
         ConfigText::Label { section: "provider", key: "trust_mfa" } => text.literal("Faire confiance à l’authentification multifacteur du fournisseur"),
         ConfigText::Help { section: "provider", key: "trust_mfa" } => text.literal("Ignore l’étape à deux facteurs du compte lorsque la revendication amr du jeton d’ID indique que le fournisseur a effectué une authentification multifacteur (\"mfa\"). OIDC uniquement."),
     }

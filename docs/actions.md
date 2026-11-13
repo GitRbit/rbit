@@ -117,7 +117,9 @@ must not silently change what a job does.
   `strategy`, `needs`, `if`, `permissions` (see [Reusable workflows](#reusable-workflows)).
 - **Job:** `name`, `needs`, `if`, `runs-on`, `permissions`, `env`, `defaults.run`,
   `outputs`, `timeout-minutes` (default 360, capped by `[actions] endless_timeout_seconds`, 3 hours
-  unless set higher), `continue-on-error`, `concurrency`,
+  unless set higher), `continue-on-error`, `concurrency` (one job of a group runs at a time;
+  a job's `cancel-in-progress` is not applied, and its log says so: only a workflow's own
+  `concurrency` cancels what is in progress),
   `strategy` (`matrix` with `include`/`exclude`, `fail-fast`, `max-parallel`), `environment`
   (a name, or `{name, url}`), `container`
   (`image`, `env`, `credentials`, `options`, `volumes`), `services` (`image`, `env`,

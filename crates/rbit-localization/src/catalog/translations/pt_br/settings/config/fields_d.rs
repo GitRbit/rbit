@@ -181,7 +181,8 @@ config_entries! {
         }
         ConfigText::Help { section: "provider", key: "trust_email" } => text.literal(
             "Vincula uma primeira entrada à única conta cujo e-mail verificado seja igual ao e-mail verificado pelo \
-             provedor. Somente para provedores que controlam os endereços dos seus usuários.",
+             provedor. Somente para provedores que controlam os endereços dos seus usuários. Um cadastro por ele \
+             também considera verificado o endereço que ele verificou, sem e-mail de confirmação.",
         ),
         ConfigText::Label { section: "provider", key: "trust_mfa" } => {
             text.literal("Confiar na autenticação multifator do provedor");

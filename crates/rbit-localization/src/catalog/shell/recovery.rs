@@ -30,6 +30,10 @@ pub enum RecoveryMessage<'a> {
     /// The confirmed address.
     ThanksForConfirming(&'a str),
     VerifyLinkExpiredText,
+    ConfirmEmailTitle,
+    /// The address the link would confirm.
+    ConfirmEmailText(&'a str),
+    ConfirmEmail,
     GoToAccountSettings,
     SignIn,
 }
@@ -61,6 +65,9 @@ impl MessageFamily for RecoveryMessage<'_> {
             Self::EmailVerified => "recovery.verify.title",
             Self::ThanksForConfirming(_) => "recovery.verify.thanks",
             Self::VerifyLinkExpiredText => "recovery.verify.expired-text",
+            Self::ConfirmEmailTitle => "recovery.verify.confirm-title",
+            Self::ConfirmEmailText(_) => "recovery.verify.confirm-text",
+            Self::ConfirmEmail => "recovery.verify.confirm",
             Self::GoToAccountSettings => "recovery.verify.account-settings",
             Self::SignIn => "recovery.sign-in",
         }
@@ -70,6 +77,9 @@ impl MessageFamily for RecoveryMessage<'_> {
         let literal = match self {
             Self::ResetFor(username) => return phrase(text, "For ", username, ". You'll sign in with it from now on."),
             Self::ThanksForConfirming(address) => return phrase(text, "Thanks for confirming ", address, "."),
+            Self::ConfirmEmailText(address) => {
+                return phrase(text, "Confirm ", address, " as your account's email address. If you didn't ask for this, close this page.");
+            }
             Self::ResetTitle => "Reset your password",
             Self::ForgotLede => "Enter the email address of your account and we'll send you a link to choose a new password.",
             Self::ForgotWithoutEmail => {
@@ -104,6 +114,8 @@ impl MessageFamily for RecoveryMessage<'_> {
                 "Verification links work once, expire after two days and stop working when the address changes. Sign in \
                  and send a new one from your account settings."
             }
+            Self::ConfirmEmailTitle => "Confirm your email address",
+            Self::ConfirmEmail => "Confirm email address",
             Self::GoToAccountSettings => "Go to account settings",
             Self::SignIn => "Sign in",
         };

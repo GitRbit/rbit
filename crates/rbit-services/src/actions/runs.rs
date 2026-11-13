@@ -180,9 +180,11 @@ impl ActionsService {
         drop(decisions);
         tracing::info!(repo = %trigger.repo.full_name(), run = run.id.0, number = run.number, workflow = %run.workflow_path, event = %run.event, status = %run.status, "workflow run created");
         // Actions: join (J). Following up the creation decides the jobs that start with their
-        // own `if:`, moves the scheduler's version and reports the statuses.
+        // own `if:`, moves the scheduler's version and reports the statuses; a run those
+        // decisions finish (every job skipped) releases its group's next run, which may have
+        // been held behind it meanwhile.
         let settled = self.ctx().database.actions_runs().resettle(run.id, Timestamp::now()).await?;
-        self.followed_up(&settled).await?;
+        self.settled(&settled).await?;
         let run = self.ctx().database.actions_runs().run(run.id).await?.unwrap_or(run);
         Ok(Some(run))
     }
@@ -229,15 +231,23 @@ impl ActionsService {
         let store = self.ctx().database.actions_runs();
         let others = members(&store.unfinished_in_group(repo, group).await?);
         let entry = scheduling::enter_group(&others, own, cancel);
+        let cancelled = !entry.cancel.is_empty();
         for other in entry.cancel {
             if let Some(settled) = self.cancel_superseded(repo, other, by).await? {
                 tracing::info!(repo = repo.0, run = other.0, group, "workflow run cancelled by its concurrency group");
                 self.followed_up(&settled).await?;
             }
         }
+        // A run just cancelled whose runner is still ending a task holds the group until it
+        // stops (its `always()` steps must not overlap the next run); that settles it and
+        // releases the next.
+        let draining = cancelled
+            && members(&store.unfinished_in_group(repo, group).await?)
+                .iter()
+                .any(|&(id, member)| Some(id) != own && matches!(member, Member::Draining | Member::Active));
         Ok(match entry.start {
-            Start::Runnable => RunStart::Runnable,
-            Start::HeldForConcurrency => RunStart::HeldForConcurrency,
+            Start::Runnable if !draining => RunStart::Runnable,
+            Start::Runnable | Start::HeldForConcurrency => RunStart::HeldForConcurrency,
         })
     }
 
@@ -335,7 +345,7 @@ impl ActionsService {
         };
         store.set_trigger_actor(id, actor.id()).await?;
         tracing::info!(repo = %repo.repo.full_name(), run = id.0, by = %actor.name(), ?which, "workflow run started again");
-        self.followed_up(&settled).await?;
+        self.settled(&settled).await?;
         store.find_run(repo_id, id).await?.ok_or(ServiceError::NotFound)
     }
 
@@ -362,7 +372,7 @@ impl ActionsService {
         let Some(settled) = settled else {
             return Err(ServiceError::Invalid(requests::NOT_AWAITING_APPROVAL.to_owned()));
         };
-        self.followed_up(&settled).await?;
+        self.settled(&settled).await?;
         let full_name = repo.repo.full_name();
         let detail = format!("run #{} of {} at {}", run.number, run.workflow_path, run.sha);
         self.audit().record(AuditEntry::new(AuditAction::ActionsRunApproved).by(actor).on(full_name.clone()).detail(detail)).await;
@@ -409,6 +419,8 @@ fn members(runs: &[Run]) -> Vec<(RunId, Member)> {
             let member = match run.status {
                 Status::AwaitingApproval => Member::AwaitingApproval,
                 Status::Blocked => Member::Held,
+                // Listed though finished: a task of it has not stopped yet.
+                status if status.is_done() => Member::Draining,
                 _ => Member::Active,
             };
             (run.id, member)

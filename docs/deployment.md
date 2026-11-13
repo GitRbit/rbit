@@ -195,6 +195,13 @@ AmbientCapabilities=CAP_NET_BIND_SERVICE
 `SIGTERM` (what `systemctl stop` sends) shuts down gracefully: in-flight requests finish,
 background jobs stop, and SQLite is flushed.
 
+A bug that panics stops the whole server (release builds abort on panic, so nothing keeps
+running in an unknown state). It first writes `rbit crashed: panic in thread ...` with the
+location and a backtrace to stderr and the log; find crashes with
+`journalctl -u rbit | grep "rbit crashed"`. The unit's `Restart=on-failure` starts it again
+after 5 seconds; with Docker, run the container with `--restart unless-stopped` (as above)
+and read crashes with `docker logs rbit`.
+
 ## Reverse proxy and TLS
 
 The proxy terminates TLS and forwards to `127.0.0.1:3000`. Git pushes can be large and
@@ -416,7 +423,9 @@ sent in the authorization request.
 - The configuration is checked at start-up; rbit refuses to start and lists every problem.
   `allow_registration` (`true` follows the site's registration setting, `"always"` lets the
   provider decide who gets in, `false` never registers), `trust_email` (link a first
-  sign-in to the account with the same verified address) and `trust_mfa` (skip rbit's
+  sign-in to the account with the same verified address; only such a provider's verified
+  address counts as verified when it registers an account, otherwise the new account
+  confirms its address by email, which needs working mail) and `trust_mfa` (skip rbit's
   two-factor step when the ID token reports MFA) are per provider.
 
 ## Health checks

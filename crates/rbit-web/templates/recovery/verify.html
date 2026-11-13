@@ -1,8 +1,21 @@
 {% extends "base.html" %}
 {% import "macros.html" as ui %}
 {% block content %}
-<section class="auth-shell">
-  {% if let Some(address) = verified_address %}
+{#- hx-history="false" keeps the token in the URL out of htmx's localStorage history cache. -#}
+<section class="auth-shell" hx-history="false">
+  {% if let Some((address, action)) = confirming %}
+  <header class="auth-head">
+    <span class="tile">{% call ui::icon("mail", "size-5") %}{% endcall %}</span>
+    <h1 class="auth-title">{% call ui::text(page, rbit_localization::shell::recovery::RecoveryMessage::ConfirmEmailTitle) %}{% endcall %}</h1>
+  </header>
+
+  <div class="card">
+    <p class="text-[13px] text-ink-muted break-all">{% call ui::text(page, rbit_localization::shell::recovery::RecoveryMessage::ConfirmEmailText(address.as_str())) %}{% endcall %}</p>
+    <form method="post" action="{{ action }}">
+      <button type="submit" class="btn btn-primary btn-lg mt-6 w-full">{% call ui::text(page, rbit_localization::shell::recovery::RecoveryMessage::ConfirmEmail) %}{% endcall %}</button>
+    </form>
+  </div>
+  {% else if let Some(address) = verified_address %}
   <header class="auth-head">
     <span class="tile text-success">{% call ui::icon("check", "size-5") %}{% endcall %}</span>
     <h1 class="auth-title">{% call ui::text(page, rbit_localization::shell::recovery::RecoveryMessage::EmailVerified) %}{% endcall %}</h1>

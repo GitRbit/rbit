@@ -4205,7 +4205,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-access"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "serde",
  "thiserror 2.0.21",
@@ -4213,7 +4213,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-actions"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "aes-gcm",
  "aho-corasick",
@@ -4232,7 +4232,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-auth"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "argon2",
  "base64 0.23.1",
@@ -4254,7 +4254,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-collaboration"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "pulldown-cmark",
  "rbit-access",
@@ -4269,7 +4269,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-contracts"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "postcard",
  "serde",
@@ -4280,7 +4280,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-core"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "proptest",
  "rbit-access",
@@ -4297,7 +4297,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-credential-inventory"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "futures-util",
  "rbit-identity",
@@ -4311,10 +4311,11 @@ dependencies = [
 
 [[package]]
 name = "rbit-e2e"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "axum",
  "base64 0.23.1",
+ "flate2",
  "hmac",
  "p256",
  "rbit-core",
@@ -4334,7 +4335,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-git"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "async-compression",
  "gix",
@@ -4352,7 +4353,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-identity"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "argon2",
  "base64 0.23.1",
@@ -4378,7 +4379,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-identity-models"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "postcard",
  "rbit-contracts",
@@ -4388,7 +4389,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-kernel"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "thiserror 2.0.21",
  "tokio",
@@ -4397,14 +4398,14 @@ dependencies = [
 
 [[package]]
 name = "rbit-localization"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "askama",
 ]
 
 [[package]]
 name = "rbit-mail"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "askama",
  "lettre",
@@ -4416,7 +4417,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-notifications"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "hmac",
  "rbit-collaboration",
@@ -4428,7 +4429,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-platform"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "getrandom 0.4.3",
  "tempfile",
@@ -4437,7 +4438,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-presentation"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "ammonia",
  "pulldown-cmark",
@@ -4447,7 +4448,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-process-tree-probe"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "processkit",
@@ -4461,7 +4462,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-render-probe"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "askama",
  "serde_json",
@@ -4469,7 +4470,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-repositories"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "rbit-contracts",
  "rbit-identity-models",
@@ -4480,7 +4481,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-rewrite-check"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "proc-macro2",
  "serde",
@@ -4492,7 +4493,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-runner"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -4521,7 +4522,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-server"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "axum",
@@ -4555,7 +4556,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-services"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "aes-gcm",
  "axum",
@@ -4600,7 +4601,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-ssh"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "getrandom 0.4.3",
  "rbit-core",
@@ -4619,7 +4620,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-storage"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "aes-gcm",
  "base64 0.23.1",
@@ -4651,7 +4652,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-transport"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "base64 0.23.1",
  "proptest",
@@ -4665,7 +4666,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-web"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "askama",
  "askama_web",
@@ -4716,7 +4717,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-wikis"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "rbit-access",
  "rbit-contracts",
@@ -4725,7 +4726,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-workflow"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "proptest",
  "regex-automata",

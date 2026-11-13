@@ -122,7 +122,22 @@ jobs:
 
 async fn json(client: &reqwest::Client, url: &str) -> Value {
     let response = client.get(url).send().await.expect("the API answers");
-    serde_json::from_str(&response.text().await.expect("a body")).expect("JSON")
+    let status = response.status();
+    let body = response.text().await.expect("a body");
+    assert_eq!(status, reqwest::StatusCode::OK, "GET {url}: {body}");
+    serde_json::from_str(&body).expect("JSON")
+}
+
+async fn reported_status(client: &reqwest::Client, url: &str, deadline: Instant) -> Value {
+    // The run's terminal transaction precedes its commit-status publication.
+    loop {
+        let status = json(client, url).await;
+        if status["state"] != "pending" {
+            return status;
+        }
+        assert!(Instant::now() < deadline, "the finished run's commit statuses did not settle in time: {status}");
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
 }
 
 #[tokio::test]
@@ -218,7 +233,7 @@ async fn a_real_runner_runs_a_pushed_workflow() {
     assert!(!home.path().join("work/cache").exists(), "the server kept the cache, not the runner");
 
     // The run reported its jobs as commit statuses.
-    let status = json(&api, &server.url(&format!("/api/v1/repos/alice/rocket/commits/{sha}/status"))).await;
+    let status = reported_status(&api, &server.url(&format!("/api/v1/repos/alice/rocket/commits/{sha}/status")), deadline).await;
     assert_eq!(status["state"], "success", "{status}");
     let page = alice.get(&format!("/alice/rocket/actions/runs/{}/jobs/{}", run["run_number"], job_id("build"))).await;
     assert!(page.contains("Compute") && page.contains("greeting is ***"));

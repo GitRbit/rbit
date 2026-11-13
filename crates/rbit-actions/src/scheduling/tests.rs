@@ -46,6 +46,11 @@ fn groups_cancel_or_hold_as_github_does() {
     assert_eq!(enter_group(&others, Some(1), false), Entry { cancel: vec![2, 4], start: Start::Runnable }, "a run never holds itself");
     assert_eq!(enter_group(&[(3, AwaitingApproval)], None, false), Entry { cancel: vec![], start: Start::Runnable });
     assert_eq!(enter_group::<i64>(&[], None, false), Entry { cancel: vec![], start: Start::Runnable });
+    // A run still ending its tasks holds the group, even for `cancel-in-progress`, and is not
+    // cancelled again.
+    for cancel in [false, true] {
+        assert_eq!(enter_group(&[(5, Member::Draining)], None, cancel), Entry { cancel: vec![], start: Start::HeldForConcurrency });
+    }
 }
 
 #[test]
@@ -53,6 +58,7 @@ fn the_oldest_held_run_starts_once_nothing_is_active() {
     use Member::{Active, AwaitingApproval, Held};
     assert_eq!(next_to_release(&[(1, AwaitingApproval), (2, Held), (3, Held)]), Some(2));
     assert_eq!(next_to_release(&[(1, Held), (2, Active)]), None);
+    assert_eq!(next_to_release(&[(1, Member::Draining), (2, Held)]), None, "a cancelled run's tasks are still ending");
     assert_eq!(next_to_release(&[(1, AwaitingApproval)]), None);
     assert_eq!(next_to_release::<i64>(&[]), None);
 }

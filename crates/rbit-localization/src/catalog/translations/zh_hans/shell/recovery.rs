@@ -51,6 +51,13 @@ entries! { ZhHans:
         }
         RecoveryMessage::GoToAccountSettings => text.literal("前往账户设置"),
         RecoveryMessage::SignIn => text.literal("登录"),
+        RecoveryMessage::ConfirmEmailTitle => text.literal("确认你的邮箱地址"),
+        RecoveryMessage::ConfirmEmailText(address) => {
+            text.literal("确认 ");
+            text.argument(address);
+            text.literal(" 为你账户的邮箱地址。如果这不是你本人的操作，请关闭此页面。");
+        }
+        RecoveryMessage::ConfirmEmail => text.literal("确认邮箱地址"),
     }
     RecoverySentence => RichWriter |text| {
         RecoverySentence::NothingArrived => {

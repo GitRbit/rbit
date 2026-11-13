@@ -11,13 +11,21 @@ use rbit_services::notification_email::period_start;
 
 const DAY: i64 = 24 * 60 * 60;
 
-/// Signs up `name` and follows the verification link the server emailed.
+/// Signs up `name` and confirms the address through the link the server emailed.
 async fn verified_user(server: &TestServer, mail: MailLog, name: &str) -> Client {
     let client = server.sign_up(name).await;
     let sent = mail.wait_for(server, &format!("{name}@example.test"), 1).await;
     let link = sent[0].link_starting_with(&server.url("/email/verify/")).expect("a verification link");
     let path = link.strip_prefix(server.base_url()).unwrap().to_owned();
-    client.get(&path).await.expect_status(StatusCode::OK).expect_contains(&["Email address verified"]);
+    // Opening the link (as a mail filter scanning it would) only asks; it stays usable.
+    for _ in 0..2 {
+        let page = client.get(&path).await;
+        page.expect_status(StatusCode::OK).expect_contains(&["Confirm your email address", &format!("{name}@example.test")]);
+        assert!(!page.contains("Email address verified"));
+    }
+    client.get("/settings/account").await.expect_contains(&["Resend verification email"]);
+    client.post(&path, &[]).await.expect_status(StatusCode::OK).expect_contains(&["Email address verified"]);
+    client.post(&path, &[]).await.expect_status(StatusCode::NOT_FOUND).expect_contains(&["This link has expired"]);
     client
 }
 

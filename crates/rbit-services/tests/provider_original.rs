@@ -252,7 +252,7 @@ async fn stale_provider_mfa_does_not_consume_one_use_proof_and_new_origin_can_re
 
 #[tokio::test]
 async fn external_creation_uses_same_transaction_budget_and_preserves_pending_retry_semantics() {
-    let fixture = Fixture::new(false, false).await;
+    let fixture = Fixture::new(true, false).await;
     fixture.user("root").await;
     let ExternalSignIn::Register(legacy) = fixture
         .services

@@ -205,7 +205,13 @@ impl ActionsService {
         let states: Vec<JobState<'_, usize>> = all
             .iter()
             .enumerate()
-            .map(|(index, job)| JobState { id: index, key: &job.key, failed: job.status == Status::Failure, done: job.status.is_done() })
+            .map(|(index, job)| JobState {
+                id: index,
+                key: &job.key,
+                failed: job.status == Status::Failure,
+                done: job.status.is_done(),
+                attempt: job.attempt,
+            })
             .collect();
         let mut cancel = Vec::new();
         for candidate in jobs::fail_fast_candidates(&states) {

@@ -56,3 +56,28 @@ fn the_budget_keeps_counting_after_one_marker() {
     let after = layout(laid.progress, &lines, 12);
     assert_eq!((after.text.len(), after.ends.len(), after.progress.lines), (0, 0, 8), "dropped lines still count");
 }
+
+#[test]
+fn task_tokens_are_masked_by_their_shape_without_being_known() {
+    let token = format!("rbat_{}", "aZ0_-".repeat(9).chars().take(43).collect::<String>());
+    let masker = Masker::new([]);
+    assert_eq!(masker.mask(&format!("git push https://x:{token}@host/r")), "git push https://x:***@host/r");
+    assert_eq!(masker.mask(&format!("{token}{token}")), "******");
+    assert_eq!(Masker::none().mask("rbat_short and rbat_"), "rbat_short and rbat_", "not a token's shape");
+}
+
+#[test]
+fn cleaning_a_long_token_shaped_line_does_not_rescan_every_suffix() {
+    let (done, finished) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        // A runner can upload a line up to its request-body limit before stored
+        // line truncation. Every byte here is base64url and prefixes overlap.
+        let source = "rbat_".repeat((1 << 20) / 5);
+        let cleaned = clean_line(&Masker::none(), &source, 64 * 1024);
+        done.send(cleaned).unwrap();
+    });
+    let cleaned =
+        finished.recv_timeout(std::time::Duration::from_secs(5)).expect("token masking must inspect a fixed-size suffix per match");
+    assert!(cleaned.len() <= 64 * 1024);
+    assert!(cleaned.contains("***"));
+}

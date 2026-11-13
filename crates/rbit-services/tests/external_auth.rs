@@ -111,7 +111,8 @@ fn identity(provider: &str, subject: &str, email: Option<&str>, verified: bool) 
 
 #[tokio::test]
 async fn a_first_sign_in_registers_an_account_without_a_password() {
-    let fx = Fixture::new().await;
+    // Corp is trusted for addresses, so the address it verified counts here.
+    let fx = Fixture::with(|config| config.auth.providers[0].trust_email = true).await;
     fx.user("root").await;
     let external = &fx.services.external_auth;
     let ExternalSignIn::Register(token) = fx.complete(identity("corp", "sub-1", Some("alice@corp.example"), true), None).await.unwrap()
@@ -144,6 +145,12 @@ async fn a_first_sign_in_registers_an_account_without_a_password() {
     let audit = fx.audit(&alice).await;
     assert!(audit.contains(&(AuditAction::ExternalIdentityLinked, "Corp SSO (Ali Ce), new account".to_owned())), "{audit:?}");
     assert!(audit.iter().filter(|(action, detail)| *action == AuditAction::SignIn && detail == "Corp SSO").count() == 2, "{audit:?}");
+
+    // A provider not trusted for addresses vouches for none, even one it calls verified.
+    let ExternalSignIn::Register(token) = fx.complete(identity("github", "9", Some("dan@example.com"), true), None).await.unwrap() else {
+        panic!("expected registration");
+    };
+    assert!(!external.registration_draft("github", &token).unwrap().email_verified);
 }
 
 #[tokio::test]

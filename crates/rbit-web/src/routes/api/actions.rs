@@ -371,16 +371,19 @@ pub async fn run_logs(State(state): State<AppState>, caller: Caller, Path(path):
         return Err(ApiError::not_found());
     }
     let mtime = u64::try_from(run.finished_at.unwrap_or(run.created_at).0).unwrap_or_default();
+    let Some(slot) = crate::routes::actions::download_slot() else { return Ok(crate::routes::actions::downloads_busy()) };
     // One job's log is read at a time, straight into the response.
     let (sender, receiver) = tokio::sync::mpsc::channel::<std::io::Result<axum::body::Bytes>>(8);
-    let (actions, writer) = (actions.clone(), crate::routes::actions::ChunkWriter::new(sender.clone()));
+    let (completed, completion) = tokio::sync::oneshot::channel();
+    let (actions, writer) = (actions.clone(), crate::routes::actions::ChunkWriter::new(sender));
     tokio::spawn(async move {
+        let _slot = slot;
         let mut zip = rbit_services::actions::downloads::ZipWriter::new(writer, mtime);
         for (name, task) in files {
             let log = match actions.raw_log(&ctx, task).await {
                 Ok(Some(log)) => log,
                 Ok(None) => continue,
-                Err(error) => return fail_archive(&sender, error.to_string()).await,
+                Err(error) => return fail_archive(completed, error.to_string()),
             };
             let (file, gzip) = (log.file.into_std().await, log.gzip);
             let added = tokio::task::spawn_blocking(move || {
@@ -390,17 +393,21 @@ pub async fn run_logs(State(state): State<AppState>, caller: Caller, Path(path):
             .await;
             zip = match added {
                 Ok((zip, Ok(()))) => zip,
-                Ok((_, Err(error))) => return fail_archive(&sender, error.to_string()).await,
-                Err(error) => return fail_archive(&sender, error.to_string()).await,
+                Ok((_, Err(error))) => return fail_archive(completed, error.to_string()),
+                Err(error) => return fail_archive(completed, error.to_string()),
             };
         }
-        if let Ok(Err(error)) = tokio::task::spawn_blocking(move || zip.finish().map(drop)).await {
-            fail_archive(&sender, error.to_string()).await;
+        match tokio::task::spawn_blocking(move || zip.finish().map(drop)).await {
+            Ok(Ok(())) => {
+                let _ = completed.send(Ok(()));
+            }
+            Ok(Err(error)) => fail_archive(completed, error.to_string()),
+            Err(error) => fail_archive(completed, error.to_string()),
         }
     });
     let name = format!("attachment; filename=\"logs_{}.zip\"", run.id.0);
     // Fused: polled after its end, a bare `unfold` panics (and aborts a release build).
-    let mut response = crate::routes::actions::channel_body(receiver).into_response();
+    let mut response = crate::routes::actions::channel_body(receiver, completion).into_response();
     let headers = response.headers_mut();
     headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/zip"));
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("private, no-cache"));
@@ -411,9 +418,9 @@ pub async fn run_logs(State(state): State<AppState>, caller: Caller, Path(path):
 }
 
 /// Ends a log archive being sent with `error`, which the client sees as a broken download.
-async fn fail_archive(sender: &tokio::sync::mpsc::Sender<std::io::Result<axum::body::Bytes>>, error: String) {
+fn fail_archive(completed: tokio::sync::oneshot::Sender<std::io::Result<()>>, error: String) {
     tracing::warn!(%error, "cannot send a run's log archive");
-    let _ = sender.send(Err(std::io::Error::other(error))).await;
+    let _ = completed.send(Err(std::io::Error::other(error)));
 }
 
 /// `POST /repos/{owner}/{repo}/actions/runs/{run_id}/cancel`: `202 Accepted`; running jobs
@@ -1507,7 +1514,9 @@ mod tests {
         let (response, json) = fixture.send("POST", &test_job, Some(&write), None).await;
         assert_eq!((response.status(), json), (StatusCode::CREATED, json!({})));
         let jobs = fixture.database.actions_runs().jobs(pushed.id).await.unwrap();
-        assert_eq!((jobs[0].status, jobs[1].status), (Status::Cancelled, Status::Waiting), "only the test job runs again");
+        // Only the test job runs again; `build` stays cancelled, so its default `success()`
+        // skips it rather than sending it to a runner.
+        assert_eq!((jobs[0].status, jobs[1].status), (Status::Cancelled, Status::Skipped), "only the test job runs again");
 
         // Approval starts a run that waits for it, once.
         let pull = Spec {

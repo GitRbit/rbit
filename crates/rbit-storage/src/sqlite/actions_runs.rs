@@ -607,12 +607,14 @@ impl ActionsRunStore {
 
     /// The runs of `repo` in concurrency group `group` that have not finished, oldest first.
     pub async fn unfinished_in_group(&self, repo: RepoId, group: &str) -> Result<Vec<Run>, StorageError> {
-        let rows: Vec<RunRow> =
-            sqlx::query_as(select_run!("WHERE repo_id = ? AND concurrency_group = ? AND status IN (5, 6, 7, 8) ORDER BY id"))
-                .bind(repo.0)
-                .bind(group)
-                .fetch_all(&self.pool)
-                .await?;
+        let rows: Vec<RunRow> = sqlx::query_as(select_run!(concat!(
+            "WHERE repo_id = ? AND concurrency_group = ? AND (status IN (5, 6, 7, 8) OR EXISTS (SELECT 1 FROM actions_tasks t ",
+            "JOIN actions_jobs j ON j.id = t.job_id WHERE j.run_id = actions_runs.id AND t.status = 6)) ORDER BY id"
+        )))
+        .bind(repo.0)
+        .bind(group)
+        .fetch_all(&self.pool)
+        .await?;
         rows.into_iter().map(Run::try_from).collect()
     }
 
@@ -1065,7 +1067,8 @@ impl ActionsRunStore {
 
     /// Cancels a run: jobs not yet running at once; running jobs in the database (their
     /// runners learn it on their next update) with their task tokens cleared immediately.
-    /// `None` when the run is not in `repo` or already finished.
+    /// A job waiting for needs with its own `if:` is decided once they end, as on GitHub
+    /// (`always()` runs it). `None` when the run is not in `repo` or already finished.
     pub async fn cancel_run(&self, repo: RepoId, run: RunId, now: Timestamp) -> Result<Option<Settled>, StorageError> {
         let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         let found: Option<i64> =
@@ -1083,11 +1086,14 @@ impl ActionsRunStore {
         .bind(run.0)
         .execute(&mut *tx)
         .await?;
-        sqlx::query("UPDATE actions_jobs SET status = 3, finished_at = ? WHERE run_id = ? AND status IN (5, 6, 7, 8)")
-            .bind(now.0)
-            .bind(run.0)
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query(
+            "UPDATE actions_jobs SET status = 3, finished_at = ? WHERE run_id = ? AND status IN (5, 6, 7, 8) \
+             AND NOT (status = 7 AND condition = 1 AND json_array_length(needs) > 0)",
+        )
+        .bind(now.0)
+        .bind(run.0)
+        .execute(&mut *tx)
+        .await?;
         sqlx::query("UPDATE actions_runs SET cancel_requested = 1 WHERE id = ?").bind(run.0).execute(&mut *tx).await?;
         let settled = settle(&mut tx, run, Vec::new(), now).await?;
         tx.commit().await?;
@@ -1095,15 +1101,19 @@ impl ActionsRunStore {
     }
 
     /// Cancels waiting jobs nobody took since `queued_before` (the abandoned sweep) and
-    /// settles their runs.
+    /// settles their runs. A job waits out its environment's wait timer first: it could not
+    /// be taken before, so its time starts when the timer ends.
     pub async fn cancel_abandoned(&self, queued_before: Timestamp, now: Timestamp) -> Result<Vec<Settled>, StorageError> {
         let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
-        let runs: Vec<i64> =
-            sqlx::query_scalar("UPDATE actions_jobs SET status = 3, finished_at = ?1 WHERE status = 5 AND queued_at < ?2 RETURNING run_id")
-                .bind(now.0)
-                .bind(queued_before.0)
-                .fetch_all(&mut *tx)
-                .await?;
+        let runs: Vec<i64> = sqlx::query_scalar(
+            "UPDATE actions_jobs SET status = 3, finished_at = ?1 WHERE status = 5 AND queued_at + COALESCE((SELECT e.wait_timer * 60 \
+             FROM actions_environments e WHERE e.repo_id = actions_jobs.repo_id AND e.name = actions_jobs.environment), 0) < ?2 \
+             RETURNING run_id",
+        )
+        .bind(now.0)
+        .bind(queued_before.0)
+        .fetch_all(&mut *tx)
+        .await?;
         let mut settled = Vec::new();
         for run in runs.into_iter().collect::<BTreeSet<_>>() {
             sqlx::query("UPDATE actions_runs SET cancel_requested = 1 WHERE id = ?").bind(run).execute(&mut *tx).await?;
@@ -1263,19 +1273,24 @@ impl ActionsRunStore {
             }
         }
         // A new attempt starts its own clock, as GitHub times each attempt; the first job it
-        // starts sets `started_at` again.
-        sqlx::query("UPDATE actions_runs SET attempt = attempt + 1, status = ?, started_at = NULL, finished_at = NULL, cancel_requested = 0              WHERE id = ?")
-            .bind(placeholder_status(start).code())
-            .bind(run.0)
-            .execute(&mut *tx)
-            .await?;
+        // starts sets `started_at` again. Its logs are new, so they expire again in their time.
+        sqlx::query(
+            "UPDATE actions_runs SET attempt = attempt + 1, status = ?, started_at = NULL, finished_at = NULL, cancel_requested = 0, \
+             logs_expired_at = NULL WHERE id = ?",
+        )
+        .bind(placeholder_status(start).code())
+        .bind(run.0)
+        .execute(&mut *tx)
+        .await?;
         let mut waiting = Vec::new();
         for job in jobs.iter().filter(|job| chosen.contains(&job.id.0)) {
             // A job with its own `if:` (or the stand-in of one planned from its needs) is
             // decided again by the server, with the needs of this attempt.
             let decided: bool =
                 sqlx::query_scalar("SELECT condition FROM actions_jobs WHERE id = ?").bind(job.id.0).fetch_one(&mut *tx).await?;
-            let waits = decided || job.needs.iter().any(|need| keys.contains(need.as_str()));
+            // A job with needs waits for them, run again or not: one that still failed skips it
+            // (its default `success()`), as on GitHub, rather than sending it to a runner.
+            let waits = decided || !job.needs.is_empty();
             let status = initial_status(start, waits);
             sqlx::query(
                 "UPDATE actions_jobs SET status = ?1, attempt = attempt + 1, task_id = NULL, runner_id = NULL, started_at = NULL, \

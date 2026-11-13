@@ -283,7 +283,8 @@ fn unknown_identities_register_or_are_refused() {
 #[test]
 fn registration_creates_marks_and_records() {
     let port = Port { registration_open: true, ..Port::default() };
-    let created = run(register(&port, &OPEN, &identity(Some("Alice@Example.com"), true), " bob ", "alice@example.com")).unwrap();
+    let trusted = policy(true, false, ProviderRegistration::FollowSite);
+    let created = run(register(&port, &trusted, &identity(Some("Alice@Example.com"), true), " bob ", "alice@example.com")).unwrap();
     assert_eq!(created.id(), AccountId(7));
     assert_eq!(
         port.log(),
@@ -299,6 +300,10 @@ fn registration_creates_marks_and_records() {
     let other_address = Port { registration_open: true, ..Port::default() };
     let _ = run(register(&other_address, &OPEN, &identity(Some("a@example.com"), true), "bob", "b@example.com"));
     assert_eq!(other_address.log()[0], "create bob verified=false open=true");
+    // A provider not trusted for addresses vouches for none, even one it calls verified.
+    let untrusted = Port { registration_open: true, ..Port::default() };
+    let _ = run(register(&untrusted, &OPEN, &identity(Some("alice@example.com"), true), "bob", "alice@example.com"));
+    assert_eq!(untrusted.log()[0], "create bob verified=false open=true");
 
     let closed = Port::default();
     assert!(matches!(run(register(&closed, &OPEN, &identity(None, false), "bob", "b@example.com")), Err(RegistrationError::Closed)));

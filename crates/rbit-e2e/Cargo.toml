@@ -15,7 +15,7 @@ rbit-services.workspace = true
 rbit-storage.workspace = true
 rbit-web.workspace = true
 axum.workspace = true
-reqwest = { workspace = true, features = ["multipart"] }
+reqwest = { workspace = true, features = ["json", "multipart"] }
 tokio.workspace = true
 tempfile.workspace = true
 # N: capturing what the `log` mail transport writes (`MailLog`).
@@ -36,6 +36,8 @@ p256.workspace = true
 base64.workspace = true
 # Actions (F): counting rows in the database of a running server.
 sqlx.workspace = true
+# Gzipped fetch requests built by hand.
+flate2.workspace = true
 
 [lints]
 workspace = true

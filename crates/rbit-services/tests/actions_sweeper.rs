@@ -6,8 +6,11 @@ use rbit_core::{
     PushSource, Timestamp,
     actions::{LogState, RunnerCapabilities, Status},
 };
-use rbit_services::actions::logs::LogRange;
-use rbit_storage::sqlite::{actions_runners::Declaration, actions_runs::Claimed};
+use rbit_services::actions::{environments::EnvironmentInput, logs::LogRange};
+use rbit_storage::sqlite::{
+    actions_runners::Declaration,
+    actions_runs::{Claimed, Rerun, RunStart},
+};
 
 use crate::actions_fixture::{Fixture, workflow};
 
@@ -101,6 +104,25 @@ async fn endless_tasks_fail_and_abandoned_jobs_are_cancelled() {
 }
 
 #[tokio::test]
+async fn a_job_waits_out_its_environment_timer_before_it_counts_as_abandoned() {
+    let fixture = Fixture::with(|config| config.actions.abandoned_timeout_seconds = 1_000).await;
+    let actions = fixture.actions();
+    let alice = fixture.alice.clone();
+    let repo = fixture.repo(&alice).await;
+    let timer = EnvironmentInput { wait_timer: 60, ..EnvironmentInput::default() };
+    actions.put_environment(&alice, &repo, "prod", &timer).await.unwrap();
+    let deploy = "on: push\njobs:\n  deploy:\n    environment: prod\n    runs-on: nobody-has-this\n    steps: [{run: x}]\n";
+    fixture.commit(&[(".forgejo/workflows/deploy.yml", deploy)], "Deploy");
+    let update = fixture.push_ref("refs/heads/main").await;
+    actions.handle_push(repo.repo.repo.id, PushSource::User(alice.id()), &[update]).await.unwrap();
+    let now = Timestamp::now();
+    // Older than the 1,000 s timeout, but its hour-long wait timer is still running.
+    assert_eq!(actions.sweep(Timestamp(now.0 + 2_000)).await.unwrap().abandoned, 0);
+    assert_eq!(actions.sweep(Timestamp(now.0 + 3_600 + 500)).await.unwrap().abandoned, 0, "its time starts with the timer's end");
+    assert_eq!(actions.sweep(Timestamp(now.0 + 3_600 + 1_100)).await.unwrap().abandoned, 1);
+}
+
+#[tokio::test]
 async fn logs_expire_by_age_and_budget_and_old_runs_go() {
     let fixture = Fixture::new().await;
     let actions = fixture.actions();
@@ -126,6 +148,23 @@ async fn logs_expire_by_age_and_budget_and_old_runs_go() {
     let swept = actions.sweep(Timestamp(now.0 + 366 * DAY)).await.unwrap();
     assert_eq!(swept.deleted_runs, 2);
     assert_eq!(store.run(first.job.run_id).await.unwrap(), None);
+}
+
+#[tokio::test]
+async fn a_run_started_again_after_its_logs_expired_has_them_expire_again() {
+    let fixture = Fixture::new().await;
+    let actions = fixture.actions();
+    let first = claimed(&fixture, 6).await;
+    let store = fixture.database.actions_runs();
+    let settled = store.finish_task(first.task.id, Status::Success, Timestamp::now()).await.unwrap().unwrap();
+    actions.settled(&settled).await.unwrap();
+    let later = Timestamp(Timestamp::now().0 + 91 * DAY);
+    assert_eq!(actions.sweep(later).await.unwrap().expired_logs, 1);
+    assert!(store.run(first.job.run_id).await.unwrap().unwrap().logs_expired_at.is_some());
+    let repo = fixture.repo(&fixture.alice).await.repo.repo.id;
+    store.rerun(repo, first.job.run_id, Rerun::All, RunStart::Runnable, later).await.unwrap().unwrap();
+    // The new attempt's logs are not past their time: retention looks at the run again.
+    assert_eq!(store.run(first.job.run_id).await.unwrap().unwrap().logs_expired_at, None);
 }
 
 #[tokio::test]

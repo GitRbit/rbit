@@ -1381,7 +1381,7 @@ labels keep `--ink` text with a coloured dot, legible in every theme. Icons and 
 
 - Compiled templates (Askama) and embedded, pre-compressed-on-the-fly assets with
   `Cache-Control: immutable` + content hashes.
-- `mimalloc` global allocator; `lto = "fat"`, `codegen-units = 1`, `panic = "abort"` in release.
+- `mimalloc` global allocator; `lto = "fat"`, `codegen-units = 1`, `panic = "abort"` in release (a panic hook logs the crash first; the service manager restarts).
 - gitoxide with `max-performance-safe` (parallel pack decoding, fast SHA-1, zlib-rs).
 - Every repository keeps a split commit-graph (`git commit-graph write --reachable
   --split`, under the repository lease): written after each push by the cache warm-up and

@@ -243,9 +243,9 @@ fn convert<C>(error: TwoFactorError<StorageError, C>, claim: impl FnOnce(C) -> S
     }
 }
 
-/// The throttle key for a client address.
+/// The throttle key for a client address: an IPv6 address by its /64, which one host has.
 fn ip_key(client: &ClientInfo) -> String {
-    client.ip.map_or_else(|| "unknown".to_owned(), |ip| ip.to_canonical().to_string())
+    client.ip.map_or_else(|| "unknown".to_owned(), |ip| crate::throttle::client_key(&ip.to_canonical().to_string()))
 }
 
 /// The sign-in throttle key for a login as typed. Prefixed so that no typed login can

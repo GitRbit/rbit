@@ -74,6 +74,13 @@ entries! { PtBr:
         }
         RecoveryMessage::GoToAccountSettings => text.literal("Ir para as configurações da conta"),
         RecoveryMessage::SignIn => text.literal("Entrar"),
+        RecoveryMessage::ConfirmEmailTitle => text.literal("Confirme seu endereço de e-mail"),
+        RecoveryMessage::ConfirmEmailText(address) => {
+            text.literal("Confirme ");
+            text.argument(address);
+            text.literal(" como o endereço de e-mail da sua conta. Se você não pediu isso, feche esta página.");
+        }
+        RecoveryMessage::ConfirmEmail => text.literal("Confirmar endereço de e-mail"),
     }
     RecoverySentence => RichWriter |text| {
         RecoverySentence::NothingArrived => {

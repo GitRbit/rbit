@@ -3,12 +3,23 @@ use serde::{Deserialize, Serialize};
 
 /// The shape of an artifact name: 1 to 128 of `[A-Za-z0-9._-]`, but not `.` or `..`
 /// (§12.7). A name is a path segment of [`crate::protocol::ARTIFACTS_PATH`] and the directory a runner
-/// unpacks it into among several, so it must not walk up a directory.
+/// unpacks it into among several, so it must not walk up a directory, nor name a Git
+/// directory ([`is_git_dir_name`]): downloaded into a clone, its files would be Git's
+/// configuration and hooks, which run code.
 pub fn valid_artifact_name(name: &str) -> bool {
     (1..=128).contains(&name.len())
         && name != "."
         && name != ".."
+        && !is_git_dir_name(name)
         && name.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+}
+
+/// Whether path part `part` names a repository's Git directory on some file system: `.git`
+/// in any case, with the trailing dots and spaces Windows drops, or its 8.3 short name
+/// `git~N`.
+pub fn is_git_dir_name(part: &str) -> bool {
+    let part = part.trim_end_matches(['.', ' ']).to_ascii_lowercase();
+    part == ".git" || part.strip_prefix("git~").is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
 }
 
 /// The directory of a stored artifact or cache archive that holds the workspace's files;

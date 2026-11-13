@@ -70,7 +70,7 @@ fn calls_and_deferred_plans_decide_only_when_they_must() {
 
 #[test]
 fn a_failed_matrix_job_cancels_its_unfinished_siblings() {
-    let state = |id, key, failed, done| JobState { id, key, failed, done };
+    let state = |id, key, failed, done| JobState { id, key, failed, done, attempt: 1 };
     let jobs = [
         state(1, "build", true, true),
         state(2, "build", false, false),
@@ -80,6 +80,12 @@ fn a_failed_matrix_job_cancels_its_unfinished_siblings() {
         state(6, "build", false, false),
     ];
     assert_eq!(fail_fast_candidates(&jobs), [FailFast { key: "build", first: 1, unfinished: vec![2, 6] }], "deploy has nothing left");
+    // A leg run again alone (attempt 2) is not cancelled for the first attempt's failure; a
+    // failure of its own attempt still cancels it.
+    let again = [JobState { attempt: 1, ..state(1, "build", true, true) }, JobState { attempt: 2, ..state(2, "build", false, false) }];
+    assert_eq!(fail_fast_candidates(&again), []);
+    let both = [JobState { attempt: 2, ..state(1, "build", true, true) }, JobState { attempt: 2, ..state(2, "build", false, false) }];
+    assert_eq!(fail_fast_candidates(&both), [FailFast { key: "build", first: 1, unfinished: vec![2] }]);
     let on = templates(true);
     let off = templates(false);
     assert!(fail_fast_applies(&on[0]), "a matrix with fail-fast");

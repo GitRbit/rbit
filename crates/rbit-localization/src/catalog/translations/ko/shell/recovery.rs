@@ -40,6 +40,12 @@ entries! { Ko:
         RecoveryMessage::VerifyLinkExpiredText => text.literal("확인 링크는 한 번만 사용할 수 있으며 2일 후에 만료되고, 주소가 바뀌면 더 이상 작동하지 않습니다. 로그인한 후 계정 설정에서 새 링크를 보내세요."),
         RecoveryMessage::GoToAccountSettings => text.literal("계정 설정으로 이동"),
         RecoveryMessage::SignIn => text.literal("로그인"),
+        RecoveryMessage::ConfirmEmailTitle => text.literal("이메일 주소 확인"),
+        RecoveryMessage::ConfirmEmailText(address) => {
+            text.argument(address);
+            text.literal("을(를) 계정의 이메일 주소로 확인합니다. 요청하지 않았다면 이 페이지를 닫으세요.");
+        }
+        RecoveryMessage::ConfirmEmail => text.literal("이메일 주소 확인"),
     }
     RecoverySentence => RichWriter |text| {
         RecoverySentence::NothingArrived => {

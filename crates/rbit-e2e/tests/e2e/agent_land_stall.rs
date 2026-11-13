@@ -39,6 +39,7 @@ async fn an_entry_whose_required_check_cannot_report_leaves_the_line() {
     let (status, place) = api.send(Method::POST, &queue, Some(json!({ "head": head }))).await;
     assert_eq!(status, StatusCode::ACCEPTED, "{place}");
     let left = api.queue_until(number, |entry| entry["state"] == "failed").await;
+    let first_candidate = left["candidate"].clone();
     let reason = left["reason"].as_str().unwrap_or_default();
     assert!(reason.contains("`CI / test (pull_request)` is reported by pull_request runs"), "{left}");
 
@@ -46,9 +47,14 @@ async fn an_entry_whose_required_check_cannot_report_leaves_the_line() {
     let checks = json!({ "required_status_checks": ["CI / test (push)"] });
     let (status, changed) = api.send(Method::PATCH, &format!("branch_protections/{}", rule["id"]), Some(checks)).await;
     assert_eq!(status, StatusCode::OK, "{changed}");
+    // A different merge message gives this attempt its own candidate even in the same
+    // timestamp second, so it cannot reuse the previous candidate's trigger decision.
+    let changed_title = json!({ "title": "Land safely" });
+    assert_eq!(api.send(Method::PATCH, &format!("pulls/{number}"), Some(changed_title)).await.0, StatusCode::OK);
     let (status, place) = api.send(Method::POST, &queue, Some(json!({ "head": head }))).await;
     assert_eq!(status, StatusCode::ACCEPTED, "queued again after leaving: {place}");
     let left = api.queue_until(number, |entry| entry["state"] == "failed" && entry["reason"] != reason).await;
+    assert_ne!(left["candidate"], first_candidate, "the second attempt has its own trigger decision");
     assert!(left["reason"].as_str().unwrap_or_default().contains("no workflow ran on the candidate"), "{left}");
     let (_, main) = api.send(Method::GET, "branches/main", None).await;
     assert_ne!(main["commit"]["sha"].as_str(), left["candidate"].as_str(), "nothing landed");

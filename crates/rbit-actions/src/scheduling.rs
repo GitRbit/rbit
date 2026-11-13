@@ -93,6 +93,9 @@ pub enum Member {
     Held,
     /// Waiting for runners or running.
     Active,
+    /// Finished (cancelled, typically) while a runner still ends one of its tasks, running
+    /// its `always()` steps: it holds the group, with nothing left to cancel.
+    Draining,
 }
 
 /// How a run that becomes runnable starts.
@@ -117,7 +120,9 @@ pub fn enter_group<Id: Copy + PartialEq>(others: &[(Id, Member)], own: Option<Id
         if Some(id) == own || (member == Member::AwaitingApproval && !cancel_in_progress) {
             continue;
         }
-        if cancel_in_progress || member == Member::Held {
+        if member == Member::Draining {
+            busy = true;
+        } else if cancel_in_progress || member == Member::Held {
             cancel.push(id);
         } else {
             busy = true;
@@ -129,7 +134,7 @@ pub fn enter_group<Id: Copy + PartialEq>(others: &[(Id, Member)], own: Option<Id
 /// The held run to release once a run of the group finished: the oldest held one, and only
 /// when no run of the group is active. `unfinished` is oldest first.
 pub fn next_to_release<Id: Copy>(unfinished: &[(Id, Member)]) -> Option<Id> {
-    if unfinished.iter().any(|&(_, member)| member == Member::Active) {
+    if unfinished.iter().any(|&(_, member)| matches!(member, Member::Active | Member::Draining)) {
         return None;
     }
     unfinished.iter().find(|&&(_, member)| member == Member::Held).map(|&(id, _)| id)

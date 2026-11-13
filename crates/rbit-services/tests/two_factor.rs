@@ -237,13 +237,63 @@ async fn a_username_and_its_email_share_one_budget() {
     fixture.user("alice").await;
 
     guess_until_limited(&fixture, "alice", &address("192.0.2.1")).await;
-    let other_alias = fixture.services.sign_in("alice@example.com", PASSWORD.to_owned(), &address("192.0.2.2")).await;
+    let other_alias = fixture.services.sign_in("alice@example.com", PASSWORD.to_owned(), &address("192.0.2.1")).await;
     assert!(matches!(other_alias, Err(ServiceError::RateLimited { .. })), "{other_alias:?}");
+    // The guesser's network spent its own budget: the owner elsewhere still gets in.
+    let owner = fixture.services.sign_in("alice@example.com", PASSWORD.to_owned(), &address("192.0.2.2")).await;
+    assert!(matches!(owner, Ok(SignInOutcome::SignedIn(_))), "{owner:?}");
 
     // Unknown logins keep separate budgets per spelling, as before.
     guess_until_limited(&fixture, "ghost", &address("192.0.2.3")).await;
     let unknown = fixture.services.sign_in("ghost@example.com", "guess".to_owned(), &address("192.0.2.4")).await;
     assert!(matches!(unknown, Err(ServiceError::InvalidCredentials)), "{unknown:?}");
+}
+
+#[tokio::test]
+async fn a_long_email_keeps_network_throttles_separate() {
+    let fixture = Fixture::new().await;
+    // Valid mailbox and DNS label lengths, but the address exceeds the throttle
+    // key's 128-character cap before the client's network would be appended.
+    let email = format!("alice@{}.{}.example.com", "a".repeat(60), "b".repeat(60));
+    assert!(email.len() > 128);
+    fixture
+        .services
+        .accounts
+        .create_user(SignUp { username: "alice".into(), email: email.clone(), password: PASSWORD.into() }, None)
+        .await
+        .unwrap();
+    guess_until_limited(&fixture, &email, &address("192.0.2.1")).await;
+    let same_network = fixture.services.sign_in("alice", PASSWORD.into(), &address("192.0.2.1")).await;
+    assert!(
+        matches!(same_network, Err(ServiceError::RateLimited { .. })),
+        "aliases retain the resolved account's network budget: {same_network:?}"
+    );
+    let elsewhere = fixture.services.sign_in(&email, PASSWORD.into(), &address("192.0.2.2")).await;
+    assert!(
+        matches!(elsewhere, Ok(SignInOutcome::SignedIn(_))),
+        "a long email must retain the client network in its throttle key: {elsewhere:?}"
+    );
+}
+
+#[tokio::test]
+async fn guesses_spread_over_many_networks_still_run_out() {
+    let fixture = Fixture::new().await;
+    fixture.user("alice").await;
+    // Each network guesses less than its own budget allows; the account's wide one ends it.
+    let mut limited = false;
+    'networks: for network in 0..60 {
+        for _ in 0..3 {
+            match fixture.services.sign_in("alice", "guess".to_owned(), &address(&format!("198.51.100.{network}"))).await {
+                Err(ServiceError::InvalidCredentials) => {}
+                Err(ServiceError::RateLimited { .. }) => {
+                    limited = true;
+                    break 'networks;
+                }
+                other => panic!("unexpected {other:?}"),
+            }
+        }
+    }
+    assert!(limited, "the account-wide budget bounds guesses from many networks");
 }
 
 #[tokio::test]
@@ -305,9 +355,11 @@ async fn wrong_passwords_are_throttled_and_audited() {
         }
     }
     assert!(limited);
-    // The login is throttled even from another address; another login from a fresh address is not.
+    // The guesser's network is throttled for that login; the owner elsewhere is not locked
+    // out by it (an account-wide budget bounds guesses from many networks), nor is anyone else.
+    assert!(matches!(fixture.services.sign_in("alice", PASSWORD.to_owned(), &client()).await, Err(ServiceError::RateLimited { .. })));
     let elsewhere = ClientInfo { ip: Some("198.51.100.99".parse().unwrap()), user_agent: String::new() };
-    assert!(matches!(fixture.services.sign_in("alice", PASSWORD.to_owned(), &elsewhere).await, Err(ServiceError::RateLimited { .. })));
+    assert!(fixture.services.sign_in("alice", PASSWORD.to_owned(), &elsewhere).await.is_ok());
     assert!(fixture.services.sign_in("root", PASSWORD.to_owned(), &elsewhere).await.is_ok());
 
     let failures = fixture.services.audit.list(&admin, Some(AuditCategory::Authentication), &ListQuery::default()).await.unwrap();

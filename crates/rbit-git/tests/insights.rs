@@ -245,3 +245,48 @@ async fn language_paths_and_multi_branch_history_match_the_selected_snapshot() {
     let ids: std::collections::HashSet<_> = history.iter().map(|c| &c.id).collect();
     assert_eq!(ids.len(), history.len());
 }
+
+/// Runs `git args` in `dir` with `input` on stdin; its trimmed output.
+fn git_with_input(dir: &Path, args: &[&str], input: &str) -> String {
+    use std::io::Write as _;
+    let mut child = Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("git is installed");
+    child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(output.status.success(), "git {args:?} failed");
+    String::from_utf8(output.stdout).unwrap().trim().to_owned()
+}
+
+#[tokio::test]
+async fn a_tree_that_names_billions_of_paths_is_counted_within_a_bound() {
+    let (dir, reader) = fixture();
+    // Ten trees deep, each naming the one below ten times: 10^10 paths in a few objects.
+    let blob = git_with_input(dir.path(), &["hash-object", "-w", "--stdin"], "fn x() {}\n");
+    let ten = |line: &dyn Fn(u32) -> String| {
+        let mut listing = String::new();
+        for n in 0..10 {
+            listing.push_str(&line(n));
+        }
+        listing
+    };
+    let mut tree = git_with_input(dir.path(), &["mktree"], &ten(&|n| format!("100644 blob {blob}\tf{n}.rs\n")));
+    for _ in 0..9 {
+        let below = tree.clone();
+        tree = git_with_input(dir.path(), &["mktree"], &ten(&|n| format!("040000 tree {below}\td{n}\n")));
+    }
+    let commit =
+        git_with_input(dir.path(), &["-c", "user.name=T", "-c", "user.email=t@example.com", "commit-tree", &tree, "-m", "bomb"], "");
+    git_with_input(dir.path(), &["update-ref", "refs/heads/bomb", &commit], "");
+    let started = std::time::Instant::now();
+    let stats = reader.language_stats("bomb".into()).await.unwrap();
+    // Breadth first, the bound is spent on the directories above any file: what was seen
+    // (nothing) is the breakdown, not 10^10 files.
+    assert!(stats.total_bytes <= 500_000 * 10, "{}", stats.total_bytes);
+    assert!(started.elapsed() < Duration::from_secs(60), "{:?}", started.elapsed());
+}

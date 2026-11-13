@@ -16,7 +16,7 @@
 //!   run's job limit, fails ([`deferred_verdict`]).
 //! * Once a matrix job fails, its unfinished siblings (same job key) are cancelled unless
 //!   the job's strategy turned `fail-fast` off ([`fail_fast_candidates`], [`fail_fast_applies`]).
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use rbit_workflow::{
     expr::{Condition, ContextMap, Status},
@@ -139,6 +139,9 @@ pub struct JobState<'a, Id> {
     pub key: &'a str,
     pub failed: bool,
     pub done: bool,
+    /// Its attempt. A failure cancels only siblings on its attempt or an earlier one: a leg
+    /// run again alone is on a later one, and an earlier attempt's failure is not its own.
+    pub attempt: i64,
 }
 
 /// A failed job's matrix with siblings still unfinished: whose template to read (the
@@ -152,12 +155,17 @@ pub struct FailFast<'a, Id> {
 
 /// The failed job keys of a run, by key, that still have unfinished siblings.
 pub fn fail_fast_candidates<'a, Id: Copy>(jobs: &[JobState<'a, Id>]) -> Vec<FailFast<'a, Id>> {
-    let failed: BTreeSet<&str> = jobs.iter().filter(|job| job.failed).map(|job| job.key).collect();
+    // Each failed key with its latest failed attempt.
+    let mut failed: BTreeMap<&str, i64> = BTreeMap::new();
+    for job in jobs.iter().filter(|job| job.failed) {
+        let latest = failed.entry(job.key).or_insert(job.attempt);
+        *latest = (*latest).max(job.attempt);
+    }
     failed
         .into_iter()
-        .filter_map(|key| {
+        .filter_map(|(key, attempt)| {
             let siblings: Vec<&JobState<'a, Id>> = jobs.iter().filter(|job| job.key == key).collect();
-            let unfinished: Vec<Id> = siblings.iter().filter(|job| !job.done).map(|job| job.id).collect();
+            let unfinished: Vec<Id> = siblings.iter().filter(|job| !job.done && job.attempt <= attempt).map(|job| job.id).collect();
             (!unfinished.is_empty()).then(|| FailFast { key: siblings[0].key, first: siblings[0].id, unfinished })
         })
         .collect()

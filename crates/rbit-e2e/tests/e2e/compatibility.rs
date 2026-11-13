@@ -229,3 +229,42 @@ async fn wide_fetches_with_gzipped_requests() {
     assert!(trace.contains("Content-Encoding: gzip"), "the upload-pack request was gzipped");
     assert_eq!(git.ok(&target, &["show", "origin/wide-59:wide.txt"]), "branch 59\n");
 }
+
+/// A gzipped upload-pack request of `haves` made-up `have` lines after one `want`.
+fn gzipped_negotiation(want: &str, haves: usize) -> Vec<u8> {
+    use std::io::Write as _;
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
+    encoder.write_all(format!("0032want {want}\n0000").as_bytes()).unwrap();
+    let have = format!("0032have {}\n", "1".repeat(40));
+    for _ in 0..haves {
+        encoder.write_all(have.as_bytes()).unwrap();
+    }
+    encoder.write_all(b"0009done\n").unwrap();
+    encoder.finish().unwrap()
+}
+
+#[tokio::test]
+async fn a_gzipped_fetch_request_inflates_to_a_bounded_size() {
+    let (server, git, sample) = seeded().await;
+    let tip = git.ok(&sample.dir, &["rev-parse", "HEAD"]).trim().to_owned();
+    let client = reqwest::Client::builder().no_proxy().build().unwrap();
+    let fetch = |body: Vec<u8>| {
+        client
+            .post(server.git_url("alice", "demo") + "/git-upload-pack")
+            .header("content-type", "application/x-git-upload-pack-request")
+            .header("content-encoding", "gzip")
+            .body(body)
+            .send()
+    };
+    // A real negotiation: the pack comes back.
+    let small = fetch(gzipped_negotiation(&tip, 100)).await.unwrap().bytes().await.unwrap();
+    assert!(small.windows(4).any(|window| window == b"PACK"), "{}", String::from_utf8_lossy(&small[..small.len().min(200)]));
+    // About 80 KB that inflates past 64 MiB: the exchange ends without a pack.
+    let bomb = gzipped_negotiation(&tip, 1_400_000);
+    assert!(bomb.len() < 1 << 20, "{}", bomb.len());
+    let answer = match fetch(bomb).await {
+        Ok(response) => response.bytes().await.map(|body| body.to_vec()).unwrap_or_default(),
+        Err(_) => Vec::new(),
+    };
+    assert!(!answer.windows(4).any(|window| window == b"PACK"), "an oversized request was answered with a pack");
+}

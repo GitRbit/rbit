@@ -35,5 +35,45 @@ pub fn is_gzip(content_encoding: &[u8]) -> bool {
     content_encoding.eq_ignore_ascii_case(b"gzip")
 }
 
+/// Most bytes a gzip-compressed fetch request may expand to. Its wants and haves are a few
+/// megabytes even for very large repositories, while a request of kilobytes could expand
+/// to gigabytes for the server to inflate and git to parse, before anyone signed in.
+pub const MAX_INFLATED_REQUEST_BYTES: u64 = 64 << 20;
+
+/// A reader that fails (`InvalidData`) once it would give more than its limit, so an
+/// oversized request ends the exchange rather than being cut short silently.
+#[derive(Debug)]
+pub struct Capped<R> {
+    inner: R,
+    left: u64,
+}
+
+impl<R> Capped<R> {
+    pub const fn new(inner: R, limit: u64) -> Self {
+        Self { inner, left: limit }
+    }
+}
+
+impl<R: tokio::io::AsyncRead + Unpin> tokio::io::AsyncRead for Capped<R> {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let before = buf.filled().len();
+        std::task::ready!(std::pin::Pin::new(&mut self.inner).poll_read(cx, buf))?;
+        let read = u64::try_from(buf.filled().len() - before).unwrap_or(u64::MAX);
+        if read > self.left {
+            buf.set_filled(before);
+            return std::task::Poll::Ready(Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "the request is larger than the server accepts once decompressed",
+            )));
+        }
+        self.left -= read;
+        std::task::Poll::Ready(Ok(()))
+    }
+}
+
 #[cfg(test)]
 mod tests;

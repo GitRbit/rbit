@@ -536,14 +536,16 @@ impl ExternalAuthService {
     /// `provider_id`.
     pub fn registration_draft(&self, provider_id: &str, token: &SessionToken) -> Option<RegistrationDraft> {
         let pending = self.pending_registration(token).filter(|pending| pending.identity.provider_id == provider_id)?;
-        let provider_name = self.provider(provider_id)?.config.name.clone();
+        let provider = self.provider(provider_id)?;
+        let provider_name = provider.config.name.clone();
         let identity = &pending.identity;
         Some(RegistrationDraft {
             provider_id: provider_id.to_owned(),
             provider_name,
             username: suggested_username(identity),
             email: identity.email.clone().unwrap_or_default(),
-            email_verified: vouched_email(identity),
+            // As registration counts it: only a provider trusted for addresses vouches.
+            email_verified: provider.config.trust_email && vouched_email(identity),
             next: pending.next,
         })
     }

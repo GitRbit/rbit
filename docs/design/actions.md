@@ -1392,7 +1392,8 @@ and what is known to be missing. Where they disagree, this section and the code 
   failure precedence unless the run was cancelled as a whole (`cancel_requested`, set by
   `cancel_run` and the abandoned sweep, cleared by a new attempt).
 - Job-level concurrency groups gate claims (one running job per group and repository) but
-  `cancel-in-progress` is not applied to job groups.
+  `cancel-in-progress` is not applied to job groups; a job that asks for it gets a warning in its
+  log when a runner takes it (`scheduler::JOB_CANCEL_IN_PROGRESS`).
 - The claim query takes the oldest claimable job; §11.8's per-repository fairness is that
   order, not a separate round-robin.
 - Step rows are created at claim time from the template's names; state calls update them.
