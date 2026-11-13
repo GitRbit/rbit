@@ -1113,6 +1113,16 @@ impl ActionsRunStore {
         Ok(settled)
     }
 
+    /// Counts every running task as heard from at `now`: a server that was down heard from
+    /// none, and their runners need a zombie timeout to report again. How many there were.
+    pub async fn excuse_silence(&self, now: Timestamp) -> Result<u64, StorageError> {
+        let excused = sqlx::query("UPDATE actions_tasks SET heartbeat_at = ?1 WHERE status = 6 AND heartbeat_at < ?1")
+            .bind(now.0)
+            .execute(&self.pool)
+            .await?;
+        Ok(excused.rows_affected())
+    }
+
     /// Running tasks whose last heartbeat is older than `before` (the zombie sweep).
     pub async fn silent_tasks(&self, before: Timestamp) -> Result<Vec<TaskId>, StorageError> {
         let ids: Vec<i64> = sqlx::query_scalar("SELECT id FROM actions_tasks WHERE status = 6 AND heartbeat_at < ? ORDER BY id")

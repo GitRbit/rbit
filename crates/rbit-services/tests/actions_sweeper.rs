@@ -57,6 +57,21 @@ async fn silent_tasks_fail_with_a_reason_and_take_ephemeral_runners_along() {
 }
 
 #[tokio::test]
+async fn a_restarted_server_gives_running_tasks_time_to_report_again() {
+    let fixture = Fixture::new().await;
+    let actions = fixture.actions();
+    let claimed = claimed(&fixture, 7).await;
+    // The server comes back ten minutes after the task's last heartbeat.
+    let restarted = Timestamp(Timestamp::now().0 + 600);
+    actions.excuse_downtime(restarted).await.unwrap();
+    assert_eq!(actions.sweep(restarted).await.unwrap().zombies, 0, "not lost: its runner could not reach the server");
+    let task = fixture.database.actions_runs().task(claimed.task.id).await.unwrap().unwrap();
+    assert_eq!(task.status, Status::Running);
+    // A runner that does not come back within the zombie timeout is lost after all.
+    assert_eq!(actions.sweep(Timestamp(restarted.0 + 601)).await.unwrap().zombies, 1);
+}
+
+#[tokio::test]
 async fn endless_tasks_fail_and_abandoned_jobs_are_cancelled() {
     let fixture = Fixture::with(|config| {
         config.actions.zombie_timeout_seconds = 100 * DAY.unsigned_abs();
