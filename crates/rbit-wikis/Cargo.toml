@@ -9,7 +9,7 @@ license.workspace = true
 [dependencies]
 rbit-contracts = { workspace = true, default-features = false }
 rbit-access = { workspace = true, default-features = false }
-unicode-normalization = "=0.1.25"
+unicode-normalization = "=0.1.26"
 
 [lints]
 workspace = true
