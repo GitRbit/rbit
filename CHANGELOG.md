@@ -7,6 +7,56 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-11-12
+
+### Security hardening
+
+- Enforce limited-token boundaries across API, Git and LFS operations, including
+  administrative capabilities, deleted repositories, cross-repository references,
+  log access and the lifetime of tokens created by another token. Environment tokens
+  are confined to known instances; GitHub tokens are not sent to rbit instances.
+- Recheck merge-queue permissions and account activity before building and landing.
+  Suspending the queuing account prevents the queued merge from landing.
+- Require a confirmation POST to verify an email address. An external provider marks
+  an address verified only when its configuration enables `trust_email`.
+- Confine import Git/LFS credentials to configured origins, including scheme and port;
+  reject malformed signed OIDC audience and not-before claims without timestamp overflow.
+- Keep authenticated pages out of htmx DOM history and clear older snapshots. Reject
+  new Git replacement refs and ignore existing replacements during reads and browser edits.
+- Bound hostile Markdown and HTML5 formatting reconstruction, decompressed Git fetch
+  requests, imported repository data, repository language walks, artifact/cache patterns,
+  test reports and archive-download work. Refuse artifact paths targeting `.git`.
+- Mask task-token-shaped strings in stored text with bounded scanning. IPv6 sign-in
+  throttling uses /64 client networks; per-client-network login budgets avoid letting
+  another network's failed guesses consume the owner's local budget.
+- Update `rustix` to 1.1.6 for RUSTSEC-2026-0486.
+
+
+### Further fixes
+
+- Correct cancellation follow-up jobs, rerun dependencies, attempt-scoped fail-fast,
+  environment waits and concurrency-group ownership in Actions.
+- Release archive admission and workers after stalled clients without reporting a
+  truncated download as successful; keep token masking linear for long log lines.
+- Preserve network isolation for sign-in budgets even when an email exceeds the
+  throttle key length, and release completed wiki locks despite inherited descriptors.
+- Record panic diagnostics before a release process aborts.
+
+### Upgrade and compatibility
+
+- Back up the stopped instance before upgrading. This release adds Actions, token and
+  merge-queue database migrations; retain the pre-upgrade backup for rollback.
+- Server environment overrides use `RBIT_SECTION__KEY`. Review deployments that used
+  unsectioned `RBIT_*` variables as server configuration.
+- Upgrade runners alongside the server to obtain step-level termination details.
+  The default lost-runner timeout is now two minutes rather than ten.
+- Raw HTML inside Markdown links, emphasis, strong emphasis or strikethrough renders as
+  text. Use native Markdown image badges inside links. Large raw HTML and combinations
+  of raw table/template contexts with raw formatting may also render as text.
+- External sign-ups from providers without `trust_email` must confirm their address by
+  email; opening a verification link alone no longer verifies it.
+
+
 ### Added
 
 - The command-line client waits out a short `Retry-After` and tries a throttled read again
