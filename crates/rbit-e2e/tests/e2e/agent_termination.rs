@@ -5,6 +5,7 @@
 //! The integration workstream (I) owns this file.
 
 use std::{
+    future::Future,
     process::{Command, Stdio},
     time::{Duration, Instant},
 };
@@ -43,6 +44,25 @@ impl Drop for Running {
     fn drop(&mut self) {
         let _ = self.0.kill();
         let _ = self.0.wait();
+    }
+}
+
+// Terminal status revokes the task token before log compression finishes. Wait for
+// both final, untruncated logs before asserting their complete termination records.
+async fn complete_logs<F: Future<Output = Value>>(get: impl Fn(String) -> F, run: &Value, deadline: Instant) -> Value {
+    loop {
+        let jobs = get(format!("runs/{}/jobs", run["id"])).await;
+        let complete = ["fails", "passes"].iter().all(|name| {
+            jobs["jobs"]
+                .as_array()
+                .and_then(|jobs| jobs.iter().find(|job| job["name"] == *name))
+                .is_some_and(|job| job["termination"]["log_complete"] == true)
+        });
+        if complete {
+            return jobs;
+        }
+        assert!(Instant::now() < deadline, "the finished jobs' logs were not complete in time: {jobs}");
+        tokio::time::sleep(Duration::from_millis(250)).await;
     }
 }
 
@@ -95,7 +115,7 @@ async fn a_failed_job_says_which_step_ended_it_and_with_what_exit_code() {
         tokio::time::sleep(Duration::from_millis(250)).await;
     };
 
-    let jobs = get(format!("runs/{}/jobs", run["id"])).await;
+    let jobs = complete_logs(&get, &run, deadline).await;
     let job = |name: &str| jobs["jobs"].as_array().unwrap().iter().find(|job| job["name"] == name).cloned().unwrap();
     let failed = job("fails");
     let ended = &failed["termination"];
