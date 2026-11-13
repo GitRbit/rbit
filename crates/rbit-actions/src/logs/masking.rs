@@ -36,11 +36,42 @@ impl Masker {
         Self { automaton: None }
     }
 
-    /// `text` with every secret replaced.
+    /// `text` with every secret replaced, and every task token by its shape: a task's own
+    /// token is masked even where its value is no longer known (only its digest is stored,
+    /// so a restarted server cannot list it among the secrets).
     pub fn mask(&self, text: &str) -> String {
-        match &self.automaton {
+        let masked = match &self.automaton {
             Some(automaton) if automaton.is_match(text) => automaton.replace_all(text, &vec![MASK; automaton.patterns_len()]),
             _ => text.to_owned(),
+        };
+        mask_task_tokens(masked)
+    }
+}
+
+/// A task token: `rbat_` and 43 base64url characters (`rbit_auth::TaskTokenSecret`; the
+/// prefix is `rbit_core::actions::TASK_TOKEN_PREFIX`, which `rbit-services` checks it against).
+pub const TASK_TOKEN_PREFIX: &str = "rbat_";
+const TASK_TOKEN_SECRET_CHARS: usize = 43;
+
+/// `text` with every run of the task token prefix and 43 base64url characters replaced.
+fn mask_task_tokens(text: String) -> String {
+    if !text.contains(TASK_TOKEN_PREFIX) {
+        return text;
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text.as_str();
+    while let Some(at) = rest.find(TASK_TOKEN_PREFIX) {
+        let after = &rest[at + TASK_TOKEN_PREFIX.len()..];
+        let secret = after.bytes().take_while(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')).count();
+        out.push_str(&rest[..at]);
+        if secret >= TASK_TOKEN_SECRET_CHARS {
+            out.push_str(MASK);
+            rest = &after[TASK_TOKEN_SECRET_CHARS..];
+        } else {
+            out.push_str(TASK_TOKEN_PREFIX);
+            rest = after;
         }
     }
+    out.push_str(rest);
+    out
 }

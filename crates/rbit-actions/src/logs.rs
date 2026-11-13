@@ -33,7 +33,7 @@ pub use annotations::{
 };
 pub use digest::{EXCERPT_LINE_CHARS, EXCERPT_LINES, Excerpt, excerpt, readable_line};
 pub use files::{LogFile, LogPart, TaskLogFiles};
-pub use masking::{MASK, MIN_MASKED_CHARS, Masker};
+pub use masking::{MASK, MIN_MASKED_CHARS, Masker, TASK_TOKEN_PREFIX};
 pub use reading::{Representation, Snapshot, prepare, read_data, read_plans, read_window, read_windows, retryable};
 pub use storage::{GZIP_LEVEL, add_raw_log, append_lines, compress, log_file_name, remove};
 pub use window::{

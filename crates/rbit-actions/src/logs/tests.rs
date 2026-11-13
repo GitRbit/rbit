@@ -56,3 +56,12 @@ fn the_budget_keeps_counting_after_one_marker() {
     let after = layout(laid.progress, &lines, 12);
     assert_eq!((after.text.len(), after.ends.len(), after.progress.lines), (0, 0, 8), "dropped lines still count");
 }
+
+#[test]
+fn task_tokens_are_masked_by_their_shape_without_being_known() {
+    let token = format!("rbat_{}", "aZ0_-".repeat(9).chars().take(43).collect::<String>());
+    let masker = Masker::new([]);
+    assert_eq!(masker.mask(&format!("git push https://x:{token}@host/r")), "git push https://x:***@host/r");
+    assert_eq!(masker.mask(&format!("{token}{token}")), "******");
+    assert_eq!(Masker::none().mask("rbat_short and rbat_"), "rbat_short and rbat_", "not a token's shape");
+}

@@ -40,3 +40,11 @@ impl ActionsService {
         Ok(masker)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn task_tokens_are_masked_by_the_prefix_they_are_minted_with() {
+        assert_eq!(rbit_actions::logs::TASK_TOKEN_PREFIX, rbit_core::actions::TASK_TOKEN_PREFIX);
+    }
+}
