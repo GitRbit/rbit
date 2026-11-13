@@ -26,7 +26,7 @@
   },
   "devDependencies": {
     "@resvg/resvg-js": "2.6.2",
-    "@tailwindcss/cli": "4.3.4",
+    "@tailwindcss/cli": "4.3.5",
     "@tailwindcss/typography": "0.5.20",
     "esbuild": "0.28.2",
     "htmx.org": "2.0.11",
