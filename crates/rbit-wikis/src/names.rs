@@ -1,4 +1,5 @@
 //! NFC, case-sensitive logical names. Neither type is an OS path or safe HTML.
+mod normalization;
 mod path;
 mod title;
 

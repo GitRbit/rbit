@@ -1,9 +1,7 @@
 //! User-facing Unicode title, independent from routing and storage names.
 use std::{fmt, str::FromStr};
 
-use unicode_normalization::{UnicodeNormalization, is_nfc};
-
-use super::{WikiNameError, unsupported_display_control};
+use super::{WikiNameError, normalization, unsupported_display_control};
 
 /// Trimmed NFC title. Punctuation and emoji remain text, not trusted HTML.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -22,7 +20,7 @@ impl WikiTitle {
         if value.len() > Self::MAX_RAW_BYTES {
             return Err(WikiNameError::RawLimit);
         }
-        if !is_nfc(&value) || value.trim().len() != value.len() {
+        if !normalization::is_canonical(&value) || value.trim().len() != value.len() {
             return Err(WikiNameError::NonCanonical);
         }
         Self::try_from(value)
@@ -46,8 +44,8 @@ impl TryFrom<String> for WikiTitle {
         if trimmed.len() != value.len() {
             value = trimmed.to_owned();
         }
-        if !is_nfc(&value) {
-            value = value.nfc().collect();
+        if !normalization::is_canonical(&value) {
+            value = normalization::canonicalize(&value);
         }
         if value.chars().take(Self::MAX_CHARACTERS + 1).count() > Self::MAX_CHARACTERS {
             return Err(WikiNameError::TooLong);
