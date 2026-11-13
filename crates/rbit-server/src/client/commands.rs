@@ -683,7 +683,25 @@ pub async fn download_run(
 }
 
 /// Downloads `artifact` as a tar.gz and unpacks it into `target`, never outside it.
+/// Whether path part `part` names a repository's Git directory on some file system: `.git`
+/// in any case, with the trailing dots and spaces Windows drops, or its 8.3 short name
+/// `git~N` (as `rbit_workflow::protocol::is_git_dir_name`).
+fn is_git_dir_name(part: &str) -> bool {
+    let part = part.trim_end_matches(['.', ' ']).to_ascii_lowercase();
+    part == ".git" || part.strip_prefix("git~").is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// Whether an artifact's file `path` (or its name, as the directory it goes into) passes
+/// through a Git directory: downloaded into a clone, a workflow's files there would be Git's
+/// configuration and hooks, which run code on the next `git` command.
+fn reaches_git_dir(path: &std::path::Path) -> bool {
+    path.components().any(|part| is_git_dir_name(&part.as_os_str().to_string_lossy()))
+}
+
 async fn unpack(api: &Api, repo: &Repo, artifact: &Value, target: &std::path::Path) -> anyhow::Result<()> {
+    if reaches_git_dir(std::path::Path::new(text(artifact, "name"))) {
+        bail!("artifact {} is named as a Git directory: not downloaded", text(artifact, "name"));
+    }
     let bytes = api.download(&actions(repo, &format!("artifacts/{}/tar.gz", artifact["id"]))).await?;
     std::fs::create_dir_all(target).with_context(|| format!("cannot create {}", target.display()))?;
     let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(bytes.as_slice()));
@@ -692,6 +710,13 @@ async fn unpack(api: &Api, repo: &Repo, artifact: &Value, target: &std::path::Pa
         let mut entry = entry?;
         if !entry.header().entry_type().is_file() {
             continue;
+        }
+        if reaches_git_dir(&entry.path()?) {
+            bail!(
+                "artifact {} has a file in a Git directory ({}): nothing more is unpacked",
+                text(artifact, "name"),
+                entry.path()?.display()
+            );
         }
         // `unpack_in` refuses names that leave `target`.
         if entry.unpack_in(target)? {
@@ -839,4 +864,19 @@ async fn raw_api(
         return Ok(1);
     }
     Ok(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_artifact_never_unpacks_into_a_git_directory() {
+        for path in [".git/hooks/post-checkout", "w/.git/config", ".GIT/config", "x/git~1/config", ".git./config", ".git"] {
+            assert!(reaches_git_dir(std::path::Path::new(path)), "{path}");
+        }
+        for path in ["dist/app", ".github/workflows/ci.yml", "gitignore", "git~/x", "a.git/b", ".gitignore"] {
+            assert!(!reaches_git_dir(std::path::Path::new(path)), "{path}");
+        }
+    }
 }

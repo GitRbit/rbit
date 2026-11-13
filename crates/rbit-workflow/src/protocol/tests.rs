@@ -338,7 +338,7 @@ fn artifact_names_never_walk_up() {
     for name in ["dist", "dist-linux_x86.64", ".hidden", "...", "a..b"] {
         assert!(valid_artifact_name(name), "{name}");
     }
-    for name in ["", ".", "..", "a/b", "a\\b", "../x", "a?b", "a b", "é"] {
+    for name in ["", ".", "..", "a/b", "a\\b", "../x", "a?b", "a b", "é", ".git", ".GIT", "git~1", ".git."] {
         assert!(!valid_artifact_name(name), "{name}");
     }
     assert!(valid_artifact_name(&"x".repeat(128)) && !valid_artifact_name(&"x".repeat(129)));
