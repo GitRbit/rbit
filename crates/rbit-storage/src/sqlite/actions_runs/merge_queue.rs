@@ -25,6 +25,8 @@ pub struct QueueEntry {
     pub attempts: i64,
     pub reason: Option<String>,
     pub created_at: Timestamp,
+    /// When it last changed: for an entry being tested, when its candidate was built.
+    pub updated_at: Timestamp,
 }
 
 /// A row as read.
@@ -44,6 +46,7 @@ struct Row {
     attempts: i64,
     reason: Option<String>,
     created_at: i64,
+    updated_at: i64,
 }
 
 impl From<Row> for QueueEntry {
@@ -63,6 +66,7 @@ impl From<Row> for QueueEntry {
             attempts: row.attempts,
             reason: row.reason,
             created_at: Timestamp(row.created_at),
+            updated_at: Timestamp(row.updated_at),
         }
     }
 }
@@ -71,7 +75,7 @@ macro_rules! select_entries {
     ($where:literal) => {
         concat!(
             "SELECT id, repo_id, issue_id, number, base_branch, head_sha, strategy, queued_by, state, candidate_sha, base_sha, attempts, reason, ",
-            "created_at FROM merge_queue WHERE ",
+            "created_at, updated_at FROM merge_queue WHERE ",
             $where
         )
     };

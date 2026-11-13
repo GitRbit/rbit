@@ -13,18 +13,18 @@ use rbit_e2e::{Git, PASSWORD, TestServer};
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
 
-struct Api {
+pub(crate) struct Api {
     http: reqwest::Client,
     base: String,
     token: String,
 }
 
 impl Api {
-    fn new(server: &TestServer, token: String) -> Self {
+    pub(crate) fn new(server: &TestServer, token: String) -> Self {
         Self { http: reqwest::Client::builder().no_proxy().build().unwrap(), base: server.base_url().to_owned(), token }
     }
 
-    async fn send(&self, method: Method, path: &str, body: Option<Value>) -> (StatusCode, Value) {
+    pub(crate) async fn send(&self, method: Method, path: &str, body: Option<Value>) -> (StatusCode, Value) {
         let mut request = self.http.request(method, format!("{}/api/v1/repos/alice/rocket/{path}", self.base)).bearer_auth(&self.token);
         if let Some(body) = body {
             request = request.header("Content-Type", "application/json").body(body.to_string());
@@ -43,7 +43,7 @@ impl Api {
     }
 
     /// The pull request's queue entry once `ready` says so, within 20 seconds.
-    async fn queue_until(&self, number: u64, ready: impl Fn(&Value) -> bool) -> Value {
+    pub(crate) async fn queue_until(&self, number: u64, ready: impl Fn(&Value) -> bool) -> Value {
         for _ in 0..200 {
             let (_, entry) = self.send(Method::GET, &format!("pulls/{number}/queue"), None).await;
             if ready(&entry) {

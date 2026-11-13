@@ -15,8 +15,16 @@
 //! * With no required context, the candidate lands as soon as it is built (the plain merge
 //!   would have, too).
 //!
+//! * A required context that cannot pass on the candidate takes the entry out of line rather
+//!   than holding it up for ever: one rbit's Actions report only for another event (such as
+//!   `CI / test (pull_request)`), one of its push runs that none of the candidate's finished
+//!   runs reported, and any that has not passed [`stall::CHECK_TIMEOUT`] after the candidate
+//!   was built, as GitHub's merge queue times its checks out.
+//!
 //! The queue advances on commit statuses and pushes of its repository, and on a sweep every
 //! [`QUEUE_SWEEP`] in case an event was missed.
+
+mod stall;
 
 use std::time::Duration;
 
@@ -228,7 +236,7 @@ impl PullService {
             ("testing", Some(candidate_sha), Some(built_on)) if built_on == base_tip => {
                 let rules = merge_box.rules;
                 let statuses = database.commit_statuses().latest(repo, candidate_sha).await?;
-                let mut pending = false;
+                let (mut waiting, mut missing) = (Vec::new(), Vec::new());
                 for context in &rules.required_contexts {
                     match statuses.iter().find(|status| status.context.as_str() == context.as_str()).map(|status| status.state) {
                         Some(StatusState::Success) => {}
@@ -236,10 +244,20 @@ impl PullService {
                             let reason = format!("`{context}` failed on the candidate {}", &candidate_sha[..candidate_sha.len().min(12)]);
                             return self.leave(&entry, "failed", &reason).await;
                         }
-                        Some(StatusState::Pending) | None => pending = true,
+                        Some(StatusState::Pending) => waiting.push(context.as_str()),
+                        None => {
+                            waiting.push(context.as_str());
+                            missing.push(context.as_str());
+                        }
                     }
                 }
-                if pending { Ok(()) } else { self.land_entry(&user, &ctx, &entry, candidate_sha, &base_tip).await }
+                if waiting.is_empty() {
+                    return self.land_entry(&user, &ctx, &entry, candidate_sha, &base_tip).await;
+                }
+                match self.stalled(&entry, candidate_sha, &waiting, &missing).await? {
+                    Some(reason) => self.leave(&entry, "failed", &reason).await,
+                    None => Ok(()),
+                }
             }
             _ => self.build_entry(&user, &ctx, &entry, &base_tip).await,
         }
