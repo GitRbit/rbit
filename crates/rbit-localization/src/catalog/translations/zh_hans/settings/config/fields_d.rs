@@ -119,7 +119,7 @@ config_table! {
         ConfigText::Help { section: "provider", key: "allow_registration" } => text.literal(AFTER_RESTART),
         ConfigText::Label { section: "provider", key: "trust_email" } => text.literal("信任已验证的邮箱地址"),
         ConfigText::Help { section: "provider", key: "trust_email" } => text.literal(
-            "首次登录时，将其关联到已验证邮箱与提供方已验证邮箱相同的唯一账户。仅适用于能管控其用户地址的提供方。",
+            "首次登录时，将其关联到已验证邮箱与提供方已验证邮箱相同的唯一账户。仅适用于能管控其用户地址的提供方。通过它注册时，也会将其已验证的地址视为已验证，无需确认邮件。",
         ),
         ConfigText::Label { section: "provider", key: "trust_mfa" } => text.literal("信任提供方的多因素身份验证"),
         ConfigText::Help { section: "provider", key: "trust_mfa" } => text.literal(

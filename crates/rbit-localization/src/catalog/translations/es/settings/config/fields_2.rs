@@ -225,7 +225,8 @@ config_arms! {
         ConfigText::Label { section: "provider", key: "trust_email" } => text.literal("Confiar en las direcciones de correo verificadas"),
         ConfigText::Help { section: "provider", key: "trust_email" } => text.literal(
             "Vincula un primer inicio de sesión con la única cuenta cuyo correo verificado coincide con el correo \
-             verificado del proveedor. Solo para proveedores que controlan las direcciones de sus usuarios.",
+             verificado del proveedor. Solo para proveedores que controlan las direcciones de sus usuarios. Un \
+             registro a través de él también da por verificada la dirección que verificó, sin correo de confirmación.",
         ),
         ConfigText::Label { section: "provider", key: "trust_mfa" } => text.literal(
             "Confiar en la autenticación multifactor del proveedor",

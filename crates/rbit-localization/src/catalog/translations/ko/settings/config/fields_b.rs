@@ -155,7 +155,7 @@ config_entries! {
         ConfigText::Label { section: "provider", key: "allow_registration" } => text.literal("계정 생성"),
         ConfigText::Help { section: "provider", key: "allow_registration" } => text.literal("서버를 다시 시작한 후 적용되는 배포 설정입니다."),
         ConfigText::Label { section: "provider", key: "trust_email" } => text.literal("인증된 이메일 주소 신뢰"),
-        ConfigText::Help { section: "provider", key: "trust_email" } => text.literal("첫 로그인을 공급자의 인증된 이메일과 같은 인증된 이메일을 가진 단 하나의 계정에 연결합니다. 사용자의 주소를 관리하는 공급자에만 사용하세요."),
+        ConfigText::Help { section: "provider", key: "trust_email" } => text.literal("첫 로그인을 공급자의 인증된 이메일과 같은 인증된 이메일을 가진 단 하나의 계정에 연결합니다. 사용자의 주소를 관리하는 공급자에만 사용하세요. 이 공급자를 통한 가입은 공급자가 인증한 주소를 확인 이메일 없이 인증된 것으로 처리합니다."),
         ConfigText::Label { section: "provider", key: "trust_mfa" } => text.literal("공급자의 다단계 인증 신뢰"),
         ConfigText::Help { section: "provider", key: "trust_mfa" } => text.literal("ID 토큰의 amr 클레임에 공급자가 다단계 인증(\"mfa\")을 수행했다고 표시되면 계정 자체의 2단계 인증 단계를 건너뜁니다. OIDC 전용입니다."),
     }

@@ -276,7 +276,9 @@ allow_private_addresses = false
 # scopes = ["openid", "email", "profile"]
 # # true: when the site's registration is open; "always": even when closed; false: never.
 # allow_registration = true
-# # Link a first sign-in to the account with the same verified email (both sides verified).
+# # Link a first sign-in to the account with the same verified email (both sides verified),
+# # and take the address this provider verified as verified when it registers an account
+# # (otherwise a new account confirms its address by email).
 # trust_email = false
 # # Skip rbit's own 2FA when the ID token reports MFA in `amr`.
 # trust_mfa = false

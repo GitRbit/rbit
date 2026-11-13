@@ -171,7 +171,7 @@ config_fields! {
         "allow_registration" => "Account creation",
             "Deployment setting applied after restarting the server.";
         "trust_email" => "Trust verified email addresses",
-            "Link a first sign-in to the one account whose verified email equals the provider's verified email. Only for providers that control their users' addresses.";
+            "Link a first sign-in to the one account whose verified email equals the provider's verified email. Only for providers that control their users' addresses. A sign-up through it also takes the address it verified as verified, without a confirmation email.";
         "trust_mfa" => "Trust provider multi-factor authentication",
             "Skip the account's own two-factor step when the ID token's amr claim says the provider performed multi-factor authentication (\"mfa\"). OIDC only.";
     }

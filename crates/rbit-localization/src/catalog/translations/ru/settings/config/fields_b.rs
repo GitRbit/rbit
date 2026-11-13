@@ -154,7 +154,7 @@ config_arms! {
         ConfigText::Label { section: "provider", key: "allow_registration" } => text.literal("Создание учётных записей"),
         ConfigText::Help { section: "provider", key: "allow_registration" } => text.literal("Параметр развёртывания, применяется после перезапуска сервера."),
         ConfigText::Label { section: "provider", key: "trust_email" } => text.literal("Доверять подтверждённым адресам"),
-        ConfigText::Help { section: "provider", key: "trust_email" } => text.literal("Связывать первый вход с той учётной записью, чей подтверждённый адрес совпадает с подтверждённым адресом у провайдера. Только для провайдеров, которые управляют адресами своих пользователей."),
+        ConfigText::Help { section: "provider", key: "trust_email" } => text.literal("Связывать первый вход с той учётной записью, чей подтверждённый адрес совпадает с подтверждённым адресом у провайдера. Только для провайдеров, которые управляют адресами своих пользователей. При регистрации через него подтверждённый им адрес тоже считается подтверждённым, без письма с подтверждением."),
         ConfigText::Label { section: "provider", key: "trust_mfa" } => text.literal("Доверять многофакторной аутентификации провайдера"),
         ConfigText::Help { section: "provider", key: "trust_mfa" } => text.literal("Пропускать собственный двухфакторный шаг учётной записи, если утверждение amr в ID-токене сообщает, что провайдер выполнил многофакторную аутентификацию («mfa»). Только для OIDC."),
     }

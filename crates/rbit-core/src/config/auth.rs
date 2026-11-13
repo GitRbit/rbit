@@ -17,7 +17,7 @@
 //! client_secret = "…"              # or RBIT_AUTH__PROVIDERS__0__CLIENT_SECRET
 //! scopes = ["openid", "email", "profile"]
 //! allow_registration = true        # false: never; "always": even when sign-up is closed
-//! trust_email = false              # link to the account with the same verified email
+//! trust_email = false              # link by verified email; sign-ups take its verified address
 //! trust_mfa = false                # skip rbit's own 2FA when the IdP reports MFA (`amr`)
 //! ```
 //!
@@ -147,8 +147,8 @@ pub struct ProviderConfig {
     /// `read:user user:email` (GitHub). OIDC always gets `openid`.
     pub scopes: Option<Vec<String>>,
     pub allow_registration: ProviderRegistration,
-    /// Link a first sign-in to the one account whose verified email equals the
-    /// provider's verified email. Only for providers that control their users' addresses.
+    /// Link a first sign-in to the one account whose verified email equals the provider's verified email, and take
+    /// that address as verified when it registers an account. Only for providers that control their users' addresses.
     pub trust_email: bool,
     /// Skip the account's own two-factor step when the ID token's `amr` claim says the
     /// provider performed multi-factor authentication (`"mfa"`). OIDC only.

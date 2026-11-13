@@ -416,7 +416,9 @@ sent in the authorization request.
 - The configuration is checked at start-up; rbit refuses to start and lists every problem.
   `allow_registration` (`true` follows the site's registration setting, `"always"` lets the
   provider decide who gets in, `false` never registers), `trust_email` (link a first
-  sign-in to the account with the same verified address) and `trust_mfa` (skip rbit's
+  sign-in to the account with the same verified address; only such a provider's verified
+  address counts as verified when it registers an account, otherwise the new account
+  confirms its address by email, which needs working mail) and `trust_mfa` (skip rbit's
   two-factor step when the ID token reports MFA) are per provider.
 
 ## Health checks
