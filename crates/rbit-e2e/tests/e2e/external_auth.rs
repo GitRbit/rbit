@@ -324,7 +324,7 @@ async fn through_provider(client: &Client, server: &TestServer, start: &str) -> 
 async fn oidc_register_sign_in_link_and_unlink() {
     let mail = MailLog::capture();
     let fake = Fake::oidc().await;
-    let server = server_with(vec![provider(ProviderKind::Oidc, "corp", "Corp SSO", &fake)]);
+    let server = server_with(vec![ProviderConfig { trust_email: true, ..provider(ProviderKind::Oidc, "corp", "Corp SSO", &fake) }]);
     server.sign_up("root").await;
 
     // A first sign-in registers, pre-filled from the provider.
@@ -446,7 +446,7 @@ async fn callbacks_need_the_browser_that_started_them() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn github_sign_in_uses_the_verified_primary_address() {
     let github = Fake::github().await;
-    let server = server_with(vec![provider(ProviderKind::Github, "github", "GitHub", &github)]);
+    let server = server_with(vec![ProviderConfig { trust_email: true, ..provider(ProviderKind::Github, "github", "GitHub", &github) }]);
     server.sign_up("root").await;
     github.sign_in_as(FakeUser::new("583231", "octocat@example.test", "octocat"));
 
