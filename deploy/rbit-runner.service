@@ -27,6 +27,7 @@ Type=exec
 User=rbit-runner
 Group=rbit-runner
 ExecStart=/usr/local/bin/rbit-runner --config /var/lib/rbit-runner/runner.toml run
+# Also after a crash: a panic aborts the process (SIGABRT).
 Restart=on-failure
 RestartSec=10s
 # Graceful shutdown: SIGTERM stops polling, running tasks get shutdown_grace_seconds

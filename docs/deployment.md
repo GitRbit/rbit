@@ -195,6 +195,13 @@ AmbientCapabilities=CAP_NET_BIND_SERVICE
 `SIGTERM` (what `systemctl stop` sends) shuts down gracefully: in-flight requests finish,
 background jobs stop, and SQLite is flushed.
 
+A bug that panics stops the whole server (release builds abort on panic, so nothing keeps
+running in an unknown state). It first writes `rbit crashed: panic in thread ...` with the
+location and a backtrace to stderr and the log; find crashes with
+`journalctl -u rbit | grep "rbit crashed"`. The unit's `Restart=on-failure` starts it again
+after 5 seconds; with Docker, run the container with `--restart unless-stopped` (as above)
+and read crashes with `docker logs rbit`.
+
 ## Reverse proxy and TLS
 
 The proxy terminates TLS and forwards to `127.0.0.1:3000`. Git pushes can be large and

@@ -28,7 +28,7 @@ no Redis, no JavaScript runtime — download it, run it, push.
 ## Quick start
 
 ```bash
-docker run -d --name rbit -p 3000:3000 -v rbit-data:/data ghcr.io/gitrbit/rbit:latest
+docker run -d --name rbit --restart unless-stopped -p 3000:3000 -v rbit-data:/data ghcr.io/gitrbit/rbit:latest
 ```
 
 Retrieve the one-time setup token with `docker logs rbit`, then open
@@ -190,7 +190,7 @@ Multi-architecture images (`linux/amd64`, `linux/arm64`) are published to the Gi
 Container Registry for every release, tagged with the version (`0.1.5`, `0.1`) and `latest`:
 
 ```bash
-docker run -d --name rbit -p 3000:3000 -v rbit-data:/data \
+docker run -d --name rbit --restart unless-stopped -p 3000:3000 -v rbit-data:/data \
   -e RBIT_SERVER__PUBLIC_URL=https://git.example.com \
   ghcr.io/gitrbit/rbit:latest
 ```
