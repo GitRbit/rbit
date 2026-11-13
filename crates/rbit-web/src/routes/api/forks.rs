@@ -53,7 +53,9 @@ pub async fn list(
     let limit = u32::try_from(pager.limit()).unwrap_or(u32::MAX);
     let offset = u32::try_from(pager.offset()).unwrap_or(u32::MAX);
     let forks = &state.services.forks;
-    let (repos, total) = forks.page(caller.user(), &ctx, limit, offset).await?;
+    // A limited token reaches one repository: other forks are listed only as the public sees them.
+    let viewer = if caller.is_limited() { None } else { caller.user() };
+    let (repos, total) = forks.page(viewer, &ctx, limit, offset).await?;
     let fork_ids = forks.forks_among(&repos.iter().map(|repo| repo.repo.id).collect::<Vec<_>>()).await?;
     let base = state.config.server.base_url();
     let items = repos.iter().map(|repo: &OwnedRepository| json::repository(repo, None, fork_ids.contains(&repo.repo.id), base)).collect();

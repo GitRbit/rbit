@@ -156,3 +156,29 @@ async fn a_limited_token_reaches_no_other_repository_through_a_pull_requests_hea
     let (_, listed) = send(&server, &agent, Method::GET, "repos/alice/rocket/pulls?head=bob:loot", None).await;
     assert_eq!(listed, json!([]), "{listed}");
 }
+
+#[tokio::test]
+async fn git_answers_a_limited_token_for_another_repository_as_if_it_did_not_exist() {
+    let server = TestServer::start();
+    let alice = server.sign_up("alice").await;
+    let bob = server.sign_up("bob").await;
+    alice.create_repo("alice", "rocket", "public").await;
+    bob.create_repo("bob", "plans", "private").await;
+    let bobs = bob.create_token("bob", "admin").await;
+    let read = json!({ "permission": "pull" });
+    let (status, body) = send(&server, &bobs, Method::PUT, "repos/bob/plans/collaborators/alice", Some(read)).await;
+    assert!(status.is_success(), "{body}");
+    let admin = alice.create_token("owner", "admin").await;
+    let limited = json!({ "name": "agent", "scope": "write", "repository": "alice/rocket", "rights": ["push"] });
+    let (_, made) = send(&server, &admin, Method::POST, "user/tokens", Some(limited)).await;
+    let agent = made["token"].as_str().unwrap().to_owned();
+    // alice may read bob's repository but not write it; a token limited to rocket must not
+    // learn that it exists: refusing the write (403) would say so.
+    let http = reqwest::Client::builder().no_proxy().build().unwrap();
+    let advertise =
+        |path: &str| http.get(server.url(&format!("/{path}/info/refs?service=git-receive-pack"))).basic_auth("alice", Some(&agent)).send();
+    let missing = advertise("bob/nothing-here.git").await.unwrap().status();
+    assert_eq!(missing, StatusCode::NOT_FOUND);
+    assert_eq!(advertise("bob/plans.git").await.unwrap().status(), missing, "as a repository that does not exist");
+    assert_eq!(advertise("alice/rocket.git").await.unwrap().status(), StatusCode::OK, "its own repository");
+}
