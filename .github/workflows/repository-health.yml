@@ -20,7 +20,7 @@ jobs:
       - run: npm run audit:repository
         env:
           GH_TOKEN: ${{ github.token }}
-      - uses: taiki-e/install-action@b80e2bb2635f28eb98b9fce1e2f0887e1535c6b2 # v2
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
         with:
           tool: cargo-deny
       - run: cargo deny --locked check licenses advisories
