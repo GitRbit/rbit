@@ -43,6 +43,8 @@ async fn landing_after_authority_snapshot(suspend: bool) {
         .await
         .unwrap();
     let repo = services.repositories.open(Some(&user), "alice", "demo").await.unwrap();
+    // A file URL keeps Git from parsing a canonical Windows `\\?\C:\…` path as SSH.
+    let remote = reqwest::Url::from_directory_path(&repo.disk_path).unwrap();
     let work = root.join("work");
     std::fs::create_dir(&work).unwrap();
     git(&work, &["init", "-q"]);
@@ -50,12 +52,12 @@ async fn landing_after_authority_snapshot(suspend: bool) {
     git(&work, &["add", "."]);
     git(&work, &["commit", "-qm", "base"]);
     let base = git(&work, &["rev-parse", "HEAD"]);
-    git(&work, &["push", "-q", repo.disk_path.to_str().unwrap(), "main"]);
+    git(&work, &["push", "-q", remote.as_str(), "main"]);
     git(&work, &["checkout", "-qb", "feature"]);
     std::fs::write(work.join("README.md"), "feature\n").unwrap();
     git(&work, &["commit", "-qam", "feature"]);
     let candidate = git(&work, &["rev-parse", "HEAD"]);
-    git(&work, &["push", "-q", repo.disk_path.to_str().unwrap(), "feature"]);
+    git(&work, &["push", "-q", remote.as_str(), "feature"]);
     let pull = services
         .pulls
         .create(&user, &repo, &repo, NewPullInput { base_branch: "main".into(), head_branch: "feature".into(), ..NewPullInput::default() })
