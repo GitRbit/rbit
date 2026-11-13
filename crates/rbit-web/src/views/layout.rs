@@ -236,6 +236,24 @@ mod tests {
     }
 
     #[test]
+    fn authenticated_pages_never_enter_the_browser_dom_history_cache() {
+        let mut page = crate::views::test_support::page("/alice/private");
+        let anonymous = Fixture { page: page.clone() }.render().unwrap();
+        assert!(!anonymous.contains("hx-history=\"false\""));
+        page.viewer = Some(NavUser {
+            name: "alice".into(),
+            label: "Alice".into(),
+            avatar: Avatar::default(),
+            is_admin: false,
+            can_create_org: true,
+            has_actions: false,
+        });
+        let authenticated = Fixture { page }.render().unwrap();
+        let main = authenticated.split("<main ").nth(1).unwrap().split('>').next().unwrap();
+        assert!(main.contains("hx-history=\"false\""), "the marker must travel with partial main swaps: {main}");
+    }
+
+    #[test]
     fn initial_styles_render_verbatim_and_need_no_network_requests() {
         for slug in ["system", "dark", "base24-berlin"] {
             let page = Page {

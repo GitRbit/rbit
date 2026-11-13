@@ -213,7 +213,7 @@ fn check_claims(claims: &Value, check: &IdTokenCheck<'_>) -> Result<IdToken, Oid
     }
     let audiences: Vec<&str> = match claims.get("aud") {
         Some(Value::String(audience)) => vec![audience.as_str()],
-        Some(Value::Array(list)) => list.iter().filter_map(Value::as_str).collect(),
+        Some(Value::Array(list)) => list.iter().map(Value::as_str).collect::<Option<Vec<_>>>().ok_or(OidcError::Claim("aud"))?,
         _ => Vec::new(),
     };
     if !audiences.contains(&check.client_id) {
@@ -224,15 +224,19 @@ fn check_claims(claims: &Value, check: &IdTokenCheck<'_>) -> Result<IdToken, Oid
         return Err(OidcError::Claim("azp"));
     }
     let exp = number("exp").ok_or(OidcError::Claim("exp"))?;
-    if exp + CLOCK_LEEWAY_SECONDS <= check.now {
+    if i128::from(exp) + i128::from(CLOCK_LEEWAY_SECONDS) <= i128::from(check.now) {
         return Err(OidcError::Claim("exp"));
     }
     let iat = number("iat").ok_or(OidcError::Claim("iat"))?;
-    if iat > check.now + CLOCK_LEEWAY_SECONDS {
+    let latest = i128::from(check.now) + i128::from(CLOCK_LEEWAY_SECONDS);
+    if i128::from(iat) > latest {
         return Err(OidcError::Claim("iat"));
     }
-    if number("nbf").is_some_and(|nbf| nbf > check.now + CLOCK_LEEWAY_SECONDS) {
-        return Err(OidcError::Claim("nbf"));
+    if claims.get("nbf").is_some() {
+        let nbf = number("nbf").ok_or(OidcError::Claim("nbf"))?;
+        if i128::from(nbf) > latest {
+            return Err(OidcError::Claim("nbf"));
+        }
     }
     let nonce = text("nonce").unwrap_or_default();
     if nonce.len() != check.nonce.len() || !bool::from(nonce.as_bytes().ct_eq(check.nonce.as_bytes())) {

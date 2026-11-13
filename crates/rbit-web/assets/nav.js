@@ -23,6 +23,12 @@ import { documentCatalogKey } from "./locale-key.js";
 installUpdateNotice(document);
 installRenderTiming(document);
 
+// HTTP Cache-Control does not govern htmx's serialized DOM snapshots. Signed-in
+// pages opt out with hx-history="false" on <main>, including partial swaps. Remove
+// snapshots saved by older clients before back/forward can restore private content
+// after sign-out or an account change. Storage may be disabled by browser policy.
+try { sessionStorage.removeItem("htmx-history-cache"); } catch {}
+
 // Title-Case like any HTTP header name (the server lists them in `Vary` with that spelling).
 const EPOCH_HEADER = "Rbit-Nav-Epoch";
 const PARTIAL_HEADER = "Rbit-Partial";

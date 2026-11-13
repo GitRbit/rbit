@@ -252,8 +252,7 @@ impl EditWorkspace {
         }
     }
 
-    /// The entries of the parent's tree at every path the changes name and at each of
-    /// their ancestors (`None`: nothing there).
+    /// Parent-tree entries at changed paths and their ancestors (`None`: nothing there).
     async fn lookup(&self, parent: &str, changes: &[Change]) -> Result<BTreeMap<String, Option<Entry>>, EditError> {
         let mut paths = BTreeSet::new();
         for path in changes.iter().flat_map(Change::paths) {
@@ -262,7 +261,8 @@ impl EditWorkspace {
         }
         let (repo, parent) = (self.repo.clone(), parent.to_owned());
         let found = tokio::task::spawn_blocking(move || {
-            let repo = gix::open_opts(&repo, gix::open::Options::isolated()).map_err(GitError::backend)?;
+            let repo = gix::open_opts(&repo, gix::open::Options::isolated().config_overrides(["core.useReplaceRefs=false"]))
+                .map_err(GitError::backend)?;
             let id = gix::ObjectId::from_hex(parent.as_bytes()).map_err(GitError::backend)?;
             let tree = repo.find_commit(id).map_err(|_| GitError::NotFound("commit"))?.tree().map_err(GitError::backend)?;
             let mut found = BTreeMap::new();

@@ -313,3 +313,26 @@ fn filesystem_namespace_aliases_are_refused_before_git() {
         }
     }
 }
+
+#[test]
+fn replacement_refs_cannot_change_protected_objects_without_moving_a_branch() {
+    let mut names = vec![format!("refs/replace/{}", "a".repeat(40))];
+    if cfg!(any(windows, target_os = "macos")) {
+        names.extend(["refs/REPLACE/1234", "REFS/replace/1234", "refs/Replace/1234"].map(str::to_owned));
+    }
+    for actor in ACTORS {
+        for name in &names {
+            for kind in [Kind::Create, Kind::Update] {
+                let decision = decide_push(&[] as &[Rule], &actor.pusher(), &[update(name, kind)]);
+                assert_eq!(decision.verdict.refusals.len(), 1);
+                assert_eq!(decision.verdict.refusals[0].reason, reasons::REPLACE_REFS);
+                assert!(decision.bypasses.is_empty(), "administrative bypass must not allow object replacement");
+            }
+            let cleanup = decide_push(&[] as &[Rule], &actor.pusher(), &[update(name, Kind::Delete)]);
+            assert_eq!(cleanup.verdict.is_refused(), actor == Actor::Reader, "{actor:?}: {name}");
+            if actor == Actor::Reader {
+                assert_eq!(cleanup.verdict.refusals[0].reason, reasons::NO_WRITE);
+            }
+        }
+    }
+}

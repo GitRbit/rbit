@@ -13,5 +13,5 @@
         {% block nav_context %}<a href="/" class="font-semibold tracking-tight">{{ page.site_name }}</a>{% endblock %}{{ page.layout_menus()|safe }}{% block subnav %}{% endblock %}</div>
 
   {#- Markers: where `partial.rs` cuts a page for partial responses (title, main). -#}
-  <!--partial:main--><main id="main" lang="{{ page.content_locale.tag() }}" dir="{{ page.content_locale.direction().as_str() }}" class="mx-auto w-full max-w-[96rem] flex-1 px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
+  <!--partial:main--><main id="main" lang="{{ page.content_locale.tag() }}" dir="{{ page.content_locale.direction().as_str() }}" class="mx-auto w-full max-w-[96rem] flex-1 px-4 pb-16 pt-6 sm:px-6 sm:pt-8"{% if page.is_signed_in() %} hx-history="false"{% endif %}>
     {% block content %}{% endblock %}{{ page.layout_foot()|safe }}
