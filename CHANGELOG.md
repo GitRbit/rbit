@@ -9,6 +9,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.2.2] - 2026-11-12
 
+### Dependency maintenance
+
+- Update Mermaid to 12.3.0, Tailwind CSS and its CLI to 4.3.5, serde-saphyr to 2.1.1,
+  russh to 0.65.1 and redb to 4.5.0; regenerate the bundled Mermaid renderer.
+- Update the pinned install-action to 2.90.3 and docker/login-action to 4.8.0.
+- Preserve Unicode 17 normalization for persisted wiki names, accepted mutation
+  payloads and Git ref precomposition. The updated dependency graph resolves
+  unicode-normalization 0.1.26 without changing those existing byte identities.
+
 ### Security hardening
 
 - Enforce limited-token boundaries across API, Git and LFS operations, including
