@@ -1272,12 +1272,15 @@ impl ActionsRunStore {
             }
         }
         // A new attempt starts its own clock, as GitHub times each attempt; the first job it
-        // starts sets `started_at` again.
-        sqlx::query("UPDATE actions_runs SET attempt = attempt + 1, status = ?, started_at = NULL, finished_at = NULL, cancel_requested = 0              WHERE id = ?")
-            .bind(placeholder_status(start).code())
-            .bind(run.0)
-            .execute(&mut *tx)
-            .await?;
+        // starts sets `started_at` again. Its logs are new, so they expire again in their time.
+        sqlx::query(
+            "UPDATE actions_runs SET attempt = attempt + 1, status = ?, started_at = NULL, finished_at = NULL, cancel_requested = 0, \
+             logs_expired_at = NULL WHERE id = ?",
+        )
+        .bind(placeholder_status(start).code())
+        .bind(run.0)
+        .execute(&mut *tx)
+        .await?;
         let mut waiting = Vec::new();
         for job in jobs.iter().filter(|job| chosen.contains(&job.id.0)) {
             // A job with its own `if:` (or the stand-in of one planned from its needs) is

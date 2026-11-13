@@ -7,7 +7,10 @@ use rbit_core::{
     actions::{LogState, RunnerCapabilities, Status},
 };
 use rbit_services::actions::{environments::EnvironmentInput, logs::LogRange};
-use rbit_storage::sqlite::{actions_runners::Declaration, actions_runs::Claimed};
+use rbit_storage::sqlite::{
+    actions_runners::Declaration,
+    actions_runs::{Claimed, Rerun, RunStart},
+};
 
 use crate::actions_fixture::{Fixture, workflow};
 
@@ -145,6 +148,23 @@ async fn logs_expire_by_age_and_budget_and_old_runs_go() {
     let swept = actions.sweep(Timestamp(now.0 + 366 * DAY)).await.unwrap();
     assert_eq!(swept.deleted_runs, 2);
     assert_eq!(store.run(first.job.run_id).await.unwrap(), None);
+}
+
+#[tokio::test]
+async fn a_run_started_again_after_its_logs_expired_has_them_expire_again() {
+    let fixture = Fixture::new().await;
+    let actions = fixture.actions();
+    let first = claimed(&fixture, 6).await;
+    let store = fixture.database.actions_runs();
+    let settled = store.finish_task(first.task.id, Status::Success, Timestamp::now()).await.unwrap().unwrap();
+    actions.settled(&settled).await.unwrap();
+    let later = Timestamp(Timestamp::now().0 + 91 * DAY);
+    assert_eq!(actions.sweep(later).await.unwrap().expired_logs, 1);
+    assert!(store.run(first.job.run_id).await.unwrap().unwrap().logs_expired_at.is_some());
+    let repo = fixture.repo(&fixture.alice).await.repo.repo.id;
+    store.rerun(repo, first.job.run_id, Rerun::All, RunStart::Runnable, later).await.unwrap().unwrap();
+    // The new attempt's logs are not past their time: retention looks at the run again.
+    assert_eq!(store.run(first.job.run_id).await.unwrap().unwrap().logs_expired_at, None);
 }
 
 #[tokio::test]
