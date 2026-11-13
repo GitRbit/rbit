@@ -166,13 +166,31 @@ impl GlobSet {
     }
 
     fn match_all(&self, segments: &[Segment], parts: &[&str]) -> bool {
-        match segments.split_first() {
-            None => parts.is_empty(),
-            Some((Segment::Globstar, rest)) => (0..=parts.len()).any(|skip| self.match_all(rest, &parts[skip..])),
-            Some((Segment::Tokens(tokens), rest)) => {
-                parts.split_first().is_some_and(|(part, others)| self.match_segment(tokens, part) && self.match_all(rest, others))
+        // One backtrack point, at the last `**`: every other segment matches exactly one part,
+        // so a later mismatch only needs to give that `**` one more part. Trying every split
+        // at each `**` took exponential time on patterns such as `**/a/**/a/**/b`.
+        let (mut at, mut part) = (0, 0);
+        let (mut globstar, mut resume) = (None, 0);
+        while part < parts.len() {
+            match segments.get(at) {
+                Some(Segment::Globstar) => {
+                    globstar = Some(at);
+                    resume = part;
+                    at += 1;
+                }
+                Some(Segment::Tokens(tokens)) if self.match_segment(tokens, parts[part]) => {
+                    at += 1;
+                    part += 1;
+                }
+                _ => {
+                    let Some(star) = globstar else { return false };
+                    resume += 1;
+                    part = resume;
+                    at = star + 1;
+                }
             }
         }
+        segments[at..].iter().all(|segment| matches!(segment, Segment::Globstar))
     }
 
     /// Whether `parts` (a directory) could lead to a match of `segments`: they match a
@@ -194,25 +212,43 @@ impl GlobSet {
 
     fn match_tokens(&self, tokens: &[Token], name: &[char]) -> bool {
         let same = |a: char, b: char| if self.case_insensitive { a.to_lowercase().eq(b.to_lowercase()) } else { a == b };
-        match tokens.split_first() {
-            None => name.is_empty(),
-            Some((Token::Any, rest)) => (0..=name.len()).any(|skip| self.match_tokens(rest, &name[skip..])),
-            Some((token, rest)) => name.split_first().is_some_and(|(&c, others)| {
-                let hit = match token {
-                    Token::Char(expected) => same(*expected, c),
-                    Token::One => true,
-                    Token::Class(ranges, negated) => {
-                        let lower = c.to_lowercase().next().unwrap_or(c);
-                        let upper = c.to_uppercase().next().unwrap_or(c);
-                        let inside = |c: char| ranges.iter().any(|&(low, high)| low <= c && c <= high);
-                        let found = inside(c) || (self.case_insensitive && (inside(lower) || inside(upper)));
-                        found != *negated
-                    }
-                    Token::Any => unreachable!(),
-                };
-                hit && self.match_tokens(rest, others)
-            }),
+        let hit = |token: &Token, c: char| match token {
+            Token::Char(expected) => same(*expected, c),
+            Token::One => true,
+            Token::Class(ranges, negated) => {
+                let lower = c.to_lowercase().next().unwrap_or(c);
+                let upper = c.to_uppercase().next().unwrap_or(c);
+                let inside = |c: char| ranges.iter().any(|&(low, high)| low <= c && c <= high);
+                let found = inside(c) || (self.case_insensitive && (inside(lower) || inside(upper)));
+                found != *negated
+            }
+            Token::Any => false,
+        };
+        // One backtrack point, at the last `*`: every other token matches exactly one
+        // character, so a later mismatch only needs to give that `*` one more. Trying every
+        // split at each `*` took exponential time on patterns such as `*a*a*a*b`.
+        let (mut at, mut index) = (0, 0);
+        let (mut any, mut resume) = (None, 0);
+        while index < name.len() {
+            match tokens.get(at) {
+                Some(Token::Any) => {
+                    any = Some(at);
+                    resume = index;
+                    at += 1;
+                }
+                Some(token) if hit(token, name[index]) => {
+                    at += 1;
+                    index += 1;
+                }
+                _ => {
+                    let Some(star) = any else { return false };
+                    resume += 1;
+                    index = resume;
+                    at = star + 1;
+                }
+            }
         }
+        tokens[at..].iter().all(|token| matches!(token, Token::Any))
     }
 }
 
@@ -301,72 +337,4 @@ pub fn common_ancestor<'a>(paths: impl IntoIterator<Item = &'a str>) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn set(lines: &[&str]) -> GlobSet {
-        GlobSet::compile(lines.iter().copied(), false).unwrap()
-    }
-
-    #[test]
-    fn wildcards_match_within_a_segment_and_globstars_across() {
-        let star = set(&["dist/*.zip*"]);
-        assert!(star.matches("dist/a.zip") && star.matches("dist/a.zip.sha256"));
-        assert!(!star.matches("dist/b.txt") && !star.matches("dist/sub/c.zip"), "`*` stays within its segment");
-        let deep = set(&["dist/**/*.zip"]);
-        assert!(deep.matches("dist/a.zip") && deep.matches("dist/sub/c.zip") && deep.matches("dist/x/y/z.zip"));
-        assert!(!deep.matches("other/a.zip"));
-        let one = set(&["out/a?.log", "src/[a-c]*.rs", "src/[!x]y.rs"]);
-        assert!(one.matches("out/a1.log") && !one.matches("out/b1.log") && !one.matches("out/a12.log"));
-        assert!(one.matches("src/b.rs") && !one.matches("src/d.rs"));
-        assert!(one.matches("src/ay.rs") && !one.matches("src/xy.rs"));
-        assert!(set(&["*"]).matches(".hidden"), "dotfiles match, as with minimatch's dot option");
-    }
-
-    #[test]
-    fn the_last_matching_pattern_decides_and_directories_bring_their_contents() {
-        let globs = set(&["dist/**/*.zip", "!dist/sub/skip.zip", "docs/readme.md", "target", "!target/tmp"]);
-        assert!(globs.matches("dist/sub/c.zip") && !globs.matches("dist/sub/skip.zip"));
-        assert!(globs.matches("docs/readme.md"));
-        assert!(globs.matches("target/x/y.rlib"), "implicit descendants");
-        assert!(!globs.matches("target/tmp/a") && !globs.matches("target/tmp"), "an excluded directory takes its contents");
-        let again = set(&["a/**", "!a/b/**", "a/b/keep"]);
-        assert!(again.matches("a/x") && !again.matches("a/b/y") && again.matches("a/b/keep"));
-    }
-
-    #[test]
-    fn search_paths_are_the_literal_starts_without_nested_ones() {
-        assert_eq!(set(&["dist/*.zip*"]).search_paths(), ["dist"]);
-        assert_eq!(set(&["dist/**/*.zip", "!dist/sub/skip.zip", "docs/readme.md"]).search_paths(), ["dist", "docs/readme.md"]);
-        assert_eq!(set(&["a/b", "a/b/c/*.txt", "a"]).search_paths(), ["a"]);
-        assert_eq!(set(&["**/*.rlib"]).search_paths(), [""]);
-        assert_eq!(common_ancestor(["dist", "docs/readme.md"]), "");
-        assert_eq!(common_ancestor(["dist/a.txt", "dist/b.txt"]), "dist");
-        assert_eq!(common_ancestor(["a/b/c", "a/b"]), "a/b");
-    }
-
-    #[test]
-    fn walking_prunes_directories_that_cannot_match() {
-        let globs = set(&["src/**/*.rs", "docs/*.md"]);
-        assert!(globs.may_contain("src") && globs.may_contain("src/deep/er") && globs.may_contain("docs"));
-        assert!(!globs.may_contain("target") && !globs.may_contain("docs/sub"));
-        assert!(set(&["dist"]).may_contain("dist/any/depth"), "inside a matched directory");
-    }
-
-    #[test]
-    fn bad_patterns_are_refused() {
-        for bad in ["../x", "a/../b", "[abc", "!"] {
-            assert!(GlobSet::compile([bad], false).is_err(), "{bad}");
-        }
-        assert!(GlobSet::compile(["  ", "", "x"], false).is_ok(), "blank lines are skipped");
-        let many: Vec<String> = (0..=MAX_PATTERNS).map(|n| format!("f{n}")).collect();
-        assert!(GlobSet::compile(many.iter().map(String::as_str), false).is_err());
-    }
-
-    #[test]
-    fn windows_paths_and_case() {
-        let globs = GlobSet::compile(["Dist\\*.ZIP"], true).unwrap();
-        assert!(globs.matches("dist/a.zip") && globs.matches("dist\\b.Zip"));
-        assert!(!set(&["Dist/*.ZIP"]).matches("dist/a.zip"), "case counts elsewhere");
-    }
-}
+mod tests;
