@@ -1,9 +1,7 @@
 //! Logical page route names; disk storage must use stable IDs, never these strings.
 use std::{fmt, str::FromStr};
 
-use unicode_normalization::{UnicodeNormalization, char::is_combining_mark, is_nfc};
-
-use super::{WikiNameError, unsupported_display_control};
+use super::{WikiNameError, normalization, unsupported_display_control};
 
 /// NFC, case-sensitive slash-separated logical path. Accepts ALREADY-DECODED input
 /// only; residual percent is rejected rather than decoded a second time. The HTTP
@@ -26,7 +24,7 @@ impl WikiPath {
         if value.len() > Self::MAX_RAW_BYTES {
             return Err(WikiNameError::RawLimit);
         }
-        if !is_nfc(&value) {
+        if !normalization::is_canonical(&value) {
             return Err(WikiNameError::NonCanonical);
         }
         Self::try_from(value)
@@ -43,8 +41,8 @@ impl TryFrom<String> for WikiPath {
         if value.len() > Self::MAX_RAW_BYTES {
             return Err(WikiNameError::RawLimit);
         }
-        if !is_nfc(&value) {
-            value = value.nfc().collect();
+        if !normalization::is_canonical(&value) {
+            value = normalization::canonicalize(&value);
         }
         if value.len() > Self::MAX_BYTES {
             return Err(WikiNameError::TooLong);
@@ -69,7 +67,7 @@ fn validate_component(component: &str) -> Result<(), WikiNameError> {
     if component.chars().any(|character| {
         unsupported_display_control(character)
             || matches!(character, '\u{034f}' | '\u{180b}'..='\u{180f}' | '\u{fe00}'..='\u{fe0f}' | '\u{e0100}'..='\u{e01ef}')
-            || !(character.is_alphanumeric() || is_combining_mark(character) || matches!(character, '-' | '_' | '.'))
+            || !(character.is_alphanumeric() || normalization::is_combining_mark(character) || matches!(character, '-' | '_' | '.'))
     }) {
         return Err(WikiNameError::InvalidCharacter);
     }

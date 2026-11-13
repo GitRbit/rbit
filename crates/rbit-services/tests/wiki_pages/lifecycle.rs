@@ -12,6 +12,38 @@ use rbit_services::{
 use rbit_wikis::change::WikiChange;
 
 #[tokio::test]
+async fn unicode17_titles_paths_history_and_aliases_survive_dependency_updates() {
+    let fixture = Fixture::new(Visibility::Public).await;
+    let wikis = &fixture.services.wikis;
+    let repo = fixture.repo(&fixture.writer).await;
+    let title = "a\u{1ade}\u{05ae}b";
+    let distinct = "a\u{05ae}\u{1ade}b";
+    let original = "Caf\u{00e9}/One";
+    let renamed = "Caf\u{00e9}/Moved";
+    let created = wikis.create(&repo, &fixture.writer, &input(title, original, "legacy bytes")).await.unwrap();
+    let first = page(wikis.page(&repo, None, &created).await.unwrap());
+    assert_eq!(first.page.title.as_str().as_bytes(), title.as_bytes());
+    let other = wikis.create(&repo, &fixture.writer, &input(distinct, "Caf\u{00e9}/Two", "distinct")).await.unwrap();
+    let other = page(wikis.page(&repo, None, &other).await.unwrap());
+    assert_ne!(first.page.id, other.page.id);
+    assert_eq!(other.page.title.as_str().as_bytes(), distinct.as_bytes());
+    wikis.edit(&repo, &fixture.writer, first.page.id, first.page.head.generation, &input(title, renamed, "legacy bytes")).await.unwrap();
+    assert!(matches!(wikis.page(&repo, None, &path(original)).await.unwrap(), WikiLookup::Moved(to) if to.as_str() == renamed));
+    let current = page(wikis.page(&repo, None, &path(renamed)).await.unwrap());
+    assert_eq!((current.page.id, current.page.title.as_str()), (first.page.id, title));
+    let history = wikis.history(&repo, None, first.page.id, None).await.unwrap();
+    assert!(history.entries.iter().all(|entry| entry.title.as_str().as_bytes() == title.as_bytes()));
+    let historical = wikis.revision(&repo, None, first.page.id, first.page.head.generation).await.unwrap();
+    assert_eq!((historical.page.path.as_str(), historical.page.title.as_str()), (original, title));
+    wikis.delete(&repo, &fixture.writer, first.page.id, current.page.head.generation).await.unwrap();
+    let deleted = wikis.deleted(&repo, None, None).await.unwrap();
+    assert_eq!((deleted.entries[0].path.as_str(), deleted.entries[0].title.as_str()), (renamed, title));
+    let restored = wikis.undelete(&repo, &fixture.writer, first.page.id, deleted.entries[0].deleted).await.unwrap();
+    let restored = page(wikis.page(&repo, None, &restored).await.unwrap());
+    assert_eq!((restored.page.id, restored.page.path.as_str(), restored.page.title.as_str()), (first.page.id, renamed, title));
+}
+
+#[tokio::test]
 async fn a_deleted_page_keeps_its_history_and_can_be_restored_by_writers() {
     let fixture = Fixture::new(Visibility::Public).await;
     let wikis = &fixture.services.wikis;

@@ -64,3 +64,10 @@ confidence-threshold = 0.9
 [licenses.private]
 # The workspace's own crates are not published to crates.io.
 ignore = true
+
+[sources]
+unknown-git = "deny"
+required-git-spec = "rev"
+# Immutable Unicode 17 wiki-format implementation, byte-identical to the published
+# 0.1.25 crate. The manifest and lockfile pin its full audited release revision.
+allow-git = ["https://github.com/unicode-rs/unicode-normalization"]

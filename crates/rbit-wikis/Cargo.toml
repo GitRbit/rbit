@@ -9,7 +9,9 @@ license.workspace = true
 [dependencies]
 rbit-contracts = { workspace = true, default-features = false }
 rbit-access = { workspace = true, default-features = false }
-unicode-normalization = "=0.1.26"
+# Wiki catalog bytes use Unicode 17 NFC. This is the published 0.1.25 source revision;
+# registry consumers can use Unicode 18 without changing the persistent wiki format.
+unicode-normalization-v17 = { package = "unicode-normalization", version = "=0.1.25", git = "https://github.com/unicode-rs/unicode-normalization", rev = "5a69b3bafb625caccdec7871a42bed0d9a6604d1" }
 
 [lints]
 workspace = true

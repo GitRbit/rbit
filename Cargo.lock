@@ -2455,8 +2455,6 @@ dependencies = [
 [[package]]
 name = "gix-utils"
 version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11a9446060447e9ec58f5d333b98bed53389dfa10de5d8dd46fc76d01dfc2954"
 dependencies = [
  "bstr",
  "bytes",
@@ -2464,7 +2462,7 @@ dependencies = [
  "getrandom 0.4.3",
  "gix-error",
  "prodash",
- "unicode-normalization",
+ "unicode-normalization 0.1.25",
 ]
 
 [[package]]
@@ -4720,7 +4718,7 @@ version = "0.2.2"
 dependencies = [
  "rbit-access",
  "rbit-contracts",
- "unicode-normalization",
+ "unicode-normalization 0.1.25",
 ]
 
 [[package]]
@@ -5780,7 +5778,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7b4df3d392d81bd458a8a621b8bffbd2302a12ffe288a9d931670948749463b1"
 dependencies = [
  "unicode-bidi",
- "unicode-normalization",
+ "unicode-normalization 0.1.26",
  "unicode-properties",
 ]
 
@@ -6336,6 +6334,14 @@ name = "unicode-ident"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
+
+[[package]]
+name = "unicode-normalization"
+version = "0.1.25"
+source = "git+https://github.com/unicode-rs/unicode-normalization?rev=5a69b3bafb625caccdec7871a42bed0d9a6604d1#5a69b3bafb625caccdec7871a42bed0d9a6604d1"
+dependencies = [
+ "tinyvec",
+]
 
 [[package]]
 name = "unicode-normalization"

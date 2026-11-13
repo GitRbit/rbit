@@ -30,6 +30,42 @@ pub(super) fn capacity() -> NonZeroU32 {
 }
 
 #[tokio::test]
+async fn unicode17_intent_replay_preserves_accepted_bytes_and_identity() {
+    let (_directory, database, writer, mut command) = fixture().await;
+    let title = "a\u{1ade}\u{05ae}b";
+    let path = "Caf\u{00e9}/Guide";
+    command.path = rbit_wikis::WikiPath::from_canonical(path.into()).unwrap();
+    command.title = rbit_wikis::WikiTitle::from_canonical(title.into()).unwrap();
+    let accepted = database.wiki_mutations().accept(command, Timestamp(7), capacity()).await.unwrap();
+    let replay_command = |title: &str| WikiWriteCommand {
+        id: accepted.command.id,
+        actor: accepted.command.actor,
+        expected: accepted.command.expected,
+        path: rbit_wikis::WikiPath::from_canonical(path.into()).unwrap(),
+        title: rbit_wikis::WikiTitle::from_canonical(title.into()).unwrap(),
+        content: accepted.command.content.as_str().to_owned().try_into().unwrap(),
+    };
+    let query = "SELECT command_id,page_id,generation,actor_incarnation,accepted_at,path,title FROM wiki_mutation_intents";
+    let before: (Vec<u8>, i64, i64, i64, i64, String, String) = sqlx::query_as(query).fetch_one(&database.pool).await.unwrap();
+    let replayed = database.wiki_mutations().accept(replay_command(title), Timestamp(99), capacity()).await.unwrap();
+    assert_eq!(
+        (replayed.page, replayed.generation, replayed.actor_incarnation, replayed.accepted_at),
+        (accepted.page, accepted.generation, accepted.actor_incarnation, accepted.accepted_at)
+    );
+    assert_eq!(replayed.command.title.as_str().as_bytes(), title.as_bytes());
+    // Unicode 18 would collapse these two distinct legacy title spellings. An
+    // altered replay must remain a mismatch, never an ACK for another payload.
+    assert!(matches!(
+        database.wiki_mutations().accept(replay_command("a\u{05ae}\u{1ade}b"), Timestamp(99), capacity()).await,
+        Err(WikiMutationError::ReplayMismatch)
+    ));
+    let after: (Vec<u8>, i64, i64, i64, i64, String, String) = sqlx::query_as(query).fetch_one(&database.pool).await.unwrap();
+    assert_eq!(after, before);
+    assert_eq!((after.5.as_bytes(), after.6.as_bytes()), (path.as_bytes(), title.as_bytes()));
+    writer.close().await.unwrap();
+}
+
+#[tokio::test]
 async fn full_configuration_is_verified_on_replacement_without_changing_general_pool() {
     let (_directory, database, writer, _command) = fixture().await;
     let normal: i64 = sqlx::query_scalar("PRAGMA synchronous").fetch_one(&database.pool).await.unwrap();

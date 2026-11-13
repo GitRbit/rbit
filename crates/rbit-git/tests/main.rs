@@ -18,6 +18,7 @@ mod properties;
 mod push;
 mod remote;
 mod storage;
+mod unicode_refs;
 mod wiki_changes;
 mod wiki_managed_objects;
 mod wiki_objects;

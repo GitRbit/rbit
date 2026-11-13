@@ -21,6 +21,25 @@ fn persisted_names_must_already_be_canonical_instead_of_silently_changing_keys()
 }
 
 #[test]
+fn unicode17_catalog_names_keep_their_bytes_and_distinct_identities() {
+    // U+1ADE is unassigned in Unicode 17, but becomes a class-230 combining
+    // mark in Unicode 18, which would reorder these two marks.
+    let first = "a\u{1ade}\u{05ae}b";
+    let second = "a\u{05ae}\u{1ade}b";
+    for value in [first, second] {
+        let title = WikiTitle::try_from(value.to_owned()).unwrap();
+        assert_eq!(title.as_str().as_bytes(), value.as_bytes());
+        assert_eq!(WikiTitle::from_canonical(value.to_owned()).unwrap(), title);
+    }
+    assert_ne!(WikiTitle::from_canonical(first.into()).unwrap(), WikiTitle::from_canonical(second.into()).unwrap());
+    let canonical = "Caf\u{00e9}/Guide";
+    assert_eq!("Cafe\u{0301}/Guide".parse::<WikiPath>().unwrap().as_str(), canonical);
+    assert_eq!(WikiPath::from_canonical(canonical.into()).unwrap().as_str().as_bytes(), canonical.as_bytes());
+    assert_eq!(WikiPath::from_canonical("a\u{1ade}".into()), Err(WikiNameError::InvalidCharacter));
+    assert_eq!("a\u{1ade}".parse::<WikiPath>(), Err(WikiNameError::InvalidCharacter));
+}
+
+#[test]
 fn history_and_catalog_binding_have_checked_finite_representations() {
     assert!(WikiHistoryLimit::new(0).is_none());
     assert!(WikiHistoryLimit::new(51).is_none());
