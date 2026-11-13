@@ -62,7 +62,11 @@ fn mask_task_tokens(text: String) -> String {
     let mut rest = text.as_str();
     while let Some(at) = rest.find(TASK_TOKEN_PREFIX) {
         let after = &rest[at + TASK_TOKEN_PREFIX.len()..];
-        let secret = after.bytes().take_while(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')).count();
+        let secret = after
+            .bytes()
+            .take(TASK_TOKEN_SECRET_CHARS)
+            .take_while(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+            .count();
         out.push_str(&rest[..at]);
         if secret >= TASK_TOKEN_SECRET_CHARS {
             out.push_str(MASK);

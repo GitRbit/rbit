@@ -85,7 +85,9 @@ impl Services {
             // guesses from one network spend its own, so a stranger cannot keep the owner
             // out of their account. An account-wide budget, five times larger, still bounds
             // guesses spread over many networks.
-            let typed = format!("{}@{ip}", login_key(login));
+            // Keep the network before the potentially long email: throttle keys
+            // are length-capped, so appending it could merge different networks.
+            let typed = format!("{ip}@{}", login_key(login));
             let local = |account: rbit_core::AccountId| format!("{}@{ip}", account_key(account));
             self.throttle.check_client(ThrottleScope::SignIn, &ip)?;
             self.throttle.check(ThrottleScope::SignIn, &typed)?;

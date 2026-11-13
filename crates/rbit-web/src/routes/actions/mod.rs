@@ -52,6 +52,17 @@ pub(crate) fn artifact_download(
     file: tokio::fs::File,
     format: ArtifactFormat,
 ) -> axum::response::Response {
+    let Some(slot) = download_slot() else { return downloads_busy() };
+    artifact_download_with_stall(artifact, file, format, slot, DOWNLOAD_STALL)
+}
+
+fn artifact_download_with_stall(
+    artifact: &rbit_core::actions::Artifact,
+    file: tokio::fs::File,
+    format: ArtifactFormat,
+    slot: tokio::sync::SemaphorePermit<'static>,
+    stall: std::time::Duration,
+) -> axum::response::Response {
     use axum::{
         body::Bytes,
         http::{HeaderValue, header},
@@ -62,25 +73,25 @@ pub(crate) fn artifact_download(
         ArtifactFormat::TarGz => ("application/gzip", "tar.gz"),
         ArtifactFormat::Zip => ("application/zip", "zip"),
     };
-    let Some(slot) = download_slot() else { return downloads_busy() };
     let (sender, receiver) = tokio::sync::mpsc::channel::<std::io::Result<Bytes>>(8);
+    let (completed, completion) = tokio::sync::oneshot::channel();
     tokio::spawn(async move {
         let file = file.into_std().await;
         let _ = tokio::task::spawn_blocking(move || {
             let _slot = slot;
-            let writer = ChunkWriter::new(sender.clone());
+            let writer = ChunkWriter { stall, ..ChunkWriter::new(sender) };
             let source = std::io::BufReader::new(file);
             let written = match format {
                 ArtifactFormat::TarGz => downloads::to_tar_gz(source, writer).map(drop),
                 ArtifactFormat::Zip => downloads::to_zip(source, writer).map(drop),
             };
-            if let Err(error) = written {
-                let _ = sender.blocking_send(Err(error));
-            }
+            // Completion must never wait behind the body chunks: the client may
+            // have stopped reading the full channel that caused this failure.
+            let _ = completed.send(written);
         })
         .await;
     });
-    let mut response = channel_body(receiver).into_response();
+    let mut response = channel_body(receiver, completion).into_response();
     let headers = response.headers_mut();
     headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(kind));
     headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
@@ -97,10 +108,17 @@ pub(crate) fn artifact_download(
 /// The stream is fused: the server may poll a body again after it ended, and an unfused
 /// `unfold` panics then, which aborts the whole process in a release build (`panic =
 /// "abort"`). Every artifact and log archive download went through that path.
-pub(crate) fn channel_body(receiver: tokio::sync::mpsc::Receiver<std::io::Result<axum::body::Bytes>>) -> axum::body::Body {
+pub(crate) fn channel_body(
+    receiver: tokio::sync::mpsc::Receiver<std::io::Result<axum::body::Bytes>>,
+    completion: tokio::sync::oneshot::Receiver<std::io::Result<()>>,
+) -> axum::body::Body {
     use futures_util::StreamExt as _;
     let stream = futures_util::stream::unfold(receiver, |mut receiver| async move { receiver.recv().await.map(|item| (item, receiver)) });
-    axum::body::Body::from_stream(stream.fuse())
+    let terminal = futures_util::stream::once(async move {
+        completion.await.unwrap_or_else(|_| Err(std::io::Error::other("the archive worker did not complete")))
+    })
+    .filter_map(|result| async move { result.err().map(Result::<axum::body::Bytes, std::io::Error>::Err) });
+    axum::body::Body::from_stream(stream.chain(terminal).fuse())
 }
 
 /// Archive downloads converted at once (artifacts, run logs): each holds a blocking thread
@@ -299,13 +317,92 @@ mod tests {
     #[tokio::test]
     async fn a_finished_download_body_can_be_polled_again() {
         let (sender, receiver) = tokio::sync::mpsc::channel(1);
+        let (completed, completion) = tokio::sync::oneshot::channel();
         sender.send(Ok(axum::body::Bytes::from_static(b"chunk"))).await.unwrap();
         drop(sender);
-        let mut data = super::channel_body(receiver).into_data_stream();
+        completed.send(Ok(())).unwrap();
+        let mut data = super::channel_body(receiver, completion).into_data_stream();
         assert_eq!(&data.next().await.unwrap().unwrap()[..], b"chunk");
         assert!(data.next().await.is_none());
         // An unfused stream panics here, which aborts a release build.
         assert!(data.next().await.is_none(), "polling a finished body again ends it again");
+    }
+
+    #[tokio::test]
+    async fn an_unread_artifact_releases_its_slot_and_still_reports_the_timeout() {
+        use rbit_core::{
+            RepoId, Timestamp,
+            actions::{Artifact, ArtifactId, RunId},
+        };
+        use std::time::Duration;
+
+        static SLOTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("artifact.tar.gz");
+        // Incompressible data fills the response queue for both archive formats.
+        let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+        let noise: Vec<u8> = (0..(2 << 20) / 8)
+            .flat_map(|_| {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                state.to_le_bytes()
+            })
+            .collect();
+        let mut stored = tar::Builder::new(flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast()));
+        let mut header = tar::Header::new_gnu();
+        header.set_size(noise.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        stored.append_data(&mut header, "w/noise.bin", noise.as_slice()).unwrap();
+        let bytes = stored.into_inner().unwrap().finish().unwrap();
+        std::fs::write(&path, &bytes).unwrap();
+        let artifact = Artifact {
+            id: ArtifactId(1),
+            run_id: RunId(1),
+            repo_id: RepoId(1),
+            attempt: 1,
+            job_id: None,
+            name: "noise".to_owned(),
+            size: bytes.len() as u64,
+            sha256: [0; 32],
+            created_at: Timestamp(1),
+            expires_at: Timestamp(2),
+        };
+        for format in [super::ArtifactFormat::TarGz, super::ArtifactFormat::Zip] {
+            let slot = SLOTS.try_acquire().unwrap();
+            let file = tokio::fs::File::open(&path).await.unwrap();
+            let response = super::artifact_download_with_stall(&artifact, file, format, slot, Duration::from_millis(20));
+            // Hold the real HTTP body unread. Worker error forwarding must not
+            // wait on the same full channel that caused the write timeout.
+            tokio::time::timeout(Duration::from_secs(5), async {
+                while SLOTS.available_permits() == 0 {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            })
+            .await
+            .expect("a stalled response must release its archive admission");
+            let mut data = response.into_body().into_data_stream();
+            let mut failed = false;
+            while let Some(chunk) = data.next().await {
+                if chunk.is_err() {
+                    failed = true;
+                }
+            }
+            assert!(failed, "a timeout must remain a broken download after buffered chunks are drained");
+            assert!(data.next().await.is_none(), "failed bodies stay fused");
+        }
+    }
+
+    #[tokio::test]
+    async fn an_archive_worker_panic_does_not_become_a_successful_body() {
+        let (sender, receiver) = tokio::sync::mpsc::channel(1);
+        let (completed, completion) = tokio::sync::oneshot::channel::<std::io::Result<()>>();
+        drop(sender);
+        drop(completed);
+        let mut data = super::channel_body(receiver, completion).into_data_stream();
+        assert!(data.next().await.unwrap().is_err());
+        assert!(data.next().await.is_none());
     }
 
     #[test]

@@ -250,6 +250,32 @@ async fn a_username_and_its_email_share_one_budget() {
 }
 
 #[tokio::test]
+async fn a_long_email_keeps_network_throttles_separate() {
+    let fixture = Fixture::new().await;
+    // Valid mailbox and DNS label lengths, but the address exceeds the throttle
+    // key's 128-character cap before the client's network would be appended.
+    let email = format!("alice@{}.{}.example.com", "a".repeat(60), "b".repeat(60));
+    assert!(email.len() > 128);
+    fixture
+        .services
+        .accounts
+        .create_user(SignUp { username: "alice".into(), email: email.clone(), password: PASSWORD.into() }, None)
+        .await
+        .unwrap();
+    guess_until_limited(&fixture, &email, &address("192.0.2.1")).await;
+    let same_network = fixture.services.sign_in("alice", PASSWORD.into(), &address("192.0.2.1")).await;
+    assert!(
+        matches!(same_network, Err(ServiceError::RateLimited { .. })),
+        "aliases retain the resolved account's network budget: {same_network:?}"
+    );
+    let elsewhere = fixture.services.sign_in(&email, PASSWORD.into(), &address("192.0.2.2")).await;
+    assert!(
+        matches!(elsewhere, Ok(SignInOutcome::SignedIn(_))),
+        "a long email must retain the client network in its throttle key: {elsewhere:?}"
+    );
+}
+
+#[tokio::test]
 async fn guesses_spread_over_many_networks_still_run_out() {
     let fixture = Fixture::new().await;
     fixture.user("alice").await;
