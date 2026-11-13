@@ -1067,9 +1067,8 @@ impl ActionsRunStore {
 
     /// Cancels a run: jobs not yet running at once; running jobs in the database (their
     /// runners learn it on their next update) with their task tokens cleared immediately.
-    /// A job still waiting for its needs that has its own `if:` is left to be decided once
-    /// they end, as on GitHub: `always()` or `cancelled()` runs it (cleanup, a notice), any
-    /// other condition skips it. `None` when the run is not in `repo` or already finished.
+    /// A job waiting for needs with its own `if:` is decided once they end, as on GitHub
+    /// (`always()` runs it). `None` when the run is not in `repo` or already finished.
     pub async fn cancel_run(&self, repo: RepoId, run: RunId, now: Timestamp) -> Result<Option<Settled>, StorageError> {
         let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         let found: Option<i64> =
