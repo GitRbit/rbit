@@ -84,8 +84,12 @@ pub async fn register<P: ExternalRegistrations>(
     }
     let name: AccountName = username.trim().parse().map_err(RegistrationError::Name)?;
     let email: Email = email.trim().parse().map_err(RegistrationError::Name)?;
-    let email_verified =
-        identity.email_verified && identity.email.as_deref().is_some_and(|given| given.eq_ignore_ascii_case(email.as_str()));
+    // Only a provider trusted for addresses (`trust_email`, one that controls its users'
+    // addresses) vouches for one: another's "verified" may be a claim its user typed, and a
+    // verified address here is what later links an account by email.
+    let email_verified = provider.trust_email
+        && identity.email_verified
+        && identity.email.as_deref().is_some_and(|given| given.eq_ignore_ascii_case(email.as_str()));
     let registration_open = may_register(provider.registration, port.site_registration_open());
     let new = NewExternalAccount { name, email, email_verified, registration_open };
     let account = match port.create(new, identity).await {
