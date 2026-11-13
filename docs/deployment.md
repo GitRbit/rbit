@@ -23,7 +23,11 @@ Run it behind a reverse proxy that terminates TLS. The sections below cover
 ## Configuration
 
 Settings come from built-in defaults, then a TOML file (`--config` or `RBIT_CONFIG`),
-then `RBIT_<SECTION>__<KEY>` environment variables (later sources win).
+saved administrator deployment settings, legacy `RUSTIT_*` environment variables, and
+`RBIT_<SECTION>__<KEY>` environment variables (later sources win). Saved deployment
+settings are edited under **Site administration → Configuration** and take effect after
+a restart; removing an override there returns that setting to the file or environment
+value. Storage location remains deployment-owned and must be changed offline.
 [`deploy/rbit.example.toml`](../deploy/rbit.example.toml) lists every setting with
 production-minded values. The ones that matter most:
 
@@ -77,11 +81,11 @@ rbit encrypts it again).
 ## Docker
 
 Released images are published to `ghcr.io/gitrbit/rbit` for `linux/amd64` and `linux/arm64`,
-tagged with the version (`0.1.0`), the minor series (`0.1`) and `latest`:
+tagged with the published version (for example `0.2.1`), the minor series (`0.2`) and `latest`:
 
 ```bash
 docker run -d --name rbit --restart unless-stopped -p 127.0.0.1:3000:3000 -v rbit-data:/data \
-  -e RBIT_SERVER__PUBLIC_URL=https://git.example.com ghcr.io/gitrbit/rbit:0.1
+  -e RBIT_SERVER__PUBLIC_URL=https://git.example.com ghcr.io/gitrbit/rbit:0.2.1
 ```
 
 Pin a version (or the minor series) in production rather than `latest`. The released
@@ -709,7 +713,7 @@ sudo -u rbit rbit --config /etc/rbit/rbit.toml backup \
    sudo -u rbit rbit --config /etc/rbit/rbit.toml restore --from DIR
    ```
    For Docker, restore into an empty volume:
-   `docker run --rm -v rbit-data:/data -v "$PWD/DIR":/backup:ro ghcr.io/gitrbit/rbit:0.1 restore --from /backup`.
+   `docker run --rm -v rbit-data:/data -v "$PWD/DIR":/backup:ro ghcr.io/gitrbit/rbit:0.2.1 restore --from /backup`.
    With `storage.secret_key_file` set, put the key there first. With Actions secrets,
    copy `actions/secrets.key` (or your `actions.secrets_key_file`) back after the restore;
    the command warns when secrets need it.

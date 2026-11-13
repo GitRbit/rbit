@@ -3,7 +3,7 @@
 Contract for four parallel workstreams that make the heaviest pages (long files, blame,
 large commit/compare diffs, large pull requests) scroll without flicker and appear sooner,
 and make preloading cheaper on desktop and useful on phones.
-House rules from [milestone-1.md](milestone-1.md), [../HANDOFF.md](../HANDOFF.md) and
+House rules from [milestone-1.md](milestone-1.md), [historical handoff](../history/handoff-2026-10-25.md) and
 [CONTRIBUTING.md](../../CONTRIBUTING.md) apply unchanged: thin handlers, no logic in
 templates, strict CSP (no inline `style=` or scripts), clippy pedantic clean, atomic
 commits with human attribution only (no AI coauthor trailers),

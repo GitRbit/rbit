@@ -41,6 +41,9 @@ Expected live settings:
 Required checks are `Format and clippy`, `Licenses and advisories`,
 `Tests (ubuntu-latest)`, `Tests (windows-latest)`, `Front-end build` and `Release build`.
 If CI job names change, update the live rules and `scripts/audit-repository.mjs` together.
+The workflow also publishes an aggregate **CI required** check. The six checks above remain
+the audit script's expected live rule until the [aggregate rollout](ci-required-check.md)
+has been verified and the repository rule and audit script have been updated together.
 The two `Tests (<os>)` checks are aggregate jobs over each platform's test build, test
 shards and doc tests; the shards themselves (`Tests (<os>, K/N)`) are not required
 individually. See [CI test shards](ci-test-shards.md).

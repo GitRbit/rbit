@@ -28,13 +28,12 @@ check labels/results and validated runner identities enter summaries/annotations
 PR titles, branch names, dependency outputs and arbitrary payloads are discarded.
 PR execution remains separate from the release publication workflow.
 
-For branch-protection rollout, first let the updated workflow complete on a PR
-and main, then add its exact displayed check **CI required** to the repository's
-required checks. Verify one intentionally failing dependency in a temporary PR
-before replacing existing required checks. Keep current required checks until
-that rollout is verified. This code change does not modify repository rules or
-claim that branch protection has already been updated. Do not reuse this name
-for unrelated checks. Merge queues need an explicitly reviewed `merge_group`
+The workflow publishes **CI required**, but the repository audit currently expects
+the six individual checks listed in [repository configuration](repository-configuration.md).
+Before replacing those live required checks, verify the aggregate on a PR and main,
+including one intentionally failing dependency in a temporary PR. Then update the
+branch-protection rule and `scripts/audit-repository.mjs` together. Do not reuse this
+name for unrelated checks. Merge queues need an explicitly reviewed `merge_group`
 trigger before enabling a rule that requires this check there.
 
 When adding, removing or making a validation conditional, update the workflow's
@@ -50,11 +49,10 @@ Run the focused checks locally without compiling Rust:
 node --test scripts/tests/rewrite-ci-summary.test.mjs
 ```
 
-This implements the aggregate/status-summary portion of the delivery plan's
-section10. It does not change cache keys, compilation parallelism, dependency
-selection, release authorization, platform coverage or publication behavior.
-Hosted workflow execution and the branch-protection rollout remain validation
-steps after the change is pushed.
+The aggregate summarizes validation results; it does not change cache keys,
+compilation parallelism, dependency selection, release authorization, platform
+coverage or publication behavior. The branch-protection rollout is a separate
+repository setting change.
 
 GitHub documents [dependency skip propagation and always()](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-jobs)
 and the [needs context](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#needs-context).

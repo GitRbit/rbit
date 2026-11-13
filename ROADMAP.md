@@ -1,12 +1,12 @@
 # Roadmap
 
-rbit is an open-source, self-hosted Git platform that one person can run on a small server:
-one binary, no external services, GitHub-compatible where that helps (API shapes, webhooks,
-`fixes #12`), and secure by default. It is licensed under MIT OR Apache-2.0.
-This page separates available features, near-term priorities, longer-term ideas and work
-outside the current scope. Priorities are not release commitments and may change with feedback —
-open a [feature request](https://github.com/GitRbit/rbit/issues/new?template=feature_request.yml)
-to argue for something.
+rbit is an open-source, self-hosted Git platform. The server runs as one process without
+Postgres or Redis; optional Actions jobs run on a separate `rbit-runner`. This page records
+what is implemented on `main` and distinguishes possible future work from commitments. Some
+features may precede the [latest published release](https://github.com/GitRbit/rbit/releases).
+For an up-to-date
+work queue, see [issues](https://github.com/GitRbit/rbit/issues) and
+[feature requests](https://github.com/GitRbit/rbit/issues/new?template=feature_request.yml).
 
 ## Available today
 
@@ -34,7 +34,7 @@ for release history.
   restricted pushers — enforced over HTTP, SSH and for merges.
 - **Automation:** a versioned REST API (`/api/v1`, OpenAPI 3.1), including collaborators,
   teams, releases with assets and forks; signed, GitHub-shaped webhooks with a retrying
-  delivery queue; commit statuses and required checks for external CI.
+  delivery queue; commit statuses, required checks and a merge queue.
 - **Actions:** GitHub-style workflows on rbit's own runner, `rbit-runner` — container and host
   backends, built-in checkout, cache and artifacts, secrets and variables, fork-safe pull
   request runs, job logs, commit statuses, `workflow_run`/`workflow_job` webhooks and a REST
@@ -51,19 +51,23 @@ for release history.
 - **Migration:** importing repositories with their issues, pull requests and releases from
   GitHub, GitHub Enterprise and Gitea/Forgejo, and push mirrors.
 - **Repository documents:** document tabs, a searchable heading outline and Mermaid diagrams.
+- **Wikis:** repository pages with search, history, comparison, restore, deletion and recovery;
+  repository administrators can enable or disable the wiki.
 - **Activity:** contribution heatmaps on user and organisation profiles and repository commits.
 - **Administration:** instance branding and deployment configuration forms.
 - **Personal dashboards:** cross-repository `/issues` and `/pulls` with created, assigned,
   mentioned and review-requested views.
 - **Archived repositories:** read-only repositories that can still be cloned, forked and
   starred, with a banner, list badges and an Explore filter.
+- **Languages:** a language picker for English, German, Spanish, French, Brazilian Portuguese,
+  Russian, Japanese, Simplified Chinese and Korean, with English fallback where a catalog is
+  incomplete.
+- **Agent workflows:** a CLI and API for commit-specific CI status, failure digests, test
+  reports, scratch CI runs, pull request readiness, safe retries and merge queue operations.
+  See [the CLI guide](docs/cli.md) and [the Actions guide](docs/actions.md).
 
 Markdown editors offer Write/Preview tabs for issue and pull request bodies, comments,
 reviews and repository Markdown files, using the same sanitized rendering as saved text.
-
-## Near-term priorities
-
-The current near-term priorities are implemented in the features above.
 
 ## Longer-term ideas
 
@@ -81,10 +85,9 @@ matters to you, open a discussion; the answer may change, but not soon:
 
 - A package registry.
 - Code search across repositories.
-- Wikis and project boards.
+- Project boards.
 - Reactions on issues and comments.
 - `CODEOWNERS`, tag protection and commit signature verification.
-- Translations (i18n).
 - Databases other than SQLite (such as Postgres) and object storage for repositories or files.
 - Running builds inside the rbit server process: builds run on `rbit-runner`, a separate
   program, never in the forge.

@@ -95,14 +95,19 @@ generated credentials, reports and the separate synthetic scrolling workload.
 
 ## How the code is organised
 
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) is the map: the crates, the schema, the routes,
-the events, the API and webhooks, the security model and the design system. Read the part you
-are about to touch. The rules that keep it coherent:
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) maps the crates, storage, routes, events, API,
+security model and design system. The newer `rbit-identity`, `rbit-access`,
+`rbit-repositories`, `rbit-collaboration`, `rbit-actions`, `rbit-wikis` and other domain
+crates are being extracted from the original layers. Follow the ownership documented by
+the code you change. [Actions](docs/actions.md), [the CLI](docs/cli.md) and
+[localization](docs/design/localization-contracts.md) have their own guides.
+The rules that keep changes coherent:
 
-- **Layering:** `web → services → (storage, git, auth, mail) → core`. Handlers stay thin;
-  business rules live in services; SQL lives in the stores; templates contain no logic.
-- **Events, not calls:** cross-cutting reactions (webhooks, notifications, cache warming)
-  subscribe to `DomainEvent`s on the `EventBus` instead of being called directly.
+- **Layering:** handlers stay thin; application decisions live in domain services; SQL
+  lives in stores; templates present validated data. Respect the current domain boundaries
+  rather than adding new decisions to compatibility facades.
+- **Events:** use the existing event contracts for cross-cutting reactions such as webhooks
+  and notifications; check the current owner before extending an older `EventBus` path.
 - **Types:** validate input once, into domain types (`rbit-core`), and pass those around.
   `unsafe` is forbidden; no `unwrap` outside tests; every module starts with a `//!` doc
   comment saying what it is for.
