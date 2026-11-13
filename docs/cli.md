@@ -127,6 +127,12 @@ when both are given; `rerun` without a run id reruns every failed or cancelled r
 or `HEAD`; while its run has not finished it says so (`pending`, exit 8) rather than that
 nothing failed, and so does `rerun RUN` for a run that has not finished.
 
+`run watch --branch NAME` without `--sha` watches the commit at the tip of `NAME` on the
+server, not the checkout's `HEAD`: the tip is read from `GET /repos/{owner}/{repo}/branches/{NAME}`,
+and a branch the server does not have is a usage error (exit 2) that says to push it or to
+pass `--sha`. With `--sha`, that commit is watched and `--branch` only names the branch whose
+move ends the watch. With neither, the watch follows `HEAD` and the current branch.
+
 A job that uploads its JUnit report as an artifact named `rbit-test-report`, or that name
 with a suffix such as `rbit-test-report-${{ matrix.os }}` since a run's artifact names are
 unique (with `actions/upload-artifact`, `if: always()`), gets its failed tests in `run failure`: the test,

@@ -7,6 +7,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- `rbit run watch --branch NAME` without `--sha` watches the tip of `NAME` on the server. It
+  watched the checkout's `HEAD` instead, so with another branch checked out it reported
+  `head_changed` for a commit that was never `NAME`'s tip. A branch the server does not have
+  is a usage error (exit 2).
+
 ## [0.2.2] - 2026-11-13
 
 ### Dependency maintenance

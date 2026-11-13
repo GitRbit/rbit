@@ -180,6 +180,14 @@ async fn an_agent_finds_the_runs_of_its_commit_and_reads_codes_not_prose() {
     assert_eq!((first["changed"].as_bool(), first["state"].as_str(), first["done"].as_bool()), (Some(true), Some("queued"), Some(false)));
     let (_, again) = agent.get(&format!("{watch}&cursor={}", first["cursor"].as_str().unwrap())).await;
     assert_eq!(again["changed"], false);
+    // `--branch` alone watches the branch's tip on the server, not the checkout's `HEAD` (the
+    // test runs inside rbit's own checkout, whose `HEAD` is another commit). The job waits for
+    // a label no runner has, so the watch says so at once. A branch the server lacks is a usage error.
+    let (code, tip) = agent.cli(&["run", "watch", "--branch", "agent-change", "--timeout", "5"]);
+    assert_eq!((code, tip["code"].as_str()), (8, Some("no_runner")), "{tip}");
+    assert!(tip["message"].as_str().unwrap().contains(&head[..12]), "the branch's tip is watched: {tip}");
+    let (code, unknown_branch) = agent.cli(&["run", "watch", "--branch", "no-such-branch", "--timeout", "5"]);
+    assert_eq!((code, unknown_branch["code"].as_str()), (2, Some("usage")), "{unknown_branch}");
     // A commit the repository does not have (yet) is not "no run will come".
     let (_, unknown) = agent.get(&format!("repos/alice/rocket/agent/watch?sha={}&timeout=1", "2".repeat(40))).await;
     assert_eq!((unknown["state"].as_str(), unknown["done"].as_bool()), (Some("not_started"), Some(false)), "{unknown}");
@@ -188,8 +196,10 @@ async fn an_agent_finds_the_runs_of_its_commit_and_reads_codes_not_prose() {
     git.ok(&sample.dir, &["push", "--quiet", &url, "agent-change"]);
     let (_, moved) = agent.get(&format!("{watch}&cursor={}", first["cursor"].as_str().unwrap())).await;
     assert_eq!(moved["head_changed"]["sha"], newer.as_str(), "{moved}");
+    // `--sha` wins over `--branch`: the older commit is watched, not the branch's newer tip.
     let (code, cli_moved) = agent.cli(&["run", "watch", "--sha", &head, "--branch", "agent-change", "--timeout", "5"]);
     assert_eq!((code, cli_moved["code"].as_str()), (5, Some("head_changed")), "{cli_moved}");
+    assert!(cli_moved["message"].as_str().unwrap().contains(&head[..12]), "{cli_moved}");
 
     // A commit with no workflow files expects no run: said at once, not after a wait.
     git.ok(&sample.dir, &["checkout", "--quiet", "-b", "no-ci", "main"]);
