@@ -55,7 +55,8 @@ impl Api {
                 return entry;
             }
             assert!(Instant::now() < deadline, "the queue entry of #{number} never got there: {status}: {entry}");
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            // Stay within both account and client API refill rates while awaiting a sweep.
+            tokio::time::sleep(Duration::from_secs(1)).await;
         }
     }
 }
