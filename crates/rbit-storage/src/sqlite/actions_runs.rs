@@ -1065,7 +1065,9 @@ impl ActionsRunStore {
 
     /// Cancels a run: jobs not yet running at once; running jobs in the database (their
     /// runners learn it on their next update) with their task tokens cleared immediately.
-    /// `None` when the run is not in `repo` or already finished.
+    /// A job still waiting for its needs that has its own `if:` is left to be decided once
+    /// they end, as on GitHub: `always()` or `cancelled()` runs it (cleanup, a notice), any
+    /// other condition skips it. `None` when the run is not in `repo` or already finished.
     pub async fn cancel_run(&self, repo: RepoId, run: RunId, now: Timestamp) -> Result<Option<Settled>, StorageError> {
         let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         let found: Option<i64> =
@@ -1083,11 +1085,14 @@ impl ActionsRunStore {
         .bind(run.0)
         .execute(&mut *tx)
         .await?;
-        sqlx::query("UPDATE actions_jobs SET status = 3, finished_at = ? WHERE run_id = ? AND status IN (5, 6, 7, 8)")
-            .bind(now.0)
-            .bind(run.0)
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query(
+            "UPDATE actions_jobs SET status = 3, finished_at = ? WHERE run_id = ? AND status IN (5, 6, 7, 8) \
+             AND NOT (status = 7 AND condition = 1 AND json_array_length(needs) > 0)",
+        )
+        .bind(now.0)
+        .bind(run.0)
+        .execute(&mut *tx)
+        .await?;
         sqlx::query("UPDATE actions_runs SET cancel_requested = 1 WHERE id = ?").bind(run.0).execute(&mut *tx).await?;
         let settled = settle(&mut tx, run, Vec::new(), now).await?;
         tx.commit().await?;
