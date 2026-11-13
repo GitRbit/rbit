@@ -84,10 +84,14 @@ A personal access token may be limited to one repository and to rights within it
 dismissals, deployment approvals), `read_logs` (logs, failure digests, artifacts, the log lines
 in status and watch). Such a token reaches only its repository's endpoints (Git and LFS included) and
 `GET /user`, never with the `admin` scope: nothing account-wide, so no repository list naming the others and no new
-repository. Writes no right names (switching workflows, deleting artifacts and caches) need
-an unlimited token. The limit lives in its own table beside the
-token (migration `0082_token_limits.sql`), so the credential table and its writer protocol
-are unchanged. Every API repository lookup refuses other repositories with 404; Git over
+repository. Actions writes no right names (switching workflows, deleting artifacts and caches)
+and forks need an unlimited token. The issue tracker (issues, comments, labels, milestones,
+assignees, `issue take`) follows the token's scope alone, as for any token: an agent works
+its issues, and no right is defined for them. A pull request's head in another repository
+(`owner:branch`) is treated as missing, so the token reaches no other repository through it.
+The limit lives in its own table beside the token (migrations `0082_token_limits.sql` and
+`0087_token_limits_outlive_their_repository.sql`; a token whose repository was deleted
+reaches none), so the credential table and its writer protocol are unchanged. Every API repository lookup refuses other repositories with 404; Git over
 HTTP refuses them, and pushes without `push`. `GET`, `POST`, `DELETE /user/tokens` list,
 create (with `repository` and `rights`) and revoke tokens, for an unlimited `admin` token
 only, so a limited token makes no broader one.
