@@ -1100,15 +1100,19 @@ impl ActionsRunStore {
     }
 
     /// Cancels waiting jobs nobody took since `queued_before` (the abandoned sweep) and
-    /// settles their runs.
+    /// settles their runs. A job waits out its environment's wait timer first: it could not
+    /// be taken before, so its time starts when the timer ends.
     pub async fn cancel_abandoned(&self, queued_before: Timestamp, now: Timestamp) -> Result<Vec<Settled>, StorageError> {
         let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
-        let runs: Vec<i64> =
-            sqlx::query_scalar("UPDATE actions_jobs SET status = 3, finished_at = ?1 WHERE status = 5 AND queued_at < ?2 RETURNING run_id")
-                .bind(now.0)
-                .bind(queued_before.0)
-                .fetch_all(&mut *tx)
-                .await?;
+        let runs: Vec<i64> = sqlx::query_scalar(
+            "UPDATE actions_jobs SET status = 3, finished_at = ?1 WHERE status = 5 AND queued_at + COALESCE((SELECT e.wait_timer * 60 \
+             FROM actions_environments e WHERE e.repo_id = actions_jobs.repo_id AND e.name = actions_jobs.environment), 0) < ?2 \
+             RETURNING run_id",
+        )
+        .bind(now.0)
+        .bind(queued_before.0)
+        .fetch_all(&mut *tx)
+        .await?;
         let mut settled = Vec::new();
         for run in runs.into_iter().collect::<BTreeSet<_>>() {
             sqlx::query("UPDATE actions_runs SET cancel_requested = 1 WHERE id = ?").bind(run).execute(&mut *tx).await?;

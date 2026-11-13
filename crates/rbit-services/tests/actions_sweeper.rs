@@ -6,7 +6,7 @@ use rbit_core::{
     PushSource, Timestamp,
     actions::{LogState, RunnerCapabilities, Status},
 };
-use rbit_services::actions::logs::LogRange;
+use rbit_services::actions::{environments::EnvironmentInput, logs::LogRange};
 use rbit_storage::sqlite::{actions_runners::Declaration, actions_runs::Claimed};
 
 use crate::actions_fixture::{Fixture, workflow};
@@ -98,6 +98,25 @@ async fn endless_tasks_fail_and_abandoned_jobs_are_cancelled() {
     assert_eq!(swept.abandoned, 1, "{jobs:?}");
     let run = fixture.database.actions_runs().run(run.id).await.unwrap().unwrap();
     assert_eq!(run.status, Status::Cancelled);
+}
+
+#[tokio::test]
+async fn a_job_waits_out_its_environment_timer_before_it_counts_as_abandoned() {
+    let fixture = Fixture::with(|config| config.actions.abandoned_timeout_seconds = 1_000).await;
+    let actions = fixture.actions();
+    let alice = fixture.alice.clone();
+    let repo = fixture.repo(&alice).await;
+    let timer = EnvironmentInput { wait_timer: 60, ..EnvironmentInput::default() };
+    actions.put_environment(&alice, &repo, "prod", &timer).await.unwrap();
+    let deploy = "on: push\njobs:\n  deploy:\n    environment: prod\n    runs-on: nobody-has-this\n    steps: [{run: x}]\n";
+    fixture.commit(&[(".forgejo/workflows/deploy.yml", deploy)], "Deploy");
+    let update = fixture.push_ref("refs/heads/main").await;
+    actions.handle_push(repo.repo.repo.id, PushSource::User(alice.id()), &[update]).await.unwrap();
+    let now = Timestamp::now();
+    // Older than the 1,000 s timeout, but its hour-long wait timer is still running.
+    assert_eq!(actions.sweep(Timestamp(now.0 + 2_000)).await.unwrap().abandoned, 0);
+    assert_eq!(actions.sweep(Timestamp(now.0 + 3_600 + 500)).await.unwrap().abandoned, 0, "its time starts with the timer's end");
+    assert_eq!(actions.sweep(Timestamp(now.0 + 3_600 + 1_100)).await.unwrap().abandoned, 1);
 }
 
 #[tokio::test]
