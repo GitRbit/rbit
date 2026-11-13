@@ -23,7 +23,7 @@
 //! Excess raw events become escaped text;
 //! ordinary Markdown and reasonably sized HTML tables keep their formatting.
 
-use pulldown_cmark::{CowStr, Event};
+use pulldown_cmark::{CowStr, Event, Tag};
 
 /// Deepest Markdown container nesting rendered as structure.
 pub const MAX_NESTING: usize = 32;
@@ -70,16 +70,29 @@ const NOT_NESTING: &[&str] = &[
 
 /// `events` with the bounds above applied.
 pub fn bounded<'a>(events: impl Iterator<Item = Event<'a>>) -> impl Iterator<Item = Event<'a>> {
-    // Whether each open container was kept; containers below a dropped one are deeper still.
-    let mut open: Vec<bool> = Vec::new();
+    // Whether each container was kept and protects a generated inline closing tag.
+    // Containers below a dropped one are deeper still.
+    let mut open: Vec<(bool, bool)> = Vec::new();
+    let mut protected_inline = 0_usize;
     let mut raw_budget = RawBudget::default();
     events.filter_map(move |event| match event {
         Event::Start(tag) => {
             let keep = open.len() < MAX_NESTING;
-            open.push(keep);
+            let protects = keep && matches!(&tag, Tag::Link { .. } | Tag::Emphasis | Tag::Strong | Tag::Strikethrough);
+            protected_inline += usize::from(protects);
+            open.push((keep, protects));
             keep.then_some(Event::Start(tag))
         }
-        Event::End(tag) => open.pop().unwrap_or(true).then_some(Event::End(tag)),
+        Event::End(tag) => {
+            let (keep, protects) = open.pop().unwrap_or((true, false));
+            protected_inline -= usize::from(protects);
+            keep.then_some(Event::End(tag))
+        }
+        // HTML parser state can swallow a generated closing tag: e.g. a textarea
+        // inside a Markdown link hides </a>, retaining its attributes for later
+        // table reconstruction. Escape every raw event here, including comments,
+        // closing tags and fragments. Native Markdown images remain structured.
+        Event::Html(html) | Event::InlineHtml(html) if protected_inline > 0 => Some(Event::Text(html)),
         Event::Html(html) => Some(raw(html, &mut raw_budget, Event::Html)),
         Event::InlineHtml(html) => Some(raw(html, &mut raw_budget, Event::InlineHtml)),
         other => Some(other),

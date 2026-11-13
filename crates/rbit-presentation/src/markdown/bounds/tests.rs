@@ -332,3 +332,5 @@ fn escaped_multiline_attribute_fragments_cannot_bypass_the_raw_byte_budget() {
     }
     assert!(failures.is_empty(), "escaped fragments became retained attributes: {failures:#?}");
 }
+
+mod generated_formatting;

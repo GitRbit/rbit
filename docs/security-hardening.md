@@ -25,6 +25,10 @@ It is a focused review, not a guarantee that the application has no vulnerabilit
   events become text. This prevents HTML5 foster parenting from copying even one
   large formatting attribute across generated paragraphs. Native Markdown tables,
   links and formatting keep working.
+  Raw HTML inside generated Markdown links, emphasis, strong emphasis or
+  strikethrough is escaped so it cannot consume a generated closing tag. This
+  includes raw image badges inside Markdown links; native Markdown image badges
+  remain structured.
   Raw events beyond either budget are escaped. This bounds HTML parser work even
   when HTML5 error recovery disagrees with the inexpensive depth estimate. Normal
   Markdown stays structured; large raw HTML documents may show excess markup as
