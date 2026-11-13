@@ -263,3 +263,42 @@ fn verified_claims_and_check_debug_hide_real_signed_fixture_identity_and_nonce()
         }
     }
 }
+
+#[test]
+fn rejects_malformed_audiences_and_not_before_claims() {
+    let set = keys(&[ec_jwk("e1")]);
+    for (field, value) in [
+        ("aud", json!([CLIENT, 12])),
+        ("aud", json!([CLIENT, null])),
+        ("aud", json!([CLIENT, { "name": "other" }])),
+        ("nbf", json!("2099-01-01")),
+        ("nbf", json!(false)),
+        ("nbf", Value::Null),
+        ("nbf", json!([])),
+    ] {
+        let mut body = claims();
+        body[field] = value;
+        let token = sign(&json!({ "alg": "ES256", "kid": "e1" }), &body);
+        assert_eq!(verify_id_token(&token, &set, &check()), Err(OidcError::Claim(field)));
+    }
+}
+
+#[test]
+fn timestamp_leeway_does_not_overflow() {
+    let set = keys(&[ec_jwk("e1")]);
+    let verify = |exp: i64, iat: i64, nbf: i64, now: i64| {
+        let mut body = claims();
+        body["exp"] = json!(exp);
+        body["iat"] = json!(iat);
+        body["nbf"] = json!(nbf);
+        let token = sign(&json!({ "alg": "ES256", "kid": "e1" }), &body);
+        verify_id_token(&token, &set, &IdTokenCheck { now, ..check() })
+    };
+    // A distant expiration remains valid; adding skew must not panic or wrap.
+    assert!(verify(i64::MAX, NOW, NOW, NOW).is_ok());
+    assert_eq!(verify(i64::MIN, NOW, NOW, NOW), Err(OidcError::Claim("exp")));
+    assert_eq!(verify(i64::MAX, i64::MAX, NOW, NOW), Err(OidcError::Claim("iat")));
+    assert_eq!(verify(i64::MAX, NOW, i64::MAX, NOW), Err(OidcError::Claim("nbf")));
+    // The public validator accepts an injected clock: its skew boundary must also be safe.
+    assert!(verify(i64::MAX, i64::MAX, i64::MAX, i64::MAX).is_ok());
+}

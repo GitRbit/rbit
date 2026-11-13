@@ -6,7 +6,6 @@ use rbit_wikis::{WikiId, WikiRevisionId, commands::WikiIntent};
 use std::{
     collections::HashSet,
     fmt,
-    fs::File,
     sync::{Arc, Mutex},
 };
 
@@ -14,7 +13,7 @@ struct Owner {
     objects: WikiObjects,
     active: Mutex<HashSet<WikiId>>,
     // Last: the lock outlives the owner's other state and all escaped scope leases.
-    _root_lock: File,
+    _root_lock: writer_lock::WriterLock,
 }
 
 /// Clones share the actual held root lock and nonqueued per-wiki gate. The bounded

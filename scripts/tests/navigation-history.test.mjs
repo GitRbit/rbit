@@ -32,7 +32,8 @@ function snapshotParser() {
   return { DOMParser, parses };
 }
 
-function page() {
+function page({ storageUnavailable = false } = {}) {
+  const stored = new Map([["htmx-history-cache", "private content from an older client"], ["other-app", "kept"]]);
   const listeners = new Map();
   const { DOMParser, parses } = snapshotParser();
   const document = {
@@ -44,12 +45,17 @@ function page() {
     getElementsByTagName: () => [],
     addEventListener(name, callback) { listeners.set(name, [...listeners.get(name) ?? [], callback]); },
   };
-  const context = vm.createContext({ URL, DOMParser, document, location: new URL("https://git.example.com/settings/language"),
+  const context = vm.createContext({ URL, DOMParser, document,
+    sessionStorage: { removeItem(key) {
+      if (storageUnavailable) throw new Error("storage disabled");
+      stored.delete(key);
+    } }, location: new URL("https://git.example.com/settings/language"),
     addEventListener() {}, setTimeout, clearTimeout });
   context.window = context;
   installNavigation(context);
   return {
     parses,
+    stored,
     created(item) {
       for (const callback of listeners.get("htmx:historyItemCreated") ?? []) callback({ detail: { item } });
       return item;
@@ -85,4 +91,15 @@ test("history snapshots over 64k characters are dropped before htmx stores them"
   assert.equal(dropped.content, "");
   assert.equal(dropped.url, "\u0000too-large", "the placeholder can never match a real path");
   assert.deepEqual(app.parses, [], "an oversized snapshot is dropped without being parsed");
+});
+
+test("navigation discards legacy DOM history before another account can restore it", () => {
+  const app = page();
+  assert.equal(app.stored.has("htmx-history-cache"), false);
+  assert.equal(app.stored.get("other-app"), "kept");
+});
+
+test("unavailable browser storage does not prevent navigation from installing", () => {
+  const app = page({ storageUnavailable: true });
+  assert.equal(app.created({ url: "/explore", content: "public" }).content, "public");
 });

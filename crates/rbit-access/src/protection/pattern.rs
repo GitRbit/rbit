@@ -158,7 +158,7 @@ fn ref_char_equal(left: char, right: char) -> bool {
             && (left.to_lowercase().eq(right.to_lowercase()) || left.to_uppercase().eq(right.to_uppercase())))
 }
 
-pub(crate) fn namespace_refusal(name: &str) -> Option<&'static str> {
+pub(crate) fn namespace_refusal(name: &str, deleting: bool) -> Option<&'static str> {
     let (refs, rest) = name.split_once('/')?;
     let (namespace, _) = rest.split_once('/')?;
     if !ref_names_equal(refs, "refs") {
@@ -166,6 +166,12 @@ pub(crate) fn namespace_refusal(name: &str) -> Option<&'static str> {
     }
     if ref_names_equal(namespace, "pull") {
         return Some(reasons::PULL_REFS);
+    }
+    // Replacement refs can change the content and ancestry read at a protected
+    // commit without moving the protected branch itself.
+    // Writers may delete old substitutions to clean up an existing repository.
+    if ref_names_equal(namespace, "replace") && !deleting {
+        return Some(reasons::REPLACE_REFS);
     }
     // Git's receive.denyNonFastForwards only recognises the exact refs/heads/
     // spelling, even when its backing filesystem treats another spelling as equal.

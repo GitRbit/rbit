@@ -112,7 +112,8 @@ impl RepositoryReader {
             let mut repo = match pinned {
                 // The first operation hands its lease to the pinned repository.
                 Some(slot) => shared_repository(&slot, &path, &mut lease)?.to_thread_local(),
-                None => gix::open_opts(&path, gix::open::Options::isolated()).map_err(GitError::backend)?,
+                None => gix::open_opts(&path, gix::open::Options::isolated().config_overrides(["core.useReplaceRefs=false"]))
+                    .map_err(GitError::backend)?,
             };
             repo.object_cache_size_if_unset(4 * 1024 * 1024);
             let result = operation(&repo);
@@ -343,7 +344,10 @@ fn shared_repository(
     if let Some(pinned) = guard.as_ref() {
         return Ok(pinned.repo.clone());
     }
-    let repo = gix::ThreadSafeRepository::open_opts(path, gix::open::Options::isolated()).map_err(GitError::backend)?;
+    // Read the objects their ids name, even if older repositories already contain
+    // replacement refs. Repository configuration cannot opt back into substitutions.
+    let repo = gix::ThreadSafeRepository::open_opts(path, gix::open::Options::isolated().config_overrides(["core.useReplaceRefs=false"]))
+        .map_err(GitError::backend)?;
     *guard = Some(Pinned { repo: repo.clone(), _lease: lease.take() });
     Ok(repo)
 }

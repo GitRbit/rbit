@@ -12,7 +12,16 @@
 //! * Raw HTML that would leave more than [`MAX_RAW_HTML_DEPTH`] elements open (by a cheap
 //!   estimate: void and optionally closed elements do not count) is shown as text instead.
 //!
-//! Both bounds keep the work of every later step linear in the document's size.
+//! Raw HTML is interpreted by an HTML5 parser, whose implicit elements, error recovery,
+//! foreign content and raw-text states cannot be predicted by the cheap depth estimate.
+//! Independently cap the total number of literal `<` bytes emitted as raw HTML. Every
+//! raw start tag consumes one, so even syntax that evades the depth
+//! estimate has a fixed structural budget. Raw active-formatting starts have a smaller
+//! independent budget because the HTML5 parser can clone them across paragraphs.
+//! Raw table/template contexts and raw active formatting are never admitted together:
+//! foster parenting can reconstruct even one formatting attribute for every paragraph.
+//! Excess raw events become escaped text;
+//! ordinary Markdown and reasonably sized HTML tables keep their formatting.
 
 use pulldown_cmark::{CowStr, Event};
 
@@ -21,6 +30,36 @@ pub const MAX_NESTING: usize = 32;
 
 /// Most raw HTML elements left open at once, by [`raw_depth`]'s estimate.
 pub const MAX_RAW_HTML_DEPTH: usize = 64;
+
+/// Maximum raw markup introducers emitted in one document, regardless of HTML syntax.
+/// Count all `<` bytes, even inside comments and attribute values: overestimating is
+/// safe, while trying to recognize HTML here would recreate the parser's attack surface.
+pub const MAX_RAW_HTML_MARKUP: usize = 4096;
+
+/// HTML can reconstruct active formatting elements for every subsequent paragraph.
+/// Keep their raw starts below a separate, smaller budget so the structural markup
+/// budget cannot multiply into millions of parser-created nodes.
+pub const MAX_RAW_FORMATTING: usize = 64;
+
+/// Limit additional raw markup after formatting starts, including fragments and
+/// closing tags. Table-context exclusion separately prevents attribute-copy growth
+/// from generated Markdown; this counter is not an HTML attribute parser.
+pub const MAX_RAW_FORMATTING_BYTES: usize = 4096;
+
+#[derive(Debug, Default)]
+struct RawBudget {
+    depth: usize,
+    markup: usize,
+    formatting: usize,
+    formatting_bytes: usize,
+    table_context: bool,
+}
+
+const FORMATTING: &[&[u8]] =
+    &[b"a", b"b", b"big", b"code", b"em", b"font", b"i", b"nobr", b"s", b"small", b"strike", b"strong", b"tt", b"u"];
+
+const TABLE_CONTEXT: &[&[u8]] =
+    &[b"table", b"caption", b"col", b"colgroup", b"tbody", b"td", b"tfoot", b"th", b"thead", b"tr", b"template"];
 
 /// Elements that never stay open: void elements, and those whose end tag the HTML parser
 /// supplies by itself when a sibling starts.
@@ -33,7 +72,7 @@ const NOT_NESTING: &[&str] = &[
 pub fn bounded<'a>(events: impl Iterator<Item = Event<'a>>) -> impl Iterator<Item = Event<'a>> {
     // Whether each open container was kept; containers below a dropped one are deeper still.
     let mut open: Vec<bool> = Vec::new();
-    let mut raw_open = 0_usize;
+    let mut raw_budget = RawBudget::default();
     events.filter_map(move |event| match event {
         Event::Start(tag) => {
             let keep = open.len() < MAX_NESTING;
@@ -41,20 +80,77 @@ pub fn bounded<'a>(events: impl Iterator<Item = Event<'a>>) -> impl Iterator<Ite
             keep.then_some(Event::Start(tag))
         }
         Event::End(tag) => open.pop().unwrap_or(true).then_some(Event::End(tag)),
-        Event::Html(html) => Some(raw(html, &mut raw_open, Event::Html)),
-        Event::InlineHtml(html) => Some(raw(html, &mut raw_open, Event::InlineHtml)),
+        Event::Html(html) => Some(raw(html, &mut raw_budget, Event::Html)),
+        Event::InlineHtml(html) => Some(raw(html, &mut raw_budget, Event::InlineHtml)),
         other => Some(other),
     })
 }
 
 /// Raw HTML as itself while the elements it leaves open fit the budget, as text otherwise.
-fn raw<'a>(html: CowStr<'a>, open: &mut usize, keep: fn(CowStr<'a>) -> Event<'a>) -> Event<'a> {
-    let (peak, after) = raw_depth(&html, *open);
+fn raw<'a>(html: CowStr<'a>, budget: &mut RawBudget, keep: fn(CowStr<'a>) -> Event<'a>) -> Event<'a> {
+    let introducers = html.bytes().filter(|&byte| byte == b'<').count();
+    if introducers > MAX_RAW_HTML_MARKUP - budget.markup {
+        return Event::Text(html);
+    }
+    let formatting_starts = formatting_starts(&html);
+    if budget.table_context && formatting_starts > 0 {
+        return Event::Text(html);
+    }
+    let table_context = !budget.table_context && possible_tags(&html, TABLE_CONTEXT, true) > 0;
+    if table_context && (budget.formatting > 0 || formatting_starts > 0) {
+        return Event::Text(html);
+    }
+    if formatting_starts > MAX_RAW_FORMATTING - budget.formatting {
+        return Event::Text(html);
+    }
+    let formatting_bytes = if budget.formatting > 0 || formatting_starts > 0 { html.len() } else { 0 };
+    if formatting_bytes > MAX_RAW_FORMATTING_BYTES - budget.formatting_bytes {
+        return Event::Text(html);
+    }
+    let (peak, after) = raw_depth(&html, budget.depth);
     if peak > MAX_RAW_HTML_DEPTH {
         return Event::Text(html);
     }
-    *open = after;
+    budget.depth = after;
+    budget.markup += introducers;
+    budget.formatting += formatting_starts;
+    budget.formatting_bytes += formatting_bytes;
+    budget.table_context |= table_context;
     keep(html)
+}
+
+/// Count possible formatting starts without parsing HTML: count even matches in
+/// attributes/comments, and ignore closing tags. Only ASCII names followed by an HTML
+/// tag delimiter can activate formatting. A partial name at an event boundary is
+/// counted conservatively too. No stack, allocations or syntax-dependent refunds.
+fn formatting_starts(html: &str) -> usize {
+    possible_tags(html, FORMATTING, false)
+}
+
+/// Count possible names conservatively, even inside comments/attributes. Table end
+/// tags are included because raw HTML must not manipulate a generated table's scope.
+fn possible_tags(html: &str, names: &[&[u8]], include_closing: bool) -> usize {
+    let bytes = html.as_bytes();
+    bytes
+        .iter()
+        .enumerate()
+        .filter(|&(index, &byte)| {
+            if byte != b'<' {
+                return false;
+            }
+            let mut tail = &bytes[index + 1..];
+            if include_closing && tail.starts_with(b"/") {
+                tail = &tail[1..];
+            }
+            let end = tail.iter().position(|byte| !byte.is_ascii_alphabetic()).unwrap_or(tail.len());
+            let name = &tail[..end];
+            if end == tail.len() {
+                return names.iter().any(|candidate| candidate.get(..name.len()).is_some_and(|prefix| name.eq_ignore_ascii_case(prefix)));
+            }
+            matches!(tail[end], b' ' | b'\t' | b'\n' | b'\r' | b'\x0c' | b'/' | b'>')
+                && names.iter().any(|candidate| name.eq_ignore_ascii_case(candidate))
+        })
+        .count()
 }
 
 /// The most elements open at once while `html` is read after `open` were, and how many
@@ -64,6 +160,9 @@ pub fn raw_depth(html: &str, mut open: usize) -> (usize, usize) {
     let bytes = html.as_bytes();
     let mut peak = open;
     let mut index = 0;
+    // Reuse the next delimiter: malformed tags containing many `<p ` fragments
+    // before a distant `>` must not rescan the same suffix for each fragment.
+    let mut tag_end = bytes.iter().position(|&byte| byte == b'>');
     while let Some(offset) = bytes[index..].iter().position(|&byte| byte == b'<') {
         index += offset + 1;
         match bytes.get(index) {
@@ -74,7 +173,9 @@ pub fn raw_depth(html: &str, mut open: usize) -> (usize, usize) {
             Some(byte) if byte.is_ascii_alphabetic() => {
                 let name_end = bytes[index..].iter().position(|byte| !byte.is_ascii_alphanumeric()).map_or(bytes.len(), |end| index + end);
                 let name = html[index..name_end].to_ascii_lowercase();
-                let tag_end = bytes[name_end..].iter().position(|&byte| byte == b'>').map(|end| name_end + end);
+                if tag_end.is_some_and(|end| end < name_end) {
+                    tag_end = bytes[name_end..].iter().position(|&byte| byte == b'>').map(|end| name_end + end);
+                }
                 let self_closing = tag_end.is_some_and(|end| end > 0 && bytes[end - 1] == b'/');
                 if !self_closing && !NOT_NESTING.contains(&name.as_str()) {
                     open += 1;
@@ -89,82 +190,4 @@ pub fn raw_depth(html: &str, mut open: usize) -> (usize, usize) {
 }
 
 #[cfg(test)]
-mod tests {
-    use pulldown_cmark::{Options, Parser, Tag, TagEnd};
-
-    use super::*;
-
-    fn depth(events: &[Event<'_>]) -> usize {
-        let (mut open, mut deepest) = (0_usize, 0);
-        for event in events {
-            match event {
-                Event::Start(_) => {
-                    open += 1;
-                    deepest = deepest.max(open);
-                }
-                Event::End(_) => open -= 1,
-                _ => {}
-            }
-        }
-        deepest
-    }
-
-    #[test]
-    fn deep_markdown_is_flattened_with_its_content_kept() {
-        for source in [">".repeat(500) + " deep", "1. ".repeat(500) + "deep", "- ".repeat(500) + "deep"] {
-            let events: Vec<_> = bounded(Parser::new_ext(&source, Options::all())).collect();
-            assert!(depth(&events) <= MAX_NESTING, "{} levels", depth(&events));
-            assert!(events.iter().any(|event| matches!(event, Event::Text(text) if text.contains("deep"))));
-            let starts = events.iter().filter(|event| matches!(event, Event::Start(_))).count();
-            assert_eq!(starts, events.iter().filter(|event| matches!(event, Event::End(_))).count(), "kept containers stay paired");
-        }
-        let shallow: Vec<_> = bounded(Parser::new("> > quote")).collect();
-        assert!(matches!(shallow[0], Event::Start(Tag::BlockQuote(_))));
-        assert!(matches!(shallow.last(), Some(Event::End(TagEnd::BlockQuote(_)))));
-    }
-
-    /// The fastest of three renderings of `source`, each given ten seconds at most.
-    fn render_time(source: &str) -> std::time::Duration {
-        (0..3)
-            .map(|_| {
-                let (source, (done, finished)) = (source.to_owned(), std::sync::mpsc::channel());
-                std::thread::spawn(move || {
-                    let started = std::time::Instant::now();
-                    drop(super::super::render(&source, None));
-                    let _ = done.send(started.elapsed());
-                });
-                finished.recv_timeout(std::time::Duration::from_secs(10)).expect("a hostile document rendered within ten seconds")
-            })
-            .min()
-            .unwrap()
-    }
-
-    #[test]
-    fn hostile_nesting_renders_in_linear_time() {
-        for unit in [">", "1. ", "- > ", "<div>", "<b id=1>x", "<a><b><i><em><span>"] {
-            let small = render_time(&unit.repeat(16 * 1024 / unit.len()));
-            let large = render_time(&unit.repeat(64 * 1024 / unit.len()));
-            // Four times the input: about four times the time when linear, sixteen when
-            // quadratic. Renderings too fast to measure reliably pass.
-            assert!(
-                large < std::time::Duration::from_millis(50) || large < small * 10,
-                "{unit:?}: 16 KiB took {small:?}, 64 KiB took {large:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn raw_html_beyond_the_depth_budget_becomes_text() {
-        assert_eq!(raw_depth("<div><p>a<br><img src=x/><b>x</b></div>", 0), (2, 0));
-        assert_eq!(raw_depth("<!-- <div> --><span/>", 3), (3, 3));
-        let source = "<div>".repeat(MAX_RAW_HTML_DEPTH + 10);
-        let events: Vec<_> = bounded(Parser::new(&source)).collect();
-        assert!(events.iter().all(|event| !matches!(event, Event::Html(_))), "the over-deep block is text");
-        let inline = format!("x {} y", "<b id=1>z".repeat(MAX_RAW_HTML_DEPTH + 10));
-        let events: Vec<_> = bounded(Parser::new(&inline)).collect();
-        let kept = events.iter().filter(|event| matches!(event, Event::InlineHtml(_))).count();
-        assert_eq!(kept, MAX_RAW_HTML_DEPTH, "inline tags are kept up to the budget");
-        let ordinary = "<details><summary>More</summary>\n\nText\n\n</details>";
-        assert!(bounded(Parser::new(ordinary)).all(|event| !matches!(event, Event::Text(ref text) if text.contains('<'))));
-    }
-}
+mod tests;

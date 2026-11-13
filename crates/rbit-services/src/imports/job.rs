@@ -176,13 +176,9 @@ impl Job {
 
     // ------------------------------------------------------------------ Git
 
-    /// Whether the token may travel to `url`: only to the source's own hosts.
+    /// Whether the token may travel to `url`: only to the source's own origins.
     fn token_for(&self, url: &MirrorUrl) -> Option<String> {
-        let token = self.client.token()?;
-        let source = self.client.source();
-        let web_host = source.web_base.split_once("://").map_or("", |(_, rest)| rest).split(['/', ':']).next().unwrap_or_default();
-        let same = url.host().eq_ignore_ascii_case(&source.api_host) || url.host().eq_ignore_ascii_case(web_host);
-        same.then(|| basic_authorization(TOKEN_USERNAME, token))
+        self.client.git_token(url.as_str()).map(|token| basic_authorization(TOKEN_USERNAME, token))
     }
 
     fn clone_url(&self) -> Result<MirrorUrl, Fatal> {

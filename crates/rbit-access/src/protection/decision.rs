@@ -9,6 +9,7 @@ pub const PULL_REFS: &str = "refs/pull/";
 /// Refusal reasons, as the client shows them (`! [remote rejected] main -> main (…)`).
 pub mod reasons {
     pub const PULL_REFS: &str = "refs/pull/ is managed by rbit";
+    pub const REPLACE_REFS: &str = "refs/replace/ may not override repository objects";
     pub const NAMESPACE_CASE: &str = "use the canonical refs/heads/ namespace";
     pub const DELETION: &str = "protected branch: deleting it is not allowed";
     pub const RESTRICTED: &str = "protected branch: you are not allowed to push to it";
@@ -246,6 +247,7 @@ fn apply<U: PartialEq, T: PartialEq, C>(
 /// * branches: every matching rule applies (deletion, then restriction, then "pull
 ///   request" decide the reason shown); updates of an existing branch protected
 ///   against force pushes set `deny_non_fast_forwards`;
+/// * creating or updating replacement refs: refused, since they can override protected objects;
 /// * other refs (tags, notes): allowed.
 ///
 /// An administrator passes each rule with `allow_admin_bypass`; where that changed the
@@ -257,7 +259,7 @@ pub fn decide_push<U: PartialEq, T: PartialEq, C>(
 ) -> PushDecision {
     let mut decision = PushDecision::default();
     for update in updates {
-        if let Some(reason) = namespace_refusal(update.name()) {
+        if let Some(reason) = namespace_refusal(update.name(), update.is_deleted()) {
             decision.verdict.refusals.push(Refusal { name: update.name().to_owned(), reason: reason.to_owned() });
             continue;
         }
