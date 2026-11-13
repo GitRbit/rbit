@@ -14,6 +14,7 @@
 
 use std::collections::BTreeMap;
 
+use rbit_actions::logs::Masker;
 use rbit_actions::reports::{TestReport, fingerprint, is_report_artifact, read_report};
 use rbit_core::{
     RepoId,
@@ -78,11 +79,21 @@ pub fn job_faults(
     vec![Fault { fingerprint: fingerprint(job_name, &what, &message), label: format!("{job_name}: {what}") }]
 }
 
-/// A parsed report as stored.
-fn stored(report: TestReport) -> StoredReport {
-    let items =
-        report.items.into_iter().map(|test| StoredTest { id: test.id, path: test.path, line: test.line, message: test.message }).collect();
-    StoredReport { total: report.total, failed: report.failed, items, passed: report.passed }
+/// A parsed report as stored, its text masked as the task's log is: a secret a test printed
+/// in its failure message must not show in the failure digest, status or watch.
+fn stored(report: TestReport, masker: &Masker) -> StoredReport {
+    let items = report
+        .items
+        .into_iter()
+        .map(|test| StoredTest {
+            id: masker.mask(&test.id),
+            path: test.path.map(|path| masker.mask(&path)),
+            line: test.line,
+            message: masker.mask(&test.message),
+        })
+        .collect();
+    let passed = report.passed.iter().map(|id| masker.mask(id)).collect();
+    StoredReport { total: report.total, failed: report.failed, items, passed }
 }
 
 impl ActionsService {
@@ -106,7 +117,20 @@ impl ActionsService {
             }
         };
         let (total, failed) = (report.total, report.failed);
-        match self.ctx().database.actions_runs().record_test_report(task, &stored(report)).await {
+        let store = self.ctx().database.actions_runs();
+        let masker = match store.task(task).await {
+            Ok(Some(found)) => match store.job(found.job_id).await {
+                Ok(Some(job)) => self.masker(&found, &job).await.ok(),
+                _ => None,
+            },
+            _ => None,
+        };
+        // Without its masks (the task or job gone), the report is not kept rather than kept raw.
+        let Some(masker) = masker else {
+            tracing::warn!(task = task.0, "a test report was not kept: its task's secrets could not be read");
+            return;
+        };
+        match store.record_test_report(task, &stored(report, &masker)).await {
             Ok(()) => tracing::info!(task = task.0, total, failed, "test report kept"),
             Err(error) => tracing::warn!(%error, task = task.0, "a test report was not kept"),
         }
@@ -172,5 +196,21 @@ mod tests {
         let previous = BTreeMap::from([(tests[0].fingerprint.clone(), tests[0].label.clone())]);
         let comparison = Comparison { previous: Some(previous), base: None };
         assert_eq!((comparison.seen(&tests), comparison.seen(&one), comparison.on_base(&tests)), ("recurring", "new", false));
+    }
+
+    #[test]
+    fn a_report_is_kept_with_the_tasks_secrets_masked() {
+        let secret = "hunter2-very-secret";
+        let failed = rbit_actions::reports::FailedTest {
+            id: format!("auth logs in with {secret}"),
+            path: Some(format!("tests/{secret}.rs")),
+            line: Some(4),
+            message: format!("expected {secret} to be refused"),
+        };
+        let report = TestReport { total: 2, failed: 1, items: vec![failed], passed: vec![format!("uses {secret}")] };
+        let kept = stored(report, &Masker::new([secret]));
+        let test = &kept.items[0];
+        let texts = [test.id.as_str(), test.path.as_deref().unwrap(), test.message.as_str(), kept.passed[0].as_str()];
+        assert!(texts.iter().all(|text| !text.contains(secret) && text.contains("***")), "{texts:?}");
     }
 }
