@@ -86,6 +86,28 @@ impl From<std::io::Error> for ReportError {
     }
 }
 
+/// Most bytes a report archive may unpack to, whatever its files are.
+pub const MAX_UNPACKED_BYTES: u64 = 4 * MAX_REPORT_BYTES;
+/// Most entries a report archive may have.
+pub const MAX_REPORT_ENTRIES: usize = 10_000;
+
+/// A reader that fails once more than `left` bytes came out of it.
+struct Bounded<R> {
+    inner: R,
+    left: u64,
+}
+
+impl<R: Read> Read for Bounded<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let read = self.inner.read(buf)?;
+        self.left = self
+            .left
+            .checked_sub(read as u64)
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "the report archive unpacks to too much"))?;
+        Ok(read)
+    }
+}
+
 /// The report in artifact archive `archive` (a tar.gz of `.xml` files).
 ///
 /// # Errors
@@ -93,9 +115,15 @@ impl From<std::io::Error> for ReportError {
 /// [`ReportError`] when the archive cannot be read, has no XML file, or more XML than
 /// [`MAX_REPORT_BYTES`].
 pub fn read_report(archive: impl Read) -> Result<TestReport, ReportError> {
-    let mut tar = tar::Archive::new(flate2::read::GzDecoder::new(archive));
+    // Everything the archive unpacks to counts, the files skipped too: a small gzip stream
+    // can stand for gigabytes of zeros.
+    let unpacked = Bounded { inner: flate2::read::GzDecoder::new(archive), left: MAX_UNPACKED_BYTES };
+    let mut tar = tar::Archive::new(unpacked);
     let (mut report, mut budget, mut files) = (TestReport::default(), MAX_REPORT_BYTES, 0);
-    for entry in tar.entries()? {
+    for (index, entry) in tar.entries()?.enumerate() {
+        if index == MAX_REPORT_ENTRIES {
+            return Err(ReportError::TooLarge);
+        }
         let entry = entry?;
         let file = matches!(entry.header().entry_type(), tar::EntryType::Regular | tar::EntryType::Continuous | tar::EntryType::GNUSparse);
         let is_xml = file && entry.path()?.extension().is_some_and(|extension| extension == "xml");
@@ -205,5 +233,22 @@ mod tests {
         assert_eq!((report.total, report.failed), (2, 1));
         assert_eq!(report.items[0].id, "c bad");
         assert!(matches!(read_report(&b"not gzip"[..]), Err(ReportError::Io(_))));
+    }
+
+    #[test]
+    fn a_report_archive_that_unpacks_to_too_much_is_refused() {
+        let mut archive = Vec::new();
+        {
+            let mut tar = tar::Builder::new(flate2::write::GzEncoder::new(&mut archive, flate2::Compression::fast()));
+            let mut header = tar::Header::new_gnu();
+            header.set_size(MAX_UNPACKED_BYTES + 1);
+            header.set_mode(0o644);
+            header.set_cksum();
+            let zeros = std::io::Read::take(std::io::repeat(0), MAX_UNPACKED_BYTES + 1);
+            tar.append_data(&mut header, "notes.bin", zeros).unwrap();
+            tar.into_inner().unwrap().finish().unwrap();
+        }
+        assert!(archive.len() < 1 << 20, "a small archive: {} bytes", archive.len());
+        assert!(read_report(archive.as_slice()).is_err(), "skipped files count too");
     }
 }

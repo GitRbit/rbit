@@ -30,12 +30,18 @@ pub fn parse_junit(xml: &str, report: &mut TestReport) {
         let (skip, cdata) = if rest.starts_with("<!--") {
             (rest.find("-->").map(|end| end + 3), None)
         } else if let Some(body) = rest.strip_prefix("<![CDATA[") {
-            (body.find("]]>").map(|end| end + 12), body.find("]]>").map(|end| &body[..end]))
+            let end = body.find("]]>");
+            (end.map(|end| end + 12), end.map(|end| &body[..end]))
         } else if rest.starts_with("<?") || rest.starts_with("<!") {
             (rest.find('>').map(|end| end + 1), None)
         } else {
             (None, None)
         };
+        // An unterminated comment, `CDATA` or declaration runs to the end: nothing after it is
+        // markup. Reading on tag by tag would scan the rest again for each (quadratic).
+        if skip.is_none() && (rest.starts_with("<!") || rest.starts_with("<?")) {
+            break;
+        }
         if let Some(skip) = skip {
             if let (Some(text), Some(case)) = (cdata, case.as_mut().filter(|case| case.in_failure)) {
                 push_text(&mut case.text, text);
@@ -170,7 +176,9 @@ fn decode(text: &str) -> String {
     while let Some(at) = rest.find('&') {
         out.push_str(&rest[..at]);
         rest = &rest[at..];
-        let Some(end) = rest.find(';').filter(|end| *end <= 10) else {
+        // An entity ends within ten bytes; looking further for its `;` would scan the rest of
+        // the text for every `&` (quadratic in a hostile report).
+        let Some(end) = rest.as_bytes().iter().take(11).position(|byte| *byte == b';') else {
             out.push('&');
             rest = &rest[1..];
             continue;
@@ -290,5 +298,20 @@ assertion `left == right` failed
         parse_junit(&"<testcase name=\"ok\"/>".repeat(MAX_PASSED_TESTS + 10), &mut report);
         assert_eq!((report.total, report.passed.len()), (u64::try_from(MAX_PASSED_TESTS + 10).unwrap(), MAX_PASSED_TESTS));
         assert_eq!(decode("a &lt;b&gt; &#65; &unknown; &"), "a <b> A &unknown; &");
+        assert_eq!(decode("&é;&amp;"), "&é;&", "an entity is found by bytes, never cut inside a character");
+    }
+
+    #[test]
+    fn hostile_reports_take_time_in_proportion_to_their_size() {
+        let started = std::time::Instant::now();
+        let mut report = TestReport::default();
+        // Every `&` without a `;` near it, and unterminated comments and sections: each once
+        // looked through the rest of the report.
+        parse_junit(&format!("<testcase name='a'><failure>{}", "&".repeat(4 << 20)), &mut report);
+        parse_junit(&format!("<testcase name=\"{}\"/>", "&".repeat(4 << 20)), &mut report);
+        parse_junit(&"<!-- >".repeat(1 << 20), &mut report);
+        parse_junit(&"<![CDATA[ >".repeat(1 << 20), &mut report);
+        parse_junit(&"<? >".repeat(1 << 20), &mut report);
+        assert!(started.elapsed() < std::time::Duration::from_secs(20), "{:?}", started.elapsed());
     }
 }
