@@ -8,11 +8,12 @@
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-informational)](#license)
 [![Latest release](https://img.shields.io/github/v/release/GitRbit/rbit?include_prereleases&sort=semver)](https://github.com/GitRbit/rbit/releases)
 
-**Blazing fast, self-hosted Git hosting — written in Rust, shipped as one binary, with no external services.**
+**Fast, self-hosted Git hosting — written in Rust, with no required external services.**
 
 rbit is a Git forge that gives you repositories, issues, pull requests, reviews and CI checks on your
 own server. It is built around three things: **speed**, **security** and **performance**. No Postgres,
-no Redis, no JavaScript runtime — download it, run it, push.
+no Redis, no JavaScript runtime on the server — download it, run it, push. Optional Actions
+jobs execute on a separate `rbit-runner`.
 
 **[Quick start](#quick-start)** · [Why rbit](#why-rbit) · [Features](#features) · [Install](#install) ·
 [First steps](#first-steps) · [Configuration](#configuration) · [Command line](#command-line) ·
@@ -74,6 +75,10 @@ No Docker? Download a [release binary](#release-binaries) and run `./rbit serve`
 
 ## Features
 
+This section describes the current `main` branch (workspace version 0.2.2). Some features
+may not be in the [latest published release](https://github.com/GitRbit/rbit/releases);
+check the release notes before upgrading or relying on a feature in production.
+
 The footer and administrator dashboard show a notice when a newer stable rbit release
 is available. A background check contacts the public GitHub release feed without sending
 your running version, instance address, users or repository data. Successful results are
@@ -94,6 +99,8 @@ they do not install or download an update automatically.
   pull and push mirrors, README relative links and images.
 - **Repository documents**: sticky document tabs, a searchable heading outline, and sidebar shortcuts
   for READMEs, licenses, contributing guides, codes of conduct and security policies.
+- **Repository wikis**: create and edit pages in the browser, search them, compare revisions,
+  restore history, and recover deleted pages. Administrators control whether each wiki is enabled.
 - **Mermaid diagrams**: fenced `mermaid` blocks render in READMEs and other Markdown views,
   with an expandable source and a readable fallback for invalid diagrams.
 - **Import from GitHub, GitHub Enterprise and Gitea/Forgejo**: history, LFS objects, issues and pull requests
@@ -140,6 +147,9 @@ permissions keep their account identity.
   delivery queue.
 - **Commit statuses**: a GitHub-compatible status API for external CI, with checks shown on pull requests and
   commits.
+- **Merge queue and agent workflows**: test the candidate merge on the current base before landing it;
+  inspect commit-specific CI status, failure digests, test reports and pull request readiness through
+  the REST API or [command-line client](docs/cli.md). Scratch CI runs test work before a branch push.
 - **Actions** (opt-in): GitHub-style workflows under `.rbit/workflows` (`.github/workflows` work too) run on
   **rbit-runner**, a separate program, in Docker/Podman containers or on the host — with built-in checkout,
   cache and artifacts, sealed secrets, fork-safe pull request runs, live logs and commit statuses. See
@@ -152,10 +162,12 @@ permissions keep their account identity.
 - **Operable**: [live admin monitoring and graceful restarts](docs/admin-monitoring.md), background maintenance, Prometheus metrics, health checks, consistent backups, Docker and systemd.
 - **Mobile first & installable** as a progressive web app.
 - **Themes**: built-in light and dark plus ~500 tinted-theming schemes, remembered per account.
+- **Languages**: choose English, German, Spanish, French, Brazilian Portuguese, Russian, Japanese,
+  Simplified Chinese or Korean. Untranslated regions fall back to English.
 
 See [docs/deployment.md](docs/deployment.md) for running it in production,
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design, [ROADMAP.md](ROADMAP.md) for
-what comes next, and [docs/HANDOFF.md](docs/HANDOFF.md) for the project's current state.
+what comes next, and [the documentation index](docs/README.md) for focused guides.
 
 ## Install
 
@@ -165,14 +177,14 @@ database migrations.
 
 ### Release binaries
 
-Every [release](https://github.com/GitRbit/rbit/releases) has archives for Linux (x86_64 and
+Current [releases](https://github.com/GitRbit/rbit/releases) have archives for Linux (x86_64 and
 aarch64, glibc 2.35 or newer), macOS (Intel and Apple silicon) and Windows (x86_64, `.zip`), plus a
 `SHA256SUMS` file. Each archive holds the `rbit` binary and the `rbit-runner` binary (the Actions
 runner, which you install on build machines instead), the licenses, this README, the changelog,
 the third-party notices, the example configurations and the systemd units.
 
 ```bash
-version=0.1.5                       # the release you want
+version=0.2.1                       # example; check the releases page for the latest tag
 target=x86_64-unknown-linux-gnu     # or aarch64-unknown-linux-gnu, aarch64-apple-darwin, ...
 curl -LO "https://github.com/GitRbit/rbit/releases/download/v$version/rbit-$version-$target.tar.gz"
 curl -LO "https://github.com/GitRbit/rbit/releases/download/v$version/SHA256SUMS"
@@ -187,7 +199,7 @@ For a real server (a system user, TLS in front, systemd, backups) follow
 ### Container image
 
 Multi-architecture images (`linux/amd64`, `linux/arm64`) are published to the GitHub
-Container Registry for every release, tagged with the version (`0.1.5`, `0.1`) and `latest`:
+Container Registry for every release, tagged with the version (`0.2.1`, `0.2`) and `latest`:
 
 ```bash
 docker run -d --name rbit --restart unless-stopped -p 3000:3000 -v rbit-data:/data \
@@ -337,6 +349,12 @@ administrators under **Site administration → Settings**.
 Every command accepts `-c, --config <FILE>` (or `RBIT_CONFIG`); `rbit --version` prints the version.
 Log verbosity follows `RUST_LOG` (e.g. `RUST_LOG=debug`), and `NO_COLOR` turns off coloured logs.
 
+The same binary also includes a [client for rbit instances](docs/cli.md): `rbit auth`,
+`rbit status`, `rbit run`, `rbit workflow`, `rbit pr`, `rbit issue`, `rbit ci`, `rbit task`,
+`rbit artifact`, `rbit bisect` and `rbit api`. Use `rbit auth login` to store a token;
+use `--json` for machine-readable results. The CLI guide covers the commands, exit codes
+and exact-commit CI workflow.
+
 ## Development
 
 [CONTRIBUTING.md](CONTRIBUTING.md) explains the setup, the live development server
@@ -372,6 +390,12 @@ the browser, home-screen, and installable-app icons, and commit the generated PN
 | `rbit-web` | Routes, REST API, templates, themes, assets, metrics |
 | `rbit-server` | The `rbit` binary: CLI, configuration, backups |
 | `rbit-e2e` | End-to-end and Git compatibility tests (test-only) |
+| `rbit-workflow`, `rbit-actions`, `rbit-runner` | Workflow parsing, Actions scheduling and execution on a separate runner |
+| `rbit-wikis` | Wiki domain model and page storage rules |
+| `rbit-localization` | UI message catalogs and locale selection |
+| `rbit-kernel`, `rbit-contracts` | Shared application contracts and core infrastructure |
+| `rbit-identity`, `rbit-identity-models`, `rbit-access` | Identity and access workflows |
+| `rbit-repositories`, `rbit-collaboration`, `rbit-notifications`, `rbit-platform` | Extracted application domains and platform services |
 
 ## Community
 

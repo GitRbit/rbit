@@ -1,9 +1,11 @@
-# Upgrade and rollback: runbook and rehearsal
+# 0.1.5 to 0.2.0 upgrade and rollback rehearsal
 
-This page is the operator runbook for upgrading an existing rbit installation to 0.2.0
-and rolling it back, and the record of the scripted rehearsal that proves both. The
-general backup and restore contract (format, checks, recovery objectives) is in
-[deployment.md](deployment.md#backups).
+This page records the runbook and scripted rehearsal for the 0.1.5 to 0.2.0
+upgrade and rollback. Its migration numbers, backup formats and measured results
+belong to that transition. For upgrades from a later release, follow the current
+[deployment guide](deployment.md#upgrades-and-migrations) and the applicable
+[changelog](../CHANGELOG.md) entry. The general backup and restore contract
+(format, checks, recovery objectives) is in [deployment.md](deployment.md#backups).
 
 ## Runbook
 

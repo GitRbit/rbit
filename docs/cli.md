@@ -2,8 +2,9 @@
 
 The `rbit` binary is also a client for an rbit instance's REST API, in the manner of GitHub's
 `gh`: it lists and follows workflow runs, reads their logs, runs workflows, downloads
-artifacts and handles pull requests. It is the same binary as the server, so every release
-has it for every platform, and it always matches its server's API.
+artifacts and handles pull requests. It is included in the server binary for every release
+platform. Use a client release that matches the version running on your server for the
+documented API behavior.
 
 ## Logging in
 

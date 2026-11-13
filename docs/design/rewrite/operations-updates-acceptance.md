@@ -3,7 +3,7 @@
 Acceptance evidence for the `operations.updates` ledger row ("Version privacy, release
 notices and bounded background checking"), following the
 [identity retirement](identity-retirement.md) pattern. The user-facing contract is in
-[release checks and version privacy](../../ARCHITECTURE.md#91-release-checks-and-version-privacy).
+[release checks and version privacy](../../history/architecture-pre-0.2.2.md#91-release-checks-and-version-privacy).
 
 ## Scope
 

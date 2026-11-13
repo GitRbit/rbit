@@ -5,7 +5,7 @@ The working contract for **rbit Actions**: GitHub/Forgejo Actions–style workfl
 runners** — [Forgejo Runner](https://code.forgejo.org/forgejo/runner) and Gitea
 [`act_runner`](https://gitea.com/gitea/act_runner). House rules from
 [milestone-3.md](milestone-3.md#rules-for-shared-files-no-pre-wired-stubs-this-milestone),
-[../HANDOFF.md](../HANDOFF.md) and [../../CONTRIBUTING.md](../../CONTRIBUTING.md) apply
+[historical handoff](../history/handoff-2026-10-25.md) and [../../CONTRIBUTING.md](../../CONTRIBUTING.md) apply
 unchanged unless this document says otherwise.
 
 rbit is the **control plane only**: it reads workflow files, decides which runs a push or

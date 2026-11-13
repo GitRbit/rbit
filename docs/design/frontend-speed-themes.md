@@ -1,7 +1,7 @@
 # Frontend wave — speed, themes, home
 
 Contract for three parallel workstreams. House rules from [milestone-1.md](milestone-1.md)
-and [../HANDOFF.md](../HANDOFF.md) §4 apply unchanged: thin handlers, no logic in templates,
+and [historical handoff](../history/handoff-2026-10-25.md) §4 apply unchanged: thin handlers, no logic in templates,
 strict CSP (no inline `style=` or scripts), clippy pedantic clean, atomic commits with
 human attribution only (no AI coauthor trailers), mobile-first (375 px).
 

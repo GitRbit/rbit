@@ -3,7 +3,7 @@
 The working contract for the second half of [milestone 2](milestone-2.md): the workflow
 layer (issues, pull requests with review and merge, protected branches) on top of wave A's
 access model, API, webhooks, compare and forks. House rules from
-[milestone-2.md](milestone-2.md#rules-all-workstreams) and [../HANDOFF.md](../HANDOFF.md)
+[milestone-2.md](milestone-2.md#rules-all-workstreams) and [historical handoff](../history/handoff-2026-10-25.md)
 §4 apply unchanged unless this document says otherwise.
 
 Three workstreams, each on its **own branch in its own git worktree**, each owning a

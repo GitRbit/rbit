@@ -33,8 +33,9 @@ that needs attention.
 
 ## Scope
 
-In scope: the `rbit` server and binary in this repository (web interface, REST API, Git over
-HTTP and SSH, webhooks, background jobs, backups) and the container image
+In scope: the `rbit` server and client binary, the separate `rbit-runner` (including Actions
+job execution, credentials, artifacts and logs), the web interface, REST API, Git over HTTP
+and SSH, webhooks, background jobs and backups in this repository, and the container image
 `ghcr.io/gitrbit/rbit`.
 
 Out of scope: problems that need an administrator account or access to the server's data

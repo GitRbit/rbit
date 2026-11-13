@@ -2,7 +2,7 @@
 
 The working contract for the milestone that takes rbit from "done for its author" to "public
 project people can adopt". House rules from [milestone-2.md](milestone-2.md#rules-all-workstreams),
-[milestone-2b.md](milestone-2b.md) and [../HANDOFF.md](../HANDOFF.md) §4 apply unchanged unless
+[milestone-2b.md](milestone-2b.md) and [historical handoff](../history/handoff-2026-10-25.md) §4 apply unchanged unless
 this document says otherwise.
 
 Nine workstreams, each on its **own branch in its own git worktree**, run in three waves of
