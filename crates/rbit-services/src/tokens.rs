@@ -15,7 +15,7 @@ use crate::{
 
 // Agent loop: scoped tokens.
 mod limits;
-pub use limits::{Right, TokenLimit};
+pub use limits::{DELETED_REPOSITORY, Right, TokenLimit};
 
 /// Raw "new token" input, exactly as submitted.
 #[derive(Debug, Clone, Default)]

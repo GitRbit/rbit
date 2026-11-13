@@ -10,7 +10,7 @@ use axum::{
 use rbit_core::{AccessToken, AccessTokenId, TokenScope};
 use rbit_services::{
     CreateAccessToken,
-    tokens::{Right, TokenLimit},
+    tokens::{DELETED_REPOSITORY, Right, TokenLimit},
     webhooks::payloads::timestamp,
 };
 use serde::Deserialize;
@@ -54,7 +54,8 @@ fn token_json(token: &AccessToken, limit: Option<&TokenLimit>, repository: Optio
         "last_used_at": token.last_used_at.map(timestamp),
         "expires_at": token.expires_at.map(timestamp),
         "repository": repository,
-        "repository_id": limit.and_then(|limit| limit.repo).map(|repo| repo.0),
+        // A deleted repository shows as none; the token reaches no repository.
+        "repository_id": limit.and_then(|limit| limit.repo).filter(|repo| *repo != DELETED_REPOSITORY).map(|repo| repo.0),
         "rights": limit.map(|limit| limit.rights.iter().map(|right| right.as_str()).collect::<Vec<_>>()),
     })
 }

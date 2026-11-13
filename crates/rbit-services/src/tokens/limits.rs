@@ -69,8 +69,13 @@ impl TokenLimit {
     }
 }
 
+/// The repository of a token limited to one that was deleted: an id no repository has, so
+/// the token reaches none (it must not fall back to every repository of its owner).
+pub const DELETED_REPOSITORY: RepoId = RepoId(0);
+
 fn from_stored(stored: StoredLimit) -> TokenLimit {
-    TokenLimit { repo: stored.repo, rights: stored.rights.into_iter().filter_map(|name| Right::parse(&name)).collect() }
+    let repo = if stored.scoped { Some(stored.repo.unwrap_or(DELETED_REPOSITORY)) } else { None };
+    TokenLimit { repo, rights: stored.rights.into_iter().filter_map(|name| Right::parse(&name)).collect() }
 }
 
 impl AccessTokenService {
@@ -83,7 +88,11 @@ impl AccessTokenService {
         limit: &TokenLimit,
     ) -> Result<(AccessToken, String), ServiceError> {
         let (token, secret) = self.create(owner, input).await?;
-        let stored = StoredLimit { repo: limit.repo, rights: limit.rights.iter().map(|right| right.as_str().to_owned()).collect() };
+        let stored = StoredLimit {
+            scoped: limit.repo.is_some(),
+            repo: limit.repo,
+            rights: limit.rights.iter().map(|right| right.as_str().to_owned()).collect(),
+        };
         if let Err(error) = self.store.set_limit(token.id, &stored).await {
             let _ = self.revoke(owner, token.id).await;
             return Err(error.into());

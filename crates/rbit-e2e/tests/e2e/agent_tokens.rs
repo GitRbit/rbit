@@ -106,6 +106,15 @@ async fn a_limited_token_reaches_one_repository_with_its_rights_only() {
     assert_eq!(send(&server, &wide, Method::PATCH, "repos/alice/rocket", Some(changed)).await.0, StatusCode::FORBIDDEN);
     assert_eq!(send(&server, &wide, Method::GET, "repos/alice/rocket/branch_protections", None).await.0, StatusCode::FORBIDDEN);
 
+    // A token limited to a repository that is deleted reaches no repository, not every one.
+    let doomed = json!({ "name": "doomed", "scope": "write", "repository": "alice/vault-new" });
+    let (_, doomed) = send(&server, &admin, Method::POST, "user/tokens", Some(doomed)).await;
+    let doomed = doomed["token"].as_str().unwrap().to_owned();
+    assert_eq!(send(&server, &doomed, Method::GET, "repos/alice/vault-new", None).await.0, StatusCode::OK);
+    assert_eq!(send(&server, &admin, Method::DELETE, "repos/alice/vault-new", None).await.0, StatusCode::NO_CONTENT);
+    assert_eq!(send(&server, &doomed, Method::GET, "repos/alice/rocket", None).await.0, StatusCode::NOT_FOUND, "fails closed");
+    assert_eq!(send(&server, &doomed, Method::GET, "user/repos", None).await.0, StatusCode::FORBIDDEN, "still limited");
+
     // Revoked, it stops at once.
     let id = row["id"].as_i64().unwrap();
     assert_eq!(send(&server, &admin, Method::DELETE, &format!("user/tokens/{id}"), None).await.0, StatusCode::NO_CONTENT);
