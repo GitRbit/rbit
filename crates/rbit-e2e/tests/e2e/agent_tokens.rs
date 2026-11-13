@@ -23,7 +23,8 @@ async fn send(server: &TestServer, token: &str, method: Method, path: &str, body
 
 #[tokio::test]
 async fn a_limited_token_reaches_one_repository_with_its_rights_only() {
-    let server = TestServer::start();
+    // Actions on, so its endpoints (annotations) answer for themselves.
+    let server = TestServer::start_with(|config| config.actions.enabled = true);
     let alice = server.sign_up("alice").await;
     alice.create_repo("alice", "rocket", "public").await;
     alice.create_repo("alice", "vault", "private").await;
@@ -88,6 +89,8 @@ async fn a_limited_token_reaches_one_repository_with_its_rights_only() {
     }
     let artifacts = "repos/alice/rocket/agent/artifacts?sha=0000000&name=dist";
     assert_eq!(send(&server, &agent, Method::GET, artifacts, None).await.0, StatusCode::FORBIDDEN, "artifacts need `read_logs`");
+    let annotations = "repos/alice/rocket/actions/jobs/1/annotations";
+    assert_eq!(send(&server, &agent, Method::GET, annotations, None).await.0, StatusCode::FORBIDDEN, "annotations need `read_logs`");
     // An old name of another repository is not followed for it: that would name the new one.
     assert_eq!(send(&server, &admin, Method::PATCH, "repos/alice/vault", Some(json!({ "name": "vault-new" }))).await.0, StatusCode::OK);
     assert_eq!(send(&server, &agent, Method::GET, "repos/alice/vault", None).await.0, StatusCode::NOT_FOUND);

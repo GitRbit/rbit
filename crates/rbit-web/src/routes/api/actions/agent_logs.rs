@@ -206,6 +206,8 @@ pub async fn annotations(
     Path(path): Path<AgentPath>,
     Query(query): Query<AttemptQuery>,
 ) -> ApiResult<Json<Value>> {
+    // Annotations are lines of the log: a token limited to other rights reads none.
+    caller.require_right(Right::ReadLogs)?;
     let ctx = path.repo(&state, &caller).await?;
     let job = JobId(AgentPath::number(path.job_id.as_deref())?);
     let stored = actions(&state)?.job_annotations(&ctx, job, query.attempt).await?;

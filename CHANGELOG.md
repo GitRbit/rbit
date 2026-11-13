@@ -122,8 +122,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Git and an old repository name no longer tell such a token that another repository exists.
   Opening a pull request needs `push`; approving or requesting changes, dismissing a review
   and approving a deployment need `approve`; promoting an artifact to a release needs `push`
-  and `read_logs`, and finding an artifact by commit needs `read_logs`; status and watch
-  leave failure log lines out without `read_logs`.
+  and `read_logs`, and finding an artifact by commit or reading a job's annotations needs
+  `read_logs`; status and watch leave failure log lines out without `read_logs`.
 - The merge queue reads its candidate refs exactly: a branch named
   `refs/merge-queue/<base>/pr-<n>` stopped the line for ever. Branches named `refs/…` or
   `merge-queue/…` are refused. Before building and before landing, the queue checks again
