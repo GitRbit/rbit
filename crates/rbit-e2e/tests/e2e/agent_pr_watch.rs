@@ -148,20 +148,20 @@ async fn agent_pr_watch_reports_checks_reviews_and_revisions() {
     assert_eq!(invisible["changed"], false, "pending review data remains private: {invisible}");
 
     let submitted = json!({ "event": "COMMENT", "body": "Please clarify this" });
-    let (reviewed, _) = tokio::join!(watch.changed(&green), async {
+    let (after_submission, ()) = tokio::join!(watch.changed(&green), async {
         tokio::time::sleep(Duration::from_millis(200)).await;
         let (status, body) = reviewer.send(Method::POST, &reviews, Some(submitted)).await;
         assert_eq!(status, StatusCode::OK, "{body}");
     });
-    assert_eq!(check_state(&reviewed), "passed");
-    assert_eq!(reviewed["reviews"].as_array().unwrap().len(), 1, "{reviewed}");
-    assert_eq!(reviewed["reviews"][0]["state"], "commented", "{reviewed}");
-    assert_eq!(reviewed["reviews"][0]["commit"], head, "{reviewed}");
-    let root = reviewed["threads"][0]["id"].as_i64().expect("a submitted review thread");
+    assert_eq!(check_state(&after_submission), "passed");
+    assert_eq!(after_submission["reviews"].as_array().unwrap().len(), 1, "{after_submission}");
+    assert_eq!(after_submission["reviews"][0]["state"], "commented", "{after_submission}");
+    assert_eq!(after_submission["reviews"][0]["commit"], head, "{after_submission}");
+    let root = after_submission["threads"][0]["id"].as_i64().expect("a submitted review thread");
     let reply = json!({ "in_reply_to": root, "body": "The legs deploy before contact." });
     let (status, body) = owner.send(Method::POST, &comments, Some(reply)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
-    let replied = watch.changed(&reviewed).await;
+    let replied = watch.changed(&after_submission).await;
     assert_eq!(replied["threads"][0]["replies"], 1, "{replied}");
     let resolution = format!("{comments}/{root}/resolution");
     let (status, body) = reviewer.send(Method::PUT, &resolution, Some(json!({ "resolved": true }))).await;

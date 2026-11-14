@@ -12,13 +12,16 @@ use serde_json::{Value, json};
 
 use super::{
     Api, Repo, agent,
-    commands::{Output, PrCommand},
+    commands::Output,
     runs::report,
     util::{clip, encode, git, short, text},
 };
 
 mod assessment;
+mod commands;
 mod workflow;
+
+pub(super) use commands::PrCommand;
 
 /// A pull request for programs.
 fn compact(pull: &Value) -> Value {
