@@ -1,10 +1,55 @@
-# Reading CI results from a coding agent
+# Driving rbit from a coding agent
+
+## Pull request skills
+
+The repository ships [agent skills](../.agents/skills) for use with the rbit client.
+Open the checkout in an agent host that loads repository skills from `.agents/skills`.
+For a host that uses another directory, copy the skill directories together into its
+configured skills directory. Keep the sibling directories together so cross-references
+resolve. Install a matching rbit client and use the [client guide](cli.md) to connect it
+to the instance hosting your repository.
+
+| Skill | Use it to |
+| --- | --- |
+| `rbit-modernize` | Assess an older PR against its actual base and recommend an update, targeted rework, or closure. Request an update explicitly to publish a changed head. |
+| `rbit-takeover` | Continue an existing PR or branch while preserving the objective, contributor credit, and local work. |
+| `rbit-file-pr` | Verify the diff and file or recover a PR for the branch. |
+| `rbit-babysit-pr` | Follow checks, reviews, and the PR head until the requested handoff or landing condition. |
+| `rbit-full-stop` | Verify and file a PR, then hand it back for human merge. |
+| `rbit-full-send` | Verify and land a PR through the merge queue when explicitly authorized. |
+| `rbit-review` | Request independent review of a fixed revision from one reviewer or an explicitly requested council. Requires a host with the requested delegation capability. |
+| `rbit-pr-comments` | Draft evidence-based PR comments and verify posting before resolving a thread when authorized. |
+
+For example, ask “Modernize rbit PR #42 and tell me whether it still belongs on
+its current base” for an assessment. Ask “Babysit rbit PR #42 until it is ready
+for me to merge” to follow it through review and CI.
+
+## Watching a pull request
+
+```bash
+rbit pr watch 42 --json
+rbit pr watch 42 --cursor <returned-cursor> --timeout 25 --json
+```
+
+The first call returns a snapshot. A later call with its cursor returns when the
+observed state differs or the wait ends. Check `changed`, PR state, and both
+observed revisions. Reassess the diff and relevant evidence if the head or base
+moves. Use the review inbox for unresolved feedback and readiness for the server's
+merge rules as seen by the current credential. If `readiness_checks_protection`
+is false, the evaluation is advisory. Confirm readiness for the intended merger
+before reporting a PR ready to hand off. Passing required checks can coexist with
+open review threads.
+
+The watcher follows state while the host is running. To resume an agent after it
+exits, its host needs a scheduler or another wake-up mechanism.
+
+## Reading CI results
 
 Use the commit you pushed as the identity of the work being checked. A repository's newest
 run may belong to another branch or commit. The `rbit` client and the agent API both
 distinguish a run that has not started yet from a commit for which no workflow applies.
 
-## From the command line
+### From the command line
 
 After `rbit auth login` and `rbit auth setup-git` (see the [client guide](cli.md)):
 
@@ -29,7 +74,7 @@ For a local change that has not been pushed, `rbit ci run` builds a temporary co
 the working tree and tests it on a scratch ref. A `--jobs` subset is useful for feedback;
 it does not replace the full required checks for a pull request.
 
-## From the REST API
+### From the REST API
 
 All paths below are under `/api/v1/repos/{owner}/{repo}`. Authenticate with a token that
 can read the repository and, for failure details, its logs.

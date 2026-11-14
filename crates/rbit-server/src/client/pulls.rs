@@ -108,6 +108,30 @@ pub async fn pulls(api: &Api, repo: &Repo, command: PrCommand, out: &Output) -> 
                 }
             }
         }
+        PrCommand::Watch { number, cursor, timeout } => {
+            let mut path = format!("repos/{repo}/pulls/{number}/watch?timeout={timeout}");
+            if let Some(cursor) = cursor {
+                path.push_str("&cursor=");
+                path.push_str(&encode(&cursor));
+            }
+            let mut body = api.get(&path).await?;
+            if out.json {
+                if let Some(object) = body.as_object_mut() {
+                    object.remove("schema");
+                }
+                agent::print("rbit.pr-watch/1", body);
+            } else {
+                let update = if body["changed"] == true { "snapshot" } else { "unchanged" };
+                println!("#{number} {} at {} ({update})", text(&body, "state"), short(text(&body, "head")));
+                for requirement in body["readiness"]["requirements"].as_array().into_iter().flatten() {
+                    if requirement["met"] == false {
+                        println!("  {}", text(requirement, "says"));
+                    }
+                }
+                println!("  Unresolved review threads: {}", body["thread_count"]);
+                println!("  Cursor: {}", text(&body, "cursor"));
+            }
+        }
         PrCommand::Merge { number, merge: _, squash, rebase, head } => {
             let method = if squash {
                 "squash"

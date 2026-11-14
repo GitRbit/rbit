@@ -134,7 +134,7 @@ impl PullCounts {
 }
 
 pub use self::{
-    merging::{MergeBox, MergeFailure, MergeInput},
+    merging::{MergeBox, MergeFailure, MergeInput, MergeReadiness},
     reviews::{LineComment, ReviewData, ReviewEntry, ReviewVerdict},
 };
 use crate::{

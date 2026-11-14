@@ -40,7 +40,7 @@ use super::{PullContext, PullService, ReviewData, merge_lock};
 use crate::{RepoContext, ServiceError, audit::AuditEntry, audit::AuditService};
 
 mod contracts;
-pub use contracts::{MergeBox, MergeFailure, MergeInput};
+pub use contracts::{MergeBox, MergeFailure, MergeInput, MergeReadiness};
 
 impl PullService {
     /// The merge box of `ctx` for `viewer`.
@@ -51,21 +51,53 @@ impl PullService {
     /// [`Self::merge_box`] for a page that already loaded the pull request's reviews
     /// ([`Self::reviews`]): the tally counts those instead of reading them again.
     pub async fn merge_box_from(&self, viewer: Option<&User>, ctx: &PullContext, reviews: &ReviewData) -> Result<MergeBox, ServiceError> {
-        // Submitted reviews: the tally never counts pending ones.
-        let reviews: Vec<Review> = reviews.reviews.iter().map(|entry| entry.review.clone()).collect();
         self.merge_box_with(viewer, ctx, Some(reviews)).await
     }
 
-    /// The independent reads (the base tip, protection rules, the reviewers' access,
-    /// statuses, the head branch, the viewer's rights, the commits for the squash
-    /// message) run concurrently; their errors are reported in the order they used to be
-    /// read in.
     async fn merge_box_with(
         &self,
         viewer: Option<&User>,
         ctx: &PullContext,
-        reviews: Option<Vec<Review>>,
+        reviews: Option<&ReviewData>,
     ) -> Result<MergeBox, ServiceError> {
+        let can_delete_head = async {
+            match viewer {
+                Some(user) => self.may_delete_head(user, ctx).await,
+                None => Ok(false),
+            }
+        };
+        let (readiness, can_delete_head, (default_squash_title, default_squash_message)) =
+            tokio::join!(self.merge_readiness(viewer, ctx, reviews), can_delete_head, self.default_squash_message(ctx));
+        let readiness = readiness?;
+        let can_delete_head = can_delete_head?;
+        let (default_title, default_message) = Self::default_merge_message(ctx);
+        Ok(MergeBox {
+            evaluation: readiness.evaluation,
+            rules: readiness.rules,
+            tally: readiness.tally,
+            mergeable: readiness.mergeable,
+            conflict_paths: readiness.conflict_paths,
+            statuses: readiness.statuses,
+            required: readiness.required,
+            head_branch_exists: readiness.head_branch_exists,
+            can_merge: merges_as_writer(viewer.is_some(), ctx.repo().can_write_content()),
+            can_delete_head,
+            default_title,
+            default_message,
+            default_squash_title,
+            default_squash_message,
+        })
+    }
+
+    /// The merge evaluation without loading commit summaries or building display messages.
+    /// Submitted reviews from an existing read can be reused for the tally.
+    pub async fn merge_readiness(
+        &self,
+        viewer: Option<&User>,
+        ctx: &PullContext,
+        reviews: Option<&ReviewData>,
+    ) -> Result<MergeReadiness, ServiceError> {
+        let reviews = reviews.map(|data| data.reviews.iter().map(|entry| entry.review.clone()).collect());
         let rules = async {
             match viewer {
                 Some(user) if merges_as_writer(true, ctx.repo().access.can_write()) => {
@@ -74,21 +106,13 @@ impl PullService {
                 Some(_) | None => Ok(MergeRules::unprotected()),
             }
         };
-        let can_delete_head = async {
-            match viewer {
-                Some(user) => self.may_delete_head(user, ctx).await,
-                None => Ok(false),
-            }
-        };
         let statuses = self.ctx().database.commit_statuses();
-        let (base_tip, rules, voters, head_branch_exists, statuses, can_delete_head, (default_squash_title, default_squash_message)) = tokio::join!(
+        let (base_tip, rules, voters, head_branch_exists, statuses) = tokio::join!(
             self.base_tip(ctx),
             rules,
             self.voters(ctx, reviews),
             self.head_branch_exists(ctx),
             statuses.latest(ctx.repo().repo.repo.id, &ctx.pull.head_sha),
-            can_delete_head,
-            self.default_squash_message(ctx),
         );
         let base_tip = base_tip?;
         let rules = rules?;
@@ -115,9 +139,7 @@ impl PullService {
             required_checks: required_checks(&required, &statuses),
         };
         let evaluation = evaluate(&facts, &rules);
-        let can_delete_head = can_delete_head?;
-        let (default_title, default_message) = Self::default_merge_message(ctx);
-        Ok(MergeBox {
+        Ok(MergeReadiness {
             evaluation,
             rules,
             tally,
@@ -126,12 +148,7 @@ impl PullService {
             statuses,
             required,
             head_branch_exists,
-            can_merge: merges_as_writer(viewer.is_some(), ctx.repo().can_write_content()),
-            can_delete_head,
-            default_title,
-            default_message,
-            default_squash_title,
-            default_squash_message,
+            base_tip,
         })
     }
 

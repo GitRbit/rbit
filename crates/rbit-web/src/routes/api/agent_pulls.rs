@@ -38,6 +38,7 @@ use crate::AppState;
 
 // Agent loop: the merge queue.
 mod queue;
+mod watch;
 
 /// This area's endpoints, appended to [`super::table`].
 pub(super) fn routes() -> Vec<ApiRoute> {
@@ -45,6 +46,7 @@ pub(super) fn routes() -> Vec<ApiRoute> {
     vec![
         route(Post, repo("/pulls/ensure"), ensure),
         route(Get, repo("/pulls/{number}/readiness"), readiness),
+        route(Get, repo("/pulls/{number}/watch"), watch::watch),
         route(Post, repo("/pulls/{number}/ready"), ready),
         route(Post, repo("/pulls/{number}/queue"), queue::enqueue),
         route(Get, repo("/pulls/{number}/queue"), queue::queue_place),
@@ -169,7 +171,11 @@ fn same_head(ctx: &PullContext, expected: Option<&str>) -> ApiResult<()> {
 
 /// The readiness of `ctx`'s head, from the merge box.
 async fn readiness_of(state: &AppState, caller: &Caller, ctx: &PullContext) -> ApiResult<Value> {
-    let merge_box = state.services.pulls.merge_box(caller.user(), ctx).await?;
+    let merge_box = state.services.pulls.merge_readiness(caller.user(), ctx, None).await?;
+    Ok(readiness_json(ctx, &merge_box))
+}
+
+fn readiness_json(ctx: &PullContext, merge_box: &rbit_services::pulls::MergeReadiness) -> Value {
     let requirements: Vec<Value> = merge_box
         .evaluation
         .checks
@@ -195,7 +201,7 @@ async fn readiness_of(state: &AppState, caller: &Caller, ctx: &PullContext) -> A
         checks.push(json!({ "context": status.context.as_str(), "required": false, "state": status.state.as_str() }));
     }
     let evaluation = &merge_box.evaluation;
-    Ok(json!({
+    json!({
         "schema": "rbit.readiness/1",
         "number": ctx.issue().number.get(),
         "head": ctx.pull.head_sha,
@@ -206,7 +212,7 @@ async fn readiness_of(state: &AppState, caller: &Caller, ctx: &PullContext) -> A
         "may_bypass": evaluation.can_merge_with_bypass() && !evaluation.can_merge(),
         "requirements": requirements,
         "checks": checks,
-    }))
+    })
 }
 
 /// `GET /repos/{owner}/{repo}/pulls/{number}/readiness[?head=<sha>]`

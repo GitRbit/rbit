@@ -420,6 +420,16 @@ pub enum PrCommand {
     },
     /// A pull request.
     View { number: u64 },
+    /// Get a PR snapshot or wait for checks, reviews, or the PR itself to change.
+    Watch {
+        number: u64,
+        /// The cursor from a previous watch. Without it, return immediately.
+        #[arg(long)]
+        cursor: Option<String>,
+        /// Seconds to wait for a change (at most 25).
+        #[arg(long, default_value_t = 25)]
+        timeout: u64,
+    },
     /// Merge a pull request, only if its head is still `--head` (by default the head read
     /// just before merging).
     Merge {

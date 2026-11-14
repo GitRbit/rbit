@@ -33,7 +33,7 @@ pub struct QueueRequest {
 }
 
 /// A place in line as the queue endpoints answer it.
-fn place_json(place: &QueuePlace) -> Value {
+pub(super) fn place_json(place: &QueuePlace) -> Value {
     let entry = &place.entry;
     json!({
         "schema": "rbit.queue/1",

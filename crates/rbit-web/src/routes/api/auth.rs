@@ -98,6 +98,25 @@ impl Caller {
         self.token
     }
 
+    /// Recheck a principal during a bounded watch without charging another request.
+    pub(super) async fn refresh_watch(&mut self, state: &AppState, authorization: Option<&HeaderValue>) -> ApiResult<()> {
+        if self.token.is_none() {
+            if state.services.instance.require_sign_in() {
+                return Err(ApiError::unauthorized("Requires authentication"));
+            }
+            return Ok(());
+        }
+        let secret = authorization.and_then(presented_token).ok_or_else(|| ApiError::unauthorized("Bad credentials"))?;
+        let Some((user, scope, token_limit, token)) = state.services.tokens.authenticate_limited(secret).await? else {
+            return Err(ApiError::unauthorized("Bad credentials"));
+        };
+        self.user = Some(Arc::new(user));
+        self.scope = Some(scope);
+        self.token_limit = token_limit;
+        self.token = Some(token);
+        Ok(())
+    }
+
     pub fn user(&self) -> Option<&User> {
         self.user.as_deref()
     }

@@ -32,6 +32,20 @@ pub struct MergeBox {
     pub default_squash_message: String,
 }
 
+/// Merge policy and status for one observed head and base tip, without display messages.
+#[derive(Debug, Clone)]
+pub struct MergeReadiness {
+    pub evaluation: MergeEvaluation,
+    pub rules: MergeRules,
+    pub tally: ReviewTally,
+    pub mergeable: Mergeability,
+    pub conflict_paths: Vec<String>,
+    pub statuses: Vec<CommitStatus>,
+    pub required: Vec<String>,
+    pub head_branch_exists: bool,
+    pub base_tip: Option<String>,
+}
+
 /// A merge as requested.
 #[derive(Debug, Clone)]
 pub struct MergeInput {

@@ -14,7 +14,7 @@ use rbit_core::{
 use rbit_git::diff::{Hunk, LineKind};
 use rbit_services::pulls::{
     PullContext,
-    inbox::{Anchor, ManifestFile},
+    inbox::{Anchor, InboxThread, ManifestFile},
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -213,7 +213,13 @@ pub async fn manifest(
 pub async fn inbox(State(state): State<AppState>, caller: Caller, Path(path): Path<PullPath>) -> ApiResult<Json<Value>> {
     let ctx = open_pull(&state, &caller, &path.owner, &path.repo, &path.number).await?;
     let threads = state.services.pulls.inbox(caller.user(), &ctx).await?;
-    let items: Vec<Value> = threads
+    Ok(Json(
+        json!({ "schema": "rbit.inbox/1", "number": ctx.issue().number.get(), "head": ctx.pull.head_sha, "threads": thread_items(&threads) }),
+    ))
+}
+
+pub(super) fn thread_items(threads: &[InboxThread]) -> Vec<Value> {
+    threads
         .iter()
         .map(|thread| {
             let root = &thread.root;
@@ -238,8 +244,7 @@ pub async fn inbox(State(state): State<AppState>, caller: Caller, Path(path): Pa
                 "last_reply": thread.last.as_ref().map(|(author, text)| json!({ "author": author, "says": text })),
             })
         })
-        .collect();
-    Ok(Json(json!({ "schema": "rbit.inbox/1", "number": ctx.issue().number.get(), "head": ctx.pull.head_sha, "threads": items })))
+        .collect()
 }
 
 #[derive(Debug, Deserialize)]

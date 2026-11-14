@@ -10,18 +10,10 @@ use std::process::Command;
 use rbit_e2e::{Git, PASSWORD, TestServer};
 use serde_json::{Value, json};
 
-use super::actions_runner::runner_binary;
+use super::actions_runner::test_binary;
 
 const WORKFLOW: &str =
     "name: CI\non: [push, pull_request]\njobs:\n  test:\n    runs-on: nobody-has-this-label\n    steps:\n      - run: true\n";
-
-/// The `rbit` binary built beside `rbit-runner`.
-fn rbit_binary() -> std::path::PathBuf {
-    let runner = runner_binary();
-    let binary = runner.with_file_name(format!("rbit{}", std::env::consts::EXE_SUFFIX));
-    assert!(binary.exists(), "{} is missing: build the workspace (`cargo build -p rbit-server`) first", binary.display());
-    binary
-}
 
 struct Agent<'a> {
     server: &'a TestServer,
@@ -49,7 +41,7 @@ impl Agent<'_> {
 
     /// `rbit <args> --repo alice/rocket --json`: the exit code and the one JSON object.
     fn cli(&self, args: &[&str]) -> (i32, Value) {
-        let output = Command::new(rbit_binary())
+        let output = Command::new(test_binary("rbit", "rbit-server"))
             .args(args)
             .args(["--repo", "alice/rocket", "--hostname", self.server.base_url(), "--json"])
             .env("RBIT_TOKEN", &self.token)
@@ -148,6 +140,10 @@ async fn an_agent_finds_the_runs_of_its_commit_and_reads_codes_not_prose() {
     assert_eq!(listed["runs"][0].as_object().unwrap().len(), 2, "only the asked-for fields");
     let (code, checks) = agent.cli(&["pr", "checks", "1"]);
     assert_eq!((code, checks["state"].as_str()), (8, Some("pending")), "queued checks are pending: {checks}");
+    let (code, watch) = agent.cli(&["pr", "watch", "1", "--timeout", "0"]);
+    assert_eq!((code, watch["schema"].as_str(), watch["head"].as_str()), (0, Some("rbit.pr-watch/1"), Some(head.as_str())), "{watch}");
+    assert_eq!(watch["changed"], true, "{watch}");
+    assert!(watch["cursor"].is_string(), "{watch}");
     let (code, merge) = agent.cli(&["pr", "merge", "1", "--head", &base]);
     assert_eq!((code, merge["code"].as_str()), (5, Some("head_changed")), "{merge}");
     let (code, gone) = agent.cli(&["run", "view", "999999"]);

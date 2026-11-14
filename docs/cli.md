@@ -250,6 +250,7 @@ rbit pr list [--state open|closed|all] [--head BRANCH]
 rbit pr view NUMBER
 rbit pr merge NUMBER [--merge | --squash | --rebase] [--head COMMIT]
 rbit pr checks NUMBER [--watch]
+rbit pr watch NUMBER [--cursor CURSOR] [--timeout SECONDS] [--json]
 ```
 
 `pr create` takes the current branch as the head unless `--head` names one. `pr merge`
@@ -259,6 +260,15 @@ a commit nobody tested. `pr checks` lists the commit statuses of the pull reques
 Actions jobs included, and exits with 0 when all passed, 1 when one failed and 8 while some
 are pending, as `gh` does. No status at all is pending too (exit 8): straight after a push
 the checks may not have started, and that is not green.
+
+`pr watch` reads the PR's current state, head and base, merge readiness, reviews,
+unresolved threads, and queue state. Pass the returned cursor to wait for a changed
+snapshot. The wait defaults to 25 seconds, with 0 for an immediate read. In JSON
+mode, read `changed` to distinguish a changed snapshot from an unchanged timeout.
+A read-only caller can watch activity. When `readiness_checks_protection` is false,
+its readiness result is advisory. Discussion activity is represented by comment count.
+A successful read exits 0 regardless of the PR's readiness. The matching REST
+route is `GET /api/v1/repos/{owner}/{repo}/pulls/{number}/watch`.
 
 ## Any API call
 

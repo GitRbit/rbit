@@ -355,6 +355,9 @@ The same binary also includes a [client for rbit instances](docs/cli.md): `rbit 
 use `--json` for machine-readable results. The CLI guide covers the commands, exit codes
 and exact-commit CI workflow.
 
+See the [agent guide](docs/agent-guide.md) for pull request monitoring and repository
+skills for filing, reviewing, updating, and handing off changes.
+
 ## Development
 
 [CONTRIBUTING.md](CONTRIBUTING.md) explains the setup, the live development server

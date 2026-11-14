@@ -1096,6 +1096,81 @@
         }
       }
     },
+    "/repos/{owner}/{repo}/pulls/{number}/watch": {
+      "parameters": [
+        { "$ref": "#/components/parameters/owner" },
+        { "$ref": "#/components/parameters/repo" },
+        {
+          "name": "number",
+          "in": "path",
+          "required": true,
+          "description": "The pull request number",
+          "schema": { "type": "integer", "minimum": 1 }
+        }
+      ],
+      "get": {
+        "operationId": "watchPull",
+        "tags": ["pulls"],
+        "summary": "rbit's own: get a pull request snapshot or wait for a change",
+        "description": "Returns the current head and base, checks and mergeability, submitted reviews and review threads, discussion comment count, and merge queue state. A cursor from a previous response waits for a changed snapshot, even when checks are already green. With no cursor the snapshot is immediate. With an unchanged cursor after the wait, changed is false. This is a bounded wait on the current snapshot.",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque cursor from a previous response for this pull request",
+            "schema": { "type": "string", "pattern": "^[a-fA-F0-9]{16}$" }
+          },
+          {
+            "name": "timeout",
+            "in": "query",
+            "description": "Seconds to wait with a cursor, capped at 25. Zero returns immediately.",
+            "schema": { "type": "integer", "minimum": 0, "default": 25 }
+          }
+        ],
+        "security": [{}, { "token": [] }],
+        "responses": {
+          "200": {
+            "description": "The observed pull request snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["schema", "number", "cursor", "changed", "state", "head", "head_branch", "base", "base_sha", "readiness", "readiness_checks_protection", "can_request_merge", "reviews", "review_count", "threads", "thread_count", "queue", "merge_commit", "mergeability", "conflict_paths", "discussion_count", "requested_reviewers"],
+                  "properties": {
+                    "schema": { "const": "rbit.pr-watch/1" },
+                    "number": { "type": "integer" },
+                    "cursor": { "type": "string" },
+                    "changed": { "type": "boolean" },
+                    "state": { "enum": ["open", "closed", "merged"] },
+                    "head": { "type": "string" },
+                    "head_branch": { "type": "string" },
+                    "base": { "type": "string" },
+                    "base_sha": { "type": ["string", "null"] },
+                    "readiness": { "type": "object", "description": "The same caller-relative readiness evaluation as GET …/readiness." },
+                    "readiness_checks_protection": { "type": "boolean", "description": "Whether the caller's access allows the readiness result to include branch protection." },
+                    "can_request_merge": { "type": "boolean", "description": "Whether the caller has base repository write access and its token allows requesting a merge. Readiness is evaluated separately." },
+                    "reviews": { "type": "array", "maxItems": 50, "items": { "type": "object" }, "description": "The most recent submitted review summaries, ordered oldest first. Each has id, author, state, commit and says." },
+                    "review_count": { "type": "integer", "description": "Count of all submitted reviews." },
+                    "threads": { "type": "array", "maxItems": 50, "items": { "type": "object" }, "description": "The same unresolved threads as GET …/inbox, oldest first." },
+                    "thread_count": { "type": "integer", "description": "Count of all unresolved submitted review threads." },
+                    "queue": { "type": ["object", "null"], "description": "The newest merge queue entry as in GET …/queue, when present." },
+                    "merge_commit": { "type": ["string", "null"] },
+                    "mergeability": { "enum": ["unknown", "clean", "conflict", "error"] },
+                    "conflict_paths": { "type": "array", "items": { "type": "string" } },
+                    "discussion_count": { "type": "integer", "description": "Count of comments on the PR discussion." },
+                    "requested_reviewers": { "type": "array", "items": { "type": "string" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "422": { "$ref": "#/components/responses/ValidationFailed" }
+        }
+      }
+    },
     "/repos/{owner}/{repo}/pulls/{number}/readiness": {
       "parameters": [
         {
