@@ -7,6 +7,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security hardening
+
+- A former name of a renamed user or organisation stays reserved for that account. Until
+  now anyone could take the old name at once, and with it every clone URL, link and Git
+  remote that still pointed there. The account itself may return to its former names; a
+  name is free again when its account is deleted.
+- The cross-site check for form posts compares the scheme of `Origin` as well as its host
+  and port, for browsers that send no `Sec-Fetch-Site`. A page on `http://` of the same
+  host can no longer post to an `https://` instance with a signed-in visitor's cookie.
+
 ## [0.2.2] - 2026-11-13
 
 ### Dependency maintenance

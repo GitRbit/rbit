@@ -48,14 +48,17 @@ fn is_unsafe(method: &Method) -> bool {
 /// Rejects cross-site state-changing requests.
 ///
 /// Browsers send `Sec-Fetch-Site` (modern) or `Origin` on unsafe methods; if either says
-/// the request came from another site it is refused. Non-browser clients (git, curl)
-/// send neither and authenticate without cookies, so they are unaffected.
+/// the request came from another site it is refused. An `Origin` is this site's only when
+/// its scheme, host and port are those of the request: `http://` of the same host is
+/// another origin, which anyone on the visitor's network can serve. Non-browser clients
+/// (git, curl) send neither and authenticate without cookies, so they are unaffected.
 ///
 /// The one exemption is the one-click unsubscribe link of notification emails
 /// ([`is_one_click_unsubscribe`]).
-pub async fn csrf_origin_check(request: Request, next: Next) -> Response {
+pub async fn csrf_origin_check(State(state): State<AppState>, request: Request, next: Next) -> Response {
     let unsafe_method = is_unsafe(request.method());
-    if unsafe_method && is_cross_site(request.headers()) && !is_one_click_unsubscribe(request.uri().path()) {
+    let https = crate::client_ip::is_https(request.extensions(), request.headers(), &state.config);
+    if unsafe_method && is_cross_site(request.headers(), https) && !is_one_click_unsubscribe(request.uri().path()) {
         tracing::warn!(path = %request.uri().path(), "blocked cross-site request");
         return (StatusCode::FORBIDDEN, "cross-site request blocked").into_response();
     }
@@ -69,15 +72,20 @@ pub(super) fn is_one_click_unsubscribe(path: &str) -> bool {
     path.strip_prefix(rbit_services::notification_email::UNSUBSCRIBE_PATH).is_some_and(|token| !token.is_empty() && !token.contains('/'))
 }
 
-fn is_cross_site(headers: &HeaderMap) -> bool {
+/// Whether the headers of a request that arrived over `https` (or not) say that another
+/// site sent it.
+pub(super) fn is_cross_site(headers: &HeaderMap, https: bool) -> bool {
     if let Some(site) = headers.get("sec-fetch-site") {
         return !matches!(site.as_bytes(), b"same-origin" | b"none");
     }
     let (Some(origin), Some(host)) = (headers.get(header::ORIGIN), headers.get(header::HOST)) else {
         return false;
     };
-    let origin_host = origin.to_str().ok().and_then(|o| o.split_once("://")).map(|(_, rest)| rest);
-    origin_host != host.to_str().ok()
+    let scheme = if https { "https" } else { "http" };
+    let same_origin = origin.to_str().ok().and_then(|origin| origin.split_once("://")).is_some_and(|(origin_scheme, origin_host)| {
+        origin_scheme.eq_ignore_ascii_case(scheme) && host.to_str().is_ok_and(|host| origin_host == host)
+    });
+    !same_origin
 }
 
 /// The configurable parts of [`security_headers`], worked out once from the config.

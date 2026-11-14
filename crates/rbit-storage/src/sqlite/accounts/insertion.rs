@@ -44,16 +44,15 @@ async fn insert_account(
     capture_epoch: bool,
 ) -> Result<InsertedAccount, StorageError> {
     let now = Timestamp::now();
-    let id: i64 =
-        sqlx::query_scalar("INSERT INTO accounts (kind, name, display_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?) RETURNING id")
-            .bind(AccountKind::User.as_str())
-            .bind(new.name.as_str())
-            .bind(new.display_name.as_deref())
-            .bind(now.0)
-            .bind(now.0)
-            .fetch_one(&mut **tx)
-            .await
-            .map_err(|e| StorageError::from_insert(e, "username"))?;
+    let id: i64 = sqlx::query_scalar(super::INSERT_UNRESERVED_ACCOUNT)
+        .bind(AccountKind::User.as_str())
+        .bind(new.name.as_str())
+        .bind(new.display_name.as_deref())
+        .bind(now.0)
+        .bind(now.0)
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(|e| super::account_insert_error(e, "username"))?;
 
     if let Some(open) = registration_open {
         let first: bool = sqlx::query_scalar("SELECT NOT EXISTS (SELECT 1 FROM user_logins)").fetch_one(&mut **tx).await?;

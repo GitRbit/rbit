@@ -27,7 +27,7 @@ use cache::{is_unsafe_to_preload, weak_etag};
 #[cfg(test)]
 use errors::{moved_permanently, render_error_response, split_repo_path};
 #[cfg(test)]
-use security::is_one_click_unsubscribe;
+use security::{is_cross_site, is_one_click_unsubscribe};
 
 #[cfg(test)]
 mod tests {
@@ -273,6 +273,36 @@ mod tests {
         assert_eq!(read.headers()[header::CACHE_CONTROL], "no-store");
         assert_eq!(moved_permanently(&Method::HEAD, "/bob/demo").status(), StatusCode::MOVED_PERMANENTLY);
         assert_eq!(moved_permanently(&Method::POST, "/bob/demo/star").status(), StatusCode::PERMANENT_REDIRECT);
+    }
+
+    #[test]
+    fn an_origin_is_ours_only_with_the_scheme_host_and_port_of_the_request() {
+        let headers = |pairs: &[(&'static str, &'static str)]| {
+            let mut headers = axum::http::HeaderMap::new();
+            for (name, value) in pairs {
+                headers.insert(*name, HeaderValue::from_static(value));
+            }
+            headers
+        };
+        let from = |origin: &'static str| headers(&[("origin", origin), ("host", "git.example.com")]);
+        assert!(!is_cross_site(&from("https://git.example.com"), true));
+        assert!(!is_cross_site(&from("HTTPS://git.example.com"), true));
+        assert!(!is_cross_site(&from("http://git.example.com"), false));
+        // The same host over another scheme is another origin.
+        for origin in ["http://git.example.com", "ftp://git.example.com", "git.example.com", "null"] {
+            assert!(is_cross_site(&from(origin), true), "{origin}");
+        }
+        assert!(is_cross_site(&from("https://git.example.com"), false));
+        for origin in ["https://evil.example", "https://git.example.com:8443", "https://git.example.com.evil.example"] {
+            assert!(is_cross_site(&from(origin), true), "{origin}");
+        }
+        // `Sec-Fetch-Site` decides when the browser sends it; clients that send neither pass.
+        assert!(is_cross_site(
+            &headers(&[("sec-fetch-site", "cross-site"), ("origin", "https://git.example.com"), ("host", "git.example.com")]),
+            true
+        ));
+        assert!(!is_cross_site(&headers(&[("sec-fetch-site", "same-origin")]), true));
+        assert!(!is_cross_site(&headers(&[("host", "git.example.com")]), true));
     }
 
     #[test]

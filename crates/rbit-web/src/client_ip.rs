@@ -88,9 +88,13 @@ impl FromRequestParts<AppState> for Https {
 
     #[allow(unknown_lints, clippy::unused_async_trait_impl)]
     async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
-        let forwarded = forwarded_https(peer(&parts.extensions), &parts.headers, &state.config.security);
-        Ok(Self(state.config.server.is_https() || forwarded))
+        Ok(Self(is_https(&parts.extensions, &parts.headers, &state.config)))
     }
+}
+
+/// Whether a request reached the site over HTTPS (see [`Https`]).
+pub fn is_https(extensions: &Extensions, headers: &HeaderMap, config: &rbit_core::Config) -> bool {
+    config.server.is_https() || forwarded_https(peer(extensions), headers, &config.security)
 }
 
 fn peer(extensions: &Extensions) -> IpAddr {

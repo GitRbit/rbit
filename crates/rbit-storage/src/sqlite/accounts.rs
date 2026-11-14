@@ -21,6 +21,21 @@ use crate::StorageError;
 /// Keep each bulk lookup small enough to share the pool with interactive requests.
 const USER_QUERY_BATCH_SIZE: usize = 256;
 
+/// Inserts an account (kind, name, display name, created, updated) unless its name is a
+/// former name of another account, and returns its id; no row means the name is reserved
+/// ([`account_insert_error`]).
+///
+/// A renamed account's old addresses keep leading to it (`account_redirects`). Were the old
+/// name free again, whoever took it would receive what clones, links and remotes still
+/// send there. The name is free again once the renamed account is deleted.
+pub(super) const INSERT_UNRESERVED_ACCOUNT: &str = "INSERT INTO accounts (kind, name, display_name, created_at, updated_at) \
+     SELECT ?1, ?2, ?3, ?4, ?5 WHERE NOT EXISTS (SELECT 1 FROM account_redirects WHERE name = ?2) RETURNING id";
+
+/// The error of [`INSERT_UNRESERVED_ACCOUNT`]: a reserved name is taken, like a current one.
+pub(super) fn account_insert_error(error: sqlx::Error, field: &'static str) -> StorageError {
+    if matches!(error, sqlx::Error::RowNotFound) { StorageError::Conflict(field) } else { StorageError::from_insert(error, field) }
+}
+
 /// Builds a static `SELECT` over users (account ⋈ login) with the given trailing clause.
 /// SQL stays a compile-time literal, so it can never contain interpolated user input.
 macro_rules! select_user {
@@ -232,22 +247,43 @@ impl AccountStore {
 
     /// Changes an account's name, retaining its identity and recording the old name.
     /// Authorization belongs to the calling service; applies equally to organisations.
+    ///
+    /// A former name of another account is as taken as a current one
+    /// (`INSERT_UNRESERVED_ACCOUNT`); an account may always return to its own.
     pub async fn rename(&self, id: AccountId, name: &AccountName) -> Result<(), StorageError> {
-        sqlx::query("UPDATE accounts SET name = ?, updated_at = ? WHERE id = ?")
-            .bind(name.as_str())
-            .bind(Timestamp::now().seconds())
-            .bind(id.0)
-            .execute(&self.pool)
-            .await
-            .map_err(|error| StorageError::from_insert(error, "username"))?;
+        let renamed = sqlx::query(
+            "UPDATE accounts SET name = ?1, updated_at = ?2 WHERE id = ?3 AND NOT EXISTS \
+            (SELECT 1 FROM account_redirects WHERE name = ?1 AND account_id <> ?3)",
+        )
+        .bind(name.as_str())
+        .bind(Timestamp::now().seconds())
+        .bind(id.0)
+        .execute(&self.pool)
+        .await
+        .map_err(|error| StorageError::from_insert(error, "username"))?
+        .rows_affected()
+            != 0;
+        if !renamed && self.reserved_for_another(id, name).await? {
+            return Err(StorageError::Conflict("username"));
+        }
         Ok(())
+    }
+
+    /// Whether `name` is a former name of an account other than `id`.
+    async fn reserved_for_another(&self, id: AccountId, name: &AccountName) -> Result<bool, StorageError> {
+        Ok(sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM account_redirects WHERE name = ? AND account_id <> ?)")
+            .bind(name.as_str())
+            .bind(id.0)
+            .fetch_one(&self.pool)
+            .await?)
     }
 
     /// Self-service rename only while the verified password remains current.
     pub async fn rename_if_password(&self, id: AccountId, name: &AccountName, expected: &str) -> Result<bool, StorageError> {
-        Ok(sqlx::query(
+        let renamed = sqlx::query(
             "UPDATE accounts SET name = ?1, updated_at = ?2 WHERE id = ?3 AND EXISTS \
-            (SELECT 1 FROM user_logins WHERE account_id = ?3 AND password_hash = ?4 AND suspended_at IS NULL)",
+            (SELECT 1 FROM user_logins WHERE account_id = ?3 AND password_hash = ?4 AND suspended_at IS NULL) \
+            AND NOT EXISTS (SELECT 1 FROM account_redirects WHERE name = ?1 AND account_id <> ?3)",
         )
         .bind(name.as_str())
         .bind(Timestamp::now().seconds())
@@ -257,7 +293,11 @@ impl AccountStore {
         .await
         .map_err(|error| StorageError::from_insert(error, "username"))?
         .rows_affected()
-            != 0)
+            != 0;
+        if !renamed && self.reserved_for_another(id, name).await? {
+            return Err(StorageError::Conflict("username"));
+        }
+        Ok(renamed)
     }
 
     /// The current account behind a former name. Never used for sign-in or mentions.

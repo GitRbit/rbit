@@ -97,17 +97,15 @@ impl OrgStore {
         let now = Timestamp::now().seconds();
         let mut tx = self.pool.begin().await?;
 
-        let id: i64 = sqlx::query_scalar(
-            "INSERT INTO accounts (kind, name, display_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?) RETURNING id",
-        )
-        .bind(AccountKind::Organization.as_str())
-        .bind(new.name.as_str())
-        .bind(new.display_name.as_deref())
-        .bind(now)
-        .bind(now)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(|e| StorageError::from_insert(e, "name"))?;
+        let id: i64 = sqlx::query_scalar(super::accounts::INSERT_UNRESERVED_ACCOUNT)
+            .bind(AccountKind::Organization.as_str())
+            .bind(new.name.as_str())
+            .bind(new.display_name.as_deref())
+            .bind(now)
+            .bind(now)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|e| super::accounts::account_insert_error(e, "name"))?;
 
         sqlx::query("INSERT INTO org_profiles (account_id, description) VALUES (?, ?)")
             .bind(id)

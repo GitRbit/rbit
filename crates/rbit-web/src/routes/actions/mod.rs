@@ -248,14 +248,14 @@ pub const PATHS: &[(&str, &[Method])] = &[
 /// compression: archives are already gzipped), only when Actions is enabled, so this
 /// router applies the session, rate-limit, CSRF and security-header middleware itself.
 pub fn file_routes(state: &AppState) -> Router<AppState> {
-    use axum::middleware::{from_fn, from_fn_with_state};
+    use axum::middleware::from_fn_with_state;
     Router::new()
         .route("/{owner}/{repo}/actions/runs/{run}/artifacts/{artifact}", get(runs::artifact))
         .route("/{owner}/{repo}/actions/runs/{run}/artifacts/{artifact}/{format}", get(runs::artifact_as))
         .layer(from_fn_with_state(state.clone(), crate::middleware::error_pages))
         .layer(from_fn_with_state(state.clone(), crate::middleware::session))
         .layer(from_fn_with_state(state.clone(), crate::middleware::rate_limit))
-        .layer(from_fn(crate::middleware::csrf_origin_check))
+        .layer(from_fn_with_state(state.clone(), crate::middleware::csrf_origin_check))
         .layer(from_fn_with_state(crate::middleware::SecurityHeaders::new(&state.config), crate::middleware::security_headers))
 }
 
