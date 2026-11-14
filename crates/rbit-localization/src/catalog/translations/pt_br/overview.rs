@@ -43,5 +43,19 @@ entries! { PtBr:
                 _ => " execuções nesta página",
             });
         }
+        ActionsOverviewMessage::JobsFinished { done, total } => {
+            text.number(done);
+            text.literal(" de ");
+            text.number(total);
+            text.literal(" jobs concluídos");
+        }
+        ActionsOverviewMessage::JobsRunning { count } => {
+            text.number(count);
+            text.literal(match text.plural(count) {
+                Plural::One => " job em execução",
+                _ => " jobs em execução",
+            });
+        }
+        ActionsOverviewMessage::WaitingForRunner => text.literal("Aguardando um runner"),
     }
 }

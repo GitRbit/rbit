@@ -41,5 +41,18 @@ entries! { Ja:
             text.number(count);
             text.literal(" 件");
         }
+        ActionsOverviewMessage::JobsFinished { done, total } => {
+            text.literal("完了したジョブ：");
+            text.number(done);
+            text.literal(" / ");
+            text.number(total);
+            text.literal(" 件");
+        }
+        ActionsOverviewMessage::JobsRunning { count } => {
+            text.literal("実行中のジョブ：");
+            text.number(count);
+            text.literal(" 件");
+        }
+        ActionsOverviewMessage::WaitingForRunner => text.literal("ランナーを待機中"),
     }
 }

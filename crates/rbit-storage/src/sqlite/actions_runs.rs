@@ -440,6 +440,8 @@ mod merge_queue;
 pub use agent_requests::{REQUEST_ID_SECONDS, Remembered};
 pub use merge_queue::{NewEntry, QueueEntry};
 mod outcomes;
+mod progress;
+pub use progress::RunProgress;
 mod queue;
 mod scratch;
 pub use queue::QueuePlace;

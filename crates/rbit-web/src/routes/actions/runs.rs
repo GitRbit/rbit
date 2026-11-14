@@ -182,7 +182,7 @@ async fn runs_page(
     Ok(RunsPage {
         page: page.titled(title),
         header: loaded.header(state, "actions"),
-        runs: listing.runs.iter().map(|run| RunRow::new(run, &listing.people, &urls)).collect(),
+        runs: listing.runs.iter().map(|run| RunRow::new(run, &listing.people, &urls, listing.progress.get(&run.id))).collect(),
         workflows,
         all_url: urls.runs(),
         workflow: selected.map(|(_, name)| name),

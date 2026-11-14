@@ -9,7 +9,34 @@ use rbit_core::{
     actions::{Run, RunEvent, Status},
 };
 use rbit_localization::OverviewControlMessage as Control;
+use rbit_services::actions::browse::RunProgress;
 use std::collections::BTreeMap;
+
+/// How far an unfinished run is: the ring in its row and the count beside it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Progress {
+    pub done: u64,
+    pub total: u64,
+    pub running: u64,
+    /// A job waits for a runner and none of the run's jobs is running.
+    pub waiting: bool,
+    /// The finished share of the ring, out of 100.
+    pub arc: u64,
+}
+
+impl Progress {
+    /// `None` for a finished run and for one without jobs.
+    pub fn of(run: &Run, jobs: Option<&RunProgress>) -> Option<Self> {
+        let jobs = jobs.filter(|jobs| jobs.total > 0 && !run.status.is_done())?;
+        Some(Self {
+            done: jobs.done,
+            total: jobs.total,
+            running: jobs.running,
+            waiting: jobs.running == 0 && jobs.waiting > 0,
+            arc: jobs.done.min(jobs.total) * 100 / jobs.total,
+        })
+    }
+}
 
 /// One row of the runs list.
 #[derive(Debug, Clone)]
@@ -29,10 +56,12 @@ pub struct RunRow {
     pub duration: Option<Took>,
     /// Why the workflow has no jobs, for workflow-error runs.
     pub error: Option<String>,
+    /// While it is not finished: how many of its jobs are.
+    pub progress: Option<Progress>,
 }
 
 impl RunRow {
-    pub fn new(run: &Run, people: &BTreeMap<AccountId, Account>, urls: &ActionsUrls) -> Self {
+    pub fn new(run: &Run, people: &BTreeMap<AccountId, Account>, urls: &ActionsUrls, jobs: Option<&RunProgress>) -> Self {
         Self {
             url: urls.run(run.number),
             look: StateLook::of_run(run),
@@ -47,6 +76,7 @@ impl RunRow {
             when_iso: run.created_at.iso8601(),
             duration: if run.status.is_done() || run.status == Status::Running { elapsed(run.started_at, run.finished_at) } else { None },
             error: run.error.clone(),
+            progress: Progress::of(run, jobs),
         }
     }
 }

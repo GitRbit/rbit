@@ -37,5 +37,16 @@ entries! { Ru:
                 _ => " запусков на этой странице",
             });
         }
+        ActionsOverviewMessage::JobsFinished { done, total } => {
+            text.literal("Завершено заданий: ");
+            text.number(done);
+            text.literal(" из ");
+            text.number(total);
+        }
+        ActionsOverviewMessage::JobsRunning { count } => {
+            text.literal("Выполняется заданий: ");
+            text.number(count);
+        }
+        ActionsOverviewMessage::WaitingForRunner => text.literal("Ожидание раннера"),
     }
 }
