@@ -3,6 +3,11 @@ use super::*;
 use crate::KvStore;
 use sqlx::Connection;
 use std::{future::Future, num::NonZeroU64, task::Poll, time::Duration};
+
+fn latest_migration() -> i64 {
+    sqlx::migrate!("./migrations").migrations.last().unwrap().version
+}
+
 #[tokio::test]
 async fn pinned_main_layout_installs_under_owner_without_key_or_session_cleanup_then_prepares() {
     let f = Fixture::main_snapshot().await;
@@ -14,7 +19,7 @@ async fn pinned_main_layout_installs_under_owner_without_key_or_session_cleanup_
         .install_layout()
         .await
         .unwrap_or_else(|failure| panic!("layout installation failed: {:?}", failure.error()));
-    assert_eq!(f.migration_rows().await.last().unwrap().0, 87);
+    assert_eq!(f.migration_rows().await.last().unwrap().0, latest_migration());
     assert!(!f.sql.with_file_name(crate::sealing::KEY_FILE_NAME).exists());
     assert_eq!(f.state().await, "legacy");
     assert!(KvStore::open(&f.kv).is_err(), "installed owner still retains the actual existing KV file");
@@ -87,7 +92,7 @@ async fn cancellation_of_install_waiter_does_not_drop_queued_operation_native_ow
     })
     .await
     .unwrap();
-    assert_eq!(f.migration_rows().await.last().unwrap().0, 87);
+    assert_eq!(f.migration_rows().await.last().unwrap().0, latest_migration());
     assert_eq!(f.state().await, "legacy");
     drop(owner);
 }
