@@ -97,7 +97,8 @@ impl RepositoryService {
     }
     /// Metadata, bare Git initialization, optional creator grant and publication retain their original order.
     pub async fn create_in(&self, actor: &User, owner: &str, input: CreateRepository) -> Result<OwnedRepository, ServiceError> {
-        self.create_repository(actor, owner, input, None).await
+        // Keep template seeding work out of the caller's async frame.
+        Box::pin(self.create_repository(actor, owner, input, None)).await
     }
 
     /// Creates an independent repository from the default branch of a readable source.

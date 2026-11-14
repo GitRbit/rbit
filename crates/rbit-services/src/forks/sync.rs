@@ -33,7 +33,10 @@ pub struct ForkSync {
 impl ForkService {
     /// The default branches' divergence, when both exist and the actor can edit the fork.
     pub async fn sync_status(&self, actor: &User, fork: &RepoContext) -> Result<Option<ForkSync>, ServiceError> {
-        if !fork.can_write_content() || fork.viewer != Some(actor.id()) || self.database.mirrors().is_mirror(fork.repo.repo.id).await? {
+        if !fork.can_write_content()
+            || fork.viewer != Some(actor.id())
+            || self.inner.database.mirrors().is_mirror(fork.repo.repo.id).await?
+        {
             return Ok(None);
         }
         let Some(upstream) = self.open_upstream(actor, fork).await? else { return Ok(None) };
@@ -47,7 +50,7 @@ impl ForkService {
         let (ahead, behind) = if expected.fork_tip == expected.upstream_tip {
             (0, 0)
         } else {
-            let overlay = Overlay::create(&self.config.storage.tmp_dir(), &[&fork.disk_path, &upstream.disk_path])
+            let overlay = Overlay::create(&self.inner.config.storage.tmp_dir(), &[&fork.disk_path, &upstream.disk_path])
                 .await?
                 .holding(fork_lease)
                 .holding(upstream_lease);
@@ -56,7 +59,7 @@ impl ForkService {
             (ahead, behind)
         };
         let refusal =
-            if ahead == 0 && behind > 0 { self.protection.branch_update_refusal(fork, actor, &expected.branch).await? } else { None };
+            if ahead == 0 && behind > 0 { self.inner.protection.branch_update_refusal(fork, actor, &expected.branch).await? } else { None };
         Ok(Some(ForkSync { upstream: upstream.repo, expected, ahead, behind, refusal }))
     }
 
@@ -67,7 +70,7 @@ impl ForkService {
             return Err(ServiceError::Forbidden);
         }
         fork.ensure_writable()?;
-        if self.database.mirrors().is_mirror(fork.repo.repo.id).await? {
+        if self.inner.database.mirrors().is_mirror(fork.repo.repo.id).await? {
             return Err(ServiceError::Invalid(PUSH_REFUSED.to_owned()));
         }
         let upstream = self.open_upstream(actor, fork).await?.ok_or(ServiceError::NotFound)?;
@@ -89,14 +92,14 @@ impl ForkService {
             after: Some(expected.upstream_tip.clone()),
         };
         let pusher = PushActor { user: Some(actor), deploy_key: false, access: fork.access };
-        let verdict = self.protection.check_push(fork, &pusher, std::slice::from_ref(&update)).await?;
+        let verdict = self.inner.protection.check_push(fork, &pusher, std::slice::from_ref(&update)).await?;
         if let Some(refusal) = verdict.refusals.into_iter().next() {
             return Err(ServiceError::Invalid(refusal.reason));
         }
         let env = MergeEnvironment {
-            git_binary: self.config.repository.git_binary.clone(),
-            tmp_dir: self.config.storage.tmp_dir(),
-            timeout: Duration::from_secs(self.config.pulls.merge_timeout_seconds.max(1)),
+            git_binary: self.inner.config.repository.git_binary.clone(),
+            tmp_dir: self.inner.config.storage.tmp_dir(),
+            timeout: Duration::from_secs(self.inner.config.pulls.merge_timeout_seconds.max(1)),
         };
         let overlay =
             Overlay::create(&env.tmp_dir, &[&fork.disk_path, &upstream.disk_path]).await?.holding(fork_lease).holding(upstream_lease);
@@ -109,7 +112,7 @@ impl ForkService {
                 other => ServiceError::internal(other),
             },
         )?;
-        self.pushes.record(fork.repo.repo.id, PushSource::User(actor.id()), vec![update]).await;
+        self.inner.pushes.record(fork.repo.repo.id, PushSource::User(actor.id()), vec![update]).await;
         Ok(())
     }
 
@@ -119,7 +122,7 @@ impl ForkService {
         if !parent.repo.visibility.is_public() {
             return Ok(None);
         }
-        let upstream = match self.repositories.open(Some(actor), parent.owner.name.as_str(), parent.repo.name.as_str()).await {
+        let upstream = match self.inner.repositories.open(Some(actor), parent.owner.name.as_str(), parent.repo.name.as_str()).await {
             Ok(repo) if repo.repo.repo.id == parent.repo.id && repo.repo.repo.visibility.is_public() => repo,
             Ok(_) | Err(ServiceError::NotFound) => return Ok(None),
             Err(error) => return Err(error),
@@ -139,7 +142,7 @@ impl ForkService {
         fork: &RepoContext,
         upstream: &RepoContext,
     ) -> (rbit_git::lease::RepositoryLease, rbit_git::lease::RepositoryLease) {
-        tokio::join!(self.storage.lease(fork.repo.repo.id), self.storage.lease(upstream.repo.repo.id))
+        tokio::join!(self.inner.storage.lease(fork.repo.repo.id), self.inner.storage.lease(upstream.repo.repo.id))
     }
 }
 
