@@ -53,6 +53,9 @@ entries! { Es:
         RepoBrowseLabel::PushExistingRepository => text.literal("Enviar un repositorio existente"),
         RepoBrowseLabel::CloseFileBrowser => text.literal("Cerrar el explorador de archivos"),
         RepoBrowseLabel::LanguageFiles => text.literal("Archivos del lenguaje"),
+        RepoBrowseLabel::SyncFork => text.literal("Sincronizar bifurcación"),
+        RepoBrowseLabel::CompareUpstream => text.literal("Comparar con el repositorio de origen"),
+        RepoBrowseLabel::ForkUpToDate => text.literal("Al día con"),
         RepoBrowseLabel::NoFilesForLanguage => text.literal("No se encontraron archivos de este lenguaje."),
         RepoBrowseLabel::NoMatchingFiles => text.literal("No hay archivos coincidentes."),
         RepoBrowseLabel::FileContent => text.literal("Contenido del archivo"),
@@ -146,6 +149,29 @@ entries! { Es:
                 Plural::One => " referencia",
                 _ => " referencias",
             });
+        }
+        RepoBrowseMessage::ForkDivergence { ahead, behind } => {
+            let count = |n: usize, suffix, text: &mut MessageWriter| {
+                text.number(n as u64);
+                if n >= 10_000 {
+                    text.literal("+");
+                }
+                text.literal(match text.plural(n as u64) {
+                    Plural::One => " commit ",
+                    _ => " commits ",
+                });
+                text.literal(suffix);
+            };
+            if ahead > 0 {
+                count(ahead, "por delante", text);
+            }
+            if ahead > 0 && behind > 0 {
+                text.literal(" y ");
+            }
+            if behind > 0 {
+                count(behind, "por detrás", text);
+            }
+            text.literal(" de");
         }
         RepoBrowseMessage::ForkTitle { owner, name } => {
             text.literal("Bifurcar ");

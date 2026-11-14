@@ -9,6 +9,11 @@ entries! { Es:
         RepoCreateLabel::NewRepository => text.literal("Nuevo repositorio"),
         RepoCreateLabel::RepositoryType => text.literal("Tipo de repositorio"),
         RepoCreateLabel::Empty => text.literal("Vacío"),
+        RepoCreateLabel::Template => text.literal("Plantilla"),
+        RepoCreateLabel::TemplateLead => text.literal("Empieza con los archivos de la rama predeterminada de un repositorio en un solo commit inicial."),
+        RepoCreateLabel::TemplateRepository => text.literal("Repositorio de plantilla"),
+        RepoCreateLabel::TemplatePath => text.literal("propietario/nombre"),
+        RepoCreateLabel::UseAsTemplate => text.literal("Usar como plantilla"),
         RepoCreateLabel::Mirror => text.literal("Réplica"),
         RepoCreateLabel::Import => text.literal("Importar"),
         RepoCreateLabel::NewLead => text.literal(

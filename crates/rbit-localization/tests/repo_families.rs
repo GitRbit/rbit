@@ -79,6 +79,7 @@ fn repository_messages_translate_to_spanish_with_plain_arguments() {
         RepoBrowseMessage::ListingResults { total: 1, page: 1, pages: 1 },
         RepoBrowseMessage::RefPage { page: 1, pages: 3, total: 52 },
         RepoBrowseMessage::ForkTitle { owner: "<alice>", name: "project" },
+        RepoBrowseMessage::ForkDivergence { ahead: 1, behind: 2 },
     ]));
     ids.extend(check(&[
         RepoHistoryMessage::CommitsOn { date: "May 1" },
