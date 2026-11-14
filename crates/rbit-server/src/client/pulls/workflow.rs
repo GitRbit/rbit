@@ -7,6 +7,34 @@ use tokio::time::Instant;
 
 use super::{Api, Output, Repo, agent, enqueue, queue_wait, short, text, watch_snapshot};
 
+pub(super) async fn show_watch(
+    api: &Api,
+    repo: &Repo,
+    number: u64,
+    cursor: Option<&str>,
+    timeout: u64,
+    out: &Output,
+) -> anyhow::Result<()> {
+    let mut body = watch_snapshot(api, repo, number, cursor, timeout).await?;
+    if out.json {
+        if let Some(object) = body.as_object_mut() {
+            object.remove("schema");
+        }
+        agent::print("rbit.pr-watch/1", body);
+    } else {
+        let update = if body["changed"] == true { "snapshot" } else { "unchanged" };
+        println!("#{number} {} at {} ({update})", text(&body, "state"), short(text(&body, "head")));
+        for requirement in body["readiness"]["requirements"].as_array().into_iter().flatten() {
+            if requirement["met"] == false {
+                println!("  {}", text(requirement, "says"));
+            }
+        }
+        println!("  Unresolved review threads: {}", body["thread_count"]);
+        println!("  Cursor: {}", text(&body, "cursor"));
+    }
+    Ok(())
+}
+
 pub(super) fn deadline(timeout: u64) -> anyhow::Result<Instant> {
     Instant::now().checked_add(Duration::from_secs(timeout)).ok_or_else(|| agent::outcome("usage", "the timeout is too long", None))
 }
