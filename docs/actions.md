@@ -482,7 +482,7 @@ job and how it ended, so a test that failed and then passed on the same commit c
 `rbit run failure` and `rbit run log` use them.
 
 A waiting job carries rbit's own `queue`: its `position` among waiting jobs with the same
-labels (oldest first), how many are `ahead`, and `expected_start_seconds`, from how long the
+labels (jobs of runs in progress first, then the job queued first), how many are `ahead`, and `expected_start_seconds`, from how long the
 last 50 such jobs took, assuming one runner; `rbit status` shows the position of a commit's
 front job.
 
