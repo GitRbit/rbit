@@ -8,7 +8,10 @@ use std::{
 };
 
 use rbit_core::{Timestamp, issue::MergeStrategy, pull::CommitIdentity};
-use rbit_git::merge::{MergeEnvironment, MergeError, MergeSpec, TrialMerge, merge, trial};
+use rbit_git::{
+    merge::{MergeEnvironment, MergeError, MergeSpec, TrialMerge, merge, trial, writes::fast_forward_fork},
+    overlay::Overlay,
+};
 
 fn git(dir: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
@@ -113,6 +116,23 @@ async fn run(fixture: &Fixture, strategy: MergeStrategy, base_tip: &str, head: &
         at: Timestamp(1_700_000_000),
     };
     merge(&fixture.env, &spec).await.map(|merged| merged.commit)
+}
+
+#[tokio::test]
+async fn fast_forwarding_a_fork_preserves_a_branch_that_moved_since_preflight() {
+    let fixture = Fixture::new();
+    let fork = fixture.dir.path().join("fork.git");
+    let main = fixture.tip("main");
+    let feature = fixture.tip("feature");
+    let original = git(&fixture.work, &["rev-parse", "main^"]);
+    git(fixture.dir.path(), &["clone", "-q", "--bare", fixture.bare.to_str().unwrap(), fork.to_str().unwrap()]);
+    let update_fork = |commit: &str| git(&fork, &["update-ref", "refs/heads/main", commit]);
+    update_fork(&original);
+    let overlay = Overlay::create(&fixture.env.tmp_dir, &[&fork, &fixture.bare]).await.unwrap();
+    update_fork(&feature);
+    let result = fast_forward_fork(&fixture.env, &overlay, &fork, "main", &original, &main).await;
+    assert!(matches!(result, Err(MergeError::BaseMoved)), "late ref move must fail the write: {result:?}");
+    assert_eq!(git(&fork, &["rev-parse", "refs/heads/main"]), feature);
 }
 
 #[tokio::test]

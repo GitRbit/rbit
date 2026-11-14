@@ -13,6 +13,35 @@ use rbit_core::{Timestamp, issue::MergeStrategy, pull::CommitIdentity};
 use super::{Git, MERGES_DIR, MergeEnvironment, MergeError, MergeSpec, Merged, Overlay, Signature, build, hand_over, validate_id};
 use crate::pull_refs::branch_ref;
 
+/// Fast-forwards a fork's branch to an upstream commit visible through `overlay`.
+/// The expected fork tip must be an ancestor of `commit` and still own the branch.
+///
+/// # Errors
+///
+/// [`MergeError::Unrelated`] if this would discard commits, [`MergeError::BaseMoved`]
+/// if the branch moved, or another [`MergeError`] if Git fails or times out.
+pub async fn fast_forward_fork(
+    env: &MergeEnvironment,
+    overlay: &Overlay,
+    fork: &Path,
+    branch: &str,
+    expected: &str,
+    commit: &str,
+) -> Result<(), MergeError> {
+    validate_id(expected)?;
+    validate_id(commit)?;
+    let target = branch_ref(branch)?;
+    let work = async {
+        let scratch = Git { binary: &env.git_binary, dir: overlay.path() };
+        if !scratch.is_ancestor(expected, commit).await? {
+            return Err(MergeError::Unrelated);
+        }
+        let fork = Git { binary: &env.git_binary, dir: fork };
+        hand_over(&scratch, &fork, &target, commit, expected, "rbit: sync fork from upstream").await
+    };
+    tokio::time::timeout(env.timeout, work).await.map_err(|_| MergeError::TimedOut(env.timeout))?
+}
+
 /// Merges `base_tip` into branch `head_branch` of `repo` if it still is `head_sha`, with a
 /// merge commit by `merger`; [`MergeError::NothingToMerge`] when the head already has it.
 ///

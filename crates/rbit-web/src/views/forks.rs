@@ -17,6 +17,27 @@ use crate::views::{
 pub struct ForkedFrom {
     pub full_name: String,
     pub url: String,
+    pub public: bool,
+}
+
+#[derive(Debug, Template, WebTemplate)]
+#[template(path = "repo/fork_sync.html")]
+pub struct ForkSyncPanel {
+    pub page: Page,
+    pub sync: rbit_services::forks::ForkSync,
+    pub action_url: String,
+    pub compare_url: String,
+}
+
+/// Full page fallback when a request was not made by the deferred fragment.
+#[derive(Debug, Template, WebTemplate)]
+#[template(path = "repo/fork_sync_page.html")]
+pub struct ForkSyncPage {
+    pub page: Page,
+    pub sync: rbit_services::forks::ForkSync,
+    pub action_url: String,
+    pub compare_url: String,
+    pub home_url: String,
 }
 
 /// `/{owner}/{repo}/fork`: choose where the fork goes.

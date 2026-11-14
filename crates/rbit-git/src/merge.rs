@@ -360,7 +360,7 @@ impl Git<'_> {
         }
     }
 
-    async fn tree_of(&self, commit: &str) -> Result<String, MergeError> {
+    pub(crate) async fn tree_of(&self, commit: &str) -> Result<String, MergeError> {
         let out = self.run(["rev-parse", "--verify", "--end-of-options", &format!("{commit}^{{tree}}")]).await?;
         Ok(String::from_utf8_lossy(&out).trim().to_owned())
     }

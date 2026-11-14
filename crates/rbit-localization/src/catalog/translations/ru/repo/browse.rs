@@ -81,6 +81,7 @@ entries! { Ru:
         RepoBrowseLabel::StargazersEmpty => text.literal("Здесь появятся люди, поставившие звезду этому репозиторию."),
         RepoBrowseLabel::RepositoryActivity => text.literal("Активность репозитория"),
         RepoBrowseLabel::GoToFile => text.literal("Перейти к файлу"),
+        RepoBrowseLabel::ClearFileFilters => text.literal("Сбросить фильтры"),
         RepoBrowseLabel::MatchingFiles => text.literal("Подходящие файлы"),
         RepoBrowseLabel::LoadingFiles => text.literal("Загрузка файлов…"),
         RepoBrowseLabel::UnableToLoadFiles => text.literal("Не удалось загрузить файлы. Нажмите Enter, чтобы выполнить поиск."),

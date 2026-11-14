@@ -1,0 +1,27 @@
+{% import "macros.html" as ui %}
+<section class="box mb-3 flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-[13px]" aria-label="{{ rbit_localization::RepoBrowseLabel::SyncFork.text(page.locale) }}">
+  <div class="min-w-0">
+    <p class="text-ink-muted">
+      {% if sync.ahead == 0 && sync.behind == 0 %}
+      {% call ui::localized(rbit_localization::RepoBrowseLabel::ForkUpToDate.text(page.locale)) %}{% endcall %}
+      {% else %}
+      {% call ui::localized(rbit_localization::RepoBrowseMessage::ForkDivergence { ahead: *sync.ahead, behind: *sync.behind }.text(page.locale)) %}{% endcall %}
+      {% endif %}
+      <bdi class="break-all font-medium text-ink">{{ sync.upstream.full_name() }}:{{ sync.expected.upstream_branch }}</bdi>
+    </p>
+    {% if let Some(reason) = sync.refusal %}<p class="mt-0.5 text-xs text-ink-muted">{{ reason }}</p>{% endif %}
+  </div>
+  {% if sync.behind > 0 %}
+    {% if sync.ahead == 0 && sync.refusal.is_none() %}
+    <form method="post" action="{{ action_url }}" hx-boost="false">
+      <input type="hidden" name="branch" value="{{ sync.expected.branch }}">
+      <input type="hidden" name="fork_tip" value="{{ sync.expected.fork_tip }}">
+      <input type="hidden" name="upstream_branch" value="{{ sync.expected.upstream_branch }}">
+      <input type="hidden" name="upstream_tip" value="{{ sync.expected.upstream_tip }}">
+      <button class="btn" type="submit">{% call ui::localized(rbit_localization::RepoBrowseLabel::SyncFork.text(page.locale)) %}{% endcall %}</button>
+    </form>
+    {% else %}
+    <a href="{{ compare_url }}" class="btn">{% call ui::localized(rbit_localization::RepoBrowseLabel::CompareUpstream.text(page.locale)) %}{% endcall %}</a>
+    {% endif %}
+  {% endif %}
+</section>

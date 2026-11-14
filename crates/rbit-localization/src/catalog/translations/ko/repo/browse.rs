@@ -80,6 +80,7 @@ entries! { Ko:
         RepoBrowseLabel::StargazersEmpty => text.literal("이 저장소에 스타를 표시한 사용자가 여기에 표시됩니다."),
         RepoBrowseLabel::RepositoryActivity => text.literal("저장소 활동"),
         RepoBrowseLabel::GoToFile => text.literal("파일로 이동"),
+        RepoBrowseLabel::ClearFileFilters => text.literal("필터 초기화"),
         RepoBrowseLabel::MatchingFiles => text.literal("일치하는 파일"),
         RepoBrowseLabel::LoadingFiles => text.literal("파일을 불러오는 중…"),
         RepoBrowseLabel::UnableToLoadFiles => text.literal("파일을 불러올 수 없습니다. Enter 키를 눌러 검색하세요."),

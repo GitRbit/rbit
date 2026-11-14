@@ -7,6 +7,11 @@ labels! {
         NewRepository => "repo.create.title", "New repository";
         RepositoryType => "repo.create.type", "Repository type";
         Empty => "repo.create.tab-empty", "Empty";
+        Template => "repo.create.tab-template", "Template";
+        TemplateLead => "repo.create.template-lead", "Start with the files from a repository's default branch in one initial commit.";
+        TemplateRepository => "repo.create.template-repository", "Template repository";
+        TemplatePath => "repo.create.template-path", "owner/name";
+        UseAsTemplate => "repo.create.use-as-template", "Use as template";
         Mirror => "repo.create.tab-mirror", "Mirror";
         Import => "repo.create.tab-import", "Import";
         NewLead => "repo.create.lead", "Create an empty repository, import a project, or keep a mirror in sync with its source.";

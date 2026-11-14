@@ -39,6 +39,7 @@
 
 mod batch_view;
 pub mod locks;
+mod templates;
 pub mod tokens;
 
 use std::{

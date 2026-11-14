@@ -1,4 +1,4 @@
-// Language controls open a dialog without navigating away from the repository.
+// Both repository file search and language controls open the same file browser.
 let languageRequest = null;
 let previewRequest = null;
 
@@ -27,7 +27,7 @@ async function showLanguageFiles(trigger, url = trigger.dataset.languageFilesUrl
   dialog.className = 'language-dialog';
   dialog.dataset.languageDialog = '';
   dialog.languageTrigger = trigger;
-  dialog.setAttribute('aria-label', 'Language files');
+  dialog.setAttribute('aria-label', 'Browse files');
   const loading = document.createElement('p');
   loading.className = 'p-6 text-ink-muted';
   loading.setAttribute('role', 'status');
@@ -40,9 +40,13 @@ async function showLanguageFiles(trigger, url = trigger.dataset.languageFilesUrl
   dialog.append(loading, close);
   dialog.addEventListener('close', () => {
     controller.abort();
-    previewRequest?.abort();
+    if (languageRequest === controller) {
+      languageRequest = null;
+      previewRequest?.abort();
+      previewRequest = null;
+    }
     dialog.remove();
-    if (trigger.isConnected) trigger.focus({ preventScroll: true });
+    if (trigger.isConnected && !document.querySelector('[data-language-dialog]')) trigger.focus({ preventScroll: true });
   });
   dialog.addEventListener('click', event => {
     if (event.target !== dialog) return;
@@ -61,10 +65,13 @@ async function showLanguageFiles(trigger, url = trigger.dataset.languageFilesUrl
     if (!dialog.open) return;
     dialog.replaceChildren(content);
     indentLanguageFiles(content);
-    content.querySelector('[data-language-close]').hidden = false;
+    const closeControl = content.querySelector('[data-language-close]');
+    closeControl.hidden = false;
+    dialog.removeAttribute('aria-label');
     dialog.setAttribute('aria-labelledby', 'language-files-title');
     window.htmx?.process(content);
-    content.querySelector('[data-language-close]').focus();
+    const search = trigger.dataset.repositoryFileSearch !== undefined && content.querySelector('[data-listing-search] input[name="q"]');
+    (search || closeControl).focus({ preventScroll: true });
   } catch (error) {
     if (error.name === 'AbortError') return;
     loading.textContent = 'Unable to load files. ';
@@ -138,7 +145,7 @@ document.addEventListener('click', event => {
     return;
   }
   const trigger = target?.closest('[data-language-files]');
-  if (trigger) {
+  if (trigger && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
     event.preventDefault();
     // htmx's boosted click handler does not check defaultPrevented.
     event.stopPropagation();

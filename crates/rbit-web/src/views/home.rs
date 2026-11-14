@@ -126,9 +126,19 @@ pub struct NewRepositoryPage {
     pub name: String,
     pub description: String,
     pub private: bool,
+    /// A selected template, or an empty string when the template form needs a source.
+    pub template: Option<String>,
 }
 
 impl NewRepositoryPage {
+    pub fn creation_kind(&self) -> &'static str {
+        if self.template.is_some() { "template" } else { "new" }
+    }
+
+    pub fn field_prefix(&self) -> &'static str {
+        if self.template.is_some() { "template-" } else { "" }
+    }
+
     /// The selected owner (for the single-owner layout).
     pub fn selected_owner(&self) -> Option<&OwnerOption> {
         self.owners.iter().find(|owner| owner.selected).or_else(|| self.owners.first())

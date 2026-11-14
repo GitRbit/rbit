@@ -5,7 +5,7 @@
 //! [`ForkService`] methods and the crate helpers `forks_among`, `is_fork`,
 //! `network` and `has_private_ancestor`.
 
-use crate::{EventBus, RepoContext, RepositoryService, ServiceContext, ServiceError};
+use crate::{EventBus, ProtectionService, PushService, RepoContext, RepositoryService, ServiceContext, ServiceError};
 use rbit_core::{Config, RepoId, User, repository::OwnedRepository};
 use rbit_git::RepositoryStorage;
 use rbit_repositories::forks::{ForkCreation, ForkCreationError, ForkParentError, ForkQueries};
@@ -14,28 +14,48 @@ use rbit_storage::{Database, ForkReadStore};
 use std::{collections::HashSet, sync::Arc};
 mod effects;
 mod reading;
+mod sync;
 use effects::ForkEffects;
 use reading::ParentAccess;
+pub use sync::{ForkSync, ForkSyncExpectation};
 
 #[derive(Debug, Clone)]
 pub struct ForkService {
+    inner: Arc<ForkServices>,
+}
+
+#[derive(Debug)]
+struct ForkServices {
     config: Arc<Config>,
     database: Database,
     storage: RepositoryStorage,
     events: EventBus,
     repositories: RepositoryService,
+    protection: ProtectionService,
+    pushes: PushService,
 }
+
 impl ForkService {
     pub(crate) fn new(ctx: ServiceContext, repositories: RepositoryService) -> Self {
-        Self { config: ctx.config, database: ctx.database, storage: ctx.repositories, events: ctx.events, repositories }
+        Self {
+            inner: Arc::new(ForkServices {
+                protection: ProtectionService::new(ctx.clone()),
+                pushes: PushService::new(ctx.clone()),
+                config: ctx.config,
+                database: ctx.database,
+                storage: ctx.repositories,
+                events: ctx.events,
+                repositories,
+            }),
+        }
     }
     pub async fn fork(&self, actor: &User, parent: &RepoContext, input: ForkInput) -> Result<OwnedRepository, ServiceError> {
         let effects = ForkEffects {
-            config: &self.config,
-            database: &self.database,
-            storage: &self.storage,
-            events: &self.events,
-            owners: &self.repositories,
+            config: &self.inner.config,
+            database: &self.inner.database,
+            storage: &self.inner.storage,
+            events: &self.inner.events,
+            owners: &self.inner.repositories,
             parent,
         };
         ForkCreation::new(&effects).fork(actor, &parent.repo, parent.access.can_read(), input).await.map_err(|error| match error {
@@ -46,25 +66,25 @@ impl ForkService {
         })
     }
     pub async fn parent(&self, viewer: Option<&User>, repo: &RepoContext) -> Result<Option<OwnedRepository>, ServiceError> {
-        let store = ForkReadStore::new(self.database.forks());
-        let access = ParentAccess { repositories: &self.repositories, viewer };
+        let store = ForkReadStore::new(self.inner.database.forks());
+        let access = ParentAccess { repositories: &self.inner.repositories, viewer };
         ForkQueries::new(&store).parent(repo.repo.repo.id, &access).await.map_err(|error| match error {
             ForkParentError::Store(error) => error.into(),
             ForkParentError::Access(error) => error,
         })
     }
     pub async fn forks_among(&self, repos: &[RepoId]) -> Result<HashSet<RepoId>, ServiceError> {
-        forks_among(&self.database, repos).await
+        forks_among(&self.inner.database, repos).await
     }
     pub async fn is_fork(&self, repo: RepoId) -> Result<bool, ServiceError> {
-        is_fork(&self.database, repo).await
+        is_fork(&self.inner.database, repo).await
     }
     pub async fn count(&self, viewer: Option<&User>, repo: &RepoContext) -> Result<u64, ServiceError> {
-        Ok(ForkQueries::new(&ForkReadStore::new(self.database.forks())).count(reading::viewer(viewer), repo.repo.repo.id).await?)
+        Ok(ForkQueries::new(&ForkReadStore::new(self.inner.database.forks())).count(reading::viewer(viewer), repo.repo.repo.id).await?)
     }
     pub async fn list(&self, viewer: Option<&User>, repo: &RepoContext) -> Result<Vec<OwnedRepository>, ServiceError> {
         let viewer = reading::viewer(viewer);
-        let store = ForkReadStore::new(self.database.forks());
+        let store = ForkReadStore::new(self.inner.database.forks());
         Ok(ForkQueries::new(&store).list(viewer, repo.repo.repo.id).await?)
     }
     pub async fn page(
@@ -75,7 +95,7 @@ impl ForkService {
         offset: u32,
     ) -> Result<(Vec<OwnedRepository>, u64), ServiceError> {
         let viewer = reading::viewer(viewer);
-        let store = ForkReadStore::new(self.database.forks());
+        let store = ForkReadStore::new(self.inner.database.forks());
         Ok(ForkQueries::new(&store).page(viewer, repo.repo.repo.id, limit, offset).await?)
     }
 }

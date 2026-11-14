@@ -93,6 +93,7 @@ entries! { De:
         }
         RepoBrowseLabel::RepositoryActivity => text.literal("Repository-Aktivität"),
         RepoBrowseLabel::GoToFile => text.literal("Zu Datei springen"),
+        RepoBrowseLabel::ClearFileFilters => text.literal("Filter zurücksetzen"),
         RepoBrowseLabel::MatchingFiles => text.literal("Passende Dateien"),
         RepoBrowseLabel::LoadingFiles => text.literal("Dateien werden geladen…"),
         RepoBrowseLabel::UnableToLoadFiles => text.literal("Dateien konnten nicht geladen werden. Drücken Sie die Eingabetaste, um zu suchen."),

@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block content %}
+  <h1 class="mb-3 text-lg font-semibold">{% call ui::localized(rbit_localization::RepoBrowseLabel::SyncFork.text(page.locale)) %}{% endcall %}</h1>
+  {% include "repo/fork_sync.html" %}
+  <a class="btn btn-ghost" href="{{ home_url }}">{% call ui::localized(rbit_localization::RepoBrowseLabel::Cancel.text(page.locale)) %}{% endcall %}</a>
+{% endblock %}

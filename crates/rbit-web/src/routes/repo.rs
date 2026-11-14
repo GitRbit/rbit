@@ -10,7 +10,7 @@ use axum::{
 };
 use rbit_core::mirror::Mirror;
 use rbit_git::{EntryKind, GitError, RefKind, RefSummary};
-use rbit_localization::{RepoBrowseMessage, RepoNavLabel};
+use rbit_localization::{RepoBrowseLabel, RepoBrowseMessage, RepoNavLabel};
 use rbit_services::{RepoContext, ServiceError, StarSummary, timeline::OpenCounts};
 use serde::Deserialize;
 
@@ -131,7 +131,11 @@ impl RepoPage {
         };
         let (refs, actions_on) = tokio::join!(ctx.reader.refs(), actions_on);
         let refs = refs.map_err(ServiceError::from)?;
-        let forked_from = header.parent.map(|parent| ForkedFrom { url: format!("/{}", parent.full_name()), full_name: parent.full_name() });
+        let forked_from = header.parent.map(|parent| ForkedFrom {
+            url: format!("/{}", parent.full_name()),
+            full_name: parent.full_name(),
+            public: parent.visibility.is_public(),
+        });
         Ok(Self {
             ctx,
             urls,
@@ -204,15 +208,15 @@ fn split_known_ref(refs: &[RefSummary], combined: &str) -> Option<(String, Strin
 #[derive(Deserialize)]
 pub struct LanguageFilesQuery {
     revision: String,
-    language: String,
+    language: Option<String>,
     #[serde(default)]
     q: String,
     #[serde(default)]
     page: usize,
 }
 
-/// A paged full page without JavaScript, pinned to the commit used for classification;
-/// the language dialog extracts its file outline.
+/// A paged file browser pinned to a commit, optionally narrowed to a language.
+/// The dialog extracts its file outline from the same page.
 pub async fn language_files(
     State(state): State<AppState>,
     viewer: Viewer,
@@ -222,24 +226,44 @@ pub async fn language_files(
 ) -> WebResult<crate::views::repo_files::LanguageFilesPage> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let revision = loaded.ctx.reader.commit_id(query.revision).await.map_err(ServiceError::from)?;
-    let paths = loaded.ctx.reader.language_files(revision.clone(), query.language.clone()).await.map_err(ServiceError::from)?;
+    let language = query.language.filter(|language| !language.is_empty());
+    let (mut paths, truncated) = if let Some(language) = &language {
+        let paths = loaded.ctx.reader.language_files(revision.clone(), language.clone()).await.map_err(ServiceError::from)?;
+        (paths, false)
+    } else {
+        loaded.ctx.reader.file_paths(revision.clone(), files::FINDER_FILE_LIMIT).await.map_err(ServiceError::from)?
+    };
     let search = ListQuery { q: query.q, page: query.page }.normalized();
-    let needle = search.q.to_lowercase();
-    let paths: Vec<_> = paths.into_iter().filter(|path| needle.is_empty() || path.to_lowercase().contains(&needle)).collect();
-    let pagination = Pagination::new(
-        paths.len(),
-        &search,
-        format!("{}/language-files", loaded.urls.home()),
-        vec![("revision".into(), revision.clone()), ("language".into(), query.language.clone())],
-    );
+    if !search.q.is_empty() {
+        if language.is_some() {
+            let needle = search.q.to_lowercase();
+            paths.retain(|path| path.to_lowercase().contains(&needle));
+        } else {
+            paths.retain(|path| crate::views::file_finder::file_match_score(path, &search.q).is_some());
+        }
+    }
+    let action = format!("{}/language-files", loaded.urls.home());
+    let clear_filters = (language.is_some() || !search.q.is_empty()).then(|| format!("{action}?revision={revision}"));
+    let mut extra = vec![("revision".into(), revision.clone())];
+    if let Some(language) = &language {
+        extra.push(("language".into(), language.clone()));
+    }
+    let pagination = Pagination::new(paths.len(), &search, action, extra);
     // The outline covers only this page's paths, so its size stays bounded.
     let rows = crate::views::repo_files::file_rows(&paths[pagination.start..pagination.end], &loaded.urls, &revision);
+    let full_name = loaded.ctx.repo.full_name();
+    let page = match &language {
+        Some(language) => repo_text::titled(page, RepoBrowseMessage::LanguageFiles { language }, &full_name),
+        None => repo_text::titled(page, RepoBrowseLabel::GoToFile, &full_name),
+    };
     Ok(crate::views::repo_files::LanguageFilesPage {
-        page: repo_text::titled(page, RepoBrowseMessage::LanguageFiles { language: &query.language }, &loaded.ctx.repo.full_name()),
+        page,
         header: loaded.header_at(&state, "code", &revision),
-        language: query.language,
+        language,
         rows,
         pagination,
+        clear_filters,
+        truncated,
     })
 }
 
@@ -355,11 +379,15 @@ async fn render_tree(
         document_scope: urls.home(),
         history_url: urls.commits(&revision),
         commit_count_url: files::commit_count_url(urls, &view.commit.id),
-        finder: files::finder(urls, &revision, &view.commit.id),
         languages,
         language_files_url: format!("{}/language-files?revision={}", urls.home(), crate::urls::encode_path(&view.commit.id)),
         latest_release,
         collaborator,
+        fork_sync_url: (path.is_empty()
+            && revision == loaded.default_branch()
+            && loaded.forked_from.as_ref().is_some_and(|p| p.public)
+            && editable)
+            .then(|| format!("{}/fork/sync", urls.home())),
         new_file_url: editable.then(|| urls.edit("new", &revision, &path)),
         upload_url: editable.then(|| urls.edit("upload", &revision, &path)),
     })

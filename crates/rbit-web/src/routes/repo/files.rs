@@ -28,7 +28,7 @@ use crate::{
 /// Commits counted before the count is shown as "N+" instead.
 const COMMIT_COUNT_LIMIT: u64 = 1_000_000;
 /// Files the finder lists for one revision.
-const FINDER_FILE_LIMIT: usize = 100_000;
+pub(super) const FINDER_FILE_LIMIT: usize = 100_000;
 /// Matches shown on the find page.
 const FIND_RESULTS: usize = 100;
 
@@ -36,8 +36,8 @@ pub(super) fn commit_count_url(urls: &RepoUrls, commit_id: &str) -> String {
     format!("{}/commit-count/{commit_id}", urls.home())
 }
 
-/// The finder for the tree page of `revision`, whose paths are those of `commit_id`.
-pub(super) fn finder(urls: &RepoUrls, revision: &str, commit_id: &str) -> FileFinder {
+/// The standalone finder for `revision`, whose paths are those of `commit_id`.
+fn finder(urls: &RepoUrls, revision: &str, commit_id: &str) -> FileFinder {
     let action = format!("{}/find/{}", urls.home(), encode_path(revision));
     FileFinder {
         paths_url: format!("{}/find/{commit_id}?format=paths", urls.home()),

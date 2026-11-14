@@ -96,6 +96,7 @@ entries! { PtBr:
         }
         RepoBrowseLabel::RepositoryActivity => text.literal("Atividade do repositório"),
         RepoBrowseLabel::GoToFile => text.literal("Ir para arquivo"),
+        RepoBrowseLabel::ClearFileFilters => text.literal("Limpar filtros"),
         RepoBrowseLabel::MatchingFiles => text.literal("Arquivos correspondentes"),
         RepoBrowseLabel::LoadingFiles => text.literal("Carregando arquivos…"),
         RepoBrowseLabel::UnableToLoadFiles => text.literal("Não foi possível carregar os arquivos. Pressione Enter para pesquisar."),

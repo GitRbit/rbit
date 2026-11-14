@@ -50,6 +50,7 @@ pub mod revision;
 // Agent loop: scratch refs for CI runs of commits on no branch.
 pub mod scratch;
 pub mod storage;
+pub mod template;
 pub mod wikis;
 
 pub use changes::DiffLimits;
