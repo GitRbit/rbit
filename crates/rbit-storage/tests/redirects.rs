@@ -3,7 +3,7 @@
 //! whenever a repository arrives at one.
 
 use rbit_core::{AccountId, RepoId, Repository, User, Visibility};
-use rbit_storage::{Database, NewRepository, NewUser};
+use rbit_storage::{Database, NewRepository, NewUser, StorageError};
 
 struct Fixture {
     _dir: tempfile::TempDir,
@@ -109,13 +109,24 @@ async fn account_redirects_follow_identity_across_moves_and_name_reuse() {
     accounts.rename(fixture.alice.id(), &"alice".parse().unwrap()).await.unwrap();
     assert!(accounts.find_by_old_name("alice").await.unwrap().is_none(), "renaming back cannot loop");
     accounts.rename(fixture.alice.id(), &"final".parse().unwrap()).await.unwrap();
-    accounts.rename(fixture.bob.id(), &"alice".parse().unwrap()).await.unwrap();
-    let newcomer = accounts.find_user(fixture.bob.id()).await.unwrap().unwrap();
-    assert!(accounts.find_by_old_name("alice").await.unwrap().is_none());
-    assert_eq!(fixture.redirect("alice", "before").await, None, "new account shadows the entire old namespace");
-    accounts.rename(newcomer.id(), &"newcomer".parse().unwrap()).await.unwrap();
-    assert_eq!(accounts.find_by_old_name("alice").await.unwrap().unwrap().id, newcomer.id());
-    assert_eq!(fixture.redirect("alice", "after").await, None, "former owner's redirects never reappear");
+    // A former name stays reserved for its account: nobody else can take over its addresses.
+    let taken = accounts.rename(fixture.bob.id(), &"Alice".parse().unwrap()).await;
+    assert!(matches!(taken, Err(StorageError::Conflict("username"))), "{taken:?}");
+    assert_eq!(accounts.find_user(fixture.bob.id()).await.unwrap().unwrap().name().as_str(), "bob");
+    let squatter = NewUser {
+        name: "renamed".parse().unwrap(),
+        email: "squatter@example.com".parse().unwrap(),
+        display_name: None,
+        password_hash: "not-a-real-hash".to_owned(),
+        is_admin: false,
+    };
+    let created = accounts.create_user(squatter).await;
+    assert!(matches!(created, Err(StorageError::Conflict("username"))), "{created:?}");
+    assert_eq!(accounts.find_by_old_name("alice").await.unwrap().unwrap().id, fixture.alice.id());
+    assert_eq!(fixture.redirect("alice", "after").await, Some(repo.id), "the old address still leads to the repository");
+    // The account itself may return to any of its former names.
+    accounts.rename(fixture.alice.id(), &"renamed".parse().unwrap()).await.unwrap();
+    assert_eq!(accounts.find_by_old_name("final").await.unwrap().unwrap().id, fixture.alice.id());
 }
 
 #[tokio::test]

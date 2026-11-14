@@ -52,16 +52,20 @@ async fn username_form_keeps_profile_links_git_remotes_and_tokens_working() {
     let login = server.client();
     login.sign_in("alice", PASSWORD).await.expect_status(StatusCode::UNPROCESSABLE_ENTITY);
     login.sign_in("finalname", PASSWORD).await.expect_redirect("/");
-    // Reclaiming the name shadows the entire namespace, not just existing repositories.
+    // A former name stays reserved: nobody else can take over the addresses that still lead here.
     let newcomer = server.client();
     newcomer
         .post("/signup", &[("username", "alice"), ("email", "newalice@example.test"), ("password", PASSWORD)])
         .await
-        .expect_redirect("/");
-    anonymous.get("/alice").await.expect_status(StatusCode::OK);
-    anonymous.get("/alice/project").await.expect_status(StatusCode::NOT_FOUND);
-    newcomer.create_repo("alice", "project", "public").await;
-    anonymous.get("/alice/project").await.expect_status(StatusCode::OK);
+        .expect_status(StatusCode::UNPROCESSABLE_ENTITY);
+    newcomer.sign_in("alice", PASSWORD).await.expect_status(StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(anonymous.get("/alice/project").await.location(), Some("/finalname/latest"));
+    // Its own account may return to it.
+    alice
+        .post("/settings/account/username", &[("username", "alice"), ("current_password", PASSWORD)])
+        .await
+        .expect_redirect("/settings/account?saved=username");
+    anonymous.get("/alice/latest").await.expect_status(StatusCode::OK);
 }
 
 #[tokio::test]
