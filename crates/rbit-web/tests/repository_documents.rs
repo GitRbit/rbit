@@ -16,6 +16,9 @@ use rbit_services::{CreateRepository, Services};
 use rbit_storage::{Database, KvStore, NewUser};
 use tower::ServiceExt;
 
+#[path = "repository_documents/repository_workflows.rs"]
+mod repository_workflows;
+
 const HOME: &str = "/docs-owner/public";
 
 fn git(directory: &Path, arguments: &[&str]) -> String {
@@ -47,6 +50,7 @@ fn write_documents(source: &Path) {
         ("docs/guide.md", "A guide."),
         ("docs/contact.md", "A contact."),
         ("secret.txt", "UNSELECTABLE_FILE_BODY_MARKER"),
+        ("main.rs", "fn main() {}\n"),
     ] {
         std::fs::write(source.join(path), content).unwrap();
     }
@@ -137,6 +141,20 @@ impl Fixture {
     async fn document(&self, page: &str, document: &str) -> (StatusCode, String) {
         let document = utf8_percent_encode(document, NON_ALPHANUMERIC);
         self.get(&format!("{page}?document={document}"), false, false).await
+    }
+
+    async fn submit(&self, path: &str, form: String) -> (StatusCode, Option<String>) {
+        let request = Request::builder()
+            .method("POST")
+            .uri(path)
+            .header(header::COOKIE, &self.cookie)
+            .header(header::ORIGIN, "http://localhost:3000")
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(Body::from(form))
+            .unwrap();
+        let response = self.router.clone().oneshot(request).await.unwrap();
+        let redirect = response.headers().get(header::LOCATION).map(|value| value.to_str().unwrap().to_owned());
+        (response.status(), redirect)
     }
 }
 

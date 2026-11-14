@@ -1,11 +1,11 @@
-//! "Go to file" and the commit count on a repository's file listing.
+//! The standalone file finder and the commit count on a repository's file listing.
 
 use askama::Template;
 use askama_web::WebTemplate;
 
 use super::{layout::Page, repo::RepoHeader};
 
-/// The "Go to file" box above the file table: a form that opens [`FindPage`] without
+/// The search box on the dedicated find page: a form that opens [`FindPage`] without
 /// JavaScript; with it, the box filters every path of the commit in place.
 #[derive(Debug, Clone)]
 pub struct FileFinder {

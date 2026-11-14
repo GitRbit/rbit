@@ -7,6 +7,25 @@
 use crate::{GitError, RepositoryReader, reader::resolve_commit, ref_alias::case_alias};
 
 impl RepositoryReader {
+    /// The commit of an exact, direct branch ref, without revision-name fallback.
+    ///
+    /// # Errors
+    ///
+    /// [`GitError::InvalidBranchName`] for an invalid branch name, or a read error.
+    pub async fn branch_commit_id(&self, branch: String) -> Result<Option<String>, GitError> {
+        let name = crate::pull_refs::branch_ref(&branch)?;
+        self.with_repo(move |repo| {
+            let Some(reference) = repo.try_find_reference(name.as_str()).map_err(GitError::backend)? else { return Ok(None) };
+            if reference.name().as_bstr() != name.as_bytes() {
+                return Ok(None);
+            }
+            let Some(id) = reference.try_id() else { return Ok(None) };
+            let commit = repo.find_commit(id.detach()).map_err(GitError::backend)?;
+            Ok(Some(commit.id.to_hex().to_string()))
+        })
+        .await
+    }
+
     /// The full hexadecimal id of the commit `revision` names.
     pub async fn commit_id(&self, revision: String) -> Result<String, GitError> {
         self.with_repo(move |repo| Ok(resolve_commit(repo, &revision)?.to_hex().to_string())).await

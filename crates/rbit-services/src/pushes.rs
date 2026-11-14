@@ -51,9 +51,6 @@ impl PushService {
     /// Records a push that `git receive-pack` accepted and publishes
     /// [`DomainEvent::RepositoryPushed`]. Do not call it for failed pushes.
     pub async fn complete(&self, push: PendingPush) {
-        if let Err(error) = self.ctx.database.repositories().mark_pushed(push.repo).await {
-            tracing::warn!(%error, repo = push.repo.0, "failed to record push");
-        }
         let updates = match (&push.before, push.reader.ref_snapshot().await) {
             (Some(before), Ok(after)) => before.updates_to(&after),
             (None, Ok(_)) => Vec::new(),
@@ -62,7 +59,15 @@ impl PushService {
                 Vec::new()
             }
         };
-        self.ctx.events.publish(DomainEvent::RepositoryPushed { repo: push.repo, source: push.source, updates });
+        self.record(push.repo, push.source, updates).await;
+    }
+
+    /// Records exact updates for a server-side push that already knows which refs it wrote.
+    pub(crate) async fn record(&self, repo: RepoId, source: PushSource, updates: Vec<rbit_core::RefUpdate>) {
+        if let Err(error) = self.ctx.database.repositories().mark_pushed(repo).await {
+            tracing::warn!(%error, repo = repo.0, "failed to record push");
+        }
+        self.ctx.events.publish(DomainEvent::RepositoryPushed { repo, source, updates });
     }
 }
 

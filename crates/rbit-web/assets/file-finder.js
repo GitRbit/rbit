@@ -212,13 +212,16 @@ document.addEventListener('focusin', event => {
   if (form) setup(form);
 });
 
-// `t` focuses the box, as on other code hosts, unless the viewer is typing.
+// `t` opens the repository file browser or focuses the dedicated find page's input.
 document.addEventListener('keydown', event => {
   if (event.key !== 't' || event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented) return;
   const target = event.target;
   if (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
-  const input = document.querySelector('[data-file-finder] input[name="q"]');
-  if (!input) return;
+  if (document.querySelector('dialog[open]')) return;
+  const browser = document.querySelector('[data-repository-file-search]');
+  const input = browser ? null : document.querySelector('[data-file-finder] input[name="q"]');
+  if (!browser && !input) return;
   event.preventDefault();
-  input.focus();
+  if (browser) browser.click();
+  else input.focus();
 });

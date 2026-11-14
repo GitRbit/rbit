@@ -88,6 +88,7 @@ entries! { Fr:
         RepoBrowseLabel::StargazersEmpty => text.literal("Les personnes qui ajoutent une étoile à ce dépôt apparaissent ici."),
         RepoBrowseLabel::RepositoryActivity => text.literal("Activité du dépôt"),
         RepoBrowseLabel::GoToFile => text.literal("Aller au fichier"),
+        RepoBrowseLabel::ClearFileFilters => text.literal("Effacer les filtres"),
         RepoBrowseLabel::MatchingFiles => text.literal("Fichiers correspondants"),
         RepoBrowseLabel::LoadingFiles => text.literal("Chargement des fichiers…"),
         RepoBrowseLabel::UnableToLoadFiles => text.literal("Impossible de charger les fichiers. Appuyez sur Entrée pour rechercher."),

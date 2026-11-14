@@ -87,6 +87,7 @@ entries! { ZhHans:
         RepoBrowseLabel::StargazersEmpty => text.literal("为此仓库加星标的用户会显示在这里。"),
         RepoBrowseLabel::RepositoryActivity => text.literal("仓库动态"),
         RepoBrowseLabel::GoToFile => text.literal("转到文件"),
+        RepoBrowseLabel::ClearFileFilters => text.literal("清除筛选"),
         RepoBrowseLabel::MatchingFiles => text.literal("匹配的文件"),
         RepoBrowseLabel::LoadingFiles => text.literal("正在加载文件…"),
         RepoBrowseLabel::UnableToLoadFiles => text.literal("无法加载文件。按 Enter 键进行搜索。"),

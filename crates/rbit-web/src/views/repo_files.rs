@@ -1,4 +1,4 @@
-//! File outlines for the language browser. Folder rows precede their descendants, and
+//! File outlines for the repository file browser. Folder rows precede their descendants, and
 //! an outline is built from one bounded page of paths at a time.
 
 use crate::{
@@ -44,9 +44,11 @@ pub fn file_rows(paths: &[String], urls: &RepoUrls, revision: &str) -> Vec<FileR
 pub struct LanguageFilesPage {
     pub page: Page,
     pub header: RepoHeader,
-    pub language: String,
+    pub language: Option<String>,
     pub rows: Vec<FileRow>,
     pub pagination: Pagination,
+    pub clear_filters: Option<String>,
+    pub truncated: bool,
 }
 
 #[cfg(test)]

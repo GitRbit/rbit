@@ -67,6 +67,34 @@ test("language click opens a modal and cannot reach htmx navigation", () => {
   assert.deepEqual(requests, [page.trigger.dataset.languageFilesUrl]);
 });
 
+test("repository file search opens the browser without a language filter and focuses search", async () => {
+  const requests = [];
+  let focused = false;
+  const close = { hidden: true };
+  const search = { focus() { focused = true; } };
+  const content = {
+    querySelector(selector) { return selector === '[data-language-close]' ? close : search; },
+    querySelectorAll() { return []; },
+  };
+  class DOMParser {
+    parseFromString() { return { querySelector: () => content }; }
+  }
+  const page = browser(async url => {
+    requests.push(url);
+    return { ok: true, text: async () => '' };
+  }, DOMParser);
+  const { trigger } = page;
+  trigger.href = '/owner/repo/language-files?revision=abc';
+  trigger.dataset.repositoryFileSearch = '';
+  delete trigger.dataset.languageFilesUrl;
+  page.listeners.get('click').handler({ target: trigger, preventDefault() {}, stopPropagation() {} });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(requests, [trigger.href]);
+  assert.equal(page.document.querySelector().open, true);
+  assert.equal(close.hidden, false);
+  assert.equal(focused, true);
+});
+
 test("file preview stays beside the tree and superseded requests cannot overwrite selection", async () => {
   const requests = [];
   let content;

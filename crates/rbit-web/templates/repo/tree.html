@@ -29,11 +29,19 @@
       <a href="{{ header.branches_url }}" class="btn btn-ghost max-sm:hidden">{% call ui::icon("branch", "size-3.5 text-ink-muted") %}{% endcall %}<span><span class="font-medium">{{ switcher.branch_count }}</span> <span class="text-ink-muted">{% call ui::localized(rbit_localization::RepoBrowseMessage::BranchNoun { count: *switcher.branch_count }.text(page.locale)) %}{% endcall %}</span></span></a>
       <a href="{{ header.tags_url }}" class="btn btn-ghost max-sm:hidden">{% call ui::icon("tag", "size-3.5 text-ink-muted") %}{% endcall %}<span><span class="font-medium">{{ switcher.tag_count }}</span> <span class="text-ink-muted">{% call ui::localized(rbit_localization::RepoBrowseMessage::TagNoun { count: *switcher.tag_count }.text(page.locale)) %}{% endcall %}</span></span></a>
       {% endif %}
-      {% include "repo/file_finder.html" %}
+      <a class="input flex h-8 min-w-0 items-center gap-2 text-[13px] text-ink-muted max-sm:order-last max-sm:w-full sm:ms-auto sm:w-64" href="{{ language_files_url }}" data-repository-file-search data-language-files hx-boost="false" aria-haspopup="dialog" aria-keyshortcuts="T">
+        {% call ui::icon("search", "size-3.5 shrink-0 text-ink-faint") %}{% endcall %}
+        <span class="flex-1 truncate">{% call ui::localized(rbit_localization::RepoBrowseLabel::GoToFile.text(page.locale)) %}{% endcall %}</span>
+        <kbd dir="ltr" class="hidden rounded border border-line px-1.5 font-mono text-[11px] leading-4 text-ink-faint sm:block" aria-hidden="true">t</kbd>
+      </a>
       {% if let Some(url) = new_file_url %}<a href="{{ url }}" class="btn">{% call ui::icon("plus", "size-3.5") %}{% endcall %}{% call ui::localized(rbit_localization::RepoBrowseLabel::AddFile.text(page.locale)) %}{% endcall %}</a>{% endif %}
       {% if let Some(url) = upload_url %}<a href="{{ url }}" class="btn btn-icon" aria-label="{{ rbit_localization::RepoBrowseLabel::UploadFiles.text(page.locale) }}" title="{{ rbit_localization::RepoBrowseLabel::UploadFiles.text(page.locale) }}">{% call ui::icon("upload", "size-3.5") %}{% endcall %}</a>{% endif %}
     </div>
 
+    {% if let Some(url) = fork_sync_url %}
+    <div hidden hx-get="{{ url }}" hx-trigger="load" hx-swap="outerHTML"></div>
+    <noscript><a class="btn mb-3" href="{{ url }}">{% call ui::localized(rbit_localization::RepoBrowseLabel::SyncFork.text(page.locale)) %}{% endcall %}</a></noscript>
+    {% endif %}
     {#- Only very large directories need paging or a name filter; "Go to file" covers the rest. -#}
     {% if pagination.pages > 1 || !pagination.query.is_empty() %}{% include "repo/listing_controls.html" %}{% endif %}
     <section class="box overflow-hidden" aria-label="{{ rbit_localization::RepoBrowseLabel::Files.text(page.locale) }}">

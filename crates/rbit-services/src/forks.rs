@@ -5,7 +5,7 @@
 //! [`ForkService`] methods and the crate helpers `forks_among`, `is_fork`,
 //! `network` and `has_private_ancestor`.
 
-use crate::{EventBus, RepoContext, RepositoryService, ServiceContext, ServiceError};
+use crate::{EventBus, ProtectionService, PushService, RepoContext, RepositoryService, ServiceContext, ServiceError};
 use rbit_core::{Config, RepoId, User, repository::OwnedRepository};
 use rbit_git::RepositoryStorage;
 use rbit_repositories::forks::{ForkCreation, ForkCreationError, ForkParentError, ForkQueries};
@@ -14,8 +14,10 @@ use rbit_storage::{Database, ForkReadStore};
 use std::{collections::HashSet, sync::Arc};
 mod effects;
 mod reading;
+mod sync;
 use effects::ForkEffects;
 use reading::ParentAccess;
+pub use sync::{ForkSync, ForkSyncExpectation};
 
 #[derive(Debug, Clone)]
 pub struct ForkService {
@@ -24,10 +26,20 @@ pub struct ForkService {
     storage: RepositoryStorage,
     events: EventBus,
     repositories: RepositoryService,
+    protection: ProtectionService,
+    pushes: PushService,
 }
 impl ForkService {
     pub(crate) fn new(ctx: ServiceContext, repositories: RepositoryService) -> Self {
-        Self { config: ctx.config, database: ctx.database, storage: ctx.repositories, events: ctx.events, repositories }
+        Self {
+            protection: ProtectionService::new(ctx.clone()),
+            pushes: PushService::new(ctx.clone()),
+            config: ctx.config,
+            database: ctx.database,
+            storage: ctx.repositories,
+            events: ctx.events,
+            repositories,
+        }
     }
     pub async fn fork(&self, actor: &User, parent: &RepoContext, input: ForkInput) -> Result<OwnedRepository, ServiceError> {
         let effects = ForkEffects {

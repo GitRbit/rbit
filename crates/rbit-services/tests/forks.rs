@@ -2,9 +2,13 @@
 
 use std::{path::Path, process::Command, sync::Arc};
 
-use rbit_core::{Config, User, Visibility};
+use rbit_core::{Config, PushSource, RefUpdate, User, Visibility, protection::RuleSettings};
+use rbit_services::protection::ProtectionInput;
 use rbit_services::{CreateRepository, DomainEvent, RepoContext, ServiceError, Services, forks::ForkInput};
 use rbit_storage::{Database, KvStore, NewUser};
+
+#[path = "forks/templates.rs"]
+mod templates;
 
 struct Fixture {
     dir: tempfile::TempDir,
@@ -165,6 +169,92 @@ async fn deleting_the_parent_keeps_the_fork() {
     let fork = fixture.services.repositories.open(Some(&bob), "bob", "demo").await.unwrap();
     assert!(fixture.services.forks.parent(Some(&bob), &fork).await.unwrap().is_none());
     assert!(!fork.reader.is_empty().await.unwrap(), "the fork's history survives");
+}
+
+#[tokio::test]
+async fn sync_fast_forwards_only_the_expected_default_branch_and_reports_a_push() {
+    let fixture = Fixture::new().await;
+    let alice = fixture.user("alice").await;
+    let bob = fixture.user("bob").await;
+    let parent = fixture.parent(&alice, Visibility::Public).await;
+    let services = &fixture.services;
+    let as_bob = services.repositories.open(Some(&bob), "alice", "demo").await.unwrap();
+    services.forks.fork(&bob, &as_bob, ForkInput::default()).await.unwrap();
+    let fork = services.repositories.open(Some(&bob), "bob", "demo").await.unwrap();
+    let work = fixture.dir.path().join("work");
+    let initial = services.forks.sync_status(&bob, &fork).await.unwrap().unwrap();
+    assert_eq!((initial.ahead, initial.behind), (0, 0));
+
+    let commit =
+        |message| git(&work, &["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-qm", message]);
+    commit("upstream one");
+    git(&work, &["push", "--quiet", parent.disk_path.to_str().unwrap(), "main"]);
+    let stale = services.forks.sync_status(&bob, &fork).await.unwrap().unwrap();
+    assert_eq!((stale.ahead, stale.behind), (0, 1));
+    commit("upstream two");
+    git(&work, &["push", "--quiet", parent.disk_path.to_str().unwrap(), "main"]);
+    assert!(matches!(services.forks.sync(&bob, &fork, &stale.expected).await, Err(ServiceError::Invalid(_))));
+
+    let settings = RuleSettings { require_pull_request: true, ..RuleSettings::default() };
+    let rule =
+        services.protection.create(&bob, &fork, &ProtectionInput { pattern: "main".into(), settings, ..Default::default() }).await.unwrap();
+    let blocked = services.forks.sync_status(&bob, &fork).await.unwrap().unwrap();
+    assert_eq!((blocked.ahead, blocked.behind), (0, 2));
+    assert!(blocked.refusal.is_some());
+    assert!(matches!(services.forks.sync(&bob, &fork, &blocked.expected).await, Err(ServiceError::Invalid(_))));
+    services.protection.delete(&bob, &fork, rule.id).await.unwrap();
+
+    let mut events = services.events.subscribe();
+    services.forks.sync(&bob, &fork, &blocked.expected).await.unwrap();
+    assert_eq!(
+        events.recv().await.unwrap(),
+        DomainEvent::RepositoryPushed {
+            repo: fork.repo.repo.id,
+            source: PushSource::User(bob.id()),
+            updates: vec![RefUpdate {
+                name: "refs/heads/main".into(),
+                before: Some(blocked.expected.fork_tip),
+                after: Some(blocked.expected.upstream_tip)
+            }],
+        }
+    );
+    let current = services.forks.sync_status(&bob, &fork).await.unwrap().unwrap();
+    assert_eq!((current.ahead, current.behind), (0, 0));
+    assert_eq!(fork.reader.branch_commit_id("feature".into()).await.unwrap().unwrap(), initial.expected.fork_tip);
+
+    git(&work, &["checkout", "--quiet", "feature"]);
+    commit("fork only");
+    git(&work, &["push", "--quiet", "--force", fork.disk_path.to_str().unwrap(), "feature:refs/heads/main"]);
+    let divergent = services.forks.sync_status(&bob, &fork).await.unwrap().unwrap();
+    assert_eq!((divergent.ahead, divergent.behind), (1, 2));
+    assert!(matches!(services.forks.sync(&bob, &fork, &divergent.expected).await, Err(ServiceError::Invalid(_))));
+    assert_eq!(fork.reader.branch_commit_id("main".into()).await.unwrap().unwrap(), divergent.expected.fork_tip);
+
+    for repo in [&fork, &parent] {
+        services
+            .repo_settings
+            .update(
+                repo,
+                rbit_services::repo_settings::UpdateRepository {
+                    description: String::new(),
+                    visibility: Visibility::Private,
+                    default_branch: None,
+                },
+            )
+            .await
+            .unwrap();
+    }
+    let private_fork = services.repositories.open(Some(&bob), "bob", "demo").await.unwrap();
+    let private_parent = services.repositories.open(Some(&alice), "alice", "demo").await.unwrap();
+    let second_fork =
+        services.forks.fork(&alice, &private_parent, ForkInput { owner: String::new(), name: "private-fork".into() }).await.unwrap();
+    let second_fork = services.repositories.open(Some(&alice), "alice", second_fork.repo.name.as_str()).await.unwrap();
+    assert!(
+        services.forks.sync_status(&alice, &second_fork).await.unwrap().is_none(),
+        "read access to both private repositories is insufficient"
+    );
+    assert!(services.forks.sync_status(&bob, &private_fork).await.unwrap().is_none());
+    assert!(matches!(services.forks.sync(&bob, &private_fork, &divergent.expected).await, Err(ServiceError::NotFound)));
 }
 
 mod ownership;

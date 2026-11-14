@@ -72,6 +72,9 @@
         {% let note = rbit_localization::RepoNavSentence::SshKeyNote.rich(page.locale) %}<p class="mt-2 text-xs text-ink-faint"{% if note.fallback() %} lang="en"{% endif %}>{% for part in note.parts() %}{% if part.is_slot(0) %}<a class="underline hover:text-ink" href="/settings/keys">{% call ui::localized(rbit_localization::RepoNavLabel::YourSettings.text(page.locale)) %}{% endcall %}</a>{% else %}{{ part.text() }}{% endif %}{% endfor %}</p>
         {% endif %}
         <a class="btn mt-3 w-full justify-center" href="{{ header.zip_url }}" hx-boost="false" download>{% call ui::icon("archive", "size-3.5") %}{% endcall %}{% call ui::localized(rbit_localization::RepoNavLabel::DownloadZip.text(page.locale)) %}{% endcall %}</a>
+        {% if page.is_signed_in() && (!header.is_private || header.can_admin) %}
+        <a class="btn mt-2 w-full justify-center" href="/new?template={{ header.owner }}/{{ header.name }}">{% call ui::localized(rbit_localization::RepoCreateLabel::UseAsTemplate.text(page.locale)) %}{% endcall %}</a>
+        {% endif %}
       </div>
     </details>
   </div>

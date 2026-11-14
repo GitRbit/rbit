@@ -80,6 +80,7 @@ entries! { Ja:
         RepoBrowseLabel::StargazersEmpty => text.literal("このリポジトリにスターを付けたユーザーがここに表示されます。"),
         RepoBrowseLabel::RepositoryActivity => text.literal("リポジトリのアクティビティ"),
         RepoBrowseLabel::GoToFile => text.literal("ファイルへ移動"),
+        RepoBrowseLabel::ClearFileFilters => text.literal("フィルターをクリア"),
         RepoBrowseLabel::MatchingFiles => text.literal("一致するファイル"),
         RepoBrowseLabel::LoadingFiles => text.literal("ファイルを読み込んでいます…"),
         RepoBrowseLabel::UnableToLoadFiles => text.literal("ファイルを読み込めませんでした。Enter キーで検索します。"),

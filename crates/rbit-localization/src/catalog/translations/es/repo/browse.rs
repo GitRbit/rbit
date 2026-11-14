@@ -93,6 +93,7 @@ entries! { Es:
         }
         RepoBrowseLabel::RepositoryActivity => text.literal("Actividad del repositorio"),
         RepoBrowseLabel::GoToFile => text.literal("Ir al archivo"),
+        RepoBrowseLabel::ClearFileFilters => text.literal("Borrar filtros"),
         RepoBrowseLabel::MatchingFiles => text.literal("Archivos coincidentes"),
         RepoBrowseLabel::LoadingFiles => text.literal("Cargando archivos…"),
         RepoBrowseLabel::UnableToLoadFiles => text.literal("No se pudieron cargar los archivos. Pulsa Intro para buscar."),

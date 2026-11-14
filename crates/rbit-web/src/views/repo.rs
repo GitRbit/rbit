@@ -241,7 +241,6 @@ pub struct TreePage {
     pub history_url: String,
     /// The commit count beside the latest commit, pinned to the shown commit.
     pub commit_count_url: String,
-    pub finder: super::file_finder::FileFinder,
     /// Language breakdown of the selected revision; `None` when empty or unavailable.
     pub languages: Option<LanguageBar>,
     pub language_files_url: String,
@@ -249,6 +248,7 @@ pub struct TreePage {
     pub latest_release: Option<LatestRelease>,
     /// Set when the viewer is a collaborator without admin rights, to offer leaving.
     pub collaborator: Option<CollaboratorAccess>,
+    pub fork_sync_url: Option<String>,
     // Milestone 3: editing files in the browser (E); set for writers on a branch.
     pub new_file_url: Option<String>,
     pub upload_url: Option<String>,

@@ -7,6 +7,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Browse and preview files in the same dialog from **Go to file** or a repository language. Clear the active filters without closing the dialog.
+- Create a repository from the files on another repository's default branch, with a fresh initial commit.
+- See how a fork's default branch compares with upstream and fast-forward it from the repository page when allowed.
+
 ## [0.2.2] - 2026-11-13
 
 ### Dependency maintenance

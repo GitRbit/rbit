@@ -28,6 +28,7 @@ use crate::{
 #[derive(Debug, Deserialize)]
 pub struct NewRepoQuery {
     owner: Option<String>,
+    template: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -38,6 +39,7 @@ pub struct NewRepoForm {
     #[serde(default)]
     description: String,
     visibility: Option<String>,
+    template: Option<String>,
 }
 
 /// The viewer first, then their organisations; `selected` (case-insensitive) is marked,
@@ -64,13 +66,22 @@ pub async fn new_form(
     Query(query): Query<NewRepoQuery>,
 ) -> WebResult<NewRepositoryPage> {
     let owners = owner_options(&state, &user, query.owner.as_deref().unwrap_or_default()).await?;
+    let source_private = match query.template.as_deref().and_then(|source| source.split_once('/')) {
+        Some((owner, name)) => match state.services.repositories.open(Some(&user), owner, name).await {
+            Ok(source) => !source.repo.repo.visibility.is_public(),
+            Err(ServiceError::NotFound) => false,
+            Err(error) => return Err(error.into()),
+        },
+        None => false,
+    };
     Ok(NewRepositoryPage {
         page: crate::views::repo_text::titled_as(page, RepoCreateLabel::NewRepository),
         error: FormError::default(),
         owners,
         name: String::new(),
         description: String::new(),
-        private: !state.services.instance.current().default_visibility.is_public(),
+        private: source_private || !state.services.instance.current().default_visibility.is_public(),
+        template: query.template,
     })
 }
 
@@ -84,7 +95,11 @@ pub async fn create(
         form.visibility.as_deref().and_then(Visibility::parse).unwrap_or_else(|| state.services.instance.current().default_visibility);
     let input = CreateRepository { name: form.name.clone(), description: form.description.clone(), visibility };
 
-    match state.services.repositories.create_in(&user, &form.owner, input).await {
+    let created = match &form.template {
+        Some(source) => state.services.repositories.create_from_template(&user, &form.owner, input, source, &state.services.lfs).await,
+        None => state.services.repositories.create_in(&user, &form.owner, input).await,
+    };
+    match created {
         Ok(created) => Ok(Redirect::to(&format!("/{}/{}", created.owner.name, created.repo.name)).into_response()),
         Err(error @ (ServiceError::Invalid(_) | ServiceError::Conflict(_))) => {
             let page = NewRepositoryPage {
@@ -94,6 +109,7 @@ pub async fn create(
                 name: form.name,
                 description: form.description,
                 private: !visibility.is_public(),
+                template: form.template,
             };
             Ok((StatusCode::UNPROCESSABLE_ENTITY, page).into_response())
         }

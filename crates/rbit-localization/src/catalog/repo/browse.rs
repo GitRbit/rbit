@@ -73,11 +73,15 @@ labels! {
         Owner => "repo.fork.owner", "Owner";
         Name => "repo.fork.name", "Name";
         CreateFork => "repo.fork.create", "Create fork";
+        SyncFork => "repo.fork.sync", "Sync fork";
+        CompareUpstream => "repo.fork.compare-upstream", "Compare with upstream";
+        ForkUpToDate => "repo.fork.up-to-date", "Up to date with";
         Cancel => "repo.fork.cancel", "Cancel";
         NoStargazersYet => "repo.stargazers.empty-title", "No stargazers yet";
         StargazersEmpty => "repo.stargazers.empty", "People who star this repository appear here.";
         RepositoryActivity => "repo.activity.title", "Repository activity";
         GoToFile => "repo.finder.go-to-file", "Go to file";
+        ClearFileFilters => "repo.finder.clear-filters", "Clear filters";
         MatchingFiles => "repo.finder.matching", "Matching files";
         LoadingFiles => "repo.finder.loading", "Loading files…";
         UnableToLoadFiles => "repo.finder.failed", "Unable to load files. Press Enter to search.";
@@ -106,6 +110,8 @@ pub enum RepoBrowseMessage<'a> {
     RefPage { page: usize, pages: usize, total: usize },
     /// The fork page's heading: "Fork alice/project".
     ForkTitle { owner: &'a str, name: &'a str },
+    /// How many commits separate a fork's default branch from upstream.
+    ForkDivergence { ahead: usize, behind: usize },
     /// The noun after a commit count beside the latest commit: "commit" or "commits".
     CommitNoun { count: usize },
     /// "Go to file" found nothing: "No file matches “query”."
@@ -125,6 +131,7 @@ impl MessageFamily for RepoBrowseMessage<'_> {
             Self::ListingResults { .. } => "repo.listing.results",
             Self::RefPage { .. } => "repo.refs.page",
             Self::ForkTitle { .. } => "repo.fork.title",
+            Self::ForkDivergence { .. } => "repo.fork.divergence",
             Self::CommitNoun { .. } => "repo.browse.commit-noun",
             Self::NoFileMatches { .. } => "repo.finder.no-match",
             Self::MoreFileMatches { .. } => "repo.finder.more",
@@ -161,6 +168,27 @@ impl MessageFamily for RepoBrowseMessage<'_> {
                 text.literal(" · ");
                 text.number(total as u64);
                 text.literal(if total == 1 { " ref" } else { " refs" });
+            }
+            Self::ForkDivergence { ahead, behind } => {
+                let count = |n: usize, suffix, text: &mut MessageWriter| {
+                    text.number(n as u64);
+                    if n >= 10_000 {
+                        text.literal("+");
+                    }
+                    text.literal(if n == 1 { " commit " } else { " commits " });
+                    text.literal(suffix);
+                };
+                if ahead > 0 {
+                    count(ahead, "ahead", text);
+                }
+                if ahead > 0 && behind > 0 {
+                    text.literal(" and ");
+                }
+                if behind > 0 {
+                    count(behind, "behind", text);
+                } else {
+                    text.literal(" of");
+                }
             }
             Self::ForkTitle { owner, name } => {
                 text.literal("Fork ");
