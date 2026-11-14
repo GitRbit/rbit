@@ -85,63 +85,14 @@ pub async fn pulls(api: &Api, repo: &Repo, command: PrCommand, out: &Output) -> 
                 println!("#{:<6} {:<50} {base} <- {head}", pull["number"], clip(text(pull, "title"), 50));
             }
         }
-        PrCommand::View { number } => {
-            let pull = api.get(&format!("repos/{repo}/pulls/{number}")).await?;
-            if out.json {
-                let mut body = compact(&pull);
-                body["mergeable"] = pull["mergeable"].clone();
-                body["body"] = pull["body"].clone();
-                agent::print("rbit.pr/1", body);
-            } else {
-                let state = if pull["merged"].as_bool() == Some(true) { "merged" } else { text(&pull, "state") };
-                println!("#{number} {} ({state})", text(&pull, "title"));
-                println!(
-                    "{} wants to merge {} into {}",
-                    text(&pull["user"], "login"),
-                    text(&pull["head"], "ref"),
-                    text(&pull["base"], "ref")
-                );
-                println!("{}", text(&pull, "html_url"));
-                if !text(&pull, "body").is_empty() {
-                    println!("\n{}", text(&pull, "body"));
-                }
-            }
-        }
+        PrCommand::View { number } => view(api, repo, number, out).await?,
         PrCommand::Modernize { number } => assessment::show(api, repo, number, assessment::Mode::Modernize, out).await?,
         PrCommand::Takeover { number } => assessment::show(api, repo, number, assessment::Mode::Takeover, out).await?,
         PrCommand::Comment { number, body, body_file, reply_to } => {
             let body = super::issues::body(body, body_file)?;
-            let (path, request) = match reply_to {
-                Some(parent) => (format!("repos/{repo}/pulls/{number}/comments"), json!({ "body": body, "in_reply_to": parent })),
-                None => {
-                    // The discussion endpoint also accepts issues. Confirm this is a pull request.
-                    api.get(&format!("repos/{repo}/pulls/{number}")).await?;
-                    (format!("repos/{repo}/issues/{number}/comments"), json!({ "body": body }))
-                }
-            };
-            let posted = api.json(Method::POST, &path, Some(&request)).await?;
-            let url = text(&posted, "html_url").to_owned();
-            report(out, "rbit.pr-comment/1", posted, &url);
+            comment(api, repo, number, &body, reply_to, out).await?;
         }
-        PrCommand::Watch { number, cursor, timeout } => {
-            let mut body = watch_snapshot(api, repo, number, cursor.as_deref(), timeout).await?;
-            if out.json {
-                if let Some(object) = body.as_object_mut() {
-                    object.remove("schema");
-                }
-                agent::print("rbit.pr-watch/1", body);
-            } else {
-                let update = if body["changed"] == true { "snapshot" } else { "unchanged" };
-                println!("#{number} {} at {} ({update})", text(&body, "state"), short(text(&body, "head")));
-                for requirement in body["readiness"]["requirements"].as_array().into_iter().flatten() {
-                    if requirement["met"] == false {
-                        println!("  {}", text(requirement, "says"));
-                    }
-                }
-                println!("  Unresolved review threads: {}", body["thread_count"]);
-                println!("  Cursor: {}", text(&body, "cursor"));
-            }
-        }
+        PrCommand::Watch { number, cursor, timeout } => show_watch(api, repo, number, cursor.as_deref(), timeout, out).await?,
         PrCommand::Babysit { number, timeout } => return workflow::babysit(api, repo, number, timeout, out).await,
         PrCommand::FullSend { number, head, squash, rebase, timeout } => {
             return workflow::full_send(api, repo, number, &head, queue_method(squash, rebase), timeout, out).await;
@@ -167,6 +118,60 @@ pub async fn pulls(api: &Api, repo: &Repo, command: PrCommand, out: &Output) -> 
         PrCommand::Checks { number, watch, interval } => return checks(api, repo, number, watch, interval, out).await,
     }
     Ok(0)
+}
+
+async fn view(api: &Api, repo: &Repo, number: u64, out: &Output) -> anyhow::Result<()> {
+    let pull = api.get(&format!("repos/{repo}/pulls/{number}")).await?;
+    if out.json {
+        let mut body = compact(&pull);
+        body["mergeable"] = pull["mergeable"].clone();
+        body["body"] = pull["body"].clone();
+        agent::print("rbit.pr/1", body);
+    } else {
+        let state = if pull["merged"].as_bool() == Some(true) { "merged" } else { text(&pull, "state") };
+        println!("#{number} {} ({state})", text(&pull, "title"));
+        println!("{} wants to merge {} into {}", text(&pull["user"], "login"), text(&pull["head"], "ref"), text(&pull["base"], "ref"));
+        println!("{}", text(&pull, "html_url"));
+        if !text(&pull, "body").is_empty() {
+            println!("\n{}", text(&pull, "body"));
+        }
+    }
+    Ok(())
+}
+
+async fn comment(api: &Api, repo: &Repo, number: u64, body: &str, reply_to: Option<u64>, out: &Output) -> anyhow::Result<()> {
+    let (path, request) = if let Some(parent) = reply_to {
+        (format!("repos/{repo}/pulls/{number}/comments"), json!({ "body": body, "in_reply_to": parent }))
+    } else {
+        // The discussion endpoint also accepts issues. Confirm this is a pull request.
+        api.get(&format!("repos/{repo}/pulls/{number}")).await?;
+        (format!("repos/{repo}/issues/{number}/comments"), json!({ "body": body }))
+    };
+    let posted = api.json(Method::POST, &path, Some(&request)).await?;
+    let url = text(&posted, "html_url").to_owned();
+    report(out, "rbit.pr-comment/1", posted, &url);
+    Ok(())
+}
+
+async fn show_watch(api: &Api, repo: &Repo, number: u64, cursor: Option<&str>, timeout: u64, out: &Output) -> anyhow::Result<()> {
+    let mut body = watch_snapshot(api, repo, number, cursor, timeout).await?;
+    if out.json {
+        if let Some(object) = body.as_object_mut() {
+            object.remove("schema");
+        }
+        agent::print("rbit.pr-watch/1", body);
+    } else {
+        let update = if body["changed"] == true { "snapshot" } else { "unchanged" };
+        println!("#{number} {} at {} ({update})", text(&body, "state"), short(text(&body, "head")));
+        for requirement in body["readiness"]["requirements"].as_array().into_iter().flatten() {
+            if requirement["met"] == false {
+                println!("  {}", text(requirement, "says"));
+            }
+        }
+        println!("  Unresolved review threads: {}", body["thread_count"]);
+        println!("  Cursor: {}", text(&body, "cursor"));
+    }
+    Ok(())
 }
 
 /// The commit statuses of `number`'s head: exit 0 when all passed, 1 when one failed, 8
