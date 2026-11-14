@@ -16,13 +16,13 @@ use crate::sqlite::actions_rows::{labels_json, runner_columns};
 use sqlx::SqliteConnection;
 
 /// A waiting job the runner may take: the repository has Actions on, the runner's scope
-/// covers it, and the job asks for labels, all of which the runner has. `$more` narrows
-/// the jobs and `$order` sorts them.
+/// covers it, and the job asks for labels, all of which the runner has. `$from` chooses
+/// which table to walk first, `$more` narrows the jobs, and `$order` sorts them.
 macro_rules! candidate {
-    ($more:literal, $order:literal) => {
+    ($from:literal, $more:literal, $order:literal) => {
         concat!(
-            "SELECT j.id FROM actions_jobs j ",
-            "CROSS JOIN actions_runs run ON run.id = j.run_id ",
+            "SELECT j.id FROM ",
+            $from,
             "JOIN repositories r ON r.id = j.repo_id ",
             "JOIN actions_repositories a ON a.repo_id = j.repo_id AND a.enabled = 1 ",
             "WHERE j.status = 5 ",
@@ -53,17 +53,19 @@ macro_rules! candidate {
 
 /// The next job of the runs in progress (started, or cancelled): the run that started
 /// first, then its jobs in the order they were queued. A cancelled run that never started
-/// takes its place by when its job was queued. Only waiting jobs are read, and few of them
-/// belong to a run in progress, so sorting them is cheap.
+/// takes its place by when its job was queued. Start from the partial index of unfinished
+/// runs in progress so a backlog of new runs does not lengthen this scan.
 const IN_PROGRESS: &str = candidate!(
-    "AND (run.started_at IS NOT NULL OR run.cancel_requested = 1) ",
+    "actions_runs run INDEXED BY actions_runs_claim_priority \
+     CROSS JOIN actions_jobs j INDEXED BY actions_jobs_by_run ON j.run_id = run.id ",
+    "AND run.finished_at IS NULL AND (run.started_at IS NOT NULL OR run.cancel_requested = 1) ",
     "COALESCE(run.started_at, j.queued_at), run.id, j.queued_at, j.id"
 );
 
 /// The oldest waiting job, walked in queue order from the index of waiting jobs. It is
 /// asked for only when no run in progress has a job for the runner, so what it finds
 /// belongs to a run that has not started.
-const QUEUED: &str = candidate!("", "j.queued_at, j.id");
+const QUEUED: &str = candidate!("actions_jobs j CROSS JOIN actions_runs run ON run.id = j.run_id ", "", "j.queued_at, j.id");
 
 /// The waiting job to hand the runner of `request`, if there is one.
 pub(super) async fn candidate(tx: &mut SqliteConnection, request: &ClaimRequest<'_>) -> Result<Option<i64>, StorageError> {
@@ -120,12 +122,12 @@ mod tests {
         assert!(!plan.iter().any(|step| step.contains("TEMP B-TREE FOR ORDER BY")), "{plan:#?}");
     }
 
-    /// The jobs of runs in progress are found among the waiting jobs, never by reading
-    /// every job or every run.
+    /// The priority pass visits only unfinished runs in progress, then looks up their
+    /// jobs by run ID. It must never walk the backlog of waiting jobs.
     #[tokio::test]
-    async fn runs_in_progress_are_found_among_the_waiting_jobs() {
+    async fn the_priority_pass_walks_unfinished_runs_then_looks_up_their_jobs() {
         let plan = plan(IN_PROGRESS).await;
-        assert!(plan.iter().any(|step| step.contains("INDEX actions_jobs_waiting")), "{plan:#?}");
-        assert!(!plan.iter().any(|step| step.starts_with("SCAN run")), "{plan:#?}");
+        assert!(plan.iter().any(|step| step.starts_with("SCAN run USING INDEX actions_runs_claim_priority")), "{plan:#?}");
+        assert!(plan.iter().any(|step| step.starts_with("SEARCH j USING INDEX actions_jobs_by_run")), "{plan:#?}");
     }
 }
