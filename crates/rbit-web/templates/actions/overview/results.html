@@ -16,7 +16,18 @@
       {% for run in runs %}
       <li class="row flex-wrap items-start gap-3 py-3 sm:flex-nowrap">
         {% let look = text.look(run.look) %}
+        {% if let Some(progress) = run.progress %}
+        {#- An unfinished run shows how far it is: a ring filled by its finished jobs. -#}
+        <span class="inline-flex size-5 shrink-0 items-center justify-center {{ look.tone }}" lang="{{ look.language() }}" title="{{ look.label }}">
+          <svg width="16" height="16" viewBox="0 0 36 36" fill="none" aria-hidden="true">
+            <circle cx="18" cy="18" r="15.9155" stroke="currentColor" stroke-opacity="0.3" stroke-width="5"/>
+            {% if progress.arc > 0 %}<circle cx="18" cy="18" r="15.9155" stroke="currentColor" stroke-width="5" stroke-dasharray="{{ progress.arc }} 100" transform="rotate(-90 18 18)"/>{% endif %}
+          </svg>
+          <span class="sr-only">{{ look.label }}</span>
+        </span>
+        {% else %}
         {% include "actions/state.html" %}
+        {% endif %}
         <div class="min-w-0 flex-1">
           <a class="block break-words text-[13px] font-medium hover:underline hover:underline-offset-4" href="{{ run.url }}">{{ run.title }}</a>
           <p class="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-ink-muted">
@@ -27,12 +38,21 @@
             {% endif %}
             {% if let Some(actor) = run.actor %}<span aria-hidden="true">·</span><bdi>{{ actor }}</bdi>{% endif %}
           </p>
+          {% if let Some(progress) = run.progress %}{% if let Some(phase) = text.phase(progress) %}
+          <p class="mt-1 text-xs text-ink-muted">{% call ui::localized(phase) %}{% endcall %}</p>
+          {% endif %}{% endif %}
           {% if let Some(error) = run.error %}
           <p class="mt-1 whitespace-pre-wrap break-words text-xs text-danger">{{ error }}</p>
           {% endif %}
         </div>
         <div class="shrink-0 text-end text-xs text-ink-faint">
           <time class="block whitespace-nowrap" datetime="{{ run.when_iso }}">{% call ui::localized(run.when.relative(page.locale)) %}{% endcall %}</time>
+          {% if let Some(progress) = run.progress %}
+          {% let finished = text.jobs_finished(progress) %}
+          <span class="mt-1 block whitespace-nowrap font-medium tabular-nums text-ink-muted" title="{{ finished }}">
+            <span aria-hidden="true">{{ progress.done }}/{{ progress.total }}</span><span class="sr-only">{% call ui::localized(finished) %}{% endcall %}</span>
+          </span>
+          {% endif %}
           {% if let Some(duration) = run.duration %}
           <span class="mt-1 flex items-center justify-end gap-1 whitespace-nowrap tabular-nums">
             {% call ui::icon("clock", "size-3") %}{% endcall %}{% call ui::localized(duration.text(page.locale)) %}{% endcall %}

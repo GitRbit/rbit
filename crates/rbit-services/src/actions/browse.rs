@@ -15,6 +15,7 @@ use rbit_core::{
     Account, AccountId, RepoId,
     actions::{Job, JobId, Run, RunEvent, RunId, RunnerId, Status, Step, TaskId},
 };
+pub use rbit_storage::sqlite::actions_runs::RunProgress;
 use rbit_storage::sqlite::actions_runs::{QueuePlace, RunFilter, TaskEnd};
 
 use super::{ActionsService, hooks};
@@ -70,6 +71,8 @@ pub struct RunListing {
     pub people: BTreeMap<AccountId, Account>,
     /// Where the next page starts, when there is one.
     pub next: Option<RunId>,
+    /// How far each unfinished run is.
+    pub progress: BTreeMap<RunId, RunProgress>,
 }
 
 /// One run with its jobs.
@@ -172,7 +175,7 @@ impl ActionsService {
             Some(name) => match database.accounts().find_account_by_name(name).await? {
                 Some(account) => Some(account.id),
                 // Nobody by that name caused a run.
-                None => return Ok(RunListing { runs: Vec::new(), people: BTreeMap::new(), next: None }),
+                None => return Ok(RunListing { runs: Vec::new(), people: BTreeMap::new(), next: None, progress: BTreeMap::new() }),
             },
             None => None,
         };
@@ -196,7 +199,9 @@ impl ActionsService {
             None
         };
         let people = self.people(runs.iter().flat_map(|run| [run.actor, run.trigger_actor])).await?;
-        Ok(RunListing { runs, people, next })
+        let unfinished: Vec<RunId> = runs.iter().filter(|run| !run.status.is_done()).map(|run| run.id).collect();
+        let progress = store.progress(&unfinished).await?;
+        Ok(RunListing { runs, people, next, progress })
     }
 
     // Actions: workflow status badges.

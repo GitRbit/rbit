@@ -28,6 +28,9 @@ pub enum ActionsOverviewMessage {
     Pagination,
     OlderRuns,
     RunsOnPage { count: u64 },
+    JobsFinished { done: u64, total: u64 },
+    JobsRunning { count: u64 },
+    WaitingForRunner,
 }
 
 impl ActionsOverviewMessage {
@@ -57,6 +60,9 @@ impl ActionsOverviewMessage {
             Self::Pagination => "actions.overview.pagination",
             Self::OlderRuns => "actions.overview.older-runs",
             Self::RunsOnPage { .. } => "actions.overview.runs-on-page",
+            Self::JobsFinished { .. } => "actions.overview.jobs-finished",
+            Self::JobsRunning { .. } => "actions.overview.jobs-running",
+            Self::WaitingForRunner => "actions.overview.waiting-for-runner",
         }
     }
 }
@@ -90,7 +96,8 @@ impl ActionsOverviewMessage {
             }
             Self::Pagination => "Pagination",
             Self::OlderRuns => "Older runs",
-            Self::RunsOnPage { .. } => return None,
+            Self::WaitingForRunner => "Waiting for a runner",
+            Self::RunsOnPage { .. } | Self::JobsFinished { .. } | Self::JobsRunning { .. } => return None,
         })
     }
 }
@@ -105,6 +112,16 @@ impl MessageFamily for ActionsOverviewMessage {
             Self::RunsOnPage { count } => {
                 text.number(count);
                 text.literal(if count == 1 { " run on this page" } else { " runs on this page" });
+            }
+            Self::JobsFinished { done, total } => {
+                text.number(done);
+                text.literal(" of ");
+                text.number(total);
+                text.literal(if total == 1 { " job finished" } else { " jobs finished" });
+            }
+            Self::JobsRunning { count } => {
+                text.number(count);
+                text.literal(if count == 1 { " job running" } else { " jobs running" });
             }
             _ => text.literal(self.english_label().unwrap_or_default()),
         }
@@ -135,5 +152,16 @@ mod tests {
         assert_ne!(expanded.as_str(), "27 runs on this page");
         assert_eq!(ActionsOverviewMessage::Branch.id(), "actions.overview.branch");
         assert_eq!(catalog.localized(ActionsOverviewMessage::OlderRuns).as_str(), "Older runs");
+    }
+
+    #[test]
+    fn an_unfinished_run_says_how_far_it_is() {
+        let catalog = Catalog::new(Locale::English);
+        assert_eq!(catalog.localized(ActionsOverviewMessage::JobsFinished { done: 5, total: 8 }).as_str(), "5 of 8 jobs finished");
+        assert_eq!(catalog.localized(ActionsOverviewMessage::JobsFinished { done: 0, total: 1 }).as_str(), "0 of 1 job finished");
+        assert_eq!(catalog.localized(ActionsOverviewMessage::JobsRunning { count: 1 }).as_str(), "1 job running");
+        assert_eq!(catalog.localized(ActionsOverviewMessage::JobsRunning { count: 3 }).as_str(), "3 jobs running");
+        assert_eq!(catalog.localized(ActionsOverviewMessage::WaitingForRunner).as_str(), "Waiting for a runner");
+        assert_eq!(ActionsOverviewMessage::WaitingForRunner.id(), "actions.overview.waiting-for-runner");
     }
 }

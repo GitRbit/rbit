@@ -46,5 +46,19 @@ entries! { Fr:
                 _ => " exécutions sur cette page",
             });
         }
+        ActionsOverviewMessage::JobsFinished { done, total } => {
+            text.number(done);
+            text.literal(" sur ");
+            text.number(total);
+            text.literal(" jobs terminés");
+        }
+        ActionsOverviewMessage::JobsRunning { count } => {
+            text.number(count);
+            text.literal(match text.plural(count) {
+                Plural::One => " job en cours",
+                _ => " jobs en cours",
+            });
+        }
+        ActionsOverviewMessage::WaitingForRunner => text.literal("En attente de runner"),
     }
 }

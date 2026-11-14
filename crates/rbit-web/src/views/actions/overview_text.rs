@@ -58,6 +58,22 @@ impl OverviewText {
         Localized::english_only(text.to_owned(), self.catalog.locale())
     }
 
+    /// "5 of 8 jobs finished", for an unfinished run's ring.
+    pub fn jobs_finished(&self, progress: &super::overview::Progress) -> Localized {
+        self.catalog.localized(ActionsOverviewMessage::JobsFinished { done: progress.done, total: progress.total })
+    }
+
+    /// What an unfinished run is doing: running jobs, or waiting for a runner.
+    pub fn phase(&self, progress: &super::overview::Progress) -> Option<Localized> {
+        if progress.running > 0 {
+            Some(self.catalog.localized(ActionsOverviewMessage::JobsRunning { count: progress.running }))
+        } else if progress.waiting {
+            Some(self.catalog.localized(ActionsOverviewMessage::WaitingForRunner))
+        } else {
+            None
+        }
+    }
+
     pub fn new(locale: Locale, count: usize) -> Self {
         let catalog = Catalog::new(locale);
         Self {

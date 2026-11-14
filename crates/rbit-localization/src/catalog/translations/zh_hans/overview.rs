@@ -39,5 +39,18 @@ entries! { ZhHans:
             text.number(count);
             text.literal(" 次运行");
         }
+        ActionsOverviewMessage::JobsFinished { done, total } => {
+            text.literal("已完成 ");
+            text.number(done);
+            text.literal(" / ");
+            text.number(total);
+            text.literal(" 个作业");
+        }
+        ActionsOverviewMessage::JobsRunning { count } => {
+            text.literal("正在运行 ");
+            text.number(count);
+            text.literal(" 个作业");
+        }
+        ActionsOverviewMessage::WaitingForRunner => text.literal("正在等待运行器"),
     }
 }

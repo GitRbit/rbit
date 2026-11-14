@@ -33,5 +33,18 @@ entries! { Ko:
             text.number(count);
             text.literal("개");
         }
+        ActionsOverviewMessage::JobsFinished { done, total } => {
+            text.literal("완료된 작업 ");
+            text.number(done);
+            text.literal("/");
+            text.number(total);
+            text.literal("개");
+        }
+        ActionsOverviewMessage::JobsRunning { count } => {
+            text.literal("실행 중인 작업 ");
+            text.number(count);
+            text.literal("개");
+        }
+        ActionsOverviewMessage::WaitingForRunner => text.literal("러너를 기다리는 중"),
     }
 }
