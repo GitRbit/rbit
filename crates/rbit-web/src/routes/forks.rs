@@ -88,10 +88,10 @@ async fn sync_fork(
     State(state): State<AppState>,
     SignedIn(user): SignedIn,
     Path((owner, repo)): Path<(String, String)>,
-    Form(form): Form<SyncForm>,
+    Form(input): Form<SyncForm>,
 ) -> WebResult<Redirect> {
     let fork = state.services.repositories.open(Some(&user), &owner, &repo).await?;
-    let SyncForm { branch, fork_tip, upstream_branch, upstream_tip } = form;
+    let SyncForm { branch, fork_tip, upstream_branch, upstream_tip } = input;
     let expectation = ForkSyncExpectation { branch, fork_tip, upstream_branch, upstream_tip };
     state.services.forks.sync(&user, &fork, &expectation).await?;
     let urls = RepoUrls::new(fork.repo.owner.name.as_str(), fork.repo.repo.name.as_str());
