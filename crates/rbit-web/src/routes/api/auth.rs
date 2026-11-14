@@ -45,6 +45,8 @@ use super::{
 };
 use crate::{AppState, client_ip::ClientIp};
 
+mod watch;
+
 /// The caller of an API request.
 #[derive(Debug, Clone, Default)]
 pub struct Caller {

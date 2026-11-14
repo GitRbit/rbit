@@ -89,7 +89,7 @@ pub enum IssueCommand {
 }
 
 /// The text of `--body`, of `--body-file` (`-`: standard input), or empty.
-fn body(body: Option<String>, file: Option<std::path::PathBuf>) -> anyhow::Result<String> {
+pub(super) fn body(body: Option<String>, file: Option<std::path::PathBuf>) -> anyhow::Result<String> {
     match (body, file) {
         (Some(body), _) => Ok(body),
         (None, Some(file)) if file.as_os_str() == "-" => {

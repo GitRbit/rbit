@@ -12,7 +12,7 @@
 use rbit_core::pull::{ReviewComment, ReviewSide};
 use rbit_git::{ChangeStatus, DiffLimits, FileDiffBody, diff::Hunk};
 
-use super::{PullContext, PullService};
+use super::{PullContext, PullService, ReviewData};
 use crate::ServiceError;
 
 /// Bytes of a blob read to map an outdated anchor.
@@ -150,26 +150,33 @@ impl PullService {
     /// The unresolved threads of `ctx` the viewer can see, oldest first, at most 50.
     pub async fn inbox(&self, viewer: Option<&rbit_core::User>, ctx: &PullContext) -> Result<Vec<InboxThread>, ServiceError> {
         let data = self.reviews(viewer, ctx).await?;
-        let comments: Vec<(ReviewComment, Option<String>)> = data
-            .reviews
-            .iter()
-            .flat_map(|entry| {
-                entry.comments.iter().map(|(comment, author)| (comment.clone(), author.as_ref().map(|account| account.name.to_string())))
-            })
-            .collect();
+        Ok(self.inbox_from(ctx, &data).await)
+    }
+
+    /// Build the inbox from an already loaded snapshot of submitted reviews.
+    pub async fn inbox_from(&self, ctx: &PullContext, data: &ReviewData) -> Vec<InboxThread> {
+        let comments: Vec<_> = data.reviews.iter().flat_map(|entry| &entry.comments).collect();
         let mut threads = Vec::new();
         // The pull request's renames, read once and only if an anchor needs them.
         let mut renames = None;
         for (root, author) in
             comments.iter().filter(|(comment, _)| comment.in_reply_to.is_none() && comment.resolved_at.is_none()).take(INBOX_THREADS)
         {
-            let replies: Vec<&(ReviewComment, Option<String>)> =
-                comments.iter().filter(|(comment, _)| comment.in_reply_to == Some(root.id)).collect();
-            let last = replies.last().map(|(comment, author)| (author.clone(), excerpt(&comment.body)));
+            let (count, last) = comments
+                .iter()
+                .filter(|(comment, _)| comment.in_reply_to == Some(root.id))
+                .fold((0, None), |(count, _), (comment, author)| (count + 1, Some((author, comment))));
+            let login = |account: &Option<rbit_core::Account>| account.as_ref().map(|account| account.name.to_string());
             let anchor = if root.outdated { self.map_anchor(ctx, root, &mut renames).await } else { Anchor::Current };
-            threads.push(InboxThread { root: root.clone(), author: author.clone(), replies: replies.len(), last, anchor });
+            threads.push(InboxThread {
+                root: root.clone(),
+                author: login(author),
+                replies: count,
+                last: last.map(|(author, comment)| (login(author), excerpt(&comment.body))),
+                anchor,
+            });
         }
-        Ok(threads)
+        threads
     }
 
     /// Where outdated `root` points in the head now. `renames` caches the pull request's

@@ -24,6 +24,10 @@ const RUN_DEADLINE: Duration = Duration::from_secs(240);
 /// The `rbit-runner` built by `cargo test --workspace` (the runner's own
 /// integration test makes cargo build its binary) or `cargo build -p rbit-runner`.
 pub(super) fn runner_binary() -> PathBuf {
+    test_binary("rbit-runner", "rbit-runner")
+}
+
+pub(super) fn test_binary(name: &str, package: &str) -> PathBuf {
     let exe = std::env::current_exe().expect("the test's own path");
     // Test executables live in the build directory; final binaries live in the target
     // directory. Cargo metadata respects custom paths and a separate build directory.
@@ -40,8 +44,8 @@ pub(super) fn runner_binary() -> PathBuf {
     let relative = exe.strip_prefix(build).expect("test executable is in Cargo's build directory");
     // Retain the profile and, when cross compiling, the target triple.
     let profile = relative.parent().and_then(std::path::Path::parent).expect("<profile>/deps/test");
-    let binary = target.join(profile).join(format!("rbit-runner{}", std::env::consts::EXE_SUFFIX));
-    assert!(binary.exists(), "{} is missing: run `cargo build -p rbit-runner` (or the whole workspace's tests) first", binary.display());
+    let binary = target.join(profile).join(format!("{name}{}", std::env::consts::EXE_SUFFIX));
+    assert!(binary.exists(), "{} is missing: run `cargo build -p {package}` (or the whole workspace's tests) first", binary.display());
     binary
 }
 

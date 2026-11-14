@@ -10,20 +10,12 @@ use std::process::Command;
 use rbit_e2e::{Git, PASSWORD, TestServer};
 use serde_json::{Value, json};
 
-use super::actions_runner::runner_binary;
+use super::actions_runner::test_binary;
 
 const WORKFLOW: &str =
     "name: CI\non: [push, pull_request]\njobs:\n  test:\n    runs-on: nobody-has-this-label\n    steps:\n      - run: true\n";
 
-/// The `rbit` binary built beside `rbit-runner`.
-fn rbit_binary() -> std::path::PathBuf {
-    let runner = runner_binary();
-    let binary = runner.with_file_name(format!("rbit{}", std::env::consts::EXE_SUFFIX));
-    assert!(binary.exists(), "{} is missing: build the workspace (`cargo build -p rbit-server`) first", binary.display());
-    binary
-}
-
-struct Agent<'a> {
+pub(super) struct Agent<'a> {
     server: &'a TestServer,
     http: reqwest::Client,
     token: String,
@@ -31,8 +23,12 @@ struct Agent<'a> {
     config: tempfile::TempDir,
 }
 
-impl Agent<'_> {
-    async fn send(&self, method: reqwest::Method, path: &str, body: Option<Value>) -> (u16, Value) {
+impl<'a> Agent<'a> {
+    pub(super) fn new(server: &'a TestServer, token: String) -> Self {
+        Self { server, http: reqwest::Client::builder().no_proxy().build().unwrap(), token, config: tempfile::tempdir().unwrap() }
+    }
+
+    pub(super) async fn send(&self, method: reqwest::Method, path: &str, body: Option<Value>) -> (u16, Value) {
         let mut request = self.http.request(method, self.server.url(&format!("/api/v1/{path}"))).bearer_auth(&self.token);
         if let Some(body) = body {
             request = request.header("Content-Type", "application/json").body(body.to_string());
@@ -43,13 +39,13 @@ impl Agent<'_> {
         (status, if text.is_empty() { Value::Null } else { serde_json::from_str(&text).expect("JSON") })
     }
 
-    async fn get(&self, path: &str) -> (u16, Value) {
+    pub(super) async fn get(&self, path: &str) -> (u16, Value) {
         self.send(reqwest::Method::GET, path, None).await
     }
 
     /// `rbit <args> --repo alice/rocket --json`: the exit code and the one JSON object.
-    fn cli(&self, args: &[&str]) -> (i32, Value) {
-        let output = Command::new(rbit_binary())
+    pub(super) fn cli(&self, args: &[&str]) -> (i32, Value) {
+        let output = Command::new(test_binary("rbit", "rbit-server"))
             .args(args)
             .args(["--repo", "alice/rocket", "--hostname", self.server.base_url(), "--json"])
             .env("RBIT_TOKEN", &self.token)
@@ -78,12 +74,7 @@ async fn an_agent_finds_the_runs_of_its_commit_and_reads_codes_not_prose() {
     alice.create_repo("alice", "rocket", "public").await;
     crate::enable_actions(&alice, "alice", "rocket").await;
     let token = alice.create_token("agent", "write").await;
-    let agent = Agent {
-        server: &server,
-        http: reqwest::Client::builder().no_proxy().build().unwrap(),
-        token,
-        config: tempfile::tempdir().unwrap(),
-    };
+    let agent = Agent::new(&server, token);
 
     let git = Git::new();
     let sample = git.sample();
@@ -148,6 +139,10 @@ async fn an_agent_finds_the_runs_of_its_commit_and_reads_codes_not_prose() {
     assert_eq!(listed["runs"][0].as_object().unwrap().len(), 2, "only the asked-for fields");
     let (code, checks) = agent.cli(&["pr", "checks", "1"]);
     assert_eq!((code, checks["state"].as_str()), (8, Some("pending")), "queued checks are pending: {checks}");
+    let (code, watch) = agent.cli(&["pr", "watch", "1", "--timeout", "0"]);
+    assert_eq!((code, watch["schema"].as_str(), watch["head"].as_str()), (0, Some("rbit.pr-watch/1"), Some(head.as_str())), "{watch}");
+    assert_eq!(watch["changed"], true, "{watch}");
+    assert!(watch["cursor"].is_string(), "{watch}");
     let (code, merge) = agent.cli(&["pr", "merge", "1", "--head", &base]);
     assert_eq!((code, merge["code"].as_str()), (5, Some("head_changed")), "{merge}");
     let (code, gone) = agent.cli(&["run", "view", "999999"]);
