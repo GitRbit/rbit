@@ -21,7 +21,7 @@ use axum::{
     Form, Router,
     extract::{DefaultBodyLimit, Multipart, Path, State},
     http::StatusCode,
-    middleware::{from_fn, from_fn_with_state},
+    middleware::from_fn_with_state,
     response::{IntoResponse, Redirect, Response},
     routing::get,
 };
@@ -84,7 +84,7 @@ pub fn upload_routes(state: &AppState) -> Router<AppState> {
         .layer(from_fn_with_state(state.clone(), middleware::error_pages))
         .layer(from_fn_with_state(state.clone(), middleware::session))
         .layer(from_fn_with_state(state.clone(), middleware::rate_limit))
-        .layer(from_fn(middleware::csrf_origin_check))
+        .layer(from_fn_with_state(state.clone(), middleware::csrf_origin_check))
         .layer(from_fn_with_state(middleware::SecurityHeaders::new(&state.config), middleware::security_headers))
 }
 
