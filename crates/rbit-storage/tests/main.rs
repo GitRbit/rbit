@@ -10,6 +10,7 @@ mod account_creation;
 mod accounts;
 // Actions: foundation (F).
 mod actions;
+mod actions_claim_order;
 // Agent loop: scratch refs.
 mod actions_decisions;
 mod actions_flaky;

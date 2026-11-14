@@ -1,4 +1,4 @@
-//! Where a waiting job stands in line: the jobs with the same labels queued before it, and
+//! Where a waiting job stands in line: the jobs with the same labels handed out before it, and
 //! how long such jobs have recently taken, for an expected start.
 use super::ActionsRunStore;
 use crate::StorageError;
@@ -16,11 +16,46 @@ macro_rules! labels_of {
     };
 }
 
-/// Waiting jobs with the labels of waiting job `?1`, queued before it.
+/// When job `$job` was queued.
+macro_rules! queued {
+    ($job:literal) => {
+        concat!("COALESCE(", $job, ".queued_at, ", $job, ".created_at)")
+    };
+}
+
+/// Whether run `$run` is in progress for the queue: started, or cancelled.
+macro_rules! in_progress {
+    ($run:literal) => {
+        concat!("(", $run, ".started_at IS NOT NULL OR ", $run, ".cancel_requested = 1)")
+    };
+}
+
+/// Waiting jobs with the labels of waiting job `?1` that a runner is given before it
+/// (`claim_order`): those of runs in progress, the run that started first going first, then
+/// those of runs that have not started, in the order they were queued.
 const AHEAD: &str = concat!(
-    "SELECT COUNT(*) FROM actions_jobs j, actions_jobs me WHERE me.id = ?1 AND me.status = 5 AND j.status = 5 ",
-    "AND (COALESCE(j.queued_at, j.created_at) < COALESCE(me.queued_at, me.created_at) ",
-    "OR (COALESCE(j.queued_at, j.created_at) = COALESCE(me.queued_at, me.created_at) AND j.id < me.id)) AND ",
+    "SELECT COUNT(*) FROM actions_jobs me JOIN actions_runs mine ON mine.id = me.run_id ",
+    "JOIN actions_jobs j ON j.status = 5 JOIN actions_runs theirs ON theirs.id = j.run_id ",
+    "WHERE me.id = ?1 AND me.status = 5 AND CASE ",
+    "WHEN NOT ",
+    in_progress!("theirs"),
+    " THEN NOT ",
+    in_progress!("mine"),
+    " AND (",
+    queued!("j"),
+    ", j.id) < (",
+    queued!("me"),
+    ", me.id) WHEN NOT ",
+    in_progress!("mine"),
+    " THEN 1 ELSE (COALESCE(theirs.started_at, ",
+    queued!("j"),
+    "), theirs.id, ",
+    queued!("j"),
+    ", j.id) < (COALESCE(mine.started_at, ",
+    queued!("me"),
+    "), mine.id, ",
+    queued!("me"),
+    ", me.id) END AND ",
     labels_of!("j.id"),
     " IS ",
     labels_of!("?1")
@@ -39,7 +74,7 @@ const MEAN: &str = concat!(
 /// A waiting job's place in line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct QueuePlace {
-    /// Waiting jobs with the same labels queued before it.
+    /// Waiting jobs with the same labels that a runner is given before it.
     pub ahead: u64,
     /// The mean run time, in seconds, of the last 50 finished jobs with the same labels;
     /// `None` without any.

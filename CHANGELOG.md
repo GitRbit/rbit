@@ -13,6 +13,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Create a repository from the files on another repository's default branch, with a fresh initial commit.
 - See how a fork's default branch compares with upstream and fast-forward it from the repository page when allowed.
 
+### Fixed
+
+- A workflow run that has started is finished before a run pushed after it starts. Runners
+  were given the job that had waited longest, and a job enters the queue only when the jobs
+  it `needs` finish, so with busy runners the later jobs of a run waited behind the first
+  jobs of every newer run: a run one short job from done could sit for the length of the
+  whole queue. Runs in progress now get their next jobs first, the run that started first
+  going first; runs that have not started still start in the order they were queued, and a
+  run started again waits its turn. A cancelled run's `if: always()` jobs are served with
+  the runs in progress, so the run finishes instead of staying queued. A waiting job's
+  `ahead` count follows the same order.
+
 ## [0.2.2] - 2026-11-13
 
 ### Dependency maintenance

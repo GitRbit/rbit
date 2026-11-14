@@ -5,7 +5,8 @@
 //!   [`RunStart::Runnable`] jobs without `needs` are waiting and the others blocked; a run
 //!   held for its concurrency group has every job blocked, an untrusted run awaiting
 //!   approval every job awaiting. A run without jobs is a workflow error and has failed.
-//! * [`ActionsRunStore::claim`] hands the oldest waiting job a runner may take to it: its
+//! * [`ActionsRunStore::claim`] hands a runner the next waiting job it may take, a run in
+//!   progress before a run that has not started (`claim_order`): its
 //!   labels are matched in SQL against the job's (`actions_job_labels`), its scope against
 //!   the repository, and the job becomes running with a new task in the same transaction.
 //! * [`ActionsRunStore::finish_task`], [`ActionsRunStore::cancel_run`],
@@ -32,7 +33,7 @@ use rbit_core::{
 };
 use sqlx::{SqliteConnection, SqlitePool};
 
-use super::actions_rows::{corrupt, labels_json, runner_columns, status, strings, strings_json, timestamp};
+use super::actions_rows::{corrupt, status, strings, strings_json, timestamp};
 use crate::StorageError;
 
 #[expect(clippy::struct_excessive_bools, reason = "one column per run flag")]
@@ -432,6 +433,7 @@ pub enum Rerun {
 
 // Actions: annotations.
 mod annotations;
+mod claim_order;
 mod decisions;
 pub use decisions::CommitDecision;
 // Agent loop: request ids and the merge queue.
@@ -700,13 +702,11 @@ impl ActionsRunStore {
         Ok(u64::try_from(count).unwrap_or_default())
     }
 
-    /// Gives the runner the oldest waiting job it may take, or `None`. The job becomes
+    /// Gives the runner the next waiting job it may take (a run in progress before a run
+    /// that has not started), or `None`. The job becomes
     /// running and gets a new task holding `token_digest`, in one write transaction: of two
     /// runners claiming at once, one gets the job.
     pub async fn claim(&self, request: &ClaimRequest<'_>) -> Result<Option<Claimed>, StorageError> {
-        let (kind, owner, repo) = runner_columns(request.scope);
-        let labels = labels_json(request.labels)?;
-        let host_labels = labels_json(request.host_labels)?;
         let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         if request.ephemeral {
             let busy: Option<i64> = sqlx::query_scalar("SELECT 1 FROM actions_tasks WHERE runner_id = ? AND status = 6 LIMIT 1")
@@ -717,17 +717,7 @@ impl ActionsRunStore {
                 return Ok(None);
             }
         }
-        let candidate: Option<i64> = sqlx::query_scalar(CLAIM_CANDIDATE)
-            .bind(kind)
-            .bind(owner)
-            .bind(repo)
-            .bind(request.instance_runners_for_all)
-            .bind(labels)
-            .bind(host_labels)
-            // Actions: environments. A wait timer holds a job until it is over.
-            .bind(request.now.0)
-            .fetch_optional(&mut *tx)
-            .await?;
+        let candidate = claim_order::candidate(&mut tx, request).await?;
         let Some(job_id) = candidate else {
             return Ok(None);
         };
@@ -1553,26 +1543,6 @@ impl ActionsRunStore {
     }
 }
 
-/// The waiting job a runner may take, oldest first: the repository has Actions on, the
-/// runner's scope covers it, and the job asks for labels, all of which the runner has.
-const CLAIM_CANDIDATE: &str = "SELECT j.id FROM actions_jobs j \
-     JOIN repositories r ON r.id = j.repo_id \
-     JOIN actions_repositories a ON a.repo_id = j.repo_id AND a.enabled = 1 \
-     WHERE j.status = 5 \
-     AND CASE ?1 \
-         WHEN 'instance' THEN ?4 = 1 OR EXISTS (SELECT 1 FROM actions_owner_policies p WHERE p.owner_id = r.owner_id AND p.instance_runners = 1) \
-         WHEN 'owner' THEN r.owner_id = ?2 \
-         ELSE j.repo_id = ?3 END \
-     AND EXISTS (SELECT 1 FROM actions_job_labels l WHERE l.job_id = j.id) \
-     AND NOT EXISTS (SELECT 1 FROM actions_job_labels l WHERE l.job_id = j.id AND l.label NOT IN (SELECT value FROM json_each(?5)))      AND (EXISTS (SELECT 1 FROM actions_runs ru WHERE ru.id = j.run_id AND ru.trusted = 1)          OR NOT EXISTS (SELECT 1 FROM actions_job_labels l WHERE l.job_id = j.id AND l.label IN (SELECT value FROM json_each(?6)))) \
-     AND (j.max_parallel IS NULL OR (SELECT COUNT(*) FROM actions_jobs s \
-         WHERE s.run_id = j.run_id AND s.job_key = j.job_key AND s.status = 6) < j.max_parallel) \
-     AND (j.job_group IS NULL OR NOT EXISTS (SELECT 1 FROM actions_jobs g \
-         WHERE g.repo_id = j.repo_id AND g.job_group = j.job_group AND g.status = 6)) \
-     AND (j.environment IS NULL OR NOT EXISTS (SELECT 1 FROM actions_environments e \
-         WHERE e.repo_id = j.repo_id AND e.name = j.environment AND e.wait_timer > 0 AND j.queued_at + e.wait_timer * 60 > ?7)) \
-     ORDER BY j.queued_at, j.id LIMIT 1";
-
 /// A run's status before its first settling: held and awaiting runs keep theirs, which
 /// tells [`settle`] not to unblock their jobs.
 fn placeholder_status(start: RunStart) -> RunStatus {
@@ -1790,30 +1760,4 @@ async fn settle(tx: &mut SqliteConnection, run: RunId, mut now_waiting: Vec<i64>
         now_reviewing: reviewing.into_iter().map(JobId).collect(),
         to_decide: to_decide.into_iter().map(JobId).collect(),
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// `FetchTask`'s query must walk the partial index of waiting jobs in queue order rather
-    /// than scan every job ever run.
-    #[tokio::test]
-    async fn the_claim_query_walks_the_waiting_index() {
-        let dir = tempfile::tempdir().unwrap();
-        let database = crate::Database::open(&dir.path().join("rbit.db")).await.unwrap();
-        sqlx::query("ANALYZE").execute(&database.pool).await.unwrap();
-        let plan: Vec<(i64, i64, i64, String)> = sqlx::query_as(sqlx::AssertSqlSafe(format!("EXPLAIN QUERY PLAN {CLAIM_CANDIDATE}")))
-            .bind("repository")
-            .bind(None::<i64>)
-            .bind(1)
-            .bind(false)
-            .bind("[\"linux\"]")
-            .fetch_all(&database.pool)
-            .await
-            .unwrap();
-        let plan: Vec<&str> = plan.iter().map(|row| row.3.as_str()).collect();
-        assert!(plan.iter().any(|step| step.contains("USING INDEX actions_jobs_waiting")), "{plan:#?}");
-        assert!(!plan.iter().any(|step| step.contains("TEMP B-TREE FOR ORDER BY")), "{plan:#?}");
-    }
 }
