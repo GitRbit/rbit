@@ -379,6 +379,28 @@ pub enum PrCommand {
         #[arg(long, default_value_t = 3600)]
         timeout: u64,
     },
+    /// Follow a pull request until it is ready for a human handoff or needs attention.
+    #[command(visible_alias = "full-stop")]
+    Babysit {
+        number: u64,
+        /// Seconds to wait. Zero evaluates the current snapshot.
+        #[arg(long, default_value_t = 3600)]
+        timeout: u64,
+    },
+    /// Queue the reviewed head for merge and wait for the queue's result.
+    FullSend {
+        number: u64,
+        /// The full commit id of the reviewed pull request head.
+        #[arg(long)]
+        head: String,
+        #[arg(long, conflicts_with = "rebase")]
+        squash: bool,
+        #[arg(long, conflicts_with = "squash")]
+        rebase: bool,
+        /// Seconds to wait after queueing. Zero returns the immediate queue state.
+        #[arg(long, default_value_t = 7200)]
+        timeout: u64,
+    },
     /// Queue a pull request to land only after its merge on the current base passed CI;
     /// `--watch` waits: exit 0 when it landed, 1 when it failed, 5 when taken out of line.
     Queue {
@@ -420,6 +442,22 @@ pub enum PrCommand {
     },
     /// A pull request.
     View { number: u64 },
+    /// Assess an older pull request against its base without changing any refs.
+    Modernize { number: u64 },
+    /// Collect the revisions, review state, and changes needed to take over a pull request.
+    Takeover { number: u64 },
+    /// Post a PR discussion comment or reply to an inline review thread.
+    Comment {
+        number: u64,
+        #[arg(long, required_unless_present = "body_file", conflicts_with = "body_file")]
+        body: Option<String>,
+        /// Read the comment from a file, or standard input with `-`.
+        #[arg(long)]
+        body_file: Option<std::path::PathBuf>,
+        /// Reply to this inline review comment instead of posting to the discussion.
+        #[arg(long)]
+        reply_to: Option<u64>,
+    },
     /// Get a PR snapshot or wait for checks, reviews, or the PR itself to change.
     Watch {
         number: u64,

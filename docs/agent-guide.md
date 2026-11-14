@@ -1,28 +1,57 @@
 # Driving rbit from a coding agent
 
-## Pull request skills
+## Pull request workflows
 
-The repository ships [agent skills](../.agents/skills) for use with the rbit client.
-Open the checkout in an agent host that loads repository skills from `.agents/skills`.
-For a host that uses another directory, copy the skill directories together into its
-configured skills directory. Keep the sibling directories together so cross-references
-resolve. Install a matching rbit client and use the [client guide](cli.md) to connect it
-to the instance hosting your repository.
+Connect a matching rbit client to the instance hosting the repository using the
+[client guide](cli.md). Use `--json` for structured output and specify `--hostname`
+and `--repo` when the checkout has more than one possible target.
 
-| Skill | Use it to |
+| Command | Use it to |
 | --- | --- |
-| `rbit-modernize` | Assess an older PR against its actual base and recommend an update, targeted rework, or closure. Request an update explicitly to publish a changed head. |
-| `rbit-takeover` | Continue an existing PR or branch while preserving the objective, contributor credit, and local work. |
-| `rbit-file-pr` | Verify the diff and file or recover a PR for the branch. |
-| `rbit-babysit-pr` | Follow checks, reviews, and the PR head until the requested handoff or landing condition. |
-| `rbit-full-stop` | Verify and file a PR, then hand it back for human merge. |
-| `rbit-full-send` | Verify and land a PR through the merge queue when explicitly authorized. |
-| `rbit-review` | Request independent review of a fixed revision from one reviewer or an explicitly requested council. Requires a host with the requested delegation capability. |
-| `rbit-pr-comments` | Draft evidence-based PR comments and verify posting before resolving a thread when authorized. |
+| `rbit pr ensure --head BRANCH --base BASE --title TITLE` | Recover an open PR for the branch pair or create one with the intended title and body. Use a stable request ID when retrying the same request. |
+| `rbit pr modernize 42` | Gather the PR's actual base and head, Git divergence, changed-file manifest, and current PR state. |
+| `rbit pr takeover 42` | Gather current PR context and evidence before continuing someone else's work. |
+| `rbit pr babysit 42` or `rbit pr full-stop 42` | Wait for a handoff or an actionable result from CI, review, or the PR's lifecycle. |
+| `rbit pr full-send 42 --head SHA` | Queue an explicitly authorized head and follow it to the landing result. |
 
-For example, ask “Modernize rbit PR #42 and tell me whether it still belongs on
-its current base” for an assessment. Ask “Babysit rbit PR #42 until it is ready
-for me to merge” to follow it through review and CI.
+### Assess or take over a change
+
+Use `modernize` to see what changed on the PR and how far its actual base moved.
+Read the linked issue, affected code, and tests before recommending an update,
+rework, or closure. A squash or a different implementation may have solved the
+same problem, even if the PR commit is absent from the base's ancestry.
+
+For an authorized same-repository merge update, use `rbit pr update-branch 42
+--head SHA` and verify and test the resulting head. For a rebase, work in an
+isolated checkout, inspect the rewritten series with `git range-diff`, and guard
+the push against the observed remote head with an explicit force-with-lease.
+
+For a takeover, use the observed revisions with the original goal and review
+evidence. Inspect any active local checkout before making changes. If it is
+tracked by rbit, `rbit task resume BRANCH --json` shows whether it has uncommitted
+work. Carry existing commits and contributor credit forward and confirm any
+recorded proof still applies to the revision you are continuing.
+
+### Review, hand off, or land
+
+Read the PR's review and comments endpoints for context and use the inbox for
+unresolved threads. Verify review findings against the change before updating
+the branch. For an authorized reply, use `rbit pr comment 42 --reply-to COMMENT_ID
+--body-file FILE --json` and confirm it posted before marking the thread resolved.
+An independent reviewer can use the same PR evidence if the agent host supplies
+that capability.
+
+Use `babysit` or `full-stop` to observe the PR through a handoff. If a return
+shows a new head or base, reassess the evidence for the new revisions. Use
+`rbit pr ready 42 --head SHA --mark` for an explicitly requested draft
+transition. An existing merge queue entry can land independently. Inspect it
+before making changes intended for a human handoff.
+
+Use `full-send` only after the user authorizes landing and the evidence applies
+to the observed head. It guards the requested head and checks for unresolved
+threads before queueing. The merge queue tests the candidate on the current
+base under repository protection. If a wait ends while an entry is active, read
+the current queue and PR state before issuing another write.
 
 ## Watching a pull request
 

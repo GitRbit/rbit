@@ -15,7 +15,7 @@ use super::actions_runner::test_binary;
 const WORKFLOW: &str =
     "name: CI\non: [push, pull_request]\njobs:\n  test:\n    runs-on: nobody-has-this-label\n    steps:\n      - run: true\n";
 
-struct Agent<'a> {
+pub(super) struct Agent<'a> {
     server: &'a TestServer,
     http: reqwest::Client,
     token: String,
@@ -23,8 +23,12 @@ struct Agent<'a> {
     config: tempfile::TempDir,
 }
 
-impl Agent<'_> {
-    async fn send(&self, method: reqwest::Method, path: &str, body: Option<Value>) -> (u16, Value) {
+impl<'a> Agent<'a> {
+    pub(super) fn new(server: &'a TestServer, token: String) -> Self {
+        Self { server, http: reqwest::Client::builder().no_proxy().build().unwrap(), token, config: tempfile::tempdir().unwrap() }
+    }
+
+    pub(super) async fn send(&self, method: reqwest::Method, path: &str, body: Option<Value>) -> (u16, Value) {
         let mut request = self.http.request(method, self.server.url(&format!("/api/v1/{path}"))).bearer_auth(&self.token);
         if let Some(body) = body {
             request = request.header("Content-Type", "application/json").body(body.to_string());
@@ -35,12 +39,12 @@ impl Agent<'_> {
         (status, if text.is_empty() { Value::Null } else { serde_json::from_str(&text).expect("JSON") })
     }
 
-    async fn get(&self, path: &str) -> (u16, Value) {
+    pub(super) async fn get(&self, path: &str) -> (u16, Value) {
         self.send(reqwest::Method::GET, path, None).await
     }
 
     /// `rbit <args> --repo alice/rocket --json`: the exit code and the one JSON object.
-    fn cli(&self, args: &[&str]) -> (i32, Value) {
+    pub(super) fn cli(&self, args: &[&str]) -> (i32, Value) {
         let output = Command::new(test_binary("rbit", "rbit-server"))
             .args(args)
             .args(["--repo", "alice/rocket", "--hostname", self.server.base_url(), "--json"])
@@ -70,12 +74,7 @@ async fn an_agent_finds_the_runs_of_its_commit_and_reads_codes_not_prose() {
     alice.create_repo("alice", "rocket", "public").await;
     crate::enable_actions(&alice, "alice", "rocket").await;
     let token = alice.create_token("agent", "write").await;
-    let agent = Agent {
-        server: &server,
-        http: reqwest::Client::builder().no_proxy().build().unwrap(),
-        token,
-        config: tempfile::tempdir().unwrap(),
-    };
+    let agent = Agent::new(&server, token);
 
     let git = Git::new();
     let sample = git.sample();

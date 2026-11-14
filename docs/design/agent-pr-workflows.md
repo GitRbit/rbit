@@ -1,32 +1,47 @@
-# Agent pull request workflows
+# Native agent pull request workflows
 
 ## Implementation plan
 
-1. Add a read-only PR watcher to the REST API and CLI. Reuse the merge readiness and review services. Provide a cursor and a bounded wait for changes to the head, checks, review activity, threads, conflicts, or PR and queue state. Include the observed revisions so callers can invalidate stale evidence.
-2. Package repository skills for filing and monitoring PRs, preparing a human handoff, landing an explicitly authorized PR, modernizing an older PR, and taking over existing work. Include shared comment guidance and a reviewer workflow that uses delegation when the host provides it.
-3. Document setup and run focused verification against the normal CLI and API. Verify that watching a PR surfaces changes beyond CI, that a new push invalidates old evidence, and that an agent can assess an old PR before touching its branch.
+1. Expose a read-only PR watch endpoint and CLI command. Reuse readiness,
+   review, and merge queue services. Include the observed head and base so
+   clients can detect when their evidence is stale. Return a cursor for bounded
+   waits and recheck requester access during a wait.
+2. Add read-only CLI workflows for modernization and takeover. Combine existing
+   PR state, revisions, and review evidence. Add divergence and changed-file
+   evidence for modernization. Recheck revisions when gathering evidence across
+   multiple requests.
+3. Add `rbit pr babysit` and its `full-stop` alias over the PR watcher. Wait for
+   handoff readiness, actionable changes, or a terminal condition. Report
+   verification barriers, including feedback outside the server merge rules.
+4. Add `rbit pr full-send` for an explicitly authorized head. Validate the
+   observed head and review state before entering the existing merge queue.
+   Follow the queue to its result. Existing merge protection and candidate
+   checks govern landing.
+5. Document the native workflows and verify the normal CLI and API entry
+   points. Cover access checks, cursor behavior, handoff barriers, and stale
+   revisions.
 
-The forge reports repository state and enforces existing rules. The agent decides whether a change still fits the project, what review feedback warrants action, and which tests establish the intended behavior. The person directing the work controls publishing, review replies, and landing. A bounded watch supports a running session. Resuming a stopped session requires an agent host that can schedule a wake-up.
-
-## Workflow outcomes
-
-- Filing reuses an existing PR on the same branches and can retry creation after a lost response.
-- Monitoring considers review activity and unresolved threads even after CI is green. An update to the PR starts a new assessment of the evidence.
-- A human handoff leaves the PR available to merge. An authorized landing uses the existing merge queue and reports its result.
-- Modernization can recommend updating, reworking, or closing a superseded PR. An authorized update uses the actual base, an isolated checkout, focused validation, and an expected remote head.
-- Takeover preserves the goal, contributor credit, and workspace changes. An independent review applies to a specific revision and records evidence and unresolved findings.
+The forge provides deterministic evidence and executes authorized Git and merge
+operations. The agent or person decides whether a change fits, whether review
+feedback is correct, and which additional tests establish intended behavior.
+Independent review can use the same evidence through delegation supplied by
+the agent host. A host scheduler is required to resume an agent after it exits.
 
 ## Verification scenarios
 
-- Watch a PR through pending and passing checks, a review with CI still green,
-  and a new head. Verify cursor reuse, an unchanged timeout, and permission
-  checks for a private repository.
-- Assess three older PRs against their actual bases. One still fits and needs
-  a mechanical update. One needs a new approach because the base changed the
-  owning subsystem. One can close because the base already solves the issue.
-  A read-only assessment leaves all three PRs and branches intact.
-- For an explicitly authorized update, check the old and rewritten commit
-  series, run focused tests, and verify that a concurrent push causes the
-  expected-head update to fail.
+- Watch a PR through pending and passing checks, then submit a review while
+  checks remain green. Confirm cursor changes for the review and a later head,
+  and that an unchanged cursor can time out. Check permissions on a private PR.
+- Test modernization evidence for a needed update, a branch working on a
+  subsystem since replaced, and a change that already landed independently.
+  Assess relevance against current behavior and compare source refs before and
+  after.
+- Follow a PR through handoff and verify that unresolved threads and a changed
+  head produce actionable results. Confirm that the handoff leaves the PR open.
+- Exercise authorized landing through the existing queue. Refuse a stale head
+  or unresolved thread before queueing, and verify the commit that lands was
+  tested against the current base.
+- For an isolated rebase, compare the old and new series and verify that a
+  concurrent push causes the explicit expected-head lease to fail.
 
-Inspired by the [tstack agent skills](https://github.com/t3dotgg/tstack).
+Inspired by the [tstack workflows](https://github.com/t3dotgg/tstack).

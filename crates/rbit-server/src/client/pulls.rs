@@ -17,6 +17,9 @@ use super::{
     util::{clip, encode, git, short, text},
 };
 
+mod assessment;
+mod workflow;
+
 /// A pull request for programs.
 fn compact(pull: &Value) -> Value {
     json!({
@@ -50,16 +53,9 @@ pub async fn pulls(api: &Api, repo: &Repo, command: PrCommand, out: &Output) -> 
             ensure(api, repo, (title, body, base, head), (ready, request_id), out).await?;
         }
         PrCommand::Queue { number, head, squash, rebase, watch, timeout } => {
-            let method = if squash {
-                "squash"
-            } else if rebase {
-                "rebase"
-            } else {
-                "merge"
-            };
-            let request = json!({ "head": head, "merge_method": method });
-            let place = api.json(Method::POST, &format!("repos/{repo}/pulls/{number}/queue"), Some(&request)).await?;
-            return queue_wait(api, repo, number, place, (watch, timeout), out).await;
+            let method = queue_method(squash, rebase);
+            let place = enqueue(api, repo, number, head.as_deref(), None, method).await?;
+            return queue_wait(api, repo, number, place, watch.then_some(timeout), out).await;
         }
         PrCommand::UpdateBranch { number, head } => {
             write(api, repo, &format!("pulls/{number}/update-branch"), json!({ "expected_head": head }), out).await?;
@@ -108,13 +104,24 @@ pub async fn pulls(api: &Api, repo: &Repo, command: PrCommand, out: &Output) -> 
                 }
             }
         }
+        PrCommand::Modernize { number } => assessment::show(api, repo, number, assessment::Mode::Modernize, out).await?,
+        PrCommand::Takeover { number } => assessment::show(api, repo, number, assessment::Mode::Takeover, out).await?,
+        PrCommand::Comment { number, body, body_file, reply_to } => {
+            let body = super::issues::body(body, body_file)?;
+            let (path, request) = match reply_to {
+                Some(parent) => (format!("repos/{repo}/pulls/{number}/comments"), json!({ "body": body, "in_reply_to": parent })),
+                None => {
+                    // The discussion endpoint also accepts issues. Confirm this is a pull request.
+                    api.get(&format!("repos/{repo}/pulls/{number}")).await?;
+                    (format!("repos/{repo}/issues/{number}/comments"), json!({ "body": body }))
+                }
+            };
+            let posted = api.json(Method::POST, &path, Some(&request)).await?;
+            let url = text(&posted, "html_url").to_owned();
+            report(out, "rbit.pr-comment/1", posted, &url);
+        }
         PrCommand::Watch { number, cursor, timeout } => {
-            let mut path = format!("repos/{repo}/pulls/{number}/watch?timeout={timeout}");
-            if let Some(cursor) = cursor {
-                path.push_str("&cursor=");
-                path.push_str(&encode(&cursor));
-            }
-            let mut body = api.get(&path).await?;
+            let mut body = watch_snapshot(api, repo, number, cursor.as_deref(), timeout).await?;
             if out.json {
                 if let Some(object) = body.as_object_mut() {
                     object.remove("schema");
@@ -131,6 +138,10 @@ pub async fn pulls(api: &Api, repo: &Repo, command: PrCommand, out: &Output) -> 
                 println!("  Unresolved review threads: {}", body["thread_count"]);
                 println!("  Cursor: {}", text(&body, "cursor"));
             }
+        }
+        PrCommand::Babysit { number, timeout } => return workflow::babysit(api, repo, number, timeout, out).await,
+        PrCommand::FullSend { number, head, squash, rebase, timeout } => {
+            return workflow::full_send(api, repo, number, &head, queue_method(squash, rebase), timeout, out).await;
         }
         PrCommand::Merge { number, merge: _, squash, rebase, head } => {
             let method = if squash {
@@ -251,18 +262,42 @@ async fn ready(
     }
 }
 
-/// `pr queue`: reports the place in line, and with `watch` waits until the entry left it.
-async fn queue_wait(
-    api: &Api,
-    repo: &Repo,
-    number: u64,
-    mut place: Value,
-    (watch, timeout): (bool, u64),
-    out: &Output,
-) -> anyhow::Result<i32> {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout);
+async fn watch_snapshot(api: &Api, repo: &Repo, number: u64, cursor: Option<&str>, timeout: u64) -> anyhow::Result<Value> {
+    let mut path = format!("repos/{repo}/pulls/{number}/watch?timeout={timeout}");
+    if let Some(cursor) = cursor {
+        path.push_str("&cursor=");
+        path.push_str(&encode(cursor));
+    }
+    api.get(&path).await
+}
+
+fn queue_method(squash: bool, rebase: bool) -> &'static str {
+    if squash {
+        "squash"
+    } else if rebase {
+        "rebase"
+    } else {
+        "merge"
+    }
+}
+
+async fn enqueue(api: &Api, repo: &Repo, number: u64, head: Option<&str>, base: Option<&str>, method: &str) -> anyhow::Result<Value> {
+    let mut request = json!({ "head": head, "merge_method": method });
+    if let Some(base) = base {
+        request["base"] = json!(base);
+    }
+    api.json(Method::POST, &format!("repos/{repo}/pulls/{number}/queue"), Some(&request)).await
+}
+
+/// `pr queue`: reports the place in line, and waits up to the timeout when given.
+async fn queue_wait(api: &Api, repo: &Repo, number: u64, mut place: Value, timeout: Option<u64>, out: &Output) -> anyhow::Result<i32> {
+    let deadline = timeout.map(workflow::deadline).transpose()?;
+    let expected = queue_selection(&place);
     let mut said = String::new();
     loop {
+        if expected != queue_selection(&place) {
+            return Err(agent::outcome("conflict", "the pull request's queue selection changed while waiting", None));
+        }
         let state = text(&place, "state").to_owned();
         let code = match state.as_str() {
             "landed" => Some(0),
@@ -281,18 +316,23 @@ async fn queue_wait(
                 said = line;
             }
         }
-        if code.is_some() || !watch || std::time::Instant::now() >= deadline {
+        if code.is_some() || deadline.is_none_or(|deadline| tokio::time::Instant::now() >= deadline) {
             if out.json {
                 if let Some(object) = place.as_object_mut() {
                     object.remove("schema");
                 }
                 agent::print("rbit.queue/1", place);
             }
-            return Ok(code.unwrap_or(if watch { 8 } else { 0 }));
+            return Ok(code.unwrap_or(if timeout.is_some() { 8 } else { 0 }));
         }
-        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        let interval = tokio::time::Instant::now() + Duration::from_secs(10);
+        tokio::time::sleep_until(deadline.map_or(interval, |deadline| deadline.min(interval))).await;
         place = api.get(&format!("repos/{repo}/pulls/{number}/queue")).await?;
     }
+}
+
+fn queue_selection(place: &Value) -> [String; 3] {
+    ["head", "base", "merge_method"].map(|field| text(place, field).to_owned())
 }
 
 /// `pr ensure`: the pull request for a branch, created or recovered.

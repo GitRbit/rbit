@@ -14,6 +14,7 @@ mod agent_land;
 mod agent_land_stall;
 mod agent_paths;
 mod agent_pr_watch;
+mod agent_pr_workflows;
 mod agent_runs;
 mod agent_scratch;
 mod agent_supersede;

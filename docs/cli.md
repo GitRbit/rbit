@@ -181,7 +181,7 @@ answer still comes, with `warnings` (printed to stderr) saying so.
 ## Landing
 
 ```bash
-rbit pr ensure [--head BRANCH] [--base main] [--title T] [--ready] [--request-id ID]
+rbit pr ensure [--head BRANCH] [--base main] [--title TITLE] [--body BODY] [--ready] [--request-id ID]
 rbit pr ready N [--head SHA] [--mark] [--watch]
 rbit pr queue N [--head SHA] [--squash | --rebase] [--watch]
 rbit pr dequeue N
@@ -248,6 +248,7 @@ A downloaded artifact is unpacked into the directory, never outside it.
 rbit pr create --title "…" [--body "…"] [--base main] [--head my-branch] [--draft]
 rbit pr list [--state open|closed|all] [--head BRANCH]
 rbit pr view NUMBER
+rbit pr comment NUMBER (--body TEXT | --body-file FILE) [--reply-to COMMENT_ID] [--json]
 rbit pr merge NUMBER [--merge | --squash | --rebase] [--head COMMIT]
 rbit pr checks NUMBER [--watch]
 rbit pr watch NUMBER [--cursor CURSOR] [--timeout SECONDS] [--json]
@@ -261,6 +262,11 @@ Actions jobs included, and exits with 0 when all passed, 1 when one failed and 8
 are pending, as `gh` does. No status at all is pending too (exit 8): straight after a push
 the checks may not have started, and that is not green.
 
+`pr comment` posts a top-level discussion comment or replies to an inline review
+comment with `--reply-to`. Use `--body-file -` to read the text from standard
+input. JSON results use `rbit.pr-comment/1` and include the posted comment's ID
+and URL. Thread resolution is a separate operation.
+
 `pr watch` reads the PR's current state, head and base, merge readiness, reviews,
 unresolved threads, and queue state. Pass the returned cursor to wait for a changed
 snapshot. The wait defaults to 25 seconds, with 0 for an immediate read. In JSON
@@ -269,6 +275,56 @@ A read-only caller can watch activity. When `readiness_checks_protection` is fal
 its readiness result is advisory. Discussion activity is represented by comment count.
 A successful read exits 0 regardless of the PR's readiness. The matching REST
 route is `GET /api/v1/repos/{owner}/{repo}/pulls/{number}/watch`.
+
+### Agent workflows
+
+```bash
+rbit pr modernize NUMBER [--json]
+rbit pr takeover NUMBER [--json]
+rbit pr babysit NUMBER [--timeout SECONDS] [--json]
+rbit pr full-stop NUMBER [--timeout SECONDS] [--json]
+rbit pr full-send NUMBER --head SHA [--squash | --rebase] [--timeout SECONDS] [--json]
+```
+
+`modernize` reads Git divergence and a changed-file manifest against the PR's
+observed revisions, along with its current state. Use those facts to decide whether
+the branch still fits, needs rework, or has been superseded. `takeover` gathers PR
+context and evidence for a handoff. Both are read-only and return `pull`,
+`comparison`, `manifest`, `watch`, and `disposition` in JSON
+(`rbit.pr-modernize/1` or `rbit.pr-takeover/1`). A disposition of
+`head_already_in_base` identifies ancestry. `needs_assessment` calls for
+reviewing the current code and the PR's goal. Other dispositions are
+`merged`, `closed`, and `base_missing`. Rerun the command if it reports that
+the PR moved while collecting evidence.
+
+`babysit` waits for the PR to be ready for handoff or to reach an actionable
+state. `full-stop` is an alias for `babysit`. Both are read-only. Inspect the
+returned outcome and revisions before deciding to fix CI, address review, or
+return the PR to a human. The default wait is 3,600 seconds. JSON results use
+`rbit.pr-babysit/1` with an `outcome` and the latest watch snapshot.
+
+| Exit | Babysit outcome |
+| --- | --- |
+| 0 | `ready` or `merged` |
+| 1 | `checks_failed`, `queue_failed`, `closed`, `review_changed`, or `blocked` |
+| 5 | `head_changed` or `base_changed` |
+| 8 | `queued` or `timeout` |
+
+`full-send` takes a full head SHA and waits up to 7,200 seconds by default.
+Before queueing, it checks the observed readiness and unresolved threads.
+The queue request includes the expected head and target branch. The merge
+queue tests its candidate against the current base and applies the repository's
+merge policy.
+A queue result uses `rbit.queue/1`. Exit 0 means landed, 1 means failed, 5
+means removed or a precondition changed, and 8 means still pending. A timeout
+can leave an active entry. Inspect the returned queue state and the live PR
+before making another request.
+
+For review context, use `rbit api` under `repos/{owner}/{repo}` with
+`pulls/NUMBER/reviews`, `pulls/NUMBER/comments`, or `pulls/NUMBER/inbox`.
+To set a thread's resolution, use
+`PUT pulls/NUMBER/comments/THREAD_ROOT_ID/resolution` with a JSON boolean
+`resolved`.
 
 ## Any API call
 

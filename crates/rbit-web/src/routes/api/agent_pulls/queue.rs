@@ -28,6 +28,9 @@ pub struct QueueRequest {
     /// The head the caller expects to land.
     #[serde(default)]
     head: Option<String>,
+    /// The target branch the caller reviewed.
+    #[serde(default)]
+    base: Option<String>,
     #[serde(default)]
     merge_method: Option<String>,
 }
@@ -61,6 +64,11 @@ pub async fn enqueue(
     caller.require_right(Right::Merge)?;
     let user = caller.require(TokenScope::Write)?;
     let ctx = open_pull(&state, &caller, &path).await?;
+    // The service queues exactly ctx.pull.base_branch and checks it again at landing.
+    // A retarget before this read must never send the reviewed head into a new line.
+    if request.base.as_ref().is_some_and(|base| *base != ctx.pull.base_branch) {
+        return Err(ApiError::new(StatusCode::CONFLICT, format!("the base branch is {}", ctx.pull.base_branch)).with_code("base_changed"));
+    }
     let method = request.merge_method.as_deref().unwrap_or("merge");
     let strategy =
         MergeStrategy::parse(method).ok_or_else(|| ApiError::invalid("merge_method", "merge_method must be merge, squash or rebase"))?;
